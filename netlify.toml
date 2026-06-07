@@ -1,0 +1,15 @@
+# Vaultique Boutique Point — website (separate Netlify site, own setup)
+# This config does NOT touch the POS site or its Supabase project.
+
+[build]
+  publish = "."
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Pretty path so the storefront calls /api/products
+[[redirects]]
+  from = "/api/products"
+  to = "/.netlify/functions/products"
+  status = 200
