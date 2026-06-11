@@ -80,5 +80,5 @@ banner disappears.
 - **Products:** add or edit in the POS. The site refreshes within ~1–2 minutes.
 - **Hide a product:** set it inactive in the POS.
 - **Photos:** drop files into `images/` (see `images/README.txt`).
-- **WhatsApp number / Instagram:** edit `WA_NUMBER` and `IG_HANDLE` near the top
+- **WhatsApp number / Instagram:** edit `WA_SHOP`, `WA_ENQUIRY` and `IG_HANDLE` near the top
   of the script inside `index.html`.
