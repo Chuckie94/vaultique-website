@@ -12,7 +12,8 @@
 create table if not exists public.product_meta (
   sku         text primary key,
   image_url   text,            -- main photo (public URL)
-  gallery     jsonb default '[]'::jsonb,  -- extra photo URLs
+  gallery     jsonb default '[]'::jsonb,  -- extra photo URLs (supports 10+)
+  videos      jsonb default '[]'::jsonb,  -- product video URLs (up to 2)
   featured    boolean default false,
   is_new      boolean default false,
   hidden      boolean default false,      -- hide from the website
@@ -88,6 +89,7 @@ create policy rv_insert on public.reviews for insert with check (
   rating between 1 and 5
   and char_length(name) between 1 and 60
   and (comment is null or char_length(comment) <= 1000)
+  and verified is not true   -- only the admin can mark a review Verified
 );
 create policy rv_admin  on public.reviews for all
   using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');

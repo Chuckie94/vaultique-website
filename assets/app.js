@@ -118,7 +118,17 @@
   // ------------------------------------------------------------------ state
   var PRODUCTS = [];
   var PREVIEW = false;
-  var CATEGORIES = [];
+  var CATEGORIES = [];   // categories that currently have products
+  var ALLCATS = [];      // all categories to show (master list + product categories)
+  // The full set of categories the boutique plans to carry. Any of these with no
+  // products yet shows automatically as "Coming soon". Editable via site content
+  // (set a "categories" array) or just edit this list.
+  var MASTER_CATEGORIES = [
+    "WOMEN'S APPAREL", "MEN'S FORMAL WEAR", "FOOTWEAR", "HANDBAGS & LEATHER GOODS",
+    "FASHION ACCESSORIES", "JEWELLERY", "BEAUTY & PERSONAL CARE",
+    "BRIDAL & WEDDING COLLECTION", "PREMIUM LUXURY COLLECTION",
+    "LOCAL & CULTURAL PRODUCTS", "GIFT & LIFESTYLE COLLECTION"
+  ];
   var filterCat = 'All';
   var filterColor = 'All';
   var filterSize = 'All';
@@ -191,6 +201,7 @@
       if (m) {
         p.image_url = m.image_url || '';
         p.gallery = asArray(m.gallery);
+        p.videos = asArray(m.videos);
         p.featured = !!m.featured;
         p.is_new = !!m.is_new;
         p.hidden = !!m.hidden;
@@ -200,8 +211,7 @@
     }).filter(function (p) { return !p.hidden; });
   }
   function boot() {
-    CATEGORIES = [];
-    PRODUCTS.forEach(function (p) { if (CATEGORIES.indexOf(p.category) === -1) CATEGORIES.push(p.category); });
+    computeCats();
     buildCategoryMenus();
     buildCollections();
     buildHomeRows();
@@ -209,6 +219,17 @@
     renderSiteReviews();
     updateWishCount();
     route();
+  }
+  function catHasProducts(c) { return PRODUCTS.some(function (p) { return p.category === c; }); }
+  function computeCats() {
+    var fromProducts = [];
+    PRODUCTS.forEach(function (p) { if (p.category && fromProducts.indexOf(p.category) === -1) fromProducts.push(p.category); });
+    CATEGORIES = fromProducts;
+    var union = [];
+    var base = (Array.isArray(CONTENT.categories) && CONTENT.categories.length) ? CONTENT.categories : MASTER_CATEGORIES;
+    base.forEach(function (c) { if (c && union.indexOf(c) === -1) union.push(c); });
+    fromProducts.forEach(function (c) { if (union.indexOf(c) === -1) union.push(c); });
+    ALLCATS = union;
   }
 
   // ------------------------------------------------------------------ category menus
@@ -218,15 +239,18 @@
       dd.innerHTML = '';
       var all = el('a'); all.textContent = 'All Products'; all.addEventListener('click', function () { goShop('All'); });
       dd.appendChild(all);
-      CATEGORIES.forEach(function (c) {
-        var a = el('a'); a.textContent = c; a.addEventListener('click', function () { goShop(c); });
+      ALLCATS.forEach(function (c) {
+        var a = el('a'); a.textContent = c;
+        if (!catHasProducts(c)) { a.classList.add('cat-soon'); a.innerHTML = esc(c) + ' <span class="soon">Soon</span>'; }
+        a.addEventListener('click', function () { goShop(c); });
         dd.appendChild(a);
       });
     }
     if (mm) {
-      // keep Home/Shop, append categories after a divider
-      CATEGORIES.forEach(function (c) {
-        var a = el('a'); a.textContent = c; a.style.fontSize = '20px';
+      ALLCATS.forEach(function (c) {
+        var a = el('a'); a.style.fontSize = '20px';
+        a.textContent = c;
+        if (!catHasProducts(c)) { a.classList.add('cat-soon'); a.innerHTML = esc(c) + ' <span class="soon">Soon</span>'; }
         a.addEventListener('click', function () { closeMobile(); goShop(c); });
         mm.appendChild(a);
       });
@@ -237,8 +261,9 @@
   function buildCollections() {
     var host = $('#collections'); if (!host) return;
     host.innerHTML = '';
-    CATEGORIES.slice(0, 6).forEach(function (c) {
-      var card = el('a', 'col-card reveal');
+    ALLCATS.slice(0, 12).forEach(function (c) {
+      var has = catHasProducts(c);
+      var card = el('a', 'col-card reveal' + (has ? '' : ' col-soon'));
       card.setAttribute('role', 'button');
       card.setAttribute('aria-label', c + ' collection');
       var ph = el('div', 'ph fallback');
@@ -246,9 +271,10 @@
         if (ok) { ph.classList.remove('fallback'); ph.style.cssText = bgStyle('images/collection-' + slug(c) + '.jpg'); }
       });
       var ov = el('div', 'ov');
-      ov.innerHTML = '<div class="k">Collection</div><div class="n serif">' + esc(c) +
-        '</div><div class="go">Explore →</div>';
+      ov.innerHTML = '<div class="k">Collection</div><div class="n serif">' + esc(c) + '</div>' +
+        (has ? '<div class="go">Explore →</div>' : '<div class="go soon-go">Coming soon</div>');
       card.appendChild(ph); card.appendChild(ov);
+      if (!has) { var rib = el('div', 'soon-ribbon'); rib.textContent = 'Coming soon'; card.appendChild(rib); }
       card.addEventListener('click', function () { goShop(c); });
       host.appendChild(card);
     });
@@ -390,10 +416,11 @@
   }
   function renderChips() {
     var host = $('#chips'); if (!host) return;
-    var cats = ['All'].concat(CATEGORIES);
+    var cats = ['All'].concat(ALLCATS);
     host.innerHTML = '';
     cats.forEach(function (c) {
-      var b = el('button', 'chip' + (c === filterCat && mode !== 'wishlist' ? ' active' : ''));
+      var isSoon = c !== 'All' && !catHasProducts(c);
+      var b = el('button', 'chip' + (c === filterCat && mode !== 'wishlist' ? ' active' : '') + (isSoon ? ' chip-soon' : ''));
       b.textContent = c;
       b.addEventListener('click', function () { mode = 'shop'; filterCat = c; updateShopTitle(); renderChips(); renderGrid(); });
       host.appendChild(b);
@@ -413,9 +440,17 @@
       grid.innerHTML = '';
       if (empty) {
         empty.style.display = 'block';
-        empty.innerHTML = mode === 'wishlist'
-          ? '<span class="serif">Your wishlist is empty</span>Tap the heart on any piece to save it here.'
-          : '<span class="serif">Nothing here yet</span>No pieces match your search. Try another category.';
+        if (mode === 'wishlist') {
+          empty.innerHTML = '<span class="serif">Your wishlist is empty</span>Tap the heart on any piece to save it here.';
+        } else if (filterCat !== 'All' && !catHasProducts(filterCat)) {
+          empty.innerHTML = '<span class="serif">Coming soon</span>New pieces in ' + esc(filterCat) +
+            ' are arriving shortly. Message us to be the first to know.' +
+            '<div style="margin-top:18px"><a class="btn btn-wa" target="_blank" rel="noopener" href="' +
+            waGeneral('Hello Vaultique Boutique, please let me know when ' + filterCat + ' is available.') +
+            '">Notify me on WhatsApp</a></div>';
+        } else {
+          empty.innerHTML = '<span class="serif">Nothing here yet</span>No pieces match your search. Try another category.';
+        }
       }
       return;
     }
@@ -491,6 +526,7 @@
       '</div>' +
       accordion(specs) +
       '</div></div>' +
+      ((p.videos && p.videos.length) ? '<div class="prod-videos"><div class="eyebrow">Watch</div><div class="pv-grid">' + p.videos.slice(0, 2).map(function (u) { return '<video controls preload="metadata" playsinline src="' + esc(u) + '"></video>'; }).join('') + '</div></div>' : '') +
       '<div id="prodReviews" class="prod-reviews"></div>' +
       (related.length ? relatedBlock('You may also like', 'More in ' + p.category, 'relGrid') : '') +
       (recentItems.length ? relatedBlock('Recently viewed', 'Pieces you looked at', 'recGrid') : '') +
@@ -612,7 +648,8 @@
     var h = location.hash;
     var pm = h.match(/^#\/product\/(.+)$/);
     if (pm) { renderDetail(decodeURIComponent(pm[1])); return; }
-    if (h === '#/policies') { renderPolicies(); showView('policies'); window.scrollTo(0, 0); return; }
+    var polm = h.match(/^#\/policies(?:\/([^?]+))?$/);
+    if (polm) { renderPolicies(polm[1] ? decodeURIComponent(polm[1]) : null); showView('policies'); window.scrollTo(0, 0); return; }
     if (h === '#/wishlist') {
       mode = 'wishlist'; filterCat = 'All'; searchTerm = '';
       var si = $('#shopSearch'); if (si) si.value = '';
@@ -622,7 +659,7 @@
     if (sm) {
       mode = 'shop';
       filterCat = sm[1] ? decodeURIComponent(sm[1]) : 'All';
-      if (CATEGORIES.indexOf(filterCat) === -1 && filterCat !== 'All') filterCat = 'All';
+      if (ALLCATS.indexOf(filterCat) === -1 && filterCat !== 'All') filterCat = 'All';
       updateShopTitle(); renderChips(); renderGrid(); showView('shop'); window.scrollTo(0, 0); return;
     }
     showView('home');
@@ -995,7 +1032,7 @@
     if (inUl) html += '</ul>';
     return html;
   }
-  function renderPolicies() {
+  function renderPolicies(focus) {
     var host = $('#view-policies'); if (!host) return;
     var order = [], groups = {};
     POLICIES.slice().sort(function (a, b) { return (a.sort || 0) - (b.sort || 0); }).forEach(function (p) {
@@ -1011,7 +1048,8 @@
     order.forEach(function (s) {
       html += '<section class="pol-section"><h2 class="serif pol-sec-title">' + esc(s) + '</h2><div class="pol-list">';
       groups[s].forEach(function (p) {
-        html += '<details class="pol-item"><summary>' + esc(p.title) + '<span class="pol-ar" aria-hidden="true">+</span></summary><div class="pol-body">' + policyBodyHtml(p.body) + '</div></details>';
+        var sg = slug(p.title);
+        html += '<details class="pol-item" id="pol-' + sg + '" data-slug="' + sg + '"><summary>' + esc(p.title) + '<span class="pol-ar" aria-hidden="true">+</span></summary><div class="pol-body">' + policyBodyHtml(p.body) + '</div></details>';
       });
       html += '</div></section>';
     });
@@ -1019,6 +1057,19 @@
     host.innerHTML = html;
     var hb = host.querySelector('[data-home]'); if (hb) hb.addEventListener('click', goHome);
     bindWa();
+    if (focus) focusPolicy(host, focus);
+  }
+  function focusPolicy(host, focus) {
+    var items = host.querySelectorAll('.pol-item'), match = null;
+    function pick(test) { items.forEach(function (it) { if (!match && test(it.getAttribute('data-slug') || '')) match = it; }); }
+    pick(function (s) { return s === focus; });
+    if (!match) pick(function (s) { return s.indexOf(focus) === 0; });
+    if (!match) pick(function (s) { return s.indexOf(focus) > -1; });
+    if (match) {
+      match.open = true;
+      match.classList.add('pol-focus');
+      setTimeout(function () { match.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 80);
+    }
   }
 
   function init() {

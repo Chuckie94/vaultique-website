@@ -172,7 +172,7 @@ header.site.solid .brand .v{color:var(--navy)}
   linear-gradient(155deg,var(--navy-3),var(--navy) 55%,var(--navy-2))}
 .hero-slide .photo{position:absolute;inset:0;background-size:cover;background-position:center}
 .hero-slide .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(6,21,44,.5) 0%,rgba(6,21,44,.25) 40%,rgba(6,21,44,.7) 100%)}
-.hero-content{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:0 26px}
+.hero-content{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:0 26px 110px}
 .hero-content .eyebrow{color:var(--gold-2);opacity:0;transform:translateY(16px);animation:heroUp .9s .3s var(--ease) forwards}
 .hero-content h1{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:clamp(44px,8.5vw,96px);line-height:1;margin:18px 0 0;letter-spacing:.01em;opacity:0;transform:translateY(22px);animation:heroUp 1s .45s var(--ease) forwards}
 .hero-content h1 em{font-style:italic;color:var(--gold-2)}
@@ -182,7 +182,7 @@ header.site.solid .brand .v{color:var(--navy)}
 .hero-dots{position:absolute;bottom:120px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:3}
 .hero-dots button{width:28px;height:3px;background:rgba(255,255,255,.4);border:none;border-radius:2px;transition:.3s;padding:0}
 .hero-dots button.active{background:var(--gold);width:46px}
-.scroll-cue{position:absolute;bottom:34px;left:50%;transform:translateX(-50%);z-index:3;display:flex;flex-direction:column;align-items:center;gap:8px;color:rgba(255,255,255,.7);font-size:10px;letter-spacing:.3em;text-transform:uppercase}
+.scroll-cue{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);z-index:1;display:flex;flex-direction:column;align-items:center;gap:8px;color:rgba(255,255,255,.7);font-size:10px;letter-spacing:.3em;text-transform:uppercase;pointer-events:none}
 .scroll-cue .line{width:1px;height:46px;background:linear-gradient(var(--gold),transparent);animation:cue 2s infinite}
 @keyframes cue{0%{transform:scaleY(0);transform-origin:top}50%{transform:scaleY(1);transform-origin:top}51%{transform:scaleY(1);transform-origin:bottom}100%{transform:scaleY(0);transform-origin:bottom}}
 
@@ -625,3 +625,32 @@ footer.site{background:var(--navy-3);color:rgba(255,255,255,.72)}
 .foot-legal a{color:inherit;opacity:.85;font-size:inherit}
 .foot-legal a:hover{opacity:1;color:var(--gold-2)}
 @media(max-width:560px){.policies-view{padding:110px 0 70px}.pol-item summary{font-size:19px}}
+
+/* hide decorative scroll cue on short viewports to avoid crowding the buttons */
+@media(max-height:720px){.scroll-cue{display:none}}
+
+/* =====================================================================
+   ADD-ON: coming-soon categories
+   ===================================================================== */
+.soon{display:inline-block;font-family:'Jost',sans-serif;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--navy);background:var(--gold);padding:2px 6px;border-radius:20px;vertical-align:middle;margin-left:6px;font-weight:600}
+.cat-soon{opacity:.85}
+.chip-soon{opacity:.72}
+.chip-soon::after{content:'soon';margin-left:7px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-deep)}
+.col-card.col-soon{cursor:pointer}
+.col-card.col-soon .ph{filter:grayscale(35%) brightness(.85)}
+.col-soon .soon-go{color:var(--gold-2)}
+.soon-ribbon{position:absolute;top:14px;right:-34px;transform:rotate(45deg);background:var(--gold);color:var(--navy);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;padding:5px 40px;z-index:3;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.col-card{position:relative;overflow:hidden}
+
+/* policy deep-link focus highlight */
+.pol-item.pol-focus>summary{color:var(--gold-deep)}
+.pol-item.pol-focus{background:rgba(200,162,74,.07);border-radius:8px}
+
+/* =====================================================================
+   ADD-ON: product videos
+   ===================================================================== */
+.prod-videos{margin-top:54px}
+.prod-videos .eyebrow{margin-bottom:14px}
+.pv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.pv-grid video{width:100%;border-radius:10px;background:#000;border:1px solid var(--line-2);aspect-ratio:4/5;object-fit:cover}
+@media(max-width:560px){.pv-grid{grid-template-columns:1fr}}

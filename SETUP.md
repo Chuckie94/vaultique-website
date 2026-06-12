@@ -49,9 +49,9 @@ Push the updated folder to your repo (or run `netlify deploy --prod`).
 ## Using the admin
 - Go to **https://your-site.netlify.app/admin.html** and sign in.
 - **Products & Photos:** every product from the POS is listed. Upload a main
-  photo and extra photos, mark items Featured or New, hide a product from the
-  site, or write a custom description. Changes save instantly and appear on the
-  site within about a minute.
+  photo plus extra photos (up to 10 in total) and up to 2 short videos per
+  product, mark items Featured or New, hide a product from the site, or write a
+  custom description. Changes save instantly.
 - **Site Content:** edit the announcement bar, hero text and photos, your
   story, core values, testimonials, contact numbers, email, Instagram, support
   hours and payment methods. Click **Save content**.

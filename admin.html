@@ -293,9 +293,11 @@
       "<svg xmlns='http://www.w3.org/2000/svg' width='120' height='150'><rect width='100%' height='100%' fill='%230B1F3A'/>" +
       "<text x='50%' y='54%' fill='%23C8A24A' font-family='Georgia' font-size='30' text-anchor='middle'>VB</text></svg>";
   }
-  function extOf(name) { var p = (name || '').split('.'); return (p.length > 1 ? p.pop() : 'jpg').toLowerCase(); }
+  function extOf(name) { var p = (name || '').split('.'); var e = (p.length > 1 ? p.pop() : 'jpg').toLowerCase(); return e.replace(/[^a-z0-9]/g, '') || 'jpg'; }
   function uploadImage(file, prefix) {
-    var path = prefix + '-' + Date.now() + '.' + extOf(file.name);
+    // Storage keys must be URL-safe; SKUs may contain spaces or symbols.
+    var safe = String(prefix).replace(/[^A-Za-z0-9\/_.-]/g, '_');
+    var path = safe + '-' + Date.now() + '.' + extOf(file.name);
     return sb.storage.from(BUCKET).upload(path, file, { upsert: true, cacheControl: '3600' })
       .then(function (r) {
         if (r.error) throw r.error;
@@ -335,6 +337,8 @@
     list.forEach(function (p) { host.appendChild(productRow(p)); });
   }
   function gallery(sku) { var m = metaMap[sku]; var g = m && m.gallery; return Array.isArray(g) ? g : []; }
+  function videosOf(sku) { var m = metaMap[sku]; var v = m && m.videos; return Array.isArray(v) ? v : []; }
+  var MAX_PHOTOS = 10, MAX_VIDEOS = 2;
 
   function productRow(p) {
     var m = metaMap[p.sku] || { sku: p.sku };
@@ -382,23 +386,73 @@
       });
     }
     drawGallery();
+    var galCount = document.createElement('div'); galCount.className = 'hint'; galCount.style.margin = '6px 0 2px';
+    function updateCount() {
+      var total = 1 + gallery(p.sku).length; // main + extras
+      galCount.textContent = 'Photos: ' + total + ' / ' + MAX_PHOTOS + (total >= MAX_PHOTOS ? ' (maximum reached)' : '');
+    }
+    updateCount();
     var addLbl = document.createElement('label'); addLbl.textContent = 'Add extra photo'; addLbl.style.margin = '8px 8px 0 0';
     var addIn = document.createElement('input'); addIn.type = 'file'; addIn.accept = 'image/*'; addIn.className = 'file';
     var addStat = document.createElement('span'); addStat.className = 'stat';
     addIn.addEventListener('change', function () {
       if (!addIn.files[0]) return;
+      if ((1 + gallery(p.sku).length) >= MAX_PHOTOS) { addStat.textContent = 'You already have ' + MAX_PHOTOS + ' photos.'; addStat.className = 'stat err'; addIn.value = ''; return; }
       addStat.textContent = 'Uploading…'; addStat.className = 'stat busy';
       uploadImage(addIn.files[0], p.sku + '/g').then(function (url) {
         var arr = gallery(p.sku); arr.push(url); m.gallery = arr; metaMap[p.sku] = m;
         return saveMeta(p.sku);
-      }).then(function () { addStat.textContent = 'Saved ✓'; addStat.className = 'stat ok'; addIn.value = ''; drawGallery(); })
+      }).then(function () { addStat.textContent = 'Saved ✓'; addStat.className = 'stat ok'; addIn.value = ''; drawGallery(); updateCount(); })
         .catch(function (e) { addStat.textContent = 'Error: ' + (e.message || e); addStat.className = 'stat err'; });
     });
+    // redraw gallery should also refresh the count
+    var _origDraw = drawGallery;
+    drawGallery = function () { _origDraw(); updateCount(); };
     galWrap.appendChild(galRow);
+    galWrap.appendChild(galCount);
     var addRow = document.createElement('div'); addRow.className = 'row';
     addRow.appendChild(addLbl); addRow.appendChild(addIn); addRow.appendChild(addStat);
     galWrap.appendChild(addRow);
     body.appendChild(galWrap);
+
+    // videos (up to 2)
+    var vidWrap = document.createElement('div'); vidWrap.style.marginTop = '10px';
+    var vidRow = document.createElement('div'); vidRow.className = 'gal';
+    function drawVideos() {
+      vidRow.innerHTML = '';
+      videosOf(p.sku).forEach(function (u, idx) {
+        var g = document.createElement('div'); g.className = 'g'; g.style.width = '74px'; g.style.height = '58px';
+        g.innerHTML = '<video src="' + u + '" muted style="width:100%;height:100%;object-fit:cover"></video>';
+        var x = document.createElement('button'); x.textContent = '×'; x.title = 'Remove';
+        x.addEventListener('click', function () {
+          var arr = videosOf(p.sku); arr.splice(idx, 1); m.videos = arr; metaMap[p.sku] = m;
+          saveMeta(p.sku).then(drawVideos);
+        });
+        g.appendChild(x); vidRow.appendChild(g);
+      });
+    }
+    drawVideos();
+    var vLbl = document.createElement('label'); vLbl.textContent = 'Add video (max ' + MAX_VIDEOS + ')'; vLbl.style.margin = '8px 8px 0 0';
+    var vIn = document.createElement('input'); vIn.type = 'file'; vIn.accept = 'video/*'; vIn.className = 'file';
+    var vStat = document.createElement('span'); vStat.className = 'stat';
+    vIn.addEventListener('change', function () {
+      if (!vIn.files[0]) return;
+      if (vIn.files[0].size > 50 * 1024 * 1024) { vStat.textContent = 'Video is over 50 MB. Please trim or compress it first.'; vStat.className = 'stat err'; vIn.value = ''; return; }
+      if (videosOf(p.sku).length >= MAX_VIDEOS) { vStat.textContent = 'Limit is ' + MAX_VIDEOS + ' videos.'; vStat.className = 'stat err'; vIn.value = ''; return; }
+      vStat.textContent = 'Uploading… (videos can take a moment)'; vStat.className = 'stat busy';
+      uploadImage(vIn.files[0], p.sku + '/v').then(function (url) {
+        var arr = videosOf(p.sku); arr.push(url); m.videos = arr; metaMap[p.sku] = m;
+        return saveMeta(p.sku);
+      }).then(function () { vStat.textContent = 'Saved ✓'; vStat.className = 'stat ok'; vIn.value = ''; drawVideos(); })
+        .catch(function (e) { vStat.textContent = 'Error: ' + (e.message || e); vStat.className = 'stat err'; });
+    });
+    var vHint = document.createElement('div'); vHint.className = 'hint'; vHint.style.marginTop = '6px';
+    vHint.textContent = 'Short, compressed clips work best (keep each video small for fast loading).';
+    vidWrap.appendChild(vidRow);
+    var vAddRow = document.createElement('div'); vAddRow.className = 'row';
+    vAddRow.appendChild(vLbl); vAddRow.appendChild(vIn); vAddRow.appendChild(vStat);
+    vidWrap.appendChild(vAddRow); vidWrap.appendChild(vHint);
+    body.appendChild(vidWrap);
 
     // flags
     var flags = document.createElement('div'); flags.className = 'row';
