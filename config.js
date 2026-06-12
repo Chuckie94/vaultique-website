@@ -15,7 +15,7 @@
    still load from the POS as normal).
    ===================================================================== */
 window.VBP_CONFIG = {
-  SUPABASE_URL: 'sb_publishable_DvGkw6VCB9_GZknBQDlhqQ_s-F2lK5A',
+  SUPABASE_URL: 'https://jbzlrbljhyubpqwpzogm.supabase.co',
   SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpiemxyYmxqaHl1YnBxd3B6b2dtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODIyMDksImV4cCI6MjA5Njc1ODIwOX0.EqEHe5C-kF1D7bRGd80b5SjazLbIsY0U-etQC8DcGa8',
   IMAGE_BUCKET: 'product-images'
 };
