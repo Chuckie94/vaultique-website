@@ -1,755 +1,84 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="robots" content="noindex" />
-<title>Vaultique Admin</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
-<style>
-  :root{--navy:#0B1F3A;--navy2:#0e2545;--gold:#C8A24A;--gold-d:#a9842f;--cream:#F4EFE3;--ivory:#FBF8F0;--ink:#15202e;--muted:#6b7480;--line:rgba(11,31,58,.14);--ok:#1f9d57;--err:#c0392b}
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Jost',system-ui,sans-serif;background:var(--cream);color:var(--ink);line-height:1.5;font-weight:300}
-  .serif{font-family:'Cormorant Garamond',serif}
-  a{color:var(--gold-d)}
-  .wrap{max-width:860px;margin:0 auto;padding:18px}
-  .hide{display:none!important}
-  /* top bar */
-  .top{background:var(--navy);color:#fff;position:sticky;top:0;z-index:10}
-  .top .wrap{display:flex;align-items:center;gap:12px;padding:14px 18px}
-  .top .v{font-family:'Cormorant Garamond',serif;font-weight:600;font-size:20px;letter-spacing:.3em;padding-left:.3em}
-  .top .sp{margin-left:auto}
-  .btn{border:none;border-radius:4px;font-family:'Jost',sans-serif;font-weight:500;font-size:13px;letter-spacing:.04em;padding:11px 16px;cursor:pointer;transition:.2s}
-  .btn-gold{background:var(--gold);color:var(--navy)}
-  .btn-gold:hover{background:#d8bd7b}
-  .btn-ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
-  .btn-out{background:#fff;color:var(--navy);border:1px solid var(--line)}
-  .btn-sm{padding:8px 12px;font-size:12px}
-  .btn:disabled{opacity:.5;cursor:default}
-  /* login + config */
-  .panel{background:var(--ivory);border:1px solid var(--line);border-radius:10px;padding:26px;max-width:420px;margin:60px auto}
-  .panel h1{font-family:'Cormorant Garamond',serif;font-weight:600;font-size:30px;color:var(--navy);margin-bottom:6px}
-  .panel p{color:var(--muted);font-size:14px;margin-bottom:18px}
-  label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 0 6px}
-  input[type=text],input[type=email],input[type=password],textarea,input:not([type]){width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px;background:#fff;font-family:'Jost',sans-serif;font-size:14px;color:var(--ink);outline:none}
-  input:focus,textarea:focus{border-color:var(--gold)}
-  textarea{resize:vertical;min-height:64px}
-  .msg{font-size:13px;margin-top:12px}
-  .msg.err{color:var(--err)}
-  .msg.ok{color:var(--ok)}
-  /* tabs */
-  .tabs{display:flex;gap:8px;margin:18px 0}
-  .tab{flex:1;text-align:center;padding:12px;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--navy)}
-  .tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
-  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
-  .count{font-size:13px;color:var(--muted)}
-  /* product card */
-  .prod{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px;display:grid;grid-template-columns:96px 1fr;gap:14px}
-  .prod .thumb{width:96px;height:120px;border-radius:7px;overflow:hidden;background:var(--navy);border:1px solid var(--line)}
-  .prod .thumb img{width:100%;height:100%;object-fit:cover}
-  .prod .nm{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;color:var(--navy);line-height:1.15}
-  .prod .sku{font-size:11px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
-  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:8px 0}
-  .chk{display:flex;align-items:center;gap:6px;font-size:13px}
-  .chk input{width:18px;height:18px;accent-color:var(--gold-d)}
-  .gal{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-  .gal .g{position:relative;width:46px;height:58px;border-radius:5px;overflow:hidden;border:1px solid var(--line)}
-  .gal .g img{width:100%;height:100%;object-fit:cover}
-  .gal .g button{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;font-size:11px;line-height:1;cursor:pointer}
-  .file{font-size:12px}
-  .stat{font-size:12px;margin-left:6px}
-  .stat.ok{color:var(--ok)}.stat.err{color:var(--err)}.stat.busy{color:var(--muted)}
-  .field{margin-bottom:14px}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
-  .card h3{font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--navy);margin-bottom:10px}
-  .hint{font-size:12px;color:var(--muted);margin-top:4px}
-  .save-bar{position:sticky;bottom:0;background:var(--cream);padding:12px 0;border-top:1px solid var(--line);display:flex;gap:12px;align-items:center}
-  @media(max-width:560px){.grid2{grid-template-columns:1fr}.prod{grid-template-columns:72px 1fr}.prod .thumb{width:72px;height:92px}}
-</style>
-</head>
-<body>
+# Vaultique Boutique Point — Website
 
-<div class="top hide" id="topbar">
-  <div class="wrap">
-    <span class="v">VAULTIQUE</span><span style="font-size:11px;letter-spacing:.3em;color:var(--gold)">ADMIN</span>
-    <span class="sp"></span>
-    <a class="btn btn-ghost btn-sm" href="index.html" target="_blank" rel="noopener">View site</a>
-    <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
-  </div>
-</div>
+A luxury storefront for Vaultique Boutique Point (Lusaka, Zambia) with WhatsApp
+checkout. It reads your live products from the existing POS automatically and
+never touches the POS or its security.
 
-<div class="wrap">
+---
 
-  <!-- not configured -->
-  <div class="panel hide" id="needConfig">
-    <h1 class="serif">Almost there</h1>
-    <p>Your website database isn't connected yet. Open <b>config.js</b>, paste your Supabase Project URL and anon key, then redeploy. See <b>SETUP.md</b> for the steps.</p>
-  </div>
+## Folder structure
 
-  <!-- login -->
-  <div class="panel hide" id="login">
-    <h1 class="serif">Vaultique Admin</h1>
-    <p>Sign in to manage photos and content.</p>
-    <label for="email">Email</label>
-    <input type="email" id="email" autocomplete="username" />
-    <label for="password">Password</label>
-    <input type="password" id="password" autocomplete="current-password" />
-    <div style="margin-top:18px"><button class="btn btn-gold" id="loginBtn" style="width:100%">Sign in</button></div>
-    <div class="msg" id="loginMsg"></div>
-  </div>
+```
+vaultique-website/
+├── index.html                 the whole storefront (styles + script inlined)
+├── netlify.toml               Netlify config + /api/products redirect
+├── netlify/
+│   └── functions/
+│       └── products.js        server-side product feed (holds the read key)
+└── images/                    optional photos, named by SKU (see README there)
+```
 
-  <!-- admin -->
-  <div class="hide" id="admin">
-    <div class="tabs">
-      <div class="tab active" data-tab="products">Products &amp; Photos</div>
-      <div class="tab" data-tab="content">Site Content</div>
-      <div class="tab" data-tab="reviews">Reviews</div>
-      <div class="tab" data-tab="subscribers">Subscribers</div>
-      <div class="tab" data-tab="policies">Policies</div>
-    </div>
+`index.html` is now a single self-contained file, so you can open it directly
+to preview the design. `products.js` is the secure server-side feed.
 
-    <!-- PRODUCTS -->
-    <div id="tab-products">
-      <div class="toolbar">
-        <input type="text" id="prodSearch" placeholder="Search by name or SKU…" style="flex:1;min-width:160px" />
-        <span class="count" id="prodCount"></span>
-      </div>
-      <div id="prodList"><p class="count">Loading products…</p></div>
-    </div>
+---
 
-    <!-- CONTENT -->
-    <div id="tab-content" class="hide">
-      <div class="card">
-        <h3>Announcement bar</h3>
-        <input type="text" id="c_announce" placeholder="Top banner text" />
-        <div class="hint">Basic bold allowed with &lt;b&gt;…&lt;/b&gt;.</div>
-      </div>
+## Do I need Supabase and Netlify?
 
-      <div class="card">
-        <h3>Hero</h3>
-        <div class="field"><label>Eyebrow (small line)</label><input type="text" id="c_hero_eyebrow" /></div>
-        <div class="grid2">
-          <div class="field"><label>Title line 1</label><input type="text" id="c_hero_title" /></div>
-          <div class="field"><label>Title line 2 (gold)</label><input type="text" id="c_hero_titleEm" /></div>
-        </div>
-        <div class="field"><label>Subtitle</label><textarea id="c_hero_sub"></textarea></div>
-        <label>Hero photos (large background)</label>
-        <div class="grid2" id="heroImgs"></div>
-      </div>
+- **Netlify: yes.** Use your EXISTING Netlify account, but create a NEW, separate
+  site for the website (free). Do not deploy over your POS site.
+- **Supabase: no new project.** The website reads your existing POS Supabase
+  READ-ONLY through the function. You create nothing and change nothing in
+  Supabase, and you never touch the POS project.
 
-      <div class="card">
-        <h3>Our Story</h3>
-        <div class="field"><label>Heading</label><input type="text" id="c_story_heading" /></div>
-        <div class="field"><label>Paragraph 1</label><textarea id="c_story_p1"></textarea></div>
-        <div class="field"><label>Paragraph 2</label><textarea id="c_story_p2"></textarea></div>
-      </div>
+---
 
-      <div class="card">
-        <h3>Core values</h3>
-        <div id="valuesEdit"></div>
-      </div>
+## Important: how to deploy a site that has a function
 
-      <div class="card">
-        <h3>Testimonials</h3>
-        <div id="testiEdit"></div>
-      </div>
+This site includes one serverless function (the piece that securely fetches your
+products). Netlify deploys functions through **Git** or the **Netlify CLI** — a
+plain browser drag-and-drop uploads static files only and will NOT run the
+function, so products would not load.
 
-      <div class="card">
-        <h3>Contact &amp; details</h3>
-        <div class="grid2">
-          <div class="field"><label>WhatsApp · orders</label><input type="text" id="c_waShop" placeholder="+260 …" /></div>
-          <div class="field"><label>WhatsApp · enquiries</label><input type="text" id="c_waEnquiry" placeholder="+260 …" /></div>
-          <div class="field"><label>Email</label><input type="text" id="c_email" /></div>
-          <div class="field"><label>Instagram handle</label><input type="text" id="c_ig" placeholder="without @" /></div>
-        </div>
-        <div class="field"><label>Support hours</label><input type="text" id="c_hours" /></div>
-        <div class="field"><label>Payment methods (comma separated)</label><input type="text" id="c_payments" placeholder="Airtel Money, MTN Money, Bank Transfer, Cash" /></div>
-      </div>
+### Option A — GitHub (recommended, easiest to keep updated)
+1. Create a free GitHub account and a new repository.
+2. Upload the contents of this folder to the repo (keep the `netlify/functions`
+   folder structure intact).
+3. In Netlify: Add new site → Import an existing project → pick the repo →
+   Deploy. Netlify detects and builds the function automatically.
+4. Future changes: update the files in GitHub and Netlify redeploys on its own.
 
-      <div class="card">
-        <h3>Customer care</h3>
-        <div class="field"><label>Size &amp; style advice — title</label><input type="text" id="c_care_sizeTitle" /></div>
-        <div class="field"><label>Size &amp; style advice — text</label><textarea id="c_care_sizeBody" rows="4"></textarea></div>
-        <div class="field"><label>Deliveries — title</label><input type="text" id="c_care_deliveryTitle" /></div>
-        <div class="field"><label>Deliveries — text (use new lines for steps)</label><textarea id="c_care_deliveryBody" rows="5"></textarea></div>
-        <div class="field"><label>Exchanges &amp; returns — title</label><input type="text" id="c_care_returnsTitle" /></div>
-        <div class="field"><label>Exchanges &amp; returns — text (use new lines for steps)</label><textarea id="c_care_returnsBody" rows="5"></textarea></div>
-      </div>
+### Option B — Netlify CLI (one computer command)
+```
+npm install -g netlify-cli
+cd vaultique-website
+netlify deploy --prod
+```
 
-      <div class="card">
-        <h3>Rewards programme</h3>
-        <div class="field"><label>Title</label><input type="text" id="c_rewards_title" /></div>
-        <div class="field"><label>Text</label><textarea id="c_rewards_body" rows="4"></textarea></div>
-      </div>
+Either way, after deploy open `https://YOUR-SITE.netlify.app/api/products` — you
+should see product JSON. If you do, the live feed is working.
 
-      <div class="card">
-        <h3>Lookbook photos</h3>
-        <div class="hint" style="margin-bottom:8px">Six square images for the homepage lookbook.</div>
-        <div class="grid2" id="lookImgs"></div>
-      </div>
+### Optional hardening
+Move the POS read key into Netlify env vars (Site settings → Environment
+variables): `POS_SUPABASE_URL` and `POS_SUPABASE_KEY`.
 
-      <div class="card">
-        <h3>Footer tagline</h3>
-        <input type="text" id="c_tagline" placeholder="Curated Elegance, Accessible Luxury" />
-      </div>
+### Newsletter
+The signup uses Netlify Forms (no backend). Submissions appear under **Forms**
+in your Netlify dashboard.
 
-      <div class="save-bar">
-        <button class="btn btn-gold" id="saveContent">Save content</button>
-        <span class="stat" id="contentStat"></span>
-      </div>
-    </div>
+---
 
-    <!-- REVIEWS -->
-    <div id="tab-reviews" class="hide">
-      <div class="toolbar"><span class="count" id="revCount"></span></div>
-      <div id="revList"><p class="count">Loading…</p></div>
-    </div>
+## Preview before deploy
+Open `index.html` directly (on your phone or computer) to see the full design.
+With no server, it runs in "Preview mode" with a few sample products behind an
+amber banner. On the live Netlify site, your real POS products load and the
+banner disappears.
 
-    <!-- SUBSCRIBERS -->
-    <div id="tab-subscribers" class="hide">
-      <div class="toolbar">
-        <span class="count" id="subCount"></span>
-        <button class="btn btn-out btn-sm" id="subCopy">Copy all emails</button>
-        <button class="btn btn-gold btn-sm" id="subEmail">Email all (BCC)</button>
-      </div>
-      <div id="subList"><p class="count">Loading…</p></div>
-    </div>
+---
 
-    <!-- POLICIES -->
-    <div id="tab-policies" class="hide">
-      <div class="toolbar">
-        <span class="count" id="polCount"></span>
-        <button class="btn btn-out btn-sm" id="polAdd">Add policy</button>
-        <button class="btn btn-out btn-sm" id="polImport">Load starter policies</button>
-      </div>
-      <div class="hint" style="margin-bottom:12px">Edit any policy below, change its order with the number, or add your own. In the text, start a line with a dash to make a bullet point. Leave a blank line between paragraphs.</div>
-      <div id="polList"><p class="count">Loading…</p></div>
-    </div>
-  </div>
-</div>
-
-<script src="config.js"></script>
-<script src="assets/policies-data.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
-(function () {
-  'use strict';
-  var cfg = window.VBP_CONFIG || {};
-  var BUCKET = cfg.IMAGE_BUCKET || 'product-images';
-  var $ = function (id) { return document.getElementById(id); };
-  function show(id, on) { var e = $(id); if (e) e.classList[on ? 'remove' : 'add']('hide'); }
-
-  if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) { show('needConfig', true); return; }
-  if (!window.supabase || !window.supabase.createClient) { show('needConfig', true); return; }
-
-  var sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-  var metaMap = {};       // sku -> meta row
-  var products = [];      // POS products
-  var contentData = {};   // site content
-
-  // ---------- auth ----------
-  sb.auth.getSession().then(function (res) {
-    if (res.data && res.data.session) enterAdmin(); else show('login', true);
-  });
-  $('loginBtn').addEventListener('click', doLogin);
-  $('password').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
-  function doLogin() {
-    var msg = $('loginMsg'); msg.textContent = 'Signing in…'; msg.className = 'msg';
-    sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('password').value })
-      .then(function (r) {
-        if (r.error) { msg.textContent = r.error.message; msg.className = 'msg err'; return; }
-        msg.textContent = ''; show('login', false); enterAdmin();
-      });
-  }
-  $('logoutBtn').addEventListener('click', function () { sb.auth.signOut().then(function () { location.reload(); }); });
-
-  function enterAdmin() {
-    show('topbar', true); show('admin', true);
-    loadProducts(); loadContent();
-  }
-
-  // ---------- tabs ----------
-  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
-    t.addEventListener('click', function () {
-      Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (x) { x.classList.remove('active'); });
-      t.classList.add('active');
-      var which = t.getAttribute('data-tab');
-      show('tab-products', which === 'products');
-      show('tab-content', which === 'content');
-      show('tab-reviews', which === 'reviews');
-      show('tab-subscribers', which === 'subscribers');
-      show('tab-policies', which === 'policies');
-      if (which === 'reviews') loadReviews();
-      if (which === 'subscribers') loadSubscribers();
-      if (which === 'policies') loadPolicies();
-    });
-  });
-
-  // ---------- helpers ----------
-  function placeholder() {
-    return "data:image/svg+xml;charset=utf-8," +
-      "<svg xmlns='http://www.w3.org/2000/svg' width='120' height='150'><rect width='100%' height='100%' fill='%230B1F3A'/>" +
-      "<text x='50%' y='54%' fill='%23C8A24A' font-family='Georgia' font-size='30' text-anchor='middle'>VB</text></svg>";
-  }
-  function extOf(name) { var p = (name || '').split('.'); return (p.length > 1 ? p.pop() : 'jpg').toLowerCase(); }
-  function uploadImage(file, prefix) {
-    var path = prefix + '-' + Date.now() + '.' + extOf(file.name);
-    return sb.storage.from(BUCKET).upload(path, file, { upsert: true, cacheControl: '3600' })
-      .then(function (r) {
-        if (r.error) throw r.error;
-        return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-      });
-  }
-  function saveMeta(sku) {
-    var m = metaMap[sku] || { sku: sku };
-    m.sku = sku; m.updated_at = new Date().toISOString();
-    metaMap[sku] = m;
-    return sb.from('product_meta').upsert(m, { onConflict: 'sku' }).then(function (r) {
-      if (r.error) throw r.error; return r;
-    });
-  }
-
-  // ---------- products ----------
-  function loadProducts() {
-    Promise.all([
-      fetch('/api/products', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : { products: [] }; }).catch(function () { return { products: [] }; }),
-      sb.from('product_meta').select('*')
-    ]).then(function (res) {
-      products = (res[0] && res[0].products) || [];
-      metaMap = {};
-      var rows = (res[1] && res[1].data) || [];
-      rows.forEach(function (m) { if (m && m.sku) metaMap[m.sku] = m; });
-      renderProducts();
-    });
-  }
-  function renderProducts() {
-    var term = ($('prodSearch').value || '').toLowerCase().trim();
-    var list = products.filter(function (p) {
-      return !term || (p.name && p.name.toLowerCase().indexOf(term) > -1) || (p.sku && p.sku.toLowerCase().indexOf(term) > -1);
-    });
-    $('prodCount').textContent = products.length + ' products from POS';
-    var host = $('prodList'); host.innerHTML = '';
-    if (!products.length) { host.innerHTML = '<p class="count">No products returned from the POS. Open this admin on your live site (the product feed must be reachable).</p>'; return; }
-    list.forEach(function (p) { host.appendChild(productRow(p)); });
-  }
-  function gallery(sku) { var m = metaMap[sku]; var g = m && m.gallery; return Array.isArray(g) ? g : []; }
-  function videosOf(sku) { var m = metaMap[sku]; var v = m && m.videos; return Array.isArray(v) ? v : []; }
-  var MAX_PHOTOS = 10, MAX_VIDEOS = 2;
-
-  function productRow(p) {
-    var m = metaMap[p.sku] || { sku: p.sku };
-    var wrap = document.createElement('div'); wrap.className = 'prod';
-
-    var thumb = document.createElement('div'); thumb.className = 'thumb';
-    var img = document.createElement('img'); img.src = m.image_url || placeholder(); img.alt = p.name;
-    thumb.appendChild(img); wrap.appendChild(thumb);
-
-    var body = document.createElement('div');
-    body.innerHTML = '<div class="nm">' + escapeHtml(p.name) + '</div><div class="sku">' + escapeHtml(p.sku) +
-      ' · K' + (Number(p.price) || 0).toLocaleString('en-US') + '</div>';
-
-    // main photo upload
-    var mainWrap = document.createElement('div'); mainWrap.className = 'row';
-    var mainLbl = document.createElement('label'); mainLbl.textContent = 'Main photo'; mainLbl.style.margin = '0 8px 0 0';
-    var mainIn = document.createElement('input'); mainIn.type = 'file'; mainIn.accept = 'image/*'; mainIn.className = 'file';
-    var mainDel = document.createElement('button'); mainDel.className = 'btn btn-out btn-sm'; mainDel.textContent = 'Remove'; mainDel.style.display = m.image_url ? '' : 'none';
-    var mainStat = document.createElement('span'); mainStat.className = 'stat';
-    mainIn.addEventListener('change', function () {
-      if (!mainIn.files[0]) return;
-      mainStat.textContent = 'Uploading…'; mainStat.className = 'stat busy';
-      uploadImage(mainIn.files[0], p.sku + '/main').then(function (url) {
-        m.image_url = url; metaMap[p.sku] = m; img.src = url; mainDel.style.display = '';
-        return saveMeta(p.sku);
-      }).then(function () { mainStat.textContent = 'Saved ✓'; mainStat.className = 'stat ok'; })
-        .catch(function (e) { mainStat.textContent = 'Error: ' + (e.message || e); mainStat.className = 'stat err'; });
-    });
-    mainDel.addEventListener('click', function () {
-      if (!confirm('Remove the main photo?')) return;
-      m.image_url = ''; metaMap[p.sku] = m; img.src = placeholder();
-      mainStat.textContent = 'Removing…'; mainStat.className = 'stat busy';
-      saveMeta(p.sku).then(function () { mainStat.textContent = 'Removed'; mainStat.className = 'stat ok'; mainDel.style.display = 'none'; mainIn.value = ''; })
-        .catch(function (e) { mainStat.textContent = 'Error: ' + (e.message || e); mainStat.className = 'stat err'; });
-    });
-    mainWrap.appendChild(mainLbl); mainWrap.appendChild(mainIn); mainWrap.appendChild(mainDel); mainWrap.appendChild(mainStat);
-    body.appendChild(mainWrap);
-
-    // gallery
-    var galWrap = document.createElement('div');
-    var galRow = document.createElement('div'); galRow.className = 'gal';
-    function drawGallery() {
-      galRow.innerHTML = '';
-      gallery(p.sku).forEach(function (u, idx) {
-        var g = document.createElement('div'); g.className = 'g';
-        g.innerHTML = '<img src="' + u + '" alt="">';
-        var x = document.createElement('button'); x.textContent = '×'; x.title = 'Remove';
-        x.addEventListener('click', function () {
-          var arr = gallery(p.sku); arr.splice(idx, 1); m.gallery = arr; metaMap[p.sku] = m;
-          saveMeta(p.sku).then(drawGallery);
-        });
-        g.appendChild(x); galRow.appendChild(g);
-      });
-    }
-    drawGallery();
-    var galCount = document.createElement('div'); galCount.className = 'hint'; galCount.style.margin = '6px 0 2px';
-    function updateCount() {
-      var total = 1 + gallery(p.sku).length; // main + extras
-      galCount.textContent = 'Photos: ' + total + ' / ' + MAX_PHOTOS + (total >= MAX_PHOTOS ? ' (maximum reached)' : '');
-    }
-    updateCount();
-    var addLbl = document.createElement('label'); addLbl.textContent = 'Add extra photo'; addLbl.style.margin = '8px 8px 0 0';
-    var addIn = document.createElement('input'); addIn.type = 'file'; addIn.accept = 'image/*'; addIn.className = 'file';
-    var addStat = document.createElement('span'); addStat.className = 'stat';
-    addIn.addEventListener('change', function () {
-      if (!addIn.files[0]) return;
-      if ((1 + gallery(p.sku).length) >= MAX_PHOTOS) { addStat.textContent = 'You already have ' + MAX_PHOTOS + ' photos.'; addStat.className = 'stat err'; addIn.value = ''; return; }
-      addStat.textContent = 'Uploading…'; addStat.className = 'stat busy';
-      uploadImage(addIn.files[0], p.sku + '/g').then(function (url) {
-        var arr = gallery(p.sku); arr.push(url); m.gallery = arr; metaMap[p.sku] = m;
-        return saveMeta(p.sku);
-      }).then(function () { addStat.textContent = 'Saved ✓'; addStat.className = 'stat ok'; addIn.value = ''; drawGallery(); updateCount(); })
-        .catch(function (e) { addStat.textContent = 'Error: ' + (e.message || e); addStat.className = 'stat err'; });
-    });
-    // redraw gallery should also refresh the count
-    var _origDraw = drawGallery;
-    drawGallery = function () { _origDraw(); updateCount(); };
-    galWrap.appendChild(galRow);
-    galWrap.appendChild(galCount);
-    var addRow = document.createElement('div'); addRow.className = 'row';
-    addRow.appendChild(addLbl); addRow.appendChild(addIn); addRow.appendChild(addStat);
-    galWrap.appendChild(addRow);
-    body.appendChild(galWrap);
-
-    // videos (up to 2)
-    var vidWrap = document.createElement('div'); vidWrap.style.marginTop = '10px';
-    var vidRow = document.createElement('div'); vidRow.className = 'gal';
-    function drawVideos() {
-      vidRow.innerHTML = '';
-      videosOf(p.sku).forEach(function (u, idx) {
-        var g = document.createElement('div'); g.className = 'g'; g.style.width = '74px'; g.style.height = '58px';
-        g.innerHTML = '<video src="' + u + '" muted style="width:100%;height:100%;object-fit:cover"></video>';
-        var x = document.createElement('button'); x.textContent = '×'; x.title = 'Remove';
-        x.addEventListener('click', function () {
-          var arr = videosOf(p.sku); arr.splice(idx, 1); m.videos = arr; metaMap[p.sku] = m;
-          saveMeta(p.sku).then(drawVideos);
-        });
-        g.appendChild(x); vidRow.appendChild(g);
-      });
-    }
-    drawVideos();
-    var vLbl = document.createElement('label'); vLbl.textContent = 'Add video (max ' + MAX_VIDEOS + ')'; vLbl.style.margin = '8px 8px 0 0';
-    var vIn = document.createElement('input'); vIn.type = 'file'; vIn.accept = 'video/*'; vIn.className = 'file';
-    var vStat = document.createElement('span'); vStat.className = 'stat';
-    vIn.addEventListener('change', function () {
-      if (!vIn.files[0]) return;
-      if (videosOf(p.sku).length >= MAX_VIDEOS) { vStat.textContent = 'Limit is ' + MAX_VIDEOS + ' videos.'; vStat.className = 'stat err'; vIn.value = ''; return; }
-      vStat.textContent = 'Uploading… (videos can take a moment)'; vStat.className = 'stat busy';
-      uploadImage(vIn.files[0], p.sku + '/v').then(function (url) {
-        var arr = videosOf(p.sku); arr.push(url); m.videos = arr; metaMap[p.sku] = m;
-        return saveMeta(p.sku);
-      }).then(function () { vStat.textContent = 'Saved ✓'; vStat.className = 'stat ok'; vIn.value = ''; drawVideos(); })
-        .catch(function (e) { vStat.textContent = 'Error: ' + (e.message || e); vStat.className = 'stat err'; });
-    });
-    var vHint = document.createElement('div'); vHint.className = 'hint'; vHint.style.marginTop = '6px';
-    vHint.textContent = 'Short, compressed clips work best (keep each video small for fast loading).';
-    vidWrap.appendChild(vidRow);
-    var vAddRow = document.createElement('div'); vAddRow.className = 'row';
-    vAddRow.appendChild(vLbl); vAddRow.appendChild(vIn); vAddRow.appendChild(vStat);
-    vidWrap.appendChild(vAddRow); vidWrap.appendChild(vHint);
-    body.appendChild(vidWrap);
-
-    // flags
-    var flags = document.createElement('div'); flags.className = 'row';
-    flags.appendChild(checkbox('Featured', !!m.featured, function (v) { m.featured = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
-    flags.appendChild(checkbox('New', !!m.is_new, function (v) { m.is_new = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
-    flags.appendChild(checkbox('Hide from site', !!m.hidden, function (v) { m.hidden = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
-    var flagStat = document.createElement('span'); flagStat.className = 'stat';
-    flags.appendChild(flagStat);
-    body.appendChild(flags);
-
-    // description
-    var dWrap = document.createElement('div'); dWrap.className = 'field';
-    var dLbl = document.createElement('label'); dLbl.textContent = 'Custom description (optional)';
-    var dTa = document.createElement('textarea'); dTa.value = m.description || '';
-    var dStat = document.createElement('span'); dStat.className = 'stat';
-    var dBtn = document.createElement('button'); dBtn.className = 'btn btn-out btn-sm'; dBtn.textContent = 'Save description'; dBtn.style.marginTop = '6px';
-    dBtn.addEventListener('click', function () {
-      m.description = dTa.value; metaMap[p.sku] = m; dStat.textContent = 'Saving…'; dStat.className = 'stat busy';
-      saveMeta(p.sku).then(function () { dStat.textContent = 'Saved ✓'; dStat.className = 'stat ok'; })
-        .catch(function (e) { dStat.textContent = 'Error'; dStat.className = 'stat err'; });
-    });
-    dWrap.appendChild(dLbl); dWrap.appendChild(dTa); dWrap.appendChild(dBtn); dWrap.appendChild(dStat);
-    body.appendChild(dWrap);
-
-    wrap.appendChild(body);
-    return wrap;
-  }
-  function checkbox(label, val, on) {
-    var l = document.createElement('label'); l.className = 'chk'; l.style.textTransform = 'none'; l.style.letterSpacing = '0'; l.style.margin = '0';
-    var c = document.createElement('input'); c.type = 'checkbox'; c.checked = val;
-    c.addEventListener('change', function () { on(c.checked); });
-    l.appendChild(c); l.appendChild(document.createTextNode(label));
-    return l;
-  }
-  $('prodSearch').addEventListener('input', renderProducts);
-
-  // ---------- content ----------
-  function loadContent() {
-    sb.from('site_content').select('data').eq('id', 1).maybeSingle().then(function (r) {
-      contentData = (r.data && r.data.data) || {};
-      fillContentForm();
-    });
-  }
-  function val(id) { return $(id).value.trim(); }
-  function fillContentForm() {
-    var c = contentData;
-    $('c_announce').value = c.announce || '';
-    var h = c.hero || {};
-    $('c_hero_eyebrow').value = h.eyebrow || '';
-    $('c_hero_title').value = h.title || '';
-    $('c_hero_titleEm').value = h.titleEm || '';
-    $('c_hero_sub').value = h.subtitle || '';
-    buildHeroImgs(h.images || []);
-    var s = c.story || {};
-    $('c_story_heading').value = s.heading || '';
-    $('c_story_p1').value = s.p1 || '';
-    $('c_story_p2').value = s.p2 || '';
-    buildValues(c.values || []);
-    buildTesti(c.testimonials || []);
-    $('c_waShop').value = c.waShop || '';
-    $('c_waEnquiry').value = c.waEnquiry || '';
-    $('c_email').value = c.email || '';
-    $('c_ig').value = c.ig || '';
-    $('c_hours').value = c.hours || '';
-    $('c_payments').value = (c.payments || []).join(', ');
-    var care = c.care || {};
-    $('c_care_sizeTitle').value = care.sizeTitle || '';
-    $('c_care_sizeBody').value = care.sizeBody || '';
-    $('c_care_deliveryTitle').value = care.deliveryTitle || '';
-    $('c_care_deliveryBody').value = care.deliveryBody || '';
-    $('c_care_returnsTitle').value = care.returnsTitle || '';
-    $('c_care_returnsBody').value = care.returnsBody || '';
-    var rw = c.rewards || {};
-    $('c_rewards_title').value = rw.title || '';
-    $('c_rewards_body').value = rw.body || '';
-    $('c_tagline').value = c.tagline || '';
-    buildLookImgs(c.lookImages || []);
-  }
-  var lookImgUrls = ['', '', '', '', '', ''];
-  function buildLookImgs(arr) {
-    lookImgUrls = [];
-    for (var k = 0; k < 6; k++) lookImgUrls.push(arr[k] || '');
-    var host = $('lookImgs'); host.innerHTML = '';
-    for (var i = 0; i < 6; i++) (function (i) {
-      var box = document.createElement('div'); box.className = 'field';
-      var lbl = document.createElement('label'); lbl.textContent = 'Photo ' + (i + 1);
-      var prev = document.createElement('div'); prev.style.cssText = 'height:70px;border-radius:6px;border:1px solid var(--line);background:#0B1F3A center/cover no-repeat;margin-bottom:6px';
-      if (lookImgUrls[i]) prev.style.backgroundImage = "url('" + lookImgUrls[i] + "')";
-      var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.className = 'file';
-      var st = document.createElement('span'); st.className = 'stat';
-      inp.addEventListener('change', function () {
-        if (!inp.files[0]) return; st.textContent = 'Uploading…'; st.className = 'stat busy';
-        uploadImage(inp.files[0], 'look/l' + (i + 1)).then(function (url) {
-          lookImgUrls[i] = url; prev.style.backgroundImage = "url('" + url + "')"; st.textContent = 'Uploaded (remember to Save)'; st.className = 'stat ok';
-        }).catch(function () { st.textContent = 'Error'; st.className = 'stat err'; });
-      });
-      box.appendChild(lbl); box.appendChild(prev); box.appendChild(inp); box.appendChild(st); host.appendChild(box);
-    })(i);
-  }
-  var heroImgUrls = ['', '', ''];
-  function buildHeroImgs(arr) {
-    heroImgUrls = [arr[0] || '', arr[1] || '', arr[2] || ''];
-    var host = $('heroImgs'); host.innerHTML = '';
-    for (var i = 0; i < 3; i++) (function (i) {
-      var box = document.createElement('div'); box.className = 'field';
-      var lbl = document.createElement('label'); lbl.textContent = 'Photo ' + (i + 1);
-      var prev = document.createElement('div'); prev.style.cssText = 'height:70px;border-radius:6px;border:1px solid var(--line);background:#0B1F3A center/cover no-repeat;margin-bottom:6px';
-      if (heroImgUrls[i]) prev.style.backgroundImage = "url('" + heroImgUrls[i] + "')";
-      var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.className = 'file';
-      var st = document.createElement('span'); st.className = 'stat';
-      inp.addEventListener('change', function () {
-        if (!inp.files[0]) return; st.textContent = 'Uploading…'; st.className = 'stat busy';
-        uploadImage(inp.files[0], 'hero/h' + (i + 1)).then(function (url) {
-          heroImgUrls[i] = url; prev.style.backgroundImage = "url('" + url + "')"; st.textContent = 'Uploaded (remember to Save)'; st.className = 'stat ok';
-        }).catch(function (e) { st.textContent = 'Error'; st.className = 'stat err'; });
-      });
-      box.appendChild(lbl); box.appendChild(prev); box.appendChild(inp); box.appendChild(st); host.appendChild(box);
-    })(i);
-  }
-  function buildValues(arr) {
-    var host = $('valuesEdit'); host.innerHTML = '';
-    for (var i = 0; i < 4; i++) (function (i) {
-      var v = arr[i] || {};
-      var d = document.createElement('div'); d.className = 'grid2'; d.style.marginBottom = '8px';
-      d.innerHTML = '<div class="field"><label>Value ' + (i + 1) + ' title</label><input type="text" id="val_t_' + i + '"></div>' +
-        '<div class="field"><label>Subtitle</label><input type="text" id="val_s_' + i + '"></div>';
-      host.appendChild(d);
-      $('val_t_' + i).value = v.t || ''; $('val_s_' + i).value = v.s || '';
-    })(i);
-  }
-  function buildTesti(arr) {
-    var host = $('testiEdit'); host.innerHTML = '';
-    for (var i = 0; i < 3; i++) (function (i) {
-      var v = arr[i] || {};
-      var d = document.createElement('div'); d.style.cssText = 'border-top:1px solid var(--line);padding-top:10px;margin-bottom:8px';
-      d.innerHTML = '<div class="field"><label>Quote ' + (i + 1) + '</label><textarea id="t_q_' + i + '"></textarea></div>' +
-        '<div class="grid2"><div class="field"><label>Name</label><input type="text" id="t_n_' + i + '"></div>' +
-        '<div class="field"><label>City</label><input type="text" id="t_c_' + i + '"></div></div>';
-      host.appendChild(d);
-      $('t_q_' + i).value = v.quote || ''; $('t_n_' + i).value = v.name || ''; $('t_c_' + i).value = v.city || '';
-    })(i);
-  }
-  $('saveContent').addEventListener('click', function () {
-    var c = {};
-    c.announce = val('c_announce');
-    c.hero = { eyebrow: val('c_hero_eyebrow'), title: val('c_hero_title'), titleEm: val('c_hero_titleEm'), subtitle: val('c_hero_sub'), images: heroImgUrls.filter(Boolean) };
-    c.story = { heading: val('c_story_heading'), p1: val('c_story_p1'), p2: val('c_story_p2') };
-    c.values = []; for (var i = 0; i < 4; i++) { var t = val('val_t_' + i), s = val('val_s_' + i); if (t || s) c.values.push({ t: t, s: s }); }
-    c.testimonials = []; for (var j = 0; j < 3; j++) { var q = val('t_q_' + j); if (q) c.testimonials.push({ quote: q, name: val('t_n_' + j), city: val('t_c_' + j) }); }
-    c.waShop = val('c_waShop'); c.waEnquiry = val('c_waEnquiry'); c.email = val('c_email'); c.ig = val('c_ig');
-    c.hours = val('c_hours');
-    c.payments = val('c_payments').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
-    c.care = {
-      sizeTitle: val('c_care_sizeTitle'), sizeBody: $('c_care_sizeBody').value.trim(),
-      deliveryTitle: val('c_care_deliveryTitle'), deliveryBody: $('c_care_deliveryBody').value.trim(),
-      returnsTitle: val('c_care_returnsTitle'), returnsBody: $('c_care_returnsBody').value.trim()
-    };
-    c.rewards = { title: val('c_rewards_title'), body: $('c_rewards_body').value.trim() };
-    c.tagline = val('c_tagline');
-    c.lookImages = lookImgUrls.filter(Boolean);
-    contentData = c;
-    var st = $('contentStat'); st.textContent = 'Saving…'; st.className = 'stat busy';
-    sb.from('site_content').upsert({ id: 1, data: c, updated_at: new Date().toISOString() }, { onConflict: 'id' }).then(function (r) {
-      if (r.error) { st.textContent = 'Error: ' + r.error.message; st.className = 'stat err'; return; }
-      st.textContent = 'Saved ✓ — changes appear on the site within ~1 minute'; st.className = 'stat ok';
-    });
-  });
-
-  // ---------- reviews ----------
-  function loadReviews() {
-    var host = $('revList'); host.innerHTML = '<p class="count">Loading…</p>';
-    sb.from('reviews').select('*').order('created_at', { ascending: false }).then(function (r) {
-      if (r.error) { host.innerHTML = '<p class="count">Error: ' + r.error.message + '</p>'; return; }
-      var rows = r.data || [];
-      $('revCount').textContent = rows.length + ' reviews';
-      if (!rows.length) { host.innerHTML = '<p class="count">No reviews yet.</p>'; return; }
-      host.innerHTML = '';
-      rows.forEach(function (rev) { host.appendChild(reviewRow(rev)); });
-    });
-  }
-  function reviewRow(rev) {
-    var d = document.createElement('div'); d.className = 'card'; d.style.padding = '14px';
-    var stars = ''; for (var i = 1; i <= 5; i++) stars += (i <= rev.rating ? '\u2605' : '\u2606');
-    d.innerHTML = '<div style="color:#C8A24A;letter-spacing:2px">' + stars + '</div>' +
-      '<div class="nm" style="font-size:18px">' + escapeHtml(rev.name) + '</div>' +
-      '<div class="sku">' + (rev.sku ? escapeHtml(rev.sku) : 'Whole shop') + ' · ' + new Date(rev.created_at).toLocaleDateString() + '</div>' +
-      '<p style="margin:8px 0;color:#15202e">' + escapeHtml(rev.comment || '') + '</p>';
-    var row = document.createElement('div'); row.className = 'row';
-    row.appendChild(checkbox('Verified', !!rev.verified, function (v) { sb.from('reviews').update({ verified: v }).eq('id', rev.id); }));
-    row.appendChild(checkbox('Shown', rev.approved !== false, function (v) { sb.from('reviews').update({ approved: v }).eq('id', rev.id); }));
-    var del = document.createElement('button'); del.className = 'btn btn-out btn-sm'; del.textContent = 'Delete';
-    del.addEventListener('click', function () { if (!confirm('Delete this review?')) return; sb.from('reviews').delete().eq('id', rev.id).then(function () { d.remove(); }); });
-    row.appendChild(del);
-    d.appendChild(row);
-    return d;
-  }
-
-  // ---------- subscribers ----------
-  var subEmails = [];
-  function loadSubscribers() {
-    var host = $('subList'); host.innerHTML = '<p class="count">Loading…</p>';
-    sb.from('subscribers').select('*').order('created_at', { ascending: false }).then(function (r) {
-      if (r.error) { host.innerHTML = '<p class="count">Error: ' + r.error.message + '</p>'; return; }
-      var rows = r.data || []; subEmails = rows.map(function (x) { return x.email; });
-      $('subCount').textContent = rows.length + ' subscribers';
-      if (!rows.length) { host.innerHTML = '<p class="count">No subscribers yet.</p>'; return; }
-      host.innerHTML = '<div class="card" style="padding:14px">' + rows.map(function (x) {
-        return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:7px 0"><span>' + escapeHtml(x.email) + '</span><span class="sku">' + new Date(x.created_at).toLocaleDateString() + '</span></div>';
-      }).join('') + '</div>';
-    });
-  }
-  $('subCopy').addEventListener('click', function () {
-    if (!subEmails.length) { alert('No subscribers yet.'); return; }
-    var text = subEmails.join(', ');
-    if (navigator.clipboard) { navigator.clipboard.writeText(text).then(function () { alert('Copied ' + subEmails.length + ' emails.'); }); }
-    else { window.prompt('Copy these emails:', text); }
-  });
-  $('subEmail').addEventListener('click', function () {
-    if (!subEmails.length) { alert('No subscribers yet.'); return; }
-    var subject = encodeURIComponent('New arrivals at Vaultique Boutique');
-    var body = encodeURIComponent('Hello,\n\nWe have new pieces in store. Shop the latest: \n\nVaultique Boutique Point');
-    window.location.href = 'mailto:?bcc=' + encodeURIComponent(subEmails.join(',')) + '&subject=' + subject + '&body=' + body;
-  });
-
-  // ---------- policies ----------
-  function loadPolicies() {
-    var host = $('polList'); host.innerHTML = '<p class="count">Loading…</p>';
-    sb.from('policies').select('*').order('sort', { ascending: true }).then(function (r) {
-      if (r.error) { host.innerHTML = '<p class="count">Error: ' + r.error.message + '</p>'; return; }
-      var rows = r.data || [];
-      $('polCount').textContent = rows.length + ' policies';
-      host.innerHTML = '';
-      if (!rows.length) { host.innerHTML = '<p class="count">No policies yet. Click "Load starter policies" to add the ones from your manual, or "Add policy" to write your own.</p>'; return; }
-      rows.forEach(function (p) { host.appendChild(policyRow(p)); });
-    });
-  }
-  function policyRow(p) {
-    var d = document.createElement('div'); d.className = 'card'; d.style.padding = '16px';
-    d.innerHTML =
-      '<div class="grid2">' +
-        '<div class="field"><label>Section</label><input type="text" class="pl-section" value="' + escapeHtml(p.section || '') + '"></div>' +
-        '<div class="field"><label>Order</label><input type="text" class="pl-sort" value="' + (p.sort || 100) + '"></div>' +
-      '</div>' +
-      '<div class="field"><label>Title</label><input type="text" class="pl-title" value="' + escapeHtml(p.title || '') + '"></div>' +
-      '<div class="field"><label>Text</label><textarea class="pl-body" rows="7">' + escapeHtml(p.body || '') + '</textarea></div>';
-    var row = document.createElement('div'); row.className = 'row';
-    var save = document.createElement('button'); save.className = 'btn btn-gold btn-sm'; save.textContent = 'Save';
-    var stat = document.createElement('span'); stat.className = 'stat';
-    save.addEventListener('click', function () {
-      var upd = {
-        section: d.querySelector('.pl-section').value.trim(),
-        title: d.querySelector('.pl-title').value.trim(),
-        body: d.querySelector('.pl-body').value,
-        sort: parseInt(d.querySelector('.pl-sort').value, 10) || 100,
-        updated_at: new Date().toISOString()
-      };
-      if (!upd.title) { stat.textContent = 'Title required'; stat.className = 'stat err'; return; }
-      stat.textContent = 'Saving…'; stat.className = 'stat busy';
-      sb.from('policies').update(upd).eq('id', p.id).then(function (r) {
-        if (r.error) { stat.textContent = 'Error'; stat.className = 'stat err'; }
-        else { stat.textContent = 'Saved ✓'; stat.className = 'stat ok'; }
-      });
-    });
-    var del = document.createElement('button'); del.className = 'btn btn-out btn-sm'; del.textContent = 'Delete';
-    del.addEventListener('click', function () { if (!confirm('Delete this policy?')) return; sb.from('policies').delete().eq('id', p.id).then(function () { d.remove(); }); });
-    row.appendChild(save); row.appendChild(del); row.appendChild(stat);
-    d.appendChild(row);
-    return d;
-  }
-  $('polAdd').addEventListener('click', function () {
-    sb.from('policies').insert({ section: 'General', title: 'New policy', body: '', sort: 999 }).then(function (r) {
-      if (r.error) { alert('Error: ' + r.error.message); return; }
-      loadPolicies();
-    });
-  });
-  $('polImport').addEventListener('click', function () {
-    var defs = window.VBP_DEFAULT_POLICIES || [];
-    if (!defs.length) { alert('No starter policies found.'); return; }
-    sb.from('policies').select('id').then(function (r) {
-      var have = (r.data || []).length;
-      if (have && !confirm('You already have ' + have + ' policies. Add the ' + defs.length + ' starter policies as well?')) return;
-      var rows = defs.map(function (p) { return { section: p.section, title: p.title, body: p.body, sort: p.sort }; });
-      $('polCount').textContent = 'Importing…';
-      sb.from('policies').insert(rows).then(function (r2) {
-        if (r2.error) { alert('Error: ' + r2.error.message); return; }
-        loadPolicies();
-      });
-    });
-  });
-
-  function escapeHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-})();
-</script>
-</body>
-</html>
+## Day-to-day
+- **Products:** add or edit in the POS. The site refreshes within ~1–2 minutes.
+- **Hide a product:** set it inactive in the POS.
+- **Photos:** drop files into `images/` (see `images/README.txt`).
+- **WhatsApp number / Instagram:** edit `WA_SHOP`, `WA_ENQUIRY` and `IG_HANDLE` near the top
+  of the script inside `index.html`.

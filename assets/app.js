@@ -220,15 +220,24 @@
     updateWishCount();
     route();
   }
-  function catHasProducts(c) { return PRODUCTS.some(function (p) { return p.category === c; }); }
+  function catHasProducts(c) {
+    var n = String(c || '').trim().toLowerCase();
+    return PRODUCTS.some(function (p) { return String(p.category || '').trim().toLowerCase() === n; });
+  }
   function computeCats() {
     var fromProducts = [];
     PRODUCTS.forEach(function (p) { if (p.category && fromProducts.indexOf(p.category) === -1) fromProducts.push(p.category); });
     CATEGORIES = fromProducts;
-    var union = [];
+    // Start with the real categories from the POS (these have products), then add
+    // any planned categories that are not already present (case-insensitive), so a
+    // category that has products is never duplicated or shown as "coming soon".
+    var union = fromProducts.slice();
     var base = (Array.isArray(CONTENT.categories) && CONTENT.categories.length) ? CONTENT.categories : MASTER_CATEGORIES;
-    base.forEach(function (c) { if (c && union.indexOf(c) === -1) union.push(c); });
-    fromProducts.forEach(function (c) { if (union.indexOf(c) === -1) union.push(c); });
+    base.forEach(function (c) {
+      if (!c) return;
+      var exists = union.some(function (u) { return String(u).trim().toLowerCase() === String(c).trim().toLowerCase(); });
+      if (!exists) union.push(c);
+    });
     ALLCATS = union;
   }
 
@@ -508,7 +517,7 @@
       '<div class="wrap">' +
       '<div class="crumbs"><a data-home>Home</a> / <a data-shop>Shop</a> / ' + esc(p.category) + '</div>' +
       '<div class="detail-grid">' +
-      '<div class="gallery"><div class="gallery-main" id="galMain"><img id="galImg" alt="' + esc(p.name) + '"></div>' +
+      '<div class="gallery"><div class="gallery-main" id="galMain"><img id="galImg" alt="' + esc(p.name) + '"><button class="gal-nav prev" id="galPrev" type="button" aria-label="Previous image"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button><button class="gal-nav next" id="galNext" type="button" aria-label="Next image"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button><div class="gal-count" id="galCount"></div></div>' +
       '<div class="gallery-thumbs" id="galThumbs"></div></div>' +
       '<div class="detail-info">' +
       '<div class="eyebrow">' + esc(p.category) + '</div>' +
@@ -533,9 +542,7 @@
       '</div>';
 
     // gallery
-    var galImg = $('#galImg');
     resolvePrimary(p, function (primSrc) {
-      galImg.src = primSrc;
       var list = [primSrc];
       (p.gallery || []).forEach(function (u) { if (u && list.indexOf(u) < 0) list.push(u); });
       var extra = [null, null, null];
@@ -543,12 +550,11 @@
       ['-2', '-3', '-4'].forEach(function (suf, k) {
         preload('images/' + p.sku + suf + '.jpg', function (ok) {
           if (ok) { var u = 'images/' + p.sku + suf + '.jpg'; if (list.indexOf(u) < 0) extra[k] = u; }
-          if (--pend === 0) buildThumbs(list.concat(extra.filter(Boolean)), galImg);
+          if (--pend === 0) setupGallery(list.concat(extra.filter(Boolean)));
         });
       });
-      if (pend === 0) buildThumbs(list, galImg);
+      if (pend === 0) setupGallery(list);
     });
-    $('#galMain').addEventListener('click', function () { openLightbox(galImg.src); });
 
     // crumbs + wishlist + related
     host.querySelector('[data-home]').addEventListener('click', goHome);
@@ -564,21 +570,41 @@
     showView('detail');
     window.scrollTo(0, 0);
   }
-  function buildThumbs(srcs, galImg) {
-    var host = $('#galThumbs'); if (!host) return;
-    if (srcs.length < 2) { host.style.display = 'none'; return; }
-    host.innerHTML = '';
-    srcs.forEach(function (s, i) {
-      var b = el('button', i === 0 ? 'active' : '');
-      b.setAttribute('aria-label', 'View image ' + (i + 1));
-      b.innerHTML = '<img src="' + s + '" alt="">';
-      b.addEventListener('click', function () {
-        galImg.src = s;
-        $all('#galThumbs button').forEach(function (x) { x.classList.remove('active'); });
-        b.classList.add('active');
-      });
-      host.appendChild(b);
-    });
+  function setupGallery(srcs) {
+    var galImg = $('#galImg'), main = $('#galMain'), thumbs = $('#galThumbs');
+    var prev = $('#galPrev'), next = $('#galNext'), count = $('#galCount');
+    if (!galImg || !srcs.length) return;
+    var i = 0, multi = srcs.length > 1;
+    function show(n) {
+      i = (n + srcs.length) % srcs.length;
+      galImg.src = srcs[i];
+      if (thumbs) $all('#galThumbs button').forEach(function (x, k) { x.classList.toggle('active', k === i); });
+      if (count) count.textContent = (i + 1) + ' / ' + srcs.length;
+    }
+    if (thumbs) {
+      if (!multi) { thumbs.style.display = 'none'; }
+      else {
+        thumbs.style.display = ''; thumbs.innerHTML = '';
+        srcs.forEach(function (s, k) {
+          var b = el('button', k === 0 ? 'active' : '');
+          b.setAttribute('aria-label', 'View image ' + (k + 1));
+          b.innerHTML = '<img src="' + s + '" alt="">';
+          b.addEventListener('click', function () { show(k); });
+          thumbs.appendChild(b);
+        });
+      }
+    }
+    if (prev) { prev.style.display = multi ? '' : 'none'; prev.onclick = function (e) { e.stopPropagation(); show(i - 1); }; }
+    if (next) { next.style.display = multi ? '' : 'none'; next.onclick = function (e) { e.stopPropagation(); show(i + 1); }; }
+    if (count) count.style.display = multi ? '' : 'none';
+    // swipe on touch devices
+    var sx = 0, sdx = 0;
+    main.ontouchstart = function (e) { sx = e.touches[0].clientX; sdx = 0; };
+    main.ontouchmove = function (e) { sdx = e.touches[0].clientX - sx; };
+    main.ontouchend = function () { if (multi && Math.abs(sdx) > 40) show(sdx < 0 ? i + 1 : i - 1); };
+    // click the image (not the arrows) to zoom
+    galImg.onclick = function () { openLightbox(galImg.src); };
+    show(0);
   }
   function relatedBlock(eyebrow, title, gridId) {
     return '<div style="margin-top:70px"><div class="section-head" style="text-align:left;margin:0 0 28px;max-width:none">' +
