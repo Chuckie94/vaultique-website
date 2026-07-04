@@ -1,76 +1,508 @@
-# Vaultique Website Admin — Setup (one time)
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vaultique Boutique Point · Curated Elegance, Accessible Luxury · Zambia</title>
+<meta name="description" content="Vaultique Boutique Point, a premium fashion boutique in Zambia. Curated women's and men's fashion, footwear, handbags and accessories. Shop and buy on WhatsApp, with nationwide delivery." />
+<meta name="theme-color" content="#0B1F3A" />
+<meta property="og:title" content="Vaultique Boutique Point · Curated Elegance, Accessible Luxury" />
+<meta property="og:description" content="Premium yet affordable fashion in Zambia. Shop the edit and buy on WhatsApp." />
+<meta property="og:type" content="website" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body class="on-home">
 
-This connects your website to its own small database so you can log in and
-manage product photos and content. It is completely separate from the POS and
-never touches it. Products keep coming from the POS automatically.
+<a class="skip" href="#view-home">Skip to content</a>
 
-You will do five short steps. It takes about 10 minutes.
+<div class="announce" id="announceBar">Nationwide delivery where possible · <b>Shop &amp; buy on WhatsApp</b></div>
+<div class="preview-banner" id="previewBanner">Preview mode: showing sample products. The live site loads real products from your POS.</div>
 
----
+<!-- ============================ HEADER ============================ -->
+<header class="site transparent" id="header">
+  <div class="nav">
+    <div class="brand" data-go-home role="button" aria-label="Vaultique Boutique Point home">
+      <img class="brand-logo" src="images/logo.png" alt="Vaultique Boutique Point" />
+    </div>
+    <div class="nav-links">
+      <a data-go-home>Home</a>
+      <div class="nav-item">
+        <a data-go-shop>Shop <span class="caret">▾</span></a>
+        <div class="dropdown" id="navCats"></div>
+      </div>
+      <a data-scroll="sec-women">Women</a>
+      <a data-scroll="sec-men">Men</a>
+      <a data-scroll="story">Our Story</a>
+      <a data-scroll="care">Help</a>
+      <a data-scroll="visit">Contact</a>
+    </div>
+    <div class="nav-icons">
+      <button class="icon-btn" id="searchBtn" aria-label="Search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </button>
+      <button class="icon-btn" id="wishBtn" aria-label="Wishlist">
+        <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+        <span class="count" id="wishCount" style="display:none">0</span>
+      </button>
+      <button class="menu-btn" id="menuBtn" aria-label="Menu"><span></span><span></span><span></span></button>
+    </div>
+  </div>
+</header>
 
-## 1. Create a new Supabase project (separate from the POS)
-1. Go to https://supabase.com and sign in.
-2. Click **New project**. Give it a name like `vaultique-website`.
-   IMPORTANT: this must be a NEW project, not your POS project.
-3. Set a database password (save it somewhere) and create the project.
+<!-- ============================ MOBILE MENU ============================ -->
+<div class="mobile-menu" id="mobileMenu">
+  <div class="mm-top">
+    <div class="brand"><img class="mm-logo" src="images/logo.png" alt="Vaultique Boutique Point" /></div>
+    <button class="mm-close" id="mmClose" aria-label="Close menu">&times;</button>
+  </div>
+  <nav id="mmCats">
+    <a data-go-home>Home</a>
+    <a data-go-shop>Shop All</a>
+  </nav>
+  <div class="mm-foot"><a href="#/policies">Policies &amp; information</a><br>Zambia · <a data-wa="Hello Vaultique Boutique, I have an enquiry.">WhatsApp us</a></div>
+</div>
 
-## 2. Create the tables and image storage
-1. In the new project, open **SQL Editor** (left menu) > **New query**.
-2. Open the file **supabase-setup.sql** from this folder, copy everything,
-   paste it in, and click **Run**.
-3. You should see "Success". This created the photo/content tables, a public
-   image bucket, and the security rules.
+<!-- ============================ SEARCH OVERLAY ============================ -->
+<div class="search-overlay" id="searchOverlay">
+  <div class="so-bar"><button id="soClose" aria-label="Close search">&times;</button></div>
+  <div class="so-inner">
+    <div class="eyebrow">Search the collection</div>
+    <div class="so-field">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="soInput" type="text" placeholder="What are you looking for?" autocomplete="off" />
+    </div>
+    <div class="so-results" id="soResults"></div>
+  </div>
+</div>
 
-## 3. Create your admin login
-1. Open **Authentication** > **Users** > **Add user** > **Create new user**.
-2. Enter your email and a password. (Tick "Auto Confirm User" if shown.)
-3. This email and password is how you log in to the website admin.
+<!-- ============================ HOME VIEW ============================ -->
+<main id="view-home">
 
-## 4. Put your keys into the website
-1. In Supabase, open **Project Settings** (gear icon) > **API**.
-2. Copy two things:
-   - **Project URL**
-   - **Project API keys > anon** (the "public" key)
-3. Open **config.js** in this folder and paste them in:
-   ```js
-   window.VBP_CONFIG = {
-     SUPABASE_URL: 'https://YOUR-PROJECT.supabase.co',
-     SUPABASE_ANON_KEY: 'your-anon-public-key',
-     IMAGE_BUCKET: 'product-images'
-   };
-   ```
-4. Save the file.
+  <!-- HERO -->
+  <section class="hero" aria-label="Featured">
+    <div class="hero-slide active"><div class="bg"></div><div class="photo" id="heroPhoto1" style="background-image:url('images/hero-1.jpg')"></div><div class="scrim"></div></div>
+    <div class="hero-slide"><div class="bg"></div><div class="photo" id="heroPhoto2" style="background-image:url('images/hero-2.jpg')"></div><div class="scrim"></div></div>
+    <div class="hero-slide"><div class="bg"></div><div class="photo" id="heroPhoto3" style="background-image:url('images/hero-3.jpg')"></div><div class="scrim"></div></div>
+    <div class="hero-content">
+      <div class="eyebrow" id="heroEyebrow">Zambia</div>
+      <h1 class="serif"><span id="heroTitle">Curated Elegance,</span><br><em id="heroTitleEm">Accessible Luxury</em></h1>
+      <p id="heroSub">A curated edit of women's and men's fashion, footwear, bags and accessories, chosen for quality and quiet sophistication.</p>
+      <div class="hero-cta">
+        <button class="btn btn-gold" data-go-shop>Shop the collection</button>
+        <a class="btn btn-ghost" data-wa="Hello Vaultique Boutique, I'd like some help choosing a piece.">Personal shopping</a>
+      </div>
+    </div>
+    <div class="hero-dots" id="heroDots"></div>
+    <div class="scroll-cue"><span>Scroll</span><span class="line"></span></div>
+  </section>
 
-## 5. Redeploy the website
-Push the updated folder to your repo (or run `netlify deploy --prod`).
+  <!-- TRUST -->
+  <section class="trust">
+    <div class="trust-grid">
+      <div class="trust-cell"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><div><div class="t">Authentic Pieces</div><div class="s">Curated &amp; quality-checked</div></div></div>
+      <div class="trust-cell"><svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg><div><div class="t">Nationwide Delivery</div><div class="s">Across Zambia where possible</div></div></div>
+      <div class="trust-cell"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-9 8.5 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.2A8.38 8.38 0 014 11.5 8.5 8.5 0 0112.5 3 8.5 8.5 0 0121 11.5z"/></svg><div><div class="t">WhatsApp Support</div><div class="s">Personal, friendly service</div></div></div>
+      <div class="trust-cell"><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><div><div class="t">Quality Guaranteed</div><div class="s">Pieces we stand behind</div></div></div>
+    </div>
+  </section>
 
----
+  <!-- FEATURED COLLECTIONS -->
+  <section class="section" id="collections-sec">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="eyebrow">Shop by category</div>
+        <h2 class="serif">Featured Collections</h2>
+        <p>Explore the wardrobe, from tailored essentials to statement accessories.</p>
+      </div>
+      <div class="collections" id="collections"></div>
+    </div>
+  </section>
 
-## Using the admin
-- Go to **https://your-site.netlify.app/admin.html** and sign in.
-- **Products & Photos:** every product from the POS is listed. Upload a main
-  photo plus extra photos (up to 10 in total) and up to 2 short videos per
-  product, mark items Featured or New, hide a product from the site, or write a
-  custom description. Changes save instantly.
-- **Site Content:** edit the announcement bar, hero text and photos, your
-  story, core values, testimonials, contact numbers, email, Instagram, support
-  hours and payment methods. Click **Save content**.
-- **Reviews:** every review left on the site appears here. Mark a review as
-  Verified, hide it, or delete it.
-- **Subscribers:** see everyone who signed up to the newsletter, copy all
-  emails, or use "Email all (BCC)" to send them an update from your own mail app.
-- **Policies:** your policies live here. Click **Load starter policies** once to
-  import the full set from your manual, then edit any of them, change their order
-  with the number, add your own, or delete. They show on the site's Policies page.
+  <!-- FEATURED -->
+  <section class="section tight" id="sec-featured" style="display:none">
+    <div class="wrap">
+      <div class="row-head reveal">
+        <div><div class="eyebrow">Hand-picked</div><h2 class="serif">Featured</h2></div>
+        <a class="link-more" data-go-shop>View all</a>
+      </div>
+      <div class="carousel">
+        <button class="car-btn prev" aria-label="Previous"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <div class="carousel-track" id="row-featured"></div>
+        <button class="car-btn next" aria-label="Next"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+      </div>
+    </div>
+  </section>
 
-## Good to know
-- Products, prices and stock still come from the POS and cannot be edited here
-  (that is on purpose, so the POS stays the single source of truth).
-- The website database only holds photos and text. Anyone can view them, but
-  only you (logged in) can change them. Its key is separate from the POS, so it
-  can never read POS data.
-- Photos are matched to products by SKU, so each product needs a SKU in the POS.
-- If the admin says "Almost there", config.js is not filled in yet.
-- If the product list is empty in the admin, open it on your live Netlify site
-  (the product feed must be reachable, which it is not when opening the file
-  directly on a phone).
+  <!-- NEW ARRIVALS -->
+  <section class="section tight" id="sec-new">
+    <div class="wrap">
+      <div class="row-head reveal">
+        <div><div class="eyebrow">Just landed</div><h2 class="serif">New Arrivals</h2></div>
+        <a class="link-more" data-go-shop>View all</a>
+      </div>
+      <div class="carousel">
+        <button class="car-btn prev" aria-label="Previous"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <div class="carousel-track" id="row-new"></div>
+        <button class="car-btn next" aria-label="Next"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- WOMEN -->
+  <section class="section tight" id="sec-women">
+    <div class="wrap">
+      <div class="row-head reveal">
+        <div><div class="eyebrow">For her</div><h2 class="serif">The Women's Edit</h2></div>
+        <a class="link-more" data-scroll="sec-women">Discover</a>
+      </div>
+      <div class="carousel">
+        <button class="car-btn prev" aria-label="Previous"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <div class="carousel-track" id="row-women"></div>
+        <button class="car-btn next" aria-label="Next"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- EDITORIAL -->
+  <section class="editorial reveal">
+    <div class="ed-grid">
+      <div class="ed-img" style="background-image:url('images/editorial-1.jpg')"></div>
+      <div class="ed-text">
+        <div class="eyebrow">The Vaultique philosophy</div>
+        <h2 class="serif">Considered pieces, made to be worn for years</h2>
+        <p>We believe luxury is not about logos. It is about fabric that feels right, a cut that flatters, and pieces you reach for again and again. Every item in the edit is chosen with that in mind.</p>
+        <button class="btn btn-gold" data-go-shop>Explore the edit</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- MEN -->
+  <section class="section tight" id="sec-men">
+    <div class="wrap">
+      <div class="row-head reveal">
+        <div><div class="eyebrow">For him</div><h2 class="serif">The Men's Edit</h2></div>
+        <a class="link-more" data-scroll="sec-men">Discover</a>
+      </div>
+      <div class="carousel">
+        <button class="car-btn prev" aria-label="Previous"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <div class="carousel-track" id="row-men"></div>
+        <button class="car-btn next" aria-label="Next"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ACCESSORIES -->
+  <section class="section tight" id="sec-acc">
+    <div class="wrap">
+      <div class="row-head reveal">
+        <div><div class="eyebrow">Finishing touches</div><h2 class="serif">Accessories</h2></div>
+        <a class="link-more" data-go-shop>View all</a>
+      </div>
+      <div class="carousel">
+        <button class="car-btn prev" aria-label="Previous"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <div class="carousel-track" id="row-acc"></div>
+        <button class="car-btn next" aria-label="Next"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHY CHOOSE -->
+  <section class="section why">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="eyebrow">Why Vaultique</div>
+        <h2 class="serif">A boutique experience, online</h2>
+      </div>
+      <div class="why-grid">
+        <div class="why-card reveal d1"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z"/></svg></div><h3 class="serif">Curated Quality</h3><p>Every piece is hand-selected for fabric, fit and finish, so you can buy with confidence.</p></div>
+        <div class="why-card reveal d2"><div class="ic"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-9 8.5 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.2A8.38 8.38 0 014 11.5 8.5 8.5 0 0112.5 3 8.5 8.5 0 0121 11.5z"/></svg></div><h3 class="serif">Personal Service</h3><p>Chat with us directly on WhatsApp for sizing, styling and a relaxed way to buy.</p></div>
+        <div class="why-card reveal d3"><div class="ic"><svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div><h3 class="serif">Delivered to You</h3><p>Nationwide delivery across Zambia where possible, or arrange collection.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OUR STORY -->
+  <section class="section" id="story">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="eyebrow">Our Story</div>
+        <h2 class="serif" id="storyHeading">The Vaultique story</h2>
+      </div>
+      <div class="reveal" style="max-width:760px;margin:0 auto;text-align:center;color:var(--muted);font-size:16px;line-height:1.9">
+        <p id="storyP1">Vaultique Boutique Point was founded in Zambia on a simple belief: that looking and feeling exceptional should never demand a fortune. We source and hand-select each piece so that quality, fit and finish always come first, then share them at prices our community can reach.</p>
+        <p id="storyP2" style="margin-top:16px">From our very first customer to a growing family of clients across Zambia, every order is personal. We are here to advise, to style and to make luxury feel welcoming. This is curated elegance, accessible luxury.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CORE VALUES -->
+  <section class="trust" aria-label="Our core values">
+    <div class="trust-grid" id="valuesGrid">
+      <div class="trust-cell"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z"/></svg><div><div class="t">Quality First</div><div class="s">Hand-selected, never compromised</div></div></div>
+      <div class="trust-cell"><svg viewBox="0 0 24 24"><path d="M20 12l-8 8-8-8a5 5 0 017-7l1 1 1-1a5 5 0 017 7z"/></svg><div><div class="t">Honest Value</div><div class="s">Premium pieces, fair prices</div></div></div>
+      <div class="trust-cell"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-9 8.5 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.2A8.38 8.38 0 014 11.5 8.5 8.5 0 0112.5 3 8.5 8.5 0 0121 11.5z"/></svg><div><div class="t">Personal Service</div><div class="s">Real people, real care</div></div></div>
+      <div class="trust-cell"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><div><div class="t">Integrity</div><div class="s">Authentic, every time</div></div></div>
+    </div>
+  </section>
+
+  <!-- REVIEWS (site-wide) -->
+  <section class="section" id="reviews">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="eyebrow">In their words</div>
+        <h2 class="serif">Loved by our clients</h2>
+        <div class="reviews-avg" id="reviewsAvg"></div>
+        <div style="margin-top:18px"><button class="btn btn-outline" id="siteReviewBtn">Write a review</button></div>
+      </div>
+      <div class="testi-grid" id="testiGrid"></div>
+    </div>
+  </section>
+
+  <!-- LOOKBOOK -->
+  <section class="section tight" id="lookbook">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="eyebrow">Style inspiration</div>
+        <h2 class="serif">The Lookbook</h2>
+      </div>
+      <div class="ig-grid reveal">
+        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look1" style="background-image:url('images/look-1.jpg')"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
+        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look2" style="background-image:url('images/look-2.jpg')"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
+        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look3" style="background-image:url('images/look-3.jpg')"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
+        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look4" style="background-image:url('images/look-4.jpg')"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
+        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look5" style="background-image:url('images/look-5.jpg')"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
+        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look6" style="background-image:url('images/look-6.jpg')"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- CUSTOMER CARE -->
+  <section class="section why" id="care">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <div class="eyebrow">Here to help</div>
+        <h2 class="serif">Size, delivery &amp; returns</h2>
+        <p>Everything you need to shop with confidence. Still unsure? Message us any time.</p>
+      </div>
+      <div class="care-grid">
+        <div class="care-card reveal d1">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 6h18M3 12h18M3 18h18"/></svg></div>
+          <h3 class="serif" id="careSizeTitle">Size &amp; style advice</h3>
+          <div class="care-body" id="careSizeBody">Tell us your usual size and the look you are going for, and we will recommend the right fit before you buy. Share your measurements (bust, waist, hips, or shoe size) on WhatsApp and we will match you to the best piece. We can also suggest styling and pairings so your purchase works with your wardrobe.</div>
+          <a class="btn btn-wa care-wa" data-wa="Hello Vaultique Boutique, I'd like size and style advice.">Ask on WhatsApp</a>
+        </div>
+        <div class="care-card reveal d2">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
+          <h3 class="serif" id="careDeliveryTitle">Deliveries</h3>
+          <div class="care-body" id="careDeliveryBody">1. Choose your piece and message us on WhatsApp to confirm availability.
+2. We agree the delivery fee, calculated by your distance, and your preferred payment.
+3. Pay via Airtel Money, MTN Money, bank transfer or cash.
+4. We dispatch and share tracking or timing. Delivery is nationwide across Zambia where possible, or collect in person by arrangement.</div>
+          <a class="btn btn-wa care-wa" data-wa="Hello Vaultique Boutique, I have a question about delivery.">Ask on WhatsApp</a>
+        </div>
+        <div class="care-card reveal d3">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 7v6a9 9 0 009 9 9 9 0 009-9V7"/><path d="M3 7l9-4 9 4-9 4-9-4z"/></svg></div>
+          <h3 class="serif" id="careReturnsTitle">Exchanges &amp; returns</h3>
+          <div class="care-body" id="careReturnsBody">1. If something is not right, message us on WhatsApp within 7 days of receiving your order.
+2. Tell us what you would like to exchange or return and why.
+3. Keep the item unworn, with tags, in its original condition.
+4. We arrange the exchange or a return, and confirm any difference in price or delivery. Sale items and intimate pieces may be exchange-only.</div>
+          <a class="btn btn-wa care-wa" data-wa="Hello Vaultique Boutique, I'd like to arrange an exchange or return.">Ask on WhatsApp</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- REWARDS -->
+  <section class="section" id="rewards">
+    <div class="wrap">
+      <div class="rewards-band reveal">
+        <div class="eyebrow">Vaultique Rewards</div>
+        <h2 class="serif" id="rewardsTitle">Earn as you shop</h2>
+        <div class="rewards-body" id="rewardsBody">Every order earns you loyalty points you can redeem on future purchases, plus early access to new arrivals and members-only offers. Shop with us on WhatsApp and let us know you would like to join Vaultique Rewards, and we will set up your points.</div>
+        <a class="btn btn-gold" data-wa="Hello Vaultique Boutique, I'd like to join Vaultique Rewards.">Join the rewards programme</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHATSAPP BANNER -->
+  <section class="wa-banner">
+    <div class="inner reveal">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg></div>
+      <h2 class="serif">Shopping made personal</h2>
+      <p>Found something you love? Message us on WhatsApp and we will arrange payment, delivery or collection, the easy way.</p>
+      <a class="btn btn-wa" data-wa="Hello Vaultique Boutique, I'd like to shop with you.">Chat on WhatsApp</a>
+    </div>
+  </section>
+
+  <!-- NEWSLETTER -->
+  <section class="section newsletter">
+    <div class="wrap">
+      <div class="nl-inner reveal">
+        <div class="eyebrow">Stay in the know</div>
+        <h2 class="serif" style="font-size:clamp(28px,4.4vw,44px);color:var(--navy);margin-top:10px">Join the Vaultique list</h2>
+        <p style="color:var(--muted);margin-top:10px">New arrivals, private offers and styling notes, straight to your inbox.</p>
+        <!-- Netlify Forms: this static form is detected at deploy; no backend needed -->
+        <form id="nlForm" class="nl-form" name="newsletter" method="POST" data-netlify="true" netlify-honeypot="bot-field">
+          <input type="hidden" name="form-name" value="newsletter" />
+          <p hidden><label>Leave blank: <input name="bot-field" /></label></p>
+          <input id="nlEmail" type="email" name="email" placeholder="Your email address" required aria-label="Email address" />
+          <button class="btn btn-navy" type="submit">Subscribe</button>
+        </form>
+        <div class="nl-success" id="nlSuccess">Thank you. You are on the list.</div>
+        <div class="nl-note">We respect your privacy and will never share your details.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VISIT / CONTACT -->
+  <section class="section" id="visit">
+    <div class="wrap">
+      <div class="visit-grid reveal">
+        <div class="visit-info">
+          <div class="eyebrow">Find us</div>
+          <h2 class="serif">Based in Zambia, delivering nationwide</h2>
+          <div class="visit-row"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg><div><div class="k">Location</div><div class="val">Zambia · Online-first boutique</div></div></div>
+          <div class="visit-row"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-9 8.5 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.2A8.38 8.38 0 014 11.5 8.5 8.5 0 0112.5 3 8.5 8.5 0 0121 11.5z"/></svg><div><div class="k">WhatsApp · orders</div><div class="val"><a id="waShopNum" data-wa="Hello Vaultique Boutique, I'd like to place an order.">+260 97 832 3036</a></div></div></div>
+          <div class="visit-row"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-9 8.5 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.2A8.38 8.38 0 014 11.5 8.5 8.5 0 0112.5 3 8.5 8.5 0 0121 11.5z"/></svg><div><div class="k">WhatsApp · enquiries</div><div class="val"><a id="waEnqNum" data-wa-enq="Hello Vaultique Boutique, I have an enquiry.">+260 96 353 9728</a></div></div></div>
+          <div class="visit-row"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M22 6l-10 7L2 6"/></svg><div><div class="k">Email</div><div class="val"><a data-email data-email-text href="mailto:vaultiqueboutique@outlook.com">vaultiqueboutique@outlook.com</a></div></div></div>
+          <div class="visit-row"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><div><div class="k">Support hours</div><div class="val" id="hoursVal">Open daily · 08:00–20:00 (CAT)</div></div></div>
+        </div>
+        <div class="visit-map">
+          <iframe title="Zambia map" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+            src="https://www.google.com/maps?q=Zambia&output=embed"></iframe>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============================ SHOP VIEW ============================ -->
+<div id="view-shop" style="display:none">
+  <section class="shop-hero">
+    <div class="eyebrow">Vaultique Boutique Point</div>
+    <h1 class="serif" id="shopTitle">The Collection</h1>
+  </section>
+  <div class="shop-toolbar">
+    <div class="wrap toolbar-inner">
+      <div class="search-field">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="shopSearch" type="text" placeholder="Search pieces…" aria-label="Search products" />
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="filters">
+        <select class="select" id="filterColor" aria-label="Filter by colour"><option value="All">All colours</option></select>
+        <select class="select" id="filterSize" aria-label="Filter by size"><option value="All">All sizes</option></select>
+        <label class="stock-toggle"><input type="checkbox" id="filterStock"> In stock</label>
+      </div>
+      <div class="toolbar-end">
+        <span class="result-count" id="resultCount"></span>
+        <select class="select" id="sortSelect" aria-label="Sort products">
+          <option value="featured">Featured</option>
+          <option value="price-asc">Price: low to high</option>
+          <option value="price-desc">Price: high to low</option>
+          <option value="name">Name A–Z</option>
+          <option value="available">In stock first</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  <section class="section tight">
+    <div class="wrap">
+      <div class="grid" id="grid"></div>
+      <div class="state" id="shopEmpty" style="display:none"></div>
+    </div>
+  </section>
+</div>
+
+<!-- ============================ DETAIL VIEW ============================ -->
+<section class="detail" id="view-detail" style="display:none"></section>
+<section class="policies-view" id="view-policies" style="display:none"></section>
+
+<!-- ============================ FOOTER ============================ -->
+<footer class="site">
+  <div class="wrap">
+    <div class="foot-top">
+      <div class="foot-brand">
+        <img class="foot-logo" src="images/logo.png" alt="Vaultique Boutique Point" />
+        <p>Premium yet affordable fashion for the modern Zambian. Curated in Zambia, delivered nationwide.</p>
+        <div class="foot-social">
+          <a data-ig href="https://wa.me/260963539728" aria-label="Instagram"><svg viewBox="0 0 24 24"><path d="M12 2.2c3.2 0 3.6 0 4.85.07 1.17.05 1.8.25 2.23.42.56.22.96.48 1.38.9.42.42.68.82.9 1.38.17.42.37 1.06.42 2.23.06 1.25.07 1.65.07 4.85s-.01 3.6-.07 4.85c-.05 1.17-.25 1.8-.42 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.17-1.06.37-2.23.42-1.25.06-1.65.07-4.85.07s-3.6-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.42a3.7 3.7 0 01-1.38-.9 3.7 3.7 0 01-.9-1.38c-.17-.42-.37-1.06-.42-2.23C2.21 15.6 2.2 15.2 2.2 12s.01-3.6.07-4.85c.05-1.17.25-1.8.42-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.17 1.06-.37 2.23-.42C8.4 2.21 8.8 2.2 12 2.2zm0 1.8c-3.15 0-3.5.01-4.74.07-.89.04-1.37.19-1.69.31-.42.17-.73.37-1.04.68-.31.31-.51.62-.68 1.04-.12.32-.27.8-.31 1.69C3.21 8.5 3.2 8.85 3.2 12s.01 3.5.07 4.74c.04.89.19 1.37.31 1.69.17.42.37.73.68 1.04.31.31.62.51 1.04.68.32.12.8.27 1.69.31 1.24.06 1.59.07 4.74.07s3.5-.01 4.74-.07c.89-.04 1.37-.19 1.69-.31.42-.17.73-.37 1.04-.68.31-.31.51-.62.68-1.04.12-.32.27-.8.31-1.69.06-1.24.07-1.59.07-4.74s-.01-3.5-.07-4.74c-.04-.89-.19-1.37-.31-1.69a2.8 2.8 0 00-.68-1.04 2.8 2.8 0 00-1.04-.68c-.32-.12-.8-.27-1.69-.31C15.5 4.01 15.15 4 12 4zm0 3.06A4.94 4.94 0 1016.94 12 4.94 4.94 0 0012 7.06zm0 8.14A3.2 3.2 0 1115.2 12 3.2 3.2 0 0112 15.2zm5.14-8.34a1.15 1.15 0 11-1.15-1.15 1.15 1.15 0 011.15 1.15z"/></svg></a>
+          <a data-wa="Hello Vaultique Boutique, I have an enquiry." aria-label="WhatsApp"><svg viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg></a>
+          <a data-email href="mailto:vaultiqueboutique@outlook.com" aria-label="Email"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M21 6l-9 6.5L3 6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></a>
+        </div>
+      </div>
+      <div class="foot-col">
+        <h4>Shop</h4>
+        <ul>
+          <li><a data-go-shop>All Products</a></li>
+          <li><a data-scroll="sec-women">Women</a></li>
+          <li><a data-scroll="sec-men">Men</a></li>
+          <li><a data-scroll="sec-acc">Accessories</a></li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <h4>Customer Care</h4>
+        <ul>
+          <li><a data-scroll="care">Size &amp; style advice</a></li>
+          <li><a data-scroll="care">Delivery, exchanges &amp; returns</a></li>
+          <li><a data-scroll="rewards">Vaultique Rewards</a></li>
+          <li><a href="#/policies">Policies &amp; information</a></li>
+          <li><a data-wa-enq="Hello Vaultique Boutique, I have a general enquiry.">General enquiries</a></li>
+          <li><a data-email href="mailto:vaultiqueboutique@outlook.com">Email us</a></li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <h4>Visit</h4>
+        <ul>
+          <li>Zambia</li>
+          <li class="hours" id="footHours">Open daily · 08:00–20:00 (CAT)</li>
+        </ul>
+        <h4 style="margin-top:20px">Payment</h4>
+        <div class="pay-row" id="payRow"><span>Airtel Money</span><span>MTN Money</span><span>Bank Transfer</span><span>Cash</span></div>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <div>© <span id="year">2026</span> Vaultique Boutique Point. All rights reserved.</div>
+      <div class="foot-legal"><a href="#/policies/privacy-policy">Privacy</a><a href="#/policies/terms-and-conditions">Terms</a><a href="#/policies/return-policy">Returns</a><a href="#/policies">All policies</a></div>
+      <div id="footTagline">Curated Elegance, Accessible Luxury</div>
+    </div>
+  </div>
+</footer>
+
+<!-- ============================ QUICK VIEW MODAL ============================ -->
+<div class="modal" id="qv" role="dialog" aria-modal="true" aria-label="Quick view">
+  <div class="modal-card">
+    <div class="qv-img" id="qvImg"></div>
+    <div class="qv-body" id="qvBody"></div>
+  </div>
+</div>
+
+<!-- ============================ LIGHTBOX ============================ -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer">
+  <button class="lb-close" id="lbClose" aria-label="Close">&times;</button>
+  <img id="lbImg" alt="Product image enlarged" />
+</div>
+
+<!-- ============================ REVIEW MODAL ============================ -->
+<div class="modal" id="reviewModal" role="dialog" aria-modal="true" aria-label="Write a review">
+  <div class="modal-card review-card">
+    <div class="qv-body" id="reviewBody"></div>
+  </div>
+</div>
+
+<!-- ============================ FLOATING ============================ -->
+<a class="fab" data-wa="Hello Vaultique Boutique, I'd like to shop with you." target="_blank" rel="noopener" aria-label="Chat on WhatsApp">
+  <span class="fab-label">Chat with us</span>
+  <svg viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+</a>
+<button class="to-top" id="toTop" aria-label="Back to top"><svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg></button>
+
+<script src="config.js"></script>
+<script src="assets/policies-data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
