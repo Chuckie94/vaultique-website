@@ -83,9 +83,9 @@
 
   <!-- HERO -->
   <section class="hero" aria-label="Featured">
-    <div class="hero-slide active"><div class="bg"></div><div class="photo" id="heroPhoto1" style="background-image:url('images/hero-1.jpg')"></div><div class="scrim"></div></div>
-    <div class="hero-slide"><div class="bg"></div><div class="photo" id="heroPhoto2" style="background-image:url('images/hero-2.jpg')"></div><div class="scrim"></div></div>
-    <div class="hero-slide"><div class="bg"></div><div class="photo" id="heroPhoto3" style="background-image:url('images/hero-3.jpg')"></div><div class="scrim"></div></div>
+    <div class="hero-slide active"><div class="bg"></div><div class="photo" id="heroPhoto1"></div><div class="scrim"></div></div>
+    <div class="hero-slide"><div class="bg"></div><div class="photo" id="heroPhoto2"></div><div class="scrim"></div></div>
+    <div class="hero-slide"><div class="bg"></div><div class="photo" id="heroPhoto3"></div><div class="scrim"></div></div>
     <div class="hero-content">
       <div class="eyebrow" id="heroEyebrow">Zambia</div>
       <h1 class="serif"><span id="heroTitle">Curated Elegance,</span><br><em id="heroTitleEm">Accessible Luxury</em></h1>
@@ -269,12 +269,12 @@
         <h2 class="serif">The Lookbook</h2>
       </div>
       <div class="ig-grid reveal">
-        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look1" style="background-image:url('images/look-1.jpg')"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
-        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look2" style="background-image:url('images/look-2.jpg')"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
-        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look3" style="background-image:url('images/look-3.jpg')"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
-        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look4" style="background-image:url('images/look-4.jpg')"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
-        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look5" style="background-image:url('images/look-5.jpg')"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
-        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look6" style="background-image:url('images/look-6.jpg')"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
+        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look1"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
+        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look2"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
+        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look3"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
+        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look4"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
+        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look5"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
+        <a class="ig-tile" data-go-shop><div class="ph fallback" id="look6"></div><div class="ov"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H8M17 7v9"/></svg></div></a>
       </div>
     </div>
   </section>
@@ -345,11 +345,9 @@
         <div class="eyebrow">Stay in the know</div>
         <h2 class="serif" style="font-size:clamp(28px,4.4vw,44px);color:var(--navy);margin-top:10px">Join the Vaultique list</h2>
         <p style="color:var(--muted);margin-top:10px">New arrivals, private offers and styling notes, straight to your inbox.</p>
-        <!-- Netlify Forms: this static form is detected at deploy; no backend needed -->
-        <form id="nlForm" class="nl-form" name="newsletter" method="POST" data-netlify="true" netlify-honeypot="bot-field">
-          <input type="hidden" name="form-name" value="newsletter" />
-          <p hidden><label>Leave blank: <input name="bot-field" /></label></p>
-          <input id="nlEmail" type="email" name="email" placeholder="Your email address" required aria-label="Email address" />
+        <!-- Subscribers are saved to the website database (see assets/app.js) -->
+        <form id="nlForm" class="nl-form">
+          <input id="nlEmail" type="email" name="email" autocomplete="email" placeholder="Your email address" required aria-label="Email address" />
           <button class="btn btn-navy" type="submit">Subscribe</button>
         </form>
         <div class="nl-success" id="nlSuccess">Thank you. You are on the list.</div>
@@ -390,7 +388,7 @@
     <div class="wrap toolbar-inner">
       <div class="search-field">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input id="shopSearch" type="text" placeholder="Search pieces…" aria-label="Search products" />
+        <input id="shopSearch" type="text" placeholder="Search pieces…" aria-label="Search products" autocomplete="off" />
       </div>
       <div class="chips" id="chips"></div>
       <div class="filters">

@@ -77,11 +77,21 @@
       "letter-spacing='6' text-anchor='middle'>VAULTIQUE BOUTIQUE</text></svg>";
     return 'data:image/svg+xml;charset=utf-8,' + svg;
   }
-  // <img> with: admin photo (if any) -> SKU files -> placeholder
+  // Optional local image files (images/<SKU>.jpg and friends) are only looked up
+  // when the admin is NOT connected. Once photos are managed in the admin, probing
+  // for files that do not exist would fire a 404 for every product, so we skip it.
+  // Set LOCAL_IMAGES: true in config.js to force the local file fallback back on.
+  var USE_LOCAL = (window.VBP_CONFIG && typeof window.VBP_CONFIG.LOCAL_IMAGES === 'boolean')
+    ? window.VBP_CONFIG.LOCAL_IMAGES
+    : !WEB;
+
+  // <img> with: admin photo (if any) -> SKU files (if enabled) -> placeholder
   function attachImgChain(imgEl, p) {
     var sku = (p && p.sku) ? p.sku : p;
     var url = (p && typeof p === 'object') ? p.image_url : null;
     if (PREVIEW) { imgEl.src = placeholderSrc(); return; }
+    if (url) { imgEl.onerror = function () { imgEl.onerror = null; imgEl.src = placeholderSrc(); }; imgEl.src = url; return; }
+    if (!USE_LOCAL) { imgEl.src = placeholderSrc(); return; }
     var i = -1;
     function next() {
       i++;
@@ -89,10 +99,10 @@
       else { imgEl.onerror = null; imgEl.src = placeholderSrc(); }
     }
     imgEl.onerror = next;
-    if (url) { imgEl.src = url; } else { next(); }
+    next();
   }
   function preload(url, cb) {
-    if (PREVIEW) { cb(false); return; }
+    if (PREVIEW || !USE_LOCAL) { cb(false); return; }
     var im = new Image();
     im.onload = function () { cb(true); };
     im.onerror = function () { cb(false); };
@@ -102,7 +112,7 @@
   function resolvePrimary(p, cb) {
     var sku = (p && p.sku) ? p.sku : p;
     if (p && typeof p === 'object' && p.image_url) { cb(p.image_url); return; }
-    if (PREVIEW) { cb(placeholderSrc()); return; }
+    if (PREVIEW || !USE_LOCAL) { cb(placeholderSrc()); return; }
     var i = 0;
     (function tryNext() {
       if (i >= IMG_EXTS.length) { cb(placeholderSrc()); return; }
@@ -166,8 +176,25 @@
     loadWebsiteData(function () {
       mergeMeta();
       applyContent(CONTENT);
+      applyLocalBackgrounds();
       boot();
     });
+  }
+  // Hero and lookbook photos normally come from the admin. If the admin is not
+  // connected, fall back to optional local files, but only then (no 404 probing
+  // once the admin is in use).
+  function applyLocalBackgrounds() {
+    if (!USE_LOCAL) return;
+    ['#heroPhoto1', '#heroPhoto2', '#heroPhoto3'].forEach(function (id, i) {
+      var e = $(id); if (!e || e.style.backgroundImage) return;
+      var u = 'images/hero-' + (i + 1) + '.jpg';
+      preload(u, function (ok) { if (ok) e.style.backgroundImage = "url('" + u + "')"; });
+    });
+    for (var k = 1; k <= 6; k++) (function (k) {
+      var e = $('#look' + k); if (!e || e.style.backgroundImage) return;
+      var u = 'images/look-' + k + '.jpg';
+      preload(u, function (ok) { if (ok) e.style.backgroundImage = "url('" + u + "')"; });
+    })(k);
   }
   // pull the website's own photos + content (separate Supabase, read-only here)
   function loadWebsiteData(cb) {
@@ -985,7 +1012,7 @@
       '<div class="c">' + (sku ? 'Your feedback' : 'Tell others about us') + '</div>' +
       '<h3 class="serif">' + (sku ? 'Write a review' : 'Review Vaultique') + '</h3>' +
       '<div class="rv-stars" id="rvStars">' + [1, 2, 3, 4, 5].map(function (i) { return '<span data-v="' + i + '">\u2605</span>'; }).join('') + '</div>' +
-      '<label class="rv-lbl">Your name</label><input type="text" id="rvName" maxlength="60">' +
+      '<label class="rv-lbl">Your name</label><input type="text" id="rvName" maxlength="60" autocomplete="name">' +
       '<label class="rv-lbl">Your review</label><textarea id="rvComment" maxlength="1000" rows="4"></textarea>' +
       '<div class="rv-actions"><button class="btn btn-navy" id="rvSubmit">Submit review</button><span class="rv-msg" id="rvMsg"></span></div>';
     var rating = 5, stars = $all('#rvStars span');
