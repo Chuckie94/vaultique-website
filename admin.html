@@ -7,6 +7,7 @@
 <title>Vaultique Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/preview.css">
 <style>
   :root{--navy:#0B1F3A;--navy2:#0e2545;--gold:#C8A24A;--gold-d:#a9842f;--cream:#F4EFE3;--ivory:#FBF8F0;--ink:#15202e;--muted:#6b7480;--line:rgba(11,31,58,.14);--ok:#1f9d57;--err:#c0392b}
   *{box-sizing:border-box;margin:0;padding:0}
@@ -66,7 +67,149 @@
   .card h3{font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--navy);margin-bottom:10px}
   .hint{font-size:12px;color:var(--muted);margin-top:4px}
   .save-bar{position:sticky;bottom:0;background:var(--cream);padding:12px 0;border-top:1px solid var(--line);display:flex;gap:12px;align-items:center}
-  @media(max-width:560px){.grid2{grid-template-columns:1fr}.prod{grid-template-columns:72px 1fr}.prod .thumb{width:72px;height:92px}}
+  /* main admin nav — lets the tab row wrap instead of squashing */
+  .nav-main{flex-wrap:wrap}
+  .nav-main .tab{flex:1 1 132px}
+  /* page shell */
+  .page-head{margin:2px 0 16px}
+  .page-head h2{font-family:'Cormorant Garamond',serif;font-weight:600;font-size:26px;color:var(--navy);line-height:1.15}
+  .page-head p{font-size:13px;color:var(--muted);margin-top:4px}
+  .crumb{margin-bottom:12px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .crumb button{background:none;border:none;padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;color:var(--gold-d);cursor:pointer}
+  .crumb button:hover{text-decoration:underline}
+  .page-body{min-height:40px}
+  /* settings index */
+  .set-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
+  .set-item{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-family:'Jost',sans-serif;cursor:pointer;transition:.2s}
+  .set-item:hover{border-color:var(--gold);box-shadow:0 2px 10px rgba(11,31,58,.06)}
+  .set-item .t{font-family:'Cormorant Garamond',serif;font-size:19px;font-weight:600;color:var(--navy);line-height:1.2}
+  .set-item .d{font-size:12px;color:var(--muted);margin-top:4px;font-weight:300}
+  /* settings forms */
+  select{width:100%;padding:11px 34px 11px 13px;border:1px solid var(--line);border-radius:6px;background:#fff;font-family:'Jost',sans-serif;font-size:14px;font-weight:300;color:var(--ink);outline:none;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%236b7480' stroke-width='1.6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+  select:focus{border-color:var(--gold)}
+  .req{color:var(--err)}
+  .grp-note{font-size:13px;color:var(--muted);margin:-4px 0 14px}
+  .err-txt{font-size:12px;color:var(--err);margin-top:5px}
+  .err-txt:empty{display:none}
+  .cnt{font-size:11px;color:var(--muted);text-align:right;margin-top:3px}
+  .cnt.full{color:var(--err)}
+  .field.bad>input,.field.bad>textarea,.field.bad>select{border-color:var(--err)}
+  .field.bad .hrs{border-color:var(--err)}
+  /* on/off switch */
+  .sw-row{display:flex;align-items:center;gap:10px;cursor:pointer;margin:0}
+  .sw-row input{position:absolute;opacity:0;width:0;height:0}
+  .sw{flex:0 0 auto;width:40px;height:22px;border-radius:11px;background:#cfd5dd;position:relative;transition:.2s}
+  .sw::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  input:checked+.sw{background:var(--gold-d)}
+  input:checked+.sw::after{transform:translateX(18px)}
+  input:focus-visible+.sw{outline:2px solid var(--gold);outline-offset:2px}
+  .sw-lab{font-size:14px;text-transform:none;letter-spacing:0;color:var(--ink)}
+  .sw-field.locked{opacity:.62}
+  .sw-field.locked .sw-row{cursor:not-allowed}
+  .sw-sm{width:34px;height:19px}
+  .sw-sm::after{width:13px;height:13px}
+  input:checked+.sw-sm::after{transform:translateX(15px)}
+  /* business hours grid */
+  .hrs{border:1px solid var(--line);border-radius:8px;background:#fff;overflow:hidden;margin-top:8px}
+  .hrs-row{display:flex;align-items:center;gap:12px;padding:9px 12px;flex-wrap:wrap}
+  .hrs-row+.hrs-row{border-top:1px solid var(--line)}
+  .hrs-day{display:flex;align-items:center;gap:9px;cursor:pointer;min-width:140px;font-size:14px;margin:0;text-transform:none;letter-spacing:0;color:var(--ink)}
+  .hrs-day input{position:absolute;opacity:0;width:0;height:0}
+  .hrs-times{display:flex;align-items:center;gap:8px;margin-left:auto}
+  .hrs-times input[type=time]{padding:7px 9px;border:1px solid var(--line);border-radius:6px;font-family:'Jost',sans-serif;font-size:13px;background:#fff;color:var(--ink);outline:none}
+  .hrs-times input[type=time]:focus{border-color:var(--gold)}
+  .hrs-dash{color:var(--muted)}
+  .hrs-shut{display:none;font-size:13px;color:var(--muted)}
+  .hrs-row.shut .hrs-times input,.hrs-row.shut .hrs-dash{display:none}
+  .hrs-row.shut .hrs-shut{display:inline}
+  .hrs-row.shut .hrs-day{color:var(--muted)}
+  .hrs-tools{margin-top:10px}
+  .hrs-sum{font-size:12px;color:var(--muted);margin-top:10px}
+  .hrs-sum:empty{display:none}
+  /* image field */
+  .img-row{display:flex;gap:14px;align-items:flex-start;margin-top:8px;flex-wrap:wrap}
+  .img-frame{flex:0 0 auto;width:120px;height:90px;border:1px solid var(--line);border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+  .img-frame.on-dark{background:var(--navy)}
+  .img-frame img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+  .img-frame.is-empty img{display:none}
+  .img-empty{display:none;font-size:11px;letter-spacing:.06em;color:var(--muted)}
+  .img-frame.is-empty .img-empty{display:block}
+  .img-frame.on-dark .img-empty{color:rgba(255,255,255,.5)}
+  .img-side{flex:1 1 180px;min-width:180px}
+  .img-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .img-side .stat{display:block;margin:8px 0 0}
+  .img-side .hint{margin-top:8px}
+  /* colour field */
+  .col-row{display:flex;gap:8px;align-items:center}
+  .col-swatch{flex:0 0 auto;width:46px;height:40px;padding:0;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
+  .col-swatch::-webkit-color-swatch-wrapper{padding:3px}
+  .col-swatch::-webkit-color-swatch{border:none;border-radius:4px}
+  .col-swatch::-moz-color-swatch{border:none;border-radius:4px}
+  .col-hex{flex:1 1 auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:lowercase}
+  .col-reset{flex:0 0 auto;background:none;border:1px solid var(--line);border-radius:6px;padding:9px 12px;font:inherit;font-size:12px;color:var(--muted);cursor:pointer}
+  .col-reset:hover{border-color:var(--gold);color:var(--gold-d)}
+  /* visual choice */
+  .choice-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .choice{flex:0 0 auto;min-width:92px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 10px 10px;font-family:'Jost',sans-serif;cursor:pointer;text-align:center;transition:.2s}
+  .choice:hover{border-color:var(--gold)}
+  .choice.on{border-color:var(--gold-d);box-shadow:0 0 0 1px var(--gold-d) inset}
+  .choice-art{display:block;height:32px;margin-bottom:8px}
+  .choice-art svg{width:100%;height:100%;display:block}
+  .choice-lab{display:block;font-size:12px;color:var(--navy)}
+  .choice.on .choice-lab{font-weight:500}
+  /* code box */
+  .code-box{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.6;tab-size:2;white-space:pre;overflow-wrap:normal;overflow-x:auto}
+  /* read-only line borrowed from another section */
+  .ro-line{font-size:13.5px;color:var(--ink);background:var(--ivory);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:6px}
+  /* what WhatsApp will actually say */
+  .msg-prevs{margin-top:6px}
+  .msg-prev{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:10px}
+  .msg-cap{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);padding:8px 12px;background:var(--ivory);border-bottom:1px solid var(--line)}
+  .msg-body{padding:12px;font-size:13.5px;line-height:1.55;background:#e7f6e5;color:#0b2b12;white-space:pre-wrap}
+  .msg-foot{font-size:11.5px;color:var(--muted);padding:7px 12px;border-top:1px solid var(--line)}
+  .msg-foot.none{color:var(--err)}
+  /* handle field */
+  .handle-row{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:6px;background:#fff;overflow:hidden}
+  .handle-row:focus-within{border-color:var(--gold)}
+  .handle-pre{flex:0 0 auto;display:flex;align-items:center;padding:0 2px 0 12px;font-size:13px;color:var(--muted);white-space:nowrap;background:var(--ivory);border-right:1px solid var(--line)}
+  .handle-in{flex:1 1 auto;border:none!important;border-radius:0!important;background:transparent!important;padding-left:10px}
+  .handle-out{display:none;font-size:11.5px;color:var(--gold-d);margin-top:5px;word-break:break-all}
+  .handle-out.on{display:block}
+  @media(max-width:560px){.handle-pre{font-size:11.5px;padding-left:9px}}
+  /* repeating list */
+  .list-rows{margin-top:8px}
+  .list-row{border:1px solid var(--line);border-radius:8px;background:#fff;padding:12px 14px;margin-bottom:10px}
+  .list-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .list-cap{flex:1 1 auto;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .list-drop{background:none;border:none;padding:2px 0;font:inherit;font-size:12px;color:var(--err);cursor:pointer}
+  .list-drop:hover{text-decoration:underline}
+  .list-body .field:last-child{margin-bottom:0}
+  .list-add{margin-top:2px}
+  .list-rows:empty+.list-add{margin-top:8px}
+  /* a setting the website never sees */
+  .shut{border:1px solid var(--line);border-left:3px solid var(--navy);border-radius:8px;background:var(--ivory);padding:14px 16px;margin-bottom:14px}
+  .shut-head{display:flex;align-items:center;gap:8px;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--navy);margin-bottom:4px}
+  .shut-note{font-size:12.5px;color:var(--muted);line-height:1.55}
+  /* branding: form beside its preview */
+  .brand-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,340px);gap:18px;align-items:start}
+  .brand-form{min-width:0}
+  @media(max-width:900px){.brand-layout{grid-template-columns:1fr}.prev-wrap{position:static}}
+  /* live preview */
+  .prev-wrap{position:sticky;top:78px;z-index:5}
+  .prev-shell{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+  .prev-note{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line);background:var(--ivory)}
+  .warns{margin-top:10px}
+  .warn{display:flex;gap:8px;font-size:12.5px;line-height:1.5;color:var(--ink);background:#fff6e6;border:1px solid #f0d9a8;border-radius:8px;padding:9px 11px;margin-top:6px}
+  .warn.bad-contrast{background:#fdecea;border-color:#f3c2bd}
+  .warn b{font-weight:500}
+  .warns:empty{display:none}
+  /* the sharing-image snippet */
+  .snip{margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .snip pre{margin:0;padding:11px 12px;background:var(--navy);color:#e8eef6;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.7;overflow-x:auto;white-space:pre}
+  .snip-bar{display:flex;gap:10px;align-items:center;padding:8px 10px;background:var(--ivory);border-top:1px solid var(--line)}
+  .moved{font-size:13px;color:var(--muted);background:var(--ivory);border:1px dashed var(--line);border-radius:8px;padding:11px 13px}
+  .moved button{background:none;border:none;padding:0;font:inherit;color:var(--gold-d);cursor:pointer;text-decoration:underline}
+  @media(max-width:560px){.grid2{grid-template-columns:1fr}.hrs-times{margin-left:0;width:100%}.prod{grid-template-columns:72px 1fr}.prod .thumb{width:72px;height:92px}}
 </style>
 </head>
 <body>
@@ -102,13 +245,19 @@
 
   <!-- admin -->
   <div class="hide" id="admin">
-    <div class="tabs">
+    <div class="tabs nav-main">
+      <div class="tab" data-tab="dashboard">Dashboard</div>
       <div class="tab active" data-tab="products">Products &amp; Photos</div>
-      <div class="tab" data-tab="content">Site Content</div>
       <div class="tab" data-tab="reviews">Reviews</div>
       <div class="tab" data-tab="subscribers">Subscribers</div>
       <div class="tab" data-tab="policies">Policies</div>
+      <div class="tab" data-tab="content">Site Content</div>
+      <div class="tab" data-tab="settings">Settings</div>
+      <div class="tab" data-tab="activity">Activity Log</div>
     </div>
+
+    <!-- DASHBOARD -->
+    <div id="tab-dashboard" class="hide"></div>
 
     <!-- PRODUCTS -->
     <div id="tab-products">
@@ -158,14 +307,19 @@
 
       <div class="card">
         <h3>Contact &amp; details</h3>
-        <div class="grid2">
-          <div class="field"><label>WhatsApp · orders</label><input type="text" id="c_waShop" placeholder="+260 …" /></div>
-          <div class="field"><label>WhatsApp · enquiries</label><input type="text" id="c_waEnquiry" placeholder="+260 …" /></div>
-          <div class="field"><label>Email</label><input type="text" id="c_email" /></div>
-          <div class="field"><label>Instagram handle</label><input type="text" id="c_ig" placeholder="without @" /></div>
+        <p class="moved">WhatsApp numbers, email addresses and social media now live in
+          <button type="button" class="goContact">Settings &rsaquo; Contact &amp; Social</button>,
+          together with the messages WhatsApp pre-fills.</p>
+        <div class="field"><label>Support hours</label>
+          <p class="moved">Trading hours now live in
+            <button type="button" class="goGeneral">Settings &rsaquo; General</button>,
+            where each day has its own opening and closing time.</p>
         </div>
-        <div class="field"><label>Support hours</label><input type="text" id="c_hours" /></div>
-        <div class="field"><label>Payment methods (comma separated)</label><input type="text" id="c_payments" placeholder="Airtel Money, MTN Money, Bank Transfer, Cash" /></div>
+        <div class="field"><label>Payment methods</label>
+          <p class="moved">Payment methods now live in
+            <button type="button" class="goPayments">Settings &rsaquo; Payments</button>,
+            where each one carries its own wording, instructions and account details.</p>
+        </div>
       </div>
 
       <div class="card">
@@ -192,7 +346,9 @@
 
       <div class="card">
         <h3>Footer tagline</h3>
-        <input type="text" id="c_tagline" placeholder="Curated Elegance, Accessible Luxury" />
+        <p class="moved">The tagline now lives in
+          <button type="button" class="goGeneral">Settings &rsaquo; General</button>,
+          so the same words are not kept in two places.</p>
       </div>
 
       <div class="save-bar">
@@ -227,11 +383,53 @@
       <div class="hint" style="margin-bottom:12px">Edit any policy below, change its order with the number, or add your own. In the text, start a line with a dash to make a bullet point. Leave a blank line between paragraphs.</div>
       <div id="polList"><p class="count">Loading…</p></div>
     </div>
+
+    <!-- SETTINGS -->
+    <div id="tab-settings" class="hide">
+      <div id="setIndex">
+        <div class="page-head">
+          <h2>Settings</h2>
+          <p>Choose a section to manage.</p>
+        </div>
+        <div class="set-grid" id="setGrid"></div>
+      </div>
+      <div id="setPage" class="hide"></div>
+    </div>
+
+    <!-- ACTIVITY / AUDIT LOG -->
+    <div id="tab-activity" class="hide"></div>
   </div>
 </div>
 
 <script src="config.js"></script>
 <script src="assets/policies-data.js"></script>
+
+<!-- admin pages: each file is independent and owns one page -->
+<script src="assets/formats.js"></script>
+<script src="assets/theme.js"></script>
+<script src="assets/contact.js"></script>
+<script src="assets/admin/registry.js"></script>
+<script src="assets/admin/settings-store.js"></script>
+<script src="assets/admin/settings-ui.js"></script>
+<script src="assets/admin/dashboard.js"></script>
+<script src="assets/admin/activity-log.js"></script>
+<!-- settings categories, listed in the order they appear in the menu -->
+<script src="assets/admin/settings/general.js"></script>
+<script src="assets/admin/settings/branding-appearance.js"></script>
+<script src="assets/admin/settings/contact-social.js"></script>
+<script src="assets/admin/settings/shopping.js"></script>
+<script src="assets/admin/settings/pricing.js"></script>
+<script src="assets/admin/settings/delivery.js"></script>
+<script src="assets/admin/settings/payments.js"></script>
+<script src="assets/admin/settings/customer-accounts.js"></script>
+<script src="assets/admin/settings/notifications.js"></script>
+<script src="assets/admin/settings/seo.js"></script>
+<script src="assets/admin/settings/homepage.js"></script>
+<script src="assets/admin/settings/customer-care.js"></script>
+<script src="assets/admin/settings/newsletter.js"></script>
+<script src="assets/admin/settings/security.js"></script>
+<script src="assets/admin/settings/system-maintenance.js"></script>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (function () {
@@ -245,6 +443,9 @@
   if (!window.supabase || !window.supabase.createClient) { show('needConfig', true); return; }
 
   var sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  // The settings store and form kit reach the database through here.
+  window.VBP_ADMIN = window.VBP_ADMIN || {};
+  window.VBP_ADMIN.sb = sb;
   var metaMap = {};       // sku -> meta row
   var products = [];      // POS products
   var contentData = {};   // site content
@@ -265,27 +466,149 @@
   }
   $('logoutBtn').addEventListener('click', function () { sb.auth.signOut().then(function () { location.reload(); }); });
 
+  var adminReady = false;
   function enterAdmin() {
     show('topbar', true); show('admin', true);
+    adminReady = true;
     loadProducts(); loadContent();
+    applyRoute();
   }
 
-  // ---------- tabs ----------
-  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
-    t.addEventListener('click', function () {
-      Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (x) { x.classList.remove('active'); });
-      t.classList.add('active');
-      var which = t.getAttribute('data-tab');
-      show('tab-products', which === 'products');
-      show('tab-content', which === 'content');
-      show('tab-reviews', which === 'reviews');
-      show('tab-subscribers', which === 'subscribers');
-      show('tab-policies', which === 'policies');
-      if (which === 'reviews') loadReviews();
-      if (which === 'subscribers') loadSubscribers();
-      if (which === 'policies') loadPolicies();
-    });
+  // ---------- navigation ----------
+  // Routes are hash based: #/policies, #/settings, #/settings/general.
+  // With no hash the admin opens on Products & Photos, as it always has.
+  var TABS = ['dashboard', 'products', 'reviews', 'subscribers', 'policies', 'content', 'settings', 'activity'];
+  var pageCtx = null;
+  var setIndexBuilt = false;
+
+  function ctx() {
+    if (!pageCtx) {
+      var reg = window.VBP_ADMIN || {};
+      pageCtx = { sb: sb, cfg: cfg, esc: escapeHtml, navigate: navigate, ui: reg.ui, store: reg.store };
+    }
+    return pageCtx;
+  }
+
+  // A page holding unsaved edits gets to interrupt before we leave it.
+  function mayLeave() {
+    var f = (window.VBP_ADMIN || {}).activeForm;
+    if (!f) return true;
+    if (!f.confirmLeave()) return false;
+    f.release();
+    return true;
+  }
+  function navigate(tab, sub) {
+    if (!mayLeave()) return;
+    var want = '#/' + tab + (sub ? '/' + sub : '');
+    if (location.hash === want) applyRoute(); else location.hash = want;
+  }
+  function applyRoute() {
+    var parts = (location.hash || '').replace(/^#\/?/, '').split('/').filter(Boolean);
+    openTab(parts[0] || 'products', parts[1] || '');
+  }
+  // Back and forward do not go through navigate(), so they are guarded
+  // here instead. Declining puts the old address back, and the flag stops
+  // that second hashchange from asking all over again.
+  var lastHash = location.hash;
+  var reverting = false;
+  window.addEventListener('hashchange', function () {
+    if (reverting) { reverting = false; lastHash = location.hash; return; }
+    if (!adminReady) { lastHash = location.hash; return; }
+    if (!mayLeave()) { reverting = true; location.hash = lastHash; return; }
+    lastHash = location.hash;
+    applyRoute();
   });
+  window.addEventListener('beforeunload', function (e) {
+    var f = (window.VBP_ADMIN || {}).activeForm;
+    if (f && f.isDirty()) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  function openTab(which, sub) {
+    if (TABS.indexOf(which) < 0) { which = 'products'; sub = ''; }
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (x) {
+      x.classList[x.getAttribute('data-tab') === which ? 'add' : 'remove']('active');
+    });
+    TABS.forEach(function (t) { show('tab-' + t, t === which); });
+    if (which === 'reviews') loadReviews();
+    if (which === 'subscribers') loadSubscribers();
+    if (which === 'policies') loadPolicies();
+    if (which === 'dashboard') renderPage('dashboard', 'tab-dashboard');
+    if (which === 'activity') renderPage('activity', 'tab-activity');
+    if (which === 'settings') renderSettings(sub);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
+    t.addEventListener('click', function () { navigate(t.getAttribute('data-tab'), ''); });
+  });
+
+  // ---------- page shell ----------
+  function pageHead(title, summary) {
+    var d = document.createElement('div'); d.className = 'page-head';
+    var h = document.createElement('h2'); h.textContent = title; d.appendChild(h);
+    if (summary) { var p = document.createElement('p'); p.textContent = summary; d.appendChild(p); }
+    return d;
+  }
+  function crumbBack(label, tab) {
+    var d = document.createElement('div'); d.className = 'crumb';
+    var b = document.createElement('button'); b.type = 'button'; b.textContent = '\u2039 ' + label;
+    b.addEventListener('click', function () { navigate(tab, ''); });
+    d.appendChild(b);
+    return d;
+  }
+  // Hands each page module an empty body to build itself into.
+  function renderInto(host, def) {
+    // The outgoing page is gone; whatever it registered goes with it.
+    if (window.VBP_ADMIN) window.VBP_ADMIN.activeForm = null;
+    var body = document.createElement('div'); body.className = 'page-body';
+    host.appendChild(body);
+    try { if (def && typeof def.render === 'function') def.render(body, ctx()); }
+    catch (e) {
+      body.innerHTML = '<p class="count">This section could not be opened: ' +
+        escapeHtml(e && e.message ? e.message : e) + '</p>';
+    }
+  }
+  function renderPage(key, hostId) {
+    var host = $(hostId); if (!host) return;
+    var def = ((window.VBP_ADMIN || {}).pages || {})[key];
+    host.innerHTML = '';
+    if (!def) { host.innerHTML = '<p class="count">This page did not load. Check that its script file is present.</p>'; return; }
+    host.appendChild(pageHead(def.title, def.summary));
+    renderInto(host, def);
+  }
+
+  // ---------- settings ----------
+  function buildSettingsIndex() {
+    var host = $('setGrid'); if (!host) return;
+    var list = (window.VBP_ADMIN && window.VBP_ADMIN.settings) || [];
+    host.innerHTML = '';
+    if (!list.length) {
+      host.innerHTML = '<p class="count">No settings sections loaded. Check that the scripts in assets/admin/settings/ are present.</p>';
+      return;
+    }
+    list.forEach(function (def) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'set-item';
+      var t = document.createElement('div'); t.className = 't'; t.textContent = def.title; b.appendChild(t);
+      if (def.summary) { var s = document.createElement('div'); s.className = 'd'; s.textContent = def.summary; b.appendChild(s); }
+      b.addEventListener('click', function () { navigate('settings', def.key); });
+      host.appendChild(b);
+    });
+    setIndexBuilt = true;
+  }
+  function renderSettings(key) {
+    var reg = window.VBP_ADMIN || {};
+    var def = (key && reg.setting) ? reg.setting(key) : null;
+    if (!def) {
+      if (key) { navigate('settings', ''); return; }   // unknown section, fall back to the menu
+      if (!setIndexBuilt) buildSettingsIndex();
+      show('setPage', false); show('setIndex', true);
+      return;
+    }
+    show('setIndex', false); show('setPage', true);
+    var host = $('setPage'); host.innerHTML = '';
+    host.appendChild(crumbBack('Settings', 'settings'));
+    host.appendChild(pageHead(def.title, def.summary));
+    renderInto(host, def);
+  }
 
   // ---------- helpers ----------
   function placeholder() {
@@ -302,6 +625,10 @@
         return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
       });
   }
+  // The settings form kit uses this for its image fields, so photos land in
+  // the same bucket, with the same naming, as everything else.
+  window.VBP_ADMIN.uploadImage = uploadImage;
+
   function saveMeta(sku) {
     var m = metaMap[sku] || { sku: sku };
     m.sku = sku; m.updated_at = new Date().toISOString();
@@ -517,12 +844,6 @@
     $('c_story_p2').value = s.p2 || '';
     buildValues(c.values || []);
     buildTesti(c.testimonials || []);
-    $('c_waShop').value = c.waShop || '';
-    $('c_waEnquiry').value = c.waEnquiry || '';
-    $('c_email').value = c.email || '';
-    $('c_ig').value = c.ig || '';
-    $('c_hours').value = c.hours || '';
-    $('c_payments').value = (c.payments || []).join(', ');
     var care = c.care || {};
     $('c_care_sizeTitle').value = care.sizeTitle || '';
     $('c_care_sizeBody').value = care.sizeBody || '';
@@ -533,7 +854,6 @@
     var rw = c.rewards || {};
     $('c_rewards_title').value = rw.title || '';
     $('c_rewards_body').value = rw.body || '';
-    $('c_tagline').value = c.tagline || '';
     buildLookImgs(c.lookImages || []);
   }
   var lookImgUrls = ['', '', '', '', '', ''];
@@ -607,16 +927,12 @@
     c.story = { heading: val('c_story_heading'), p1: val('c_story_p1'), p2: val('c_story_p2') };
     c.values = []; for (var i = 0; i < 4; i++) { var t = val('val_t_' + i), s = val('val_s_' + i); if (t || s) c.values.push({ t: t, s: s }); }
     c.testimonials = []; for (var j = 0; j < 3; j++) { var q = val('t_q_' + j); if (q) c.testimonials.push({ quote: q, name: val('t_n_' + j), city: val('t_c_' + j) }); }
-    c.waShop = val('c_waShop'); c.waEnquiry = val('c_waEnquiry'); c.email = val('c_email'); c.ig = val('c_ig');
-    c.hours = val('c_hours');
-    c.payments = val('c_payments').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
     c.care = {
       sizeTitle: val('c_care_sizeTitle'), sizeBody: $('c_care_sizeBody').value.trim(),
       deliveryTitle: val('c_care_deliveryTitle'), deliveryBody: $('c_care_deliveryBody').value.trim(),
       returnsTitle: val('c_care_returnsTitle'), returnsBody: $('c_care_returnsBody').value.trim()
     };
     c.rewards = { title: val('c_rewards_title'), body: $('c_rewards_body').value.trim() };
-    c.tagline = val('c_tagline');
     c.lookImages = lookImgUrls.filter(Boolean);
     contentData = c;
     var st = $('contentStat'); st.textContent = 'Saving…'; st.className = 'stat busy';
@@ -624,6 +940,16 @@
       if (r.error) { st.textContent = 'Error: ' + r.error.message; st.className = 'stat err'; return; }
       st.textContent = 'Saved ✓ — changes appear on the site within ~1 minute'; st.className = 'stat ok';
     });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.goGeneral'), function (b) {
+    b.addEventListener('click', function () { navigate('settings', 'general'); });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.goContact'), function (b) {
+    b.addEventListener('click', function () { navigate('settings', 'contact'); });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('.goPayments'), function (b) {
+    b.addEventListener('click', function () { navigate('settings', 'payments'); });
   });
 
   // ---------- reviews ----------

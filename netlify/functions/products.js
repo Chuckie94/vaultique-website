@@ -1,19 +1,11 @@
 // Vaultique Boutique Point — server-side product feed
 // ---------------------------------------------------------------------------
-// This function is the ONLY thing that ever talks to the trading Supabase
-// project. It runs on the server (Netlify), so the read key NEVER reaches a
-// browser. It reads the `app_state` row READ-ONLY over the REST API, extracts
+// This function is the ONLY thing that ever talks to the POS Supabase project.
+// It runs on the server (Netlify), so the POS read key NEVER reaches a browser.
+// It reads the live POS `app_state` row READ-ONLY over the REST API, extracts
 // ONLY the public product fields, and returns them. It performs no writes,
-// no schema changes and no security changes.
-//
-// WHICH ROW IT READS
-// Row 1   = the old POS (frozen after the platform cutover, kept for rollback)
-// Row 100 = the Vaultique Business Platform (live)
-//
-// The row is set by the POS_STATE_ROW environment variable and defaults to 100.
-// To roll the storefront back to the old POS, set POS_STATE_ROW=1 in
-// Netlify (Site settings > Environment variables) and redeploy. Nothing else
-// needs to change: both rows hold the same shape of product record.
+// no schema changes, and no security changes to the POS. The live till is
+// completely untouched.
 // ---------------------------------------------------------------------------
 
 // POS connection. These are the POS's own PUBLIC read key and URL.
@@ -25,13 +17,6 @@ const POS_URL =
 const POS_KEY =
   process.env.POS_SUPABASE_KEY ||
   'sb_publishable_wj1gGEwOnLu_HlBRkbeZvA_tCHEk1vR';
-
-// Which app_state row holds the live catalogue. 100 is the business platform.
-// Set POS_STATE_ROW=1 to fall back to the old POS row.
-const STATE_ROW = (() => {
-  const n = parseInt(process.env.POS_STATE_ROW, 10);
-  return Number.isFinite(n) && n > 0 ? n : 100;
-})();
 
 // The ONLY fields permitted to reach the public. Everything else is dropped.
 function toSafeProduct(p) {
@@ -50,10 +35,18 @@ function toSafeProduct(p) {
     material: clean(p.material),
     // Availability is a boolean ONLY. The raw stock count never leaves here.
     available: toNumber(p.stock) > 0,
+    // And so is scarcity. The shop can show "only a few left" without the
+    // count ever crossing this line: the comparison happens here and only
+    // its answer is sent. LOW_STOCK_AT sets where "a few" begins.
+    lowStock: toNumber(p.stock) > 0 && toNumber(p.stock) <= LOW_STOCK_AT,
   };
   // Deliberately omitted forever: cost, stock (number), id, vatable,
   // and anything outside this object.
 }
+
+// How few is "only a few left". Override with LOW_STOCK_AT in the Netlify
+// environment variables; the number itself is never sent to the browser.
+const LOW_STOCK_AT = toNumber(process.env.LOW_STOCK_AT) || 3;
 
 function clean(v) {
   if (v === null || v === undefined) return '';
@@ -120,7 +113,7 @@ exports.handler = async function () {
 
   try {
     const res = await fetch(
-      `${POS_URL}/rest/v1/app_state?id=eq.${STATE_ROW}&select=*`,
+      `${POS_URL}/rest/v1/app_state?id=eq.1&select=*`,
       {
         method: 'GET',
         headers: {
@@ -160,7 +153,6 @@ exports.handler = async function () {
       body: JSON.stringify({
         products,
         count: products.length,
-        source: `app_state:${STATE_ROW}`,
         generatedAt: new Date().toISOString(),
       }),
     };

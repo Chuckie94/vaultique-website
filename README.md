@@ -10,16 +10,40 @@ never touches the POS or its security.
 
 ```
 vaultique-website/
-├── index.html                 the whole storefront (styles + script inlined)
+├── index.html                 the storefront
+├── admin.html                 the admin: the shell, routing and the older tabs
+├── config.js                  this site's own Supabase keys
+├── supabase-setup.sql         run once in Supabase to create the tables
 ├── netlify.toml               Netlify config + /api/products redirect
 ├── netlify/
 │   └── functions/
 │       └── products.js        server-side product feed (holds the read key)
+├── assets/
+│   ├── app.js                 the storefront's script
+│   ├── styles.css             the storefront's styles
+│   ├── policies-data.js       the starter policies
+│   ├── formats.js             prices, dates and trading hours, shared by both
+│   ├── theme.js               branding into colours, fonts and shapes
+│   ├── contact.js             numbers, handles and WhatsApp messages
+│   ├── preview.css            the mock storefront drawn inside the admin
+│   └── admin/
+│       ├── registry.js        which pages and settings categories exist
+│       ├── settings-store.js  reads and writes the site_settings table
+│       ├── settings-ui.js     the shared form kit every category draws with
+│       ├── dashboard.js       one file per top level admin page
+│       ├── activity-log.js
+│       └── settings/          one file per Settings category
+├── tests/                     browser tests for the admin (see README there)
 └── images/                    optional photos, named by SKU (see README there)
 ```
 
-`index.html` is now a single self-contained file, so you can open it directly
-to preview the design. `products.js` is the secure server-side feed.
+Open `index.html` directly to preview the design. `products.js` is the secure
+server-side feed.
+
+Each admin Settings category is its own small file under `assets/admin/settings/`.
+A category describes the fields it wants and the shared form kit draws them,
+loads and saves them, and validates them, so no category talks to the database
+itself.
 
 ---
 

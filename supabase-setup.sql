@@ -125,5 +125,41 @@ create policy pol_read  on public.policies for select using (true);
 create policy pol_admin on public.policies for all
   using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
+-- 8) Admin settings (one row per Settings category) --------------------
+-- Each Settings category in the admin stores its own row here, keyed by
+-- the same key the category registers with (for example 'general'). The
+-- payload is free-form JSON so a category can grow new fields later
+-- without a schema change. Public read so the storefront can honour the
+-- public-facing settings; only a logged-in admin may write.
+create table if not exists public.site_settings (
+  key        text primary key,
+  data       jsonb default '{}'::jsonb,
+  updated_at timestamptz default now()
+);
+alter table public.site_settings enable row level security;
+drop policy if exists ss_read  on public.site_settings;
+drop policy if exists ss_admin on public.site_settings;
+create policy ss_read  on public.site_settings for select using (true);
+create policy ss_admin on public.site_settings for all
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- 9) Private admin settings (NOT readable by the website) ---------------
+-- Everything in site_settings above is public: the storefront reads it
+-- with the anon key, so anyone can read it too. That is fine for opening
+-- hours and colours, and wrong for a bank account number.
+--
+-- This table has no public read policy at all. Only a signed-in admin can
+-- read or write it, so what is kept here never reaches a customer's
+-- browser. Bank details and mobile money numbers live here.
+create table if not exists public.site_settings_private (
+  key        text primary key,
+  data       jsonb default '{}'::jsonb,
+  updated_at timestamptz default now()
+);
+alter table public.site_settings_private enable row level security;
+drop policy if exists ssp_admin on public.site_settings_private;
+create policy ssp_admin on public.site_settings_private for all
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
 -- Done. Next: create your admin login under Authentication > Users,
 -- then paste the Project URL and anon key into config.js.

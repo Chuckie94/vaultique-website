@@ -1,0 +1,75 @@
+/* =====================================================================
+   Vaultique Boutique Point - branding preview
+   ---------------------------------------------------------------------
+   A small mock storefront the admin draws while you choose colours and
+   fonts. Loaded by admin.html only; the storefront never sees it.
+
+   The block below sets every variable the preview reads to the value the
+   shop ships with. The theme engine then writes the same names again,
+   scoped to .vbp-preview and later in the document, so the choices being
+   made override these. That is what lets the preview show a real theme
+   without the admin's own navy and gold leaking into it.
+   ===================================================================== */
+.vbp-preview{
+  --navy:#0B1F3A;
+  --navy-rgb:11,31,58;
+  --navy-on:#ffffff;
+  --gold:#C8A24A;
+  --gold-rgb:200,162,74;
+  --ivory:#FBF8F0;
+  --paper:#F7F3EA;
+  --cream-3:#f5f1e6;
+  --sand:#d9cdb0;
+  --surface:#ffffff;
+  --ink:#15202e;
+  --muted:#6b7480;
+  --accent:#C8A24A;
+  --accent-soft:#d9bf7e;
+  --accent-strong:#a9842f;
+  --accent-on:#0B1F3A;
+  --btn:#C8A24A;
+  --btn-on:#0B1F3A;
+  --btn-radius:2px;
+  --radius-md:6px;
+  --radius-lg:8px;
+  --radius-2xl:30px;
+  --font-head:'Cormorant Garamond',Georgia,serif;
+  --font-body:'Jost',system-ui,sans-serif;
+
+  /* these follow the primary colour rather than being chosen */
+  --line:rgba(var(--navy-rgb),.12);
+  --shadow-sm:0 8px 24px -16px rgba(var(--navy-rgb),.45);
+
+  font-family:var(--font-body);
+  background:var(--ivory);
+  color:var(--ink);
+  font-weight:300;
+  line-height:1.5;
+}
+
+.vbp-preview .pv-bar{background:var(--navy);color:var(--navy-on);display:flex;align-items:center;gap:14px;padding:11px 14px}
+.vbp-preview .pv-mark{font-family:var(--font-head);font-size:15px;font-weight:600;letter-spacing:.24em}
+.vbp-preview .pv-mark img{max-height:22px;max-width:120px;display:block}
+.vbp-preview .pv-nav{margin-left:auto;display:flex;gap:12px;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;opacity:.85}
+.vbp-preview .pv-hero{background:var(--navy);color:var(--navy-on);padding:18px 14px 22px;text-align:center;border-top:1px solid rgba(var(--gold-rgb),.25)}
+.vbp-preview .pv-eyebrow{font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:var(--accent-soft)}
+.vbp-preview .pv-title{font-family:var(--font-head);font-size:26px;font-weight:600;line-height:1.15;margin-top:7px}
+.vbp-preview .pv-body{padding:14px}
+.vbp-preview .pv-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.vbp-preview .pv-card{display:flex;flex-direction:column}
+.vbp-preview .pv-thumb{aspect-ratio:4/5;border-radius:var(--radius-md);background:var(--paper);border:1px solid var(--line);position:relative;display:flex;align-items:center;justify-content:center}
+.vbp-preview .pv-init{font-family:var(--font-head);font-size:22px;color:var(--gold)}
+.vbp-preview .pv-tag{position:absolute;top:7px;left:7px;background:var(--accent);color:var(--accent-on);font-size:7.5px;letter-spacing:.14em;text-transform:uppercase;padding:3px 7px;border-radius:var(--radius-2xl)}
+.vbp-preview .pv-cat{font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent-strong);margin-top:9px}
+.vbp-preview .pv-name{font-family:var(--font-head);font-size:15px;font-weight:600;color:var(--navy);line-height:1.2;margin-top:2px}
+.vbp-preview .pv-price{font-family:var(--font-head);font-size:15px;font-weight:600;color:var(--navy);margin-top:3px}
+.vbp-preview .pv-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.vbp-preview .pv-btn{border:none;font-family:var(--font-body);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:500;padding:10px 16px;border-radius:var(--btn-radius);background:var(--btn);color:var(--btn-on)}
+.vbp-preview .pv-btn.ghost{background:transparent;color:var(--navy);border:1px solid var(--navy)}
+.vbp-preview .pv-field{margin-top:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-2xl);padding:9px 13px;font-size:11px;color:var(--muted)}
+.vbp-preview .pv-foot{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent-strong);text-align:center}
+
+/* the product-card presets, so the preview shows those too */
+.vbp-preview.cards-bordered .pv-card{background:var(--ivory);border:1px solid var(--line);border-radius:var(--radius-lg);padding:9px}
+.vbp-preview.cards-shadow .pv-card{background:var(--ivory);border-radius:var(--radius-lg);padding:9px;box-shadow:var(--shadow-sm)}
+.vbp-preview.cards-framed .pv-card{background:var(--cream-3);border:1px solid var(--sand);border-radius:var(--radius-lg);padding:10px}

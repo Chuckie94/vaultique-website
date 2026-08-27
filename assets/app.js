@@ -22,6 +22,44 @@
   var META = {};      // sku -> { image_url, gallery[], featured, is_new, hidden, description }
   var CONTENT = {};   // editable site content document
   var REVIEWS = [];   // approved reviews (site-wide when sku is null)
+  // Settings > General in the admin. Defaults match the admin's own, so the
+  // site reads the same whether or not the row has ever been saved.
+  var SETTINGS = {
+    businessName: 'Vaultique Boutique Point',
+    tagline: 'Curated Elegance, Accessible Luxury',
+    description: '',
+    country: 'Zambia',
+    city: 'Lusaka',
+    address: '',
+    timezone: 'Africa/Lusaka',
+    currency: 'ZMW',
+    dateFormat: 'DD/MM/YYYY',
+    numberFormat: '1,234.56',
+    businessHours: null,
+    websiteStatus: 'live',
+    maintenanceMode: false,
+    maintenanceMessage: ''
+  };
+  var FMT = window.VBP_FORMAT || null;
+  var THEME = window.VBP_THEME || null;
+  var CT = window.VBP_CONTACT || null;
+  var CONTACT = null;               // Settings > Contact & Social
+  // Settings > Payments. Only the public half ever reaches here: which
+  // methods are accepted, what they are called and what customers are
+  // told. Account numbers live in a table this key cannot read.
+  var PAY = null;
+  // Settings > Shopping. Defaults match the admin's, so the shop behaves the
+  // same whether or not that section has ever been opened.
+  var SHOP = {
+    showOutOfStock: true, showSku: true, showLowStock: true, showCategory: true,
+    showBadges: true, showReviews: true, defaultSort: 'featured',
+    enquiries: true, wishlist: true, sharing: true, customerReviews: true,
+    whatsappCheckout: true, guestCheckout: true,
+    requireName: true, requirePhone: true, requireEmail: false, requireAddress: false,
+    orderNotes: true, checkoutLabel: 'Buy on WhatsApp'
+  };
+  var BRANDING = null;              // Settings > Branding & Appearance
+  var THEME_MEMO = 'vbp_theme';     // last applied theme, so a return visit is not repainted
   var POLICIES = (window.VBP_DEFAULT_POLICIES || []).slice();  // editable in admin
 
   // ------------------------------------------------------------------ helpers
@@ -37,25 +75,71 @@
     return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   }
   function formatPrice(n) {
+    if (FMT) return FMT.money(n, SETTINGS.currency, SETTINGS.numberFormat);
     var num = Number(n) || 0;
     var hasDec = (Math.round(num * 100) / 100) % 1 !== 0;
     return 'K' + num.toLocaleString('en-US', {
       minimumFractionDigits: hasDec ? 2 : 0, maximumFractionDigits: 2
     });
   }
+  function formatDate(v) {
+    if (FMT) return FMT.date(v, SETTINGS.dateFormat);
+    var d = new Date(v);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString();
+  }
   function waUrl(num, text) {
-    return 'https://wa.me/' + num + '?text=' + encodeURIComponent(text);
+    if (CT) return CT.waUrl(num, text);
+    return num ? 'https://wa.me/' + num + '?text=' + encodeURIComponent(text) : '';
+  }
+  function shopName() {
+    return (SETTINGS && SETTINGS.businessName) || 'Vaultique Boutique';
+  }
+  /* Which number answers which kind of message. Orders and enquiries can
+     go to different phones; either falls back to the main number, and
+     that falls back to the number the site shipped with. */
+  function orderNumber() {
+    return (CONTACT && (CONTACT.orderNumber || CONTACT.whatsapp)) || WA_SHOP;
+  }
+  function enquiryNumber() {
+    return (CONTACT && (CONTACT.enquiryNumber || CONTACT.orderNumber || CONTACT.whatsapp)) || WA_ENQUIRY;
+  }
+  function orderMessage(p) {
+    var tpl = (CONTACT && CONTACT.orderMessage) ||
+      "Hello {business}, I'd like to buy: {product} (SKU: {sku}), {price}. Is it available?";
+    if (!CT) return tpl;
+    return CT.fill(tpl, {
+      business: shopName(), product: p.name, sku: p.sku, price: formatPrice(p.price)
+    });
+  }
+  function enquiryMessage() {
+    var tpl = (CONTACT && CONTACT.enquiryMessage) || 'Hello {business}, I have an enquiry.';
+    return CT ? CT.fill(tpl, { business: shopName() }) : tpl;
+  }
+  /* Each link on the page carries the reason it was tapped; the greeting
+     in front of it is built from the business name. */
+  function waSay(intent) {
+    return CT ? CT.greet(shopName(), intent, enquiryMessage()) : (intent || '');
   }
   function waLink(p) {
-    var msg = "Hello Vaultique Boutique, I'd like to buy: " + p.name +
-      ' (SKU: ' + p.sku + '), ' + formatPrice(p.price) + '. Is it available?';
-    return waUrl(WA_SHOP, msg);
+    return waUrl(orderNumber(), orderMessage(p));
+  }
+  function checkoutLabel() {
+    return (SHOP && SHOP.checkoutLabel) || 'Buy on WhatsApp';
+  }
+  /* Whether a piece can be bought at all. With WhatsApp checkout off the
+     shop is a catalogue: the pieces and prices stay, the buy buttons go.
+     Enquiries are a separate switch and are unaffected. */
+  function canBuy(p) {
+    return !!p.available && SHOP.whatsappCheckout !== false;
+  }
+  function canAsk(p) {
+    return !p.available && SHOP.enquiries !== false;
   }
   function waGeneral(text) {
-    return waUrl(WA_SHOP, text || 'Hello Vaultique Boutique, I would like to shop with you.');
+    return waUrl(orderNumber(), waSay(text));
   }
   function waEnquiry(text) {
-    return waUrl(WA_ENQUIRY, text || 'Hello Vaultique Boutique, I have an enquiry.');
+    return waUrl(enquiryNumber(), waSay(text));
   }
 
   // safe storage (degrades to memory if blocked, e.g. in preview frames)
@@ -66,15 +150,29 @@
   };
 
   // ------------------------------------------------------------------ images
+  // The stand-in shown for a product with no photo. It is drawn here rather
+  // than in CSS, so it has to be told the brand colours; left hardcoded it
+  // was the one navy-and-gold patch left on a re-branded shop.
   function placeholderSrc() {
+    var ink = '#0B1F3A', mark = '#C8A24A', name = 'VAULTIQUE BOUTIQUE';
+    if (THEME) {
+      var v = THEME.variables(BRANDING);
+      ink = v['navy'] || ink;
+      mark = v['gold'] || mark;
+    }
+    var label = (SETTINGS && SETTINGS.businessName) ? SETTINGS.businessName.toUpperCase() : name;
+    // The lettering is widely spaced, so a long name would run off the edge.
+    if (label.length > 24) label = label.slice(0, 23).replace(/\s+$/, '') + '\u2026';
+    var initials = label.split(/\s+/).slice(0, 2).map(function (w) { return w.charAt(0); }).join('');
+    function enc(hex) { return hex.replace('#', '%23'); }
     var svg =
       "<svg xmlns='http://www.w3.org/2000/svg' width='480' height='600'>" +
-      "<rect width='100%' height='100%' fill='%230B1F3A'/>" +
-      "<rect x='20' y='20' width='440' height='560' fill='none' stroke='%23C8A24A' stroke-opacity='.4'/>" +
-      "<text x='50%' y='45%' fill='%23C8A24A' font-family='Georgia,serif' font-size='78' " +
-      "text-anchor='middle' letter-spacing='8'>VB</text>" +
-      "<text x='50%' y='55%' fill='%23C8A24A' font-family='Arial' font-size='13' " +
-      "letter-spacing='6' text-anchor='middle'>VAULTIQUE BOUTIQUE</text></svg>";
+      "<rect width='100%' height='100%' fill='" + enc(ink) + "'/>" +
+      "<rect x='20' y='20' width='440' height='560' fill='none' stroke='" + enc(mark) + "' stroke-opacity='.4'/>" +
+      "<text x='50%' y='45%' fill='" + enc(mark) + "' font-family='Georgia,serif' font-size='78' " +
+      "text-anchor='middle' letter-spacing='8'>" + esc(initials) + "</text>" +
+      "<text x='50%' y='55%' fill='" + enc(mark) + "' font-family='Arial' font-size='13' " +
+      "letter-spacing='6' text-anchor='middle'>" + esc(label) + "</text></svg>";
     return 'data:image/svg+xml;charset=utf-8,' + svg;
   }
   // Optional local image files (images/<SKU>.jpg and friends) are only looked up
@@ -155,13 +253,447 @@
 
   function bySku(sku) { for (var i = 0; i < PRODUCTS.length; i++) if (PRODUCTS[i].sku === sku) return PRODUCTS[i]; return null; }
 
+
+
+  // ------------------------------------------------------------------ theme
+  // Branding arrives with everything else, which would mean a moment of the
+  // default navy and gold before the shop's own colours land. The stylesheet
+  // that was worked out last time is kept and re-applied straight away, so a
+  // returning visitor sees the right colours from the first paint. It is
+  // replaced as soon as the real settings arrive.
+  function preApplyCachedTheme() {
+    if (!WEB || !THEME) return;
+    var css = store.get(THEME_MEMO);
+    if (!css) return;
+    var tag = document.getElementById('vbp-theme');
+    if (!tag) {
+      tag = document.createElement('style');
+      tag.id = 'vbp-theme';
+      document.head.appendChild(tag);
+    }
+    tag.textContent = css;
+  }
+
+  function applyTheme() {
+    if (!THEME) return;
+    THEME.apply(BRANDING);
+    try { store.set(THEME_MEMO, THEME.cssFor(BRANDING)); } catch (e) {}
+  }
+
+
+
+  // Settings > Shopping on the page. The per-product pieces are handled
+  // where each card and page is drawn; this covers what sits outside them.
+  function applyShopSettings() {
+    // The shop opens on the chosen order, and the dropdown agrees with it.
+    if (SHOP.defaultSort) {
+      sortBy = SHOP.defaultSort;
+      var sel = $('#sortSelect');
+      if (sel) {
+        sel.value = SHOP.defaultSort;
+        if (sel.selectedIndex < 0) { sel.selectedIndex = 0; sortBy = sel.value; }
+      }
+    }
+
+    // With the wishlist off, its heart in the header has nothing behind it.
+    if (!SHOP.wishlist) {
+      var wb = $('#wishBtn');
+      if (wb) wb.classList.add('hide');
+    }
+
+    // Reviews: showing them and accepting them are separate switches.
+    if (!SHOP.showReviews) {
+      var sec = $('#reviews');
+      if (sec) sec.classList.add('hide');
+    }
+    if (!SHOP.customerReviews) {
+      $all('#siteReviewBtn, [data-review-open]').forEach(function (b) { b.classList.add('hide'); });
+    }
+  }
+
+
+
+  // ---------------------------------------------------------------- payments
+  // Which ways of paying to show, and what to say about each. The account
+  // numbers behind them are deliberately unreachable from here.
+  var PAY_METHODS = [
+    { key: 'cash',   fallback: 'Cash' },
+    { key: 'bank',   fallback: 'Bank Transfer' },
+    { key: 'mobile', fallback: 'Mobile Money' },
+    { key: 'card',   fallback: 'Card Payment' },
+    { key: 'cod',    fallback: 'Payment on Delivery' }
+  ];
+
+  function payMethods() {
+    if (!PAY) return null;                   // nothing saved yet
+    return PAY_METHODS
+      .filter(function (m) { return PAY[m.key + 'Enabled']; })
+      .map(function (m) {
+        return {
+          key: m.key,
+          name: PAY[m.key + 'Name'] || m.fallback,
+          instructions: PAY[m.key + 'Instructions'] || ''
+        };
+      });
+  }
+
+  function applyPaymentSettings() {
+    var list = payMethods();
+    if (!list) return;                       // leave what Site Content left
+
+    var row = $('#payRow');
+    if (row) {
+      row.innerHTML = '';
+      list.forEach(function (m) {
+        var s = el('span');
+        s.textContent = m.name;
+        row.appendChild(s);
+      });
+      row.classList[list.length ? 'remove' : 'add']('hide');
+    }
+
+    /* The How to pay panel only earns its place when there is something
+       to explain, so it stays hidden until a method carries instructions. */
+    var card = $('#payCard'), body = $('#payBody');
+    if (!card || !body) return;
+    var told = list.filter(function (m) { return m.instructions; });
+    if (!told.length) { card.classList.add('hide'); return; }
+
+    body.innerHTML = '';
+    told.forEach(function (m) {
+      var line = el('div', 'pay-way');
+      var nm = el('span', 'pay-way-n');
+      nm.textContent = m.name;
+      line.appendChild(nm);
+      line.appendChild(document.createTextNode(m.instructions));
+      body.appendChild(line);
+    });
+    card.classList.remove('hide');
+  }
+
+  // ---------------------------------------------------------------- ordering
+  // The shop has no cart and keeps no order records: WhatsApp is the
+  // checkout. What this adds is the step before it. Whatever Settings >
+  // Shopping asks for is collected here and folded into the message, so
+  // the first thing the shop receives is a complete order rather than
+  // "is this available?" followed by four rounds of questions.
+  //
+  // Nothing is sent anywhere and nothing is stored on a server. The
+  // details are kept in this browser only, so a returning customer does
+  // not retype them, and they travel inside the WhatsApp message.
+
+  var ORDER_MEMO = 'vbp_buyer';
+
+  function buyerFields() {
+    return [
+      { key: 'name',    on: SHOP.requireName,    label: 'Your name',        type: 'text',  ac: 'name' },
+      { key: 'phone',   on: SHOP.requirePhone,   label: 'Phone number',     type: 'tel',   ac: 'tel' },
+      { key: 'email',   on: SHOP.requireEmail,   label: 'Email address',    type: 'email', ac: 'email' },
+      { key: 'address', on: SHOP.requireAddress, label: 'Delivery address', type: 'area',  ac: 'street-address' }
+    ].filter(function (f) { return f.on; });
+  }
+
+  function needsDetails() {
+    return buyerFields().length > 0 || !!SHOP.orderNotes;
+  }
+
+  function savedBuyer() {
+    try { return JSON.parse(store.get(ORDER_MEMO) || '{}') || {}; }
+    catch (e) { return {}; }
+  }
+  function rememberBuyer(d) {
+    try { store.set(ORDER_MEMO, JSON.stringify(d)); } catch (e) {}
+  }
+
+  /* The order message: the template first, then whatever was collected,
+     each on its own line so it reads as an order in WhatsApp. */
+  function composeOrder(p, details) {
+    var lines = [orderMessage(p)];
+    var labels = { name: 'Name', phone: 'Phone', email: 'Email',
+                   address: 'Delivery address', notes: 'Notes' };
+    ['name', 'phone', 'email', 'address', 'notes'].forEach(function (k) {
+      var v = details && details[k];
+      if (v) lines.push(labels[k] + ': ' + v);
+    });
+    return lines.join('\n');
+  }
+
+  function openOrderForm(p) {
+    var modal = $('#orderModal'), body = $('#orderBody');
+    if (!modal || !body) { window.open(waLink(p), '_blank', 'noopener'); return; }
+
+    var fields = buyerFields();
+    var saved = savedBuyer();
+
+    body.innerHTML =
+      '<button class="qv-close" id="odClose" aria-label="Close">&times;</button>' +
+      '<div class="c">' + esc(p.name) + '</div>' +
+      '<h3 class="serif">Your details</h3>' +
+      '<p class="od-lead">So your order arrives complete. We will carry on from here on WhatsApp.</p>' +
+      fields.map(function (f) {
+        var v = esc(saved[f.key] || '');
+        return '<label class="rv-lbl" for="od_' + f.key + '">' + esc(f.label) + '</label>' +
+          (f.type === 'area'
+            ? '<textarea id="od_' + f.key + '" rows="2" maxlength="200" autocomplete="' + f.ac + '">' + v + '</textarea>'
+            : '<input type="' + f.type + '" id="od_' + f.key + '" maxlength="120" autocomplete="' + f.ac + '" value="' + v + '">');
+      }).join('') +
+      (SHOP.orderNotes
+        ? '<label class="rv-lbl" for="od_notes">Anything else <span class="od-opt">optional</span></label>' +
+          '<textarea id="od_notes" rows="2" maxlength="300" placeholder="A landmark, a gift message, a preferred day"></textarea>'
+        : '') +
+      '<div class="rv-actions">' +
+        '<button class="btn btn-wa" id="odGo">' + waIcon() + 'Continue on WhatsApp</button>' +
+        '<span class="rv-msg" id="odMsg"></span>' +
+      '</div>' +
+      '<p class="od-note">Your details are kept on this device so you do not have to type ' +
+      'them again. They are sent only inside your WhatsApp message.</p>';
+
+    $('#odClose').addEventListener('click', closeOrderForm);
+
+    function collect() {
+      var out = {};
+      fields.forEach(function (f) {
+        var e = $('#od_' + f.key);
+        out[f.key] = e ? e.value.trim() : '';
+      });
+      var n = $('#od_notes');
+      if (n) out.notes = n.value.trim();
+      return out;
+    }
+
+    function go() {
+      var d = collect();
+      var msg = $('#odMsg');
+      var missing = fields.filter(function (f) { return !d[f.key]; });
+      if (missing.length) {
+        msg.textContent = 'Please fill in ' + missing[0].label.toLowerCase() + '.';
+        msg.className = 'rv-msg err';
+        var e = $('#od_' + missing[0].key);
+        if (e) e.focus();
+        return;
+      }
+      if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) {
+        msg.textContent = 'That does not look like an email address.';
+        msg.className = 'rv-msg err';
+        $('#od_email').focus();
+        return;
+      }
+      var keep = {};
+      fields.forEach(function (f) { keep[f.key] = d[f.key]; });
+      rememberBuyer(keep);                 // notes are for this order only
+
+      var url = waUrl(orderNumber(), composeOrder(p, d));
+      closeOrderForm();
+      if (url) window.open(url, '_blank', 'noopener');
+    }
+
+    $('#odGo').addEventListener('click', go);
+    body.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); go(); }
+    });
+
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    var first = $('#od_' + (fields[0] ? fields[0].key : 'notes'));
+    if (first) setTimeout(function () { first.focus(); }, 60);
+  }
+
+  function closeOrderForm() {
+    var m = $('#orderModal');
+    if (m) m.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  /* Every buy button comes through here. With nothing to ask for, it is
+     the straight-to-WhatsApp link the shop has always had. */
+  function startOrder(e, p) {
+    if (!needsDetails()) return;          // let the anchor follow its href
+    e.preventDefault();
+    openOrderForm(p);
+  }
+
+  // ------------------------------------------------------------------ share
+  function shareIcon() {
+    return "<svg viewBox='0 0 24 24' aria-hidden='true'>" +
+      "<circle cx='18' cy='5' r='3'/><circle cx='6' cy='12' r='3'/><circle cx='18' cy='19' r='3'/>" +
+      "<line x1='8.6' y1='10.6' x2='15.4' y2='6.4'/><line x1='8.6' y1='13.4' x2='15.4' y2='17.6'/></svg>";
+  }
+
+  /* Hand a piece to whatever the phone uses for sharing. On a computer, or
+     anywhere the share sheet is unavailable, the address is copied instead
+     and the button says so. */
+  function shareProduct(p, btn) {
+    var url = location.origin + location.pathname + '#/product/' + encodeURIComponent(p.sku);
+    var data = {
+      title: p.name,
+      text: p.name + ' · ' + formatPrice(p.price) + ' · ' + shopName(),
+      url: url
+    };
+    function said(msg) {
+      if (!btn) return;
+      var had = btn.getAttribute('data-label') || btn.textContent;
+      btn.setAttribute('data-label', had);
+      btn.textContent = msg;
+      setTimeout(function () { btn.innerHTML = shareIcon() + had.replace(/^\s+/, ''); }, 1800);
+    }
+    if (navigator.share) {
+      navigator.share(data).catch(function () { /* dismissed, which is not a failure */ });
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(function () { said('Link copied'); },
+                                              function () { said('Could not copy'); });
+      return;
+    }
+    var t = document.createElement('textarea');
+    t.value = url;
+    document.body.appendChild(t);
+    t.select();
+    try { document.execCommand('copy'); said('Link copied'); }
+    catch (e) { said('Could not copy'); }
+    document.body.removeChild(t);
+  }
+
+  // ------------------------------------------------------------------ gate
+  // Maintenance mode, and any website status other than Live, replace the
+  // shop with a notice. Maintenance wins, which is what the admin promises.
+  //
+  // The check needs the settings row, so it cannot happen before the page
+  // has painted. To keep an ordinary visit fast we do not hide the shop
+  // while we wait; instead we remember the last known state and hide up
+  // front only for a browser that was gated last time. A normal customer
+  // therefore pays nothing, and during a real closure only the very first
+  // view of that browser can flash the shop.
+  var GATE_MEMO = 'vbp_gate';
+
+  function gateReason() {
+    if (SETTINGS.maintenanceMode) return 'maintenance';
+    if (SETTINGS.websiteStatus === 'coming-soon') return 'coming-soon';
+    if (SETTINGS.websiteStatus === 'closed') return 'closed';
+    return '';
+  }
+
+  function preHideIfLastGated() {
+    if (!WEB) return;                      // no settings to read; never hide
+    if (store.get(GATE_MEMO) !== '1') return;
+    document.documentElement.classList.add('vbp-gated');
+    // A request that fails rejects and we carry on, but one that simply
+    // hangs never would, and this visitor would be left looking at an
+    // empty screen. Give up waiting and show the shop; if the settings do
+    // arrive and say we are closed, applyGate puts the notice back.
+    setTimeout(function () {
+      if (!$('.gate')) document.documentElement.classList.remove('vbp-gated');
+    }, 6000);
+  }
+
+  function gateCopy(reason) {
+    var name = SETTINGS.businessName || 'Vaultique Boutique Point';
+    if (reason === 'maintenance') {
+      return {
+        eyebrow: 'Back shortly',
+        title: 'We are just making a few improvements',
+        body: SETTINGS.maintenanceMessage ||
+              'We are making a few improvements and will be back shortly.',
+        showHours: false
+      };
+    }
+    if (reason === 'coming-soon') {
+      return {
+        eyebrow: 'Opening soon',
+        title: name + ' is on its way',
+        body: SETTINGS.description ||
+              'Our online boutique is being prepared. Message us any time and we will let you know the moment we open.',
+        showHours: true
+      };
+    }
+    return {
+      eyebrow: 'Temporarily closed',
+      title: 'We are not trading at the moment',
+      body: SETTINGS.description ||
+            'We are closed for now. Message us and we will come back to you as soon as we reopen.',
+      showHours: true
+    };
+  }
+
+  function renderGate(reason) {
+    var c = gateCopy(reason);
+    var wrap = el('div', 'gate');
+
+    var inner = el('div', 'gate-inner');
+    var brand = el('div', 'gate-brand serif');
+    brand.textContent = SETTINGS.businessName || 'Vaultique Boutique Point';
+    var eyebrow = el('div', 'gate-eyebrow');
+    eyebrow.textContent = c.eyebrow;
+    var h = el('h1', 'gate-title serif');
+    h.textContent = c.title;
+    var p = el('p', 'gate-body');
+    p.textContent = c.body;
+
+    inner.appendChild(brand);
+    inner.appendChild(eyebrow);
+    inner.appendChild(h);
+    inner.appendChild(p);
+
+    if (c.showHours && SETTINGS.businessHours && FMT) {
+      var line = FMT.summariseHours(SETTINGS.businessHours);
+      if (line) {
+        var hrs = el('div', 'gate-hours');
+        hrs.textContent = 'Usual trading hours · ' + line;
+        inner.appendChild(hrs);
+      }
+    }
+
+    var acts = el('div', 'gate-actions');
+    var wa = el('a', 'gate-btn');
+    wa.href = waGeneral('Hello ' + (SETTINGS.businessName || 'Vaultique Boutique') + ', I have a question.');
+    wa.target = '_blank'; wa.rel = 'noopener';
+    wa.textContent = 'Message us on WhatsApp';
+    acts.appendChild(wa);
+
+    if (EMAIL) {
+      var mail = el('a', 'gate-btn gate-btn-quiet');
+      mail.href = 'mailto:' + EMAIL;
+      mail.textContent = EMAIL;
+      acts.appendChild(mail);
+    }
+    inner.appendChild(acts);
+
+    if (SETTINGS.tagline) {
+      var tag = el('div', 'gate-tagline');
+      tag.textContent = SETTINGS.tagline;
+      inner.appendChild(tag);
+    }
+
+    wrap.appendChild(inner);
+    document.body.appendChild(wrap);
+    document.documentElement.classList.add('vbp-gated');
+    document.title = (SETTINGS.businessName || 'Vaultique Boutique Point') + ' · ' + c.eyebrow;
+  }
+
+  // Returns true when the site is gated and the shop must not be built.
+  function applyGate() {
+    var reason = gateReason();
+    store.set(GATE_MEMO, reason ? '1' : '0');
+    if (!reason) {
+      document.documentElement.classList.remove('vbp-gated');
+      return false;
+    }
+    renderGate(reason);
+    return true;
+  }
+
   // ------------------------------------------------------------------ data load
   function load() {
     fetch('/api/products', { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error('bad'); return r.json(); })
       .then(function (d) {
         PRODUCTS = (d && d.products) || [];
-        if (!PRODUCTS.length) { usePreview(); return; }
+        /* A feed that answers with nothing is not a feed that failed. An
+           empty POS is a real answer and the shop should show an empty
+           shop, not twelve invented pieces. Only a request that could not
+           be made or could not be read falls back to the samples, which
+           is what makes opening this file straight off a disk still show
+           the design. */
         finishLoad();
       })
       .catch(function () { usePreview(); });
@@ -174,8 +706,16 @@
   }
   function finishLoad() {
     loadWebsiteData(function () {
+      applyContent(CONTENT);          // contact details first, the gate uses them
+      applyTheme();                   // the notice below is branded too
+      if (applyGate()) return;        // closed or under maintenance: build nothing
       mergeMeta();
-      applyContent(CONTENT);
+      applySettings();
+      applyShopSettings();
+      applyPaymentSettings();
+      applyContactSettings();
+      bindWa();                       // rebuild every link with the real numbers
+      bindEmailIg();
       applyLocalBackgrounds();
       boot();
     });
@@ -201,7 +741,7 @@
     if (!WEB) { cb(); return; }
     var base = WEB.SUPABASE_URL.replace(/\/+$/, '');
     var h = { apikey: WEB.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + WEB.SUPABASE_ANON_KEY };
-    var pending = 4;
+    var pending = 9;
     function done() { if (--pending === 0) cb(); }
     fetch(base + '/rest/v1/product_meta?select=*', { headers: h })
       .then(function (r) { return r.ok ? r.json() : []; })
@@ -218,6 +758,40 @@
     fetch(base + '/rest/v1/policies?select=*&order=sort.asc', { headers: h })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (rows) { if (rows && rows.length) POLICIES = rows; })
+      .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.payments&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) { PAY = (rows && rows[0] && rows[0].data) || null; })
+      .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.shopping&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) {
+        var d = rows && rows[0] && rows[0].data;
+        if (!d) return;
+        for (var k in d) {
+          if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) SHOP[k] = d[k];
+        }
+      })
+      .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.contact&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) { CONTACT = (rows && rows[0] && rows[0].data) || null; })
+      .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.branding&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) { BRANDING = (rows && rows[0] && rows[0].data) || null; })
+      .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.general&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) {
+        var d = rows && rows[0] && rows[0].data;
+        if (!d) return;
+        for (var k in d) {
+          if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) {
+            SETTINGS[k] = d[k];
+          }
+        }
+      })
       .catch(function () {}).then(done);
   }
   function asArray(v) { if (Array.isArray(v)) return v; try { var a = JSON.parse(v); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
@@ -243,7 +817,7 @@
     buildCollections();
     buildHomeRows();
     buildFilters();
-    renderSiteReviews();
+    if (SHOP.showReviews) renderSiteReviews();
     updateWishCount();
     route();
   }
@@ -375,18 +949,25 @@
       });
     }
 
-    var badges = el('div', 'badges');
-    if (markNew || p.is_new) { var nb = el('span', 'tag new'); nb.textContent = 'New In'; badges.appendChild(nb); }
-    var sb = el('span', 'tag ' + (p.available ? 'stock' : 'out'));
-    sb.textContent = p.available ? 'In Stock' : 'Sold Out';
-    badges.appendChild(sb);
-    thumb.appendChild(badges);
+    if (SHOP.showBadges) {
+      var badges = el('div', 'badges');
+      if (markNew || p.is_new) { var nb = el('span', 'tag new'); nb.textContent = 'New In'; badges.appendChild(nb); }
+      var sb = el('span', 'tag ' + (p.available ? 'stock' : 'out'));
+      /* The feed says whether only a few are left without saying how many. */
+      sb.textContent = !p.available ? 'Sold Out'
+        : (SHOP.showLowStock && p.lowStock) ? 'Only a few left' : 'In Stock';
+      if (p.available && SHOP.showLowStock && p.lowStock) sb.className = 'tag low';
+      badges.appendChild(sb);
+      thumb.appendChild(badges);
+    }
 
-    var wish = el('button', 'wish' + (isWished(p.sku) ? ' active' : ''));
-    wish.setAttribute('aria-label', 'Add to wishlist');
-    wish.innerHTML = heartIcon();
-    wish.addEventListener('click', function (e) { e.stopPropagation(); toggleWish(p.sku, wish); });
-    thumb.appendChild(wish);
+    if (SHOP.wishlist) {
+      var wish = el('button', 'wish' + (isWished(p.sku) ? ' active' : ''));
+      wish.setAttribute('aria-label', 'Add to wishlist');
+      wish.innerHTML = heartIcon();
+      wish.addEventListener('click', function (e) { e.stopPropagation(); toggleWish(p.sku, wish); });
+      thumb.appendChild(wish);
+    }
 
     var quick = el('button', 'quick'); quick.textContent = 'Quick View';
     quick.addEventListener('click', function (e) { e.stopPropagation(); openQuickView(p.sku); });
@@ -394,19 +975,25 @@
 
     var info = el('div', 'card-info');
     info.innerHTML =
-      '<div class="c">' + esc(p.category) + '</div>' +
+      (SHOP.showCategory ? '<div class="c">' + esc(p.category) + '</div>' : '') +
       '<div class="n serif"></div>' +
       '<div class="a">' + esc(attrs) + '</div>' +
       '<div class="p">' + formatPrice(p.price) + '</div>';
     var nm = info.querySelector('.n'); nm.textContent = p.name;
     nm.addEventListener('click', function () { openProduct(p.sku); });
 
-    var waLine = el('div', 'wa-line');
-    var wa = el('a', 'btn btn-wa');
-    wa.href = waLink(p); wa.target = '_blank'; wa.rel = 'noopener';
-    wa.innerHTML = waIcon() + (p.available ? 'Buy on WhatsApp' : 'Enquire');
-    waLine.appendChild(wa);
-    info.appendChild(waLine);
+    /* A piece carries a button when it can be bought, or when it is sold
+       out and enquiries are on. With neither there is nothing useful for
+       one to do. */
+    if (canBuy(p) || canAsk(p)) {
+      var waLine = el('div', 'wa-line');
+      var wa = el('a', 'btn btn-wa');
+      wa.href = waLink(p); wa.target = '_blank'; wa.rel = 'noopener';
+      wa.innerHTML = waIcon() + (canBuy(p) ? checkoutLabel() : 'Enquire');
+      if (canBuy(p)) wa.addEventListener('click', function (e) { startOrder(e, p); });
+      waLine.appendChild(wa);
+      info.appendChild(waLine);
+    }
 
     card.appendChild(thumb); card.appendChild(info);
     return card;
@@ -436,6 +1023,7 @@
       if (filterColor !== 'All' && (p.color || '') !== filterColor) return false;
       if (filterSize !== 'All' && (p.size || '') !== filterSize) return false;
       if (inStockOnly && !p.available) return false;
+      if (!SHOP.showOutOfStock && !p.available) return false;
       var s = !term ||
         (p.name && p.name.toLowerCase().indexOf(term) > -1) ||
         (p.sku && p.sku.toLowerCase().indexOf(term) > -1) ||
@@ -484,6 +1072,13 @@
             '<div style="margin-top:18px"><a class="btn btn-wa" target="_blank" rel="noopener" href="' +
             waGeneral('Hello Vaultique Boutique, please let me know when ' + filterCat + ' is available.') +
             '">Notify me on WhatsApp</a></div>';
+        } else if (!PRODUCTS.length) {
+          /* Not a search that found nothing: there is nothing to search. */
+          empty.innerHTML = '<span class="serif">The collection is on its way</span>' +
+            'New pieces are being added. Message us and we will let you know the moment they land.' +
+            '<div style="margin-top:18px"><a class="btn btn-wa" target="_blank" rel="noopener" href="' +
+            waGeneral('please let me know when new pieces arrive.') +
+            '">' + waIcon() + 'Tell me when</a></div>';
         } else {
           empty.innerHTML = '<span class="serif">Nothing here yet</span>No pieces match your search. Try another category.';
         }
@@ -500,20 +1095,33 @@
     var p = bySku(sku); if (!p) return;
     var modal = $('#qv'); var body = $('#qvBody'); var imgWrap = $('#qvImg');
     resolvePrimary(p, function (src) { imgWrap.innerHTML = '<img alt="' + esc(p.name) + '" src="' + src + '">'; });
-    var attrs = [['Category', p.category], ['Size', p.size], ['Colour', p.color], ['Material', p.material]]
-      .filter(function (r) { return r[1]; });
+    var attrs = [
+      SHOP.showCategory ? ['Category', p.category] : null,
+      ['Size', p.size], ['Colour', p.color], ['Material', p.material]
+    ].filter(function (r) { return r && r[1]; });
     body.innerHTML =
       '<button class="qv-close" aria-label="Close">&times;</button>' +
-      '<div class="c">' + esc(p.category) + '</div>' +
+      (SHOP.showCategory ? '<div class="c">' + esc(p.category) + '</div>' : '') +
       '<h3 class="serif">' + esc(p.name) + '</h3>' +
       '<div class="p serif">' + formatPrice(p.price) + '</div>' +
       '<div class="detail-vat">Price includes 16% VAT</div>' +
       '<div class="meta">' + attrs.map(function (r) { return '<div><b style="color:#15202e">' + esc(r[0]) + ':</b> ' + esc(r[1]) + '</div>'; }).join('') +
-      '<div style="margin-top:6px">' + (p.available ? 'In stock' : 'Sold out') + '</div></div>' +
+      '<div style="margin-top:6px">' +
+        (p.available
+          ? ((SHOP.showLowStock && p.lowStock) ? 'In stock — only a few left' : 'In stock')
+          : 'Sold out') + '</div></div>' +
       '<div class="detail-cta" style="max-width:none">' +
-      '<a class="btn btn-wa" target="_blank" rel="noopener" href="' + waLink(p) + '">' + waIcon() + (p.available ? 'Buy on WhatsApp' : 'Enquire on WhatsApp') + '</a>' +
+      ((canBuy(p) || canAsk(p))
+        ? '<a class="btn btn-wa" id="qvBuy" target="_blank" rel="noopener" href="' + waLink(p) + '">' +
+          waIcon() + (canBuy(p) ? checkoutLabel() : 'Enquire on WhatsApp') + '</a>'
+        : '') +
       '<button class="btn btn-outline" id="qvFull">View full details</button></div>';
     body.querySelector('.qv-close').addEventListener('click', closeQuickView);
+    var qb = body.querySelector('#qvBuy');
+    if (qb && canBuy(p)) qb.addEventListener('click', function (e) {
+      closeQuickView();
+      startOrder(e, p);
+    });
     body.querySelector('#qvFull').addEventListener('click', function () { closeQuickView(); openProduct(sku); });
     modal.classList.add('open');
     document.body.style.overflow = 'hidden';
@@ -533,8 +1141,11 @@
     if (!p) { goShop('All'); return; }
     pushRecent(sku);
 
-    var specs = [['Category', p.category], ['SKU', p.sku], ['Size', p.size],
-    ['Colour', p.color], ['Material', p.material]].filter(function (r) { return r[1]; });
+    var specs = [
+      SHOP.showCategory ? ['Category', p.category] : null,
+      SHOP.showSku ? ['SKU', p.sku] : null,
+      ['Size', p.size], ['Colour', p.color], ['Material', p.material]
+    ].filter(function (r) { return r && r[1]; });
     var related = PRODUCTS.filter(function (x) { return x.category === p.category && x.sku !== p.sku; }).slice(0, 4);
     var recentItems = recent.map(bySku).filter(function (x) { return x && x.sku !== p.sku; }).slice(0, 4);
     var desc = p.customDesc || buildDescription(p);
@@ -547,23 +1158,35 @@
       '<div class="gallery"><div class="gallery-main" id="galMain"><img id="galImg" alt="' + esc(p.name) + '"><button class="gal-nav prev" id="galPrev" type="button" aria-label="Previous image"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button><button class="gal-nav next" id="galNext" type="button" aria-label="Next image"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button><div class="gal-count" id="galCount"></div></div>' +
       '<div class="gallery-thumbs" id="galThumbs"></div></div>' +
       '<div class="detail-info">' +
-      '<div class="eyebrow">' + esc(p.category) + '</div>' +
+      (SHOP.showCategory ? '<div class="eyebrow">' + esc(p.category) + '</div>' : '') +
       '<h1 class="serif">' + esc(p.name) + '</h1>' +
       '<div class="detail-price serif">' + formatPrice(p.price) + '</div>' +
       '<div class="detail-vat">Price includes 16% VAT</div>' +
-      (prList.length ? '<div class="detail-rating">' + starsHtml(avgRating(prList)) + ' <a class="rating-link" id="ratingLink">' + avgRating(prList).toFixed(1) + ' (' + prList.length + ' review' + (prList.length > 1 ? 's' : '') + ')</a></div>' : '') +
+      ((SHOP.showReviews && prList.length) ? '<div class="detail-rating">' + starsHtml(avgRating(prList)) + ' <a class="rating-link" id="ratingLink">' + avgRating(prList).toFixed(1) + ' (' + prList.length + ' review' + (prList.length > 1 ? 's' : '') + ')</a></div>' : '') +
       '<p class="desc">' + esc(desc) + '</p>' +
       (p.size ? '<div class="opt-block"><div class="lbl">Size</div><span class="opt-chip">' + esc(p.size) + '</span></div>' : '') +
       (p.color ? '<div class="opt-block"><div class="lbl">Colour</div><span class="opt-chip">' + esc(p.color) + '</span></div>' : '') +
-      '<div class="avail-line ' + (p.available ? '' : 'out') + '"><span class="dot"></span>' + (p.available ? 'In stock — ready to order' : 'Currently sold out') + '</div>' +
+      '<div class="avail-line ' + (p.available ? '' : 'out') + '"><span class="dot"></span>' +
+        (p.available
+          ? ((SHOP.showLowStock && p.lowStock) ? 'In stock — only a few left' : 'In stock — ready to order')
+          : 'Currently sold out') + '</div>' +
       '<div class="detail-cta">' +
-      '<a class="btn btn-wa" target="_blank" rel="noopener" href="' + waLink(p) + '">' + waIcon() + (p.available ? 'Buy on WhatsApp' : 'Enquire on WhatsApp') + '</a>' +
-      '<button class="btn btn-outline" id="wishDetail">' + (isWished(p.sku) ? 'Saved to wishlist' : 'Add to wishlist') + '</button>' +
+      ((canBuy(p) || canAsk(p))
+        ? '<a class="btn btn-wa" id="buyDetail" target="_blank" rel="noopener" href="' + waLink(p) + '">' +
+          waIcon() + (canBuy(p) ? checkoutLabel() : 'Enquire on WhatsApp') + '</a>'
+        : '') +
+      (SHOP.wishlist
+        ? '<button class="btn btn-outline" id="wishDetail">' +
+          (isWished(p.sku) ? 'Saved to wishlist' : 'Add to wishlist') + '</button>'
+        : '') +
+      (SHOP.sharing
+        ? '<button class="btn btn-outline" id="shareDetail">' + shareIcon() + 'Share</button>'
+        : '') +
       '</div>' +
       accordion(specs) +
       '</div></div>' +
       ((p.videos && p.videos.length) ? '<div class="prod-videos"><div class="eyebrow">Watch</div><div class="pv-grid">' + p.videos.slice(0, 2).map(function (u) { return '<video controls preload="metadata" playsinline src="' + esc(u) + '"></video>'; }).join('') + '</div></div>' : '') +
-      '<div id="prodReviews" class="prod-reviews"></div>' +
+      (SHOP.showReviews ? '<div id="prodReviews" class="prod-reviews"></div>' : '') +
       (related.length ? relatedBlock('You may also like', 'More in ' + p.category, 'relGrid') : '') +
       (recentItems.length ? relatedBlock('Recently viewed', 'Pieces you looked at', 'recGrid') : '') +
       '</div>';
@@ -586,12 +1209,21 @@
     // crumbs + wishlist + related
     host.querySelector('[data-home]').addEventListener('click', goHome);
     host.querySelector('[data-shop]').addEventListener('click', function () { goShop('All'); });
+    /* These two are only drawn when their setting is on, so neither is
+       guaranteed to be here. */
     var wd = $('#wishDetail');
-    wd.addEventListener('click', function () { toggleWish(p.sku); wd.textContent = isWished(p.sku) ? 'Saved to wishlist' : 'Add to wishlist'; });
+    if (wd) wd.addEventListener('click', function () {
+      toggleWish(p.sku);
+      wd.textContent = isWished(p.sku) ? 'Saved to wishlist' : 'Add to wishlist';
+    });
+    var sd = $('#shareDetail');
+    if (sd) sd.addEventListener('click', function () { shareProduct(p, sd); });
+    var bd = $('#buyDetail');
+    if (bd && canBuy(p)) bd.addEventListener('click', function (e) { startOrder(e, p); });
     setupAccordion(host);
     if (related.length) { var rg = $('#relGrid'); related.forEach(function (rp, i) { rg.appendChild(productCard(rp, i, false)); }); }
     if (recentItems.length) { var cg = $('#recGrid'); recentItems.forEach(function (rp, i) { cg.appendChild(productCard(rp, i, false)); }); }
-    renderProductReviews(p.sku);
+    if (SHOP.showReviews) renderProductReviews(p.sku);
     var rl = $('#ratingLink'); if (rl) rl.addEventListener('click', function () { var t = $('#prodReviews'); if (t) t.scrollIntoView({ behavior: 'smooth' }); });
 
     showView('detail');
@@ -855,12 +1487,17 @@
     if (fst) fst.addEventListener('change', function () { inStockOnly = this.checked; renderGrid(); });
 
     var srb = $('#siteReviewBtn');
-    if (srb) srb.addEventListener('click', function () { openReviewForm(null); });
+    if (srb) srb.addEventListener('click', function () {
+      if (!SHOP.customerReviews) return;
+      openReviewForm(null);
+    });
     var rvm = $('#reviewModal');
     if (rvm) rvm.addEventListener('click', function (e) { if (e.target === this) closeReviewModal(); });
+    var odm = $('#orderModal');
+    if (odm) odm.addEventListener('click', function (e) { if (e.target === this) closeOrderForm(); });
 
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { closeSearch(); closeMobile(); closeQuickView(); closeLightbox(); closeReviewModal(); }
+      if (e.key === 'Escape') { closeSearch(); closeMobile(); closeQuickView(); closeLightbox(); closeReviewModal(); closeOrderForm(); }
     });
 
     // WhatsApp / email / Instagram links
@@ -881,7 +1518,15 @@
       a.href = 'mailto:' + addr;
       if (a.hasAttribute('data-email-text')) a.textContent = addr;
     });
-    if (IG_HANDLE) $all('[data-ig]').forEach(function (a) { a.href = 'https://instagram.com/' + IG_HANDLE; });
+    /* [data-ig] links only make sense when there is a handle behind them.
+       One used to sit in the footer with a WhatsApp address as its
+       fallback, which is where a customer went if no handle was set. */
+    var ig = (CONTACT && CONTACT.instagram) || IG_HANDLE;
+    var igUrl = (CT && ig) ? CT.socialUrl('instagram', ig) : '';
+    $all('[data-ig]').forEach(function (a) {
+      if (igUrl) { a.href = igUrl; a.classList.remove('hide'); }
+      else { a.removeAttribute('href'); a.classList.add('hide'); }
+    });
   }
 
   // apply admin-editable content over the default page (every field optional)
@@ -916,15 +1561,19 @@
         if (who) who.innerHTML = '<b>' + esc(v.name || '') + '</b>' + (v.city ? ' · ' + esc(v.city) : '');
       });
     }
-    if (c.hours) { setText('#hoursVal', c.hours); setText('#footHours', c.hours); }
+    /* Moved to Settings > Payments. Still read so a shop that has not
+       opened that section keeps the list it already had;
+       applyPaymentSettings runs afterwards and wins. */
     if (Array.isArray(c.payments) && c.payments.length) {
       var pr = $('#payRow'); if (pr) pr.innerHTML = c.payments.map(function (x) { return '<span>' + esc(x) + '</span>'; }).join('');
     }
+    /* These four moved to Settings > Contact & Social. They are still read
+       here so a shop that has not opened that section yet keeps the numbers
+       it already had; applyContactSettings runs afterwards and wins. */
     if (c.waShop) { WA_SHOP = String(c.waShop).replace(/[^0-9]/g, ''); setText('#waShopNum', c.waShop); }
     if (c.waEnquiry) { WA_ENQUIRY = String(c.waEnquiry).replace(/[^0-9]/g, ''); setText('#waEnqNum', c.waEnquiry); }
     if (c.email) EMAIL = c.email;
     if (c.ig) IG_HANDLE = String(c.ig).replace(/^@/, '');
-    if (c.tagline) { setText('#footTagline', c.tagline); }
     if (c.care) {
       setText('#careSizeTitle', c.care.sizeTitle); setText('#careSizeBody', c.care.sizeBody);
       setText('#careDeliveryTitle', c.care.deliveryTitle); setText('#careDeliveryBody', c.care.deliveryBody);
@@ -939,6 +1588,149 @@
     }
     bindWa();
     bindEmailIg();
+  }
+
+
+  // Put Settings > General on the page. Runs after applyContent, so where the
+  // two ever overlapped it is General that has the last word.
+  function applySettings() {
+    var s = SETTINGS;
+
+    if (s.tagline) setText('#footTagline', s.tagline);
+
+    // Location: the address when there is one, otherwise city and country.
+    var place = [];
+    if (s.address) place.push(s.address.replace(/\s*\n\s*/g, ', '));
+    else {
+      if (s.city) place.push(s.city);
+      if (s.country) place.push(s.country);
+    }
+    var placeLine = place.join(' · ');
+    if (placeLine) {
+      setText('#locVal', placeLine);
+      setText('#footLocation', s.city && s.country ? s.city + ', ' + s.country : placeLine);
+    }
+
+    // Trading hours, plus whether the shop is open at this moment. When
+    // Contact & Social says support runs to a different timetable, that is
+    // what the Support hours row should show.
+    var hours = s.businessHours;
+    if (CONTACT && CONTACT.supportHoursOverride && CONTACT.supportHours) {
+      hours = CONTACT.supportHours;
+    }
+    if (hours && FMT) {
+      var line = FMT.summariseHours(hours);
+      if (line) {
+        setText('#footHours', line);
+        var state = FMT.openState(hours, s.timezone);
+        var host = $('#hoursVal');
+        if (host) {
+          host.textContent = '';
+          if (state.known) {
+            var chip = el('span', 'open-chip' + (state.open ? ' is-open' : ''));
+            chip.textContent = state.text;
+            host.appendChild(chip);
+            host.appendChild(document.createTextNode(' '));
+          }
+          host.appendChild(document.createTextNode(line));
+        }
+      }
+    }
+
+    // Page title and description. The SEO section will be able to override
+    // these later; until then General is the only thing that sets them.
+    if (s.businessName) {
+      var bits = [s.businessName];
+      if (s.tagline) bits.push(s.tagline);
+      if (s.country) bits.push(s.country);
+      document.title = bits.join(' · ');
+    }
+    if (s.description) {
+      var meta = document.querySelector('meta[name="description"]');
+      if (meta) meta.setAttribute('content', s.description);
+    }
+  }
+
+
+  // Settings > Contact & Social on the page: the numbers, the addresses,
+  // the social icons and the directions link.
+  function applyContactSettings() {
+    if (!CT) return;
+    var c = CONTACT || {};
+
+    // Email. What customers see is the support address, falling back to
+    // the business one, falling back to whatever Site Content had.
+    var mail = c.supportEmail || c.email || EMAIL;
+    if (mail) EMAIL = mail;
+
+    // The numbers shown in the Visit panel, where they are set.
+    if (c.orderNumber || c.whatsapp) setText('#waShopNum', c.orderNumber || c.whatsapp);
+    if (c.enquiryNumber || c.orderNumber || c.whatsapp) {
+      setText('#waEnqNum', c.enquiryNumber || c.orderNumber || c.whatsapp);
+    }
+    $all('[data-email][data-email-text]').forEach(function (a) { a.textContent = EMAIL; });
+
+    // Phone, shown only when there is one.
+    var phoneRow = $('#phoneRow'), phoneVal = $('#phoneVal');
+    if (phoneRow && phoneVal) {
+      var href = CT.telHref(c.phone);
+      if (href) {
+        phoneVal.href = href;
+        phoneVal.textContent = c.phone;
+        phoneRow.classList.remove('hide');
+      } else {
+        phoneRow.classList.add('hide');
+      }
+    }
+
+    // Directions. A pasted Google link is used as it is; with none, the
+    // address from General is searched for instead.
+    var maps = $('#mapsLink');
+    if (maps) {
+      var where = [SETTINGS.address, SETTINGS.city, SETTINGS.country]
+        .filter(Boolean).join(', ').replace(/\s*\n\s*/g, ', ');
+      var url = CT.mapsUrl(c.mapsUrl, where);
+      if (url) { maps.href = url; maps.classList.remove('hide'); }
+      else { maps.classList.add('hide'); }
+    }
+
+    buildSocial(c);
+  }
+
+  /* The footer row of icons. Only the networks with a handle appear:
+     an icon that goes nowhere, or somewhere unrelated, is worse than
+     no icon at all. */
+  function buildSocial(c) {
+    var host = $('#footSocial');
+    if (!host) return;
+    host.innerHTML = '';
+
+    function icon(paths) {
+      return "<svg viewBox='0 0 24 24' aria-hidden='true'>" + paths + "</svg>";
+    }
+    function add(href, label, paths, opts) {
+      var a = el('a');
+      a.href = href;
+      a.setAttribute('aria-label', label);
+      if (opts && opts.blank) { a.target = '_blank'; a.rel = 'noopener'; }
+      a.innerHTML = icon(paths);
+      host.appendChild(a);
+    }
+
+    CT.SOCIALS.forEach(function (net) {
+      var url = CT.socialUrl(net.id, c[net.id]);
+      if (url) add(url, net.name, net.icon, { blank: true });
+    });
+
+    var wa = waEnquiry('I have an enquiry.');
+    if (wa) add(wa, 'WhatsApp',
+      "<path d='M12 2a10 10 0 00-8.6 15L2 22l5.2-1.4A10 10 0 1012 2zm0 18a8 8 0 01-4.1-1.1l-.3-.2-3.1.8.8-3-.2-.3A8 8 0 1112 20zm4.4-5.8c-.2-.1-1.4-.7-1.6-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.6.1a6.6 6.6 0 01-1.9-1.2 7.3 7.3 0 01-1.4-1.7c-.1-.3 0-.4.1-.5l.4-.5a1.8 1.8 0 00.3-.4.5.5 0 000-.5c0-.1-.6-1.4-.8-1.9s-.4-.4-.6-.4h-.5a1 1 0 00-.7.3 2.9 2.9 0 00-.9 2.2 5 5 0 001.1 2.7 11.5 11.5 0 004.4 3.9 8.3 8.3 0 001.5.5 3.5 3.5 0 001.6.1 2.6 2.6 0 001.7-1.2 2.1 2.1 0 00.1-1.2c0-.1-.2-.2-.4-.3z'/>",
+      { blank: true });
+
+    /* A filled envelope, not an outlined one: .foot-social svg fills every
+       path, which turned the outline version into a solid square. */
+    if (EMAIL) add('mailto:' + EMAIL, 'Email',
+      "<path d='M2 6.5A2.5 2.5 0 014.5 4h15A2.5 2.5 0 0122 6.5v11a2.5 2.5 0 01-2.5 2.5h-15A2.5 2.5 0 012 17.5zm2.35-.4L12 12.35l7.65-6.25a.5.5 0 00-.15-.03h-15a.5.5 0 00-.15.03zM20 8.03l-7.63 6.23a.6.6 0 01-.74 0L4 8.03V17.5c0 .28.22.5.5.5h15c.28 0 .5-.22.5-.5z'/>");
   }
 
   // ---------------- website REST helpers ----------------
@@ -985,8 +1777,10 @@
     }
     list.slice(0, 6).forEach(function (r) {
       var d = el('div', 'testi reveal');
+      var when = r.created_at ? formatDate(r.created_at) : '';
       d.innerHTML = '<div class="mark serif">&ldquo;</div><p>' + esc(r.comment || '') + '</p>' + starsHtml(r.rating) +
-        '<div class="who"><b>' + esc(r.name) + '</b>' + (r.verified ? ' · <span class="verified">Verified</span>' : '') + '</div>';
+        '<div class="who"><b>' + esc(r.name) + '</b>' + (r.verified ? ' · <span class="verified">Verified</span>' : '') +
+        (when ? ' · <span class="when">' + esc(when) + '</span>' : '') + '</div>';
       host.appendChild(d);
     });
     observeReveals();
@@ -1126,6 +1920,8 @@
   }
 
   function init() {
+    preHideIfLastGated();   // only hides when this browser was gated last time
+    preApplyCachedTheme();  // the colours from last time, until the real ones land
     bindStatic();
     initHero();
     initCarousels();
