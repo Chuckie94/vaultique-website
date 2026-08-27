@@ -23,6 +23,9 @@ create table if not exists public.product_meta (
 -- If product_meta already existed from an earlier setup, make sure the videos
 -- column is present (safe to run repeatedly; does nothing if it already exists).
 alter table public.product_meta add column if not exists videos jsonb default '[]'::jsonb;
+-- Best sellers are chosen in the admin, not read from the POS: the product
+-- feed deliberately carries no sales figures. Safe to run repeatedly.
+alter table public.product_meta add column if not exists best_seller boolean default false;
 
 -- 2) Editable site content (single row of JSON) ------------------------
 create table if not exists public.site_content (

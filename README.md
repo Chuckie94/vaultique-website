@@ -25,6 +25,7 @@ vaultique-website/
 │   ├── formats.js             prices, dates and trading hours, shared by both
 │   ├── theme.js               branding into colours, fonts and shapes
 │   ├── contact.js             numbers, handles and WhatsApp messages
+│   ├── sections.js            the homepage, section by section
 │   ├── preview.css            the mock storefront drawn inside the admin
 │   └── admin/
 │       ├── registry.js        which pages and settings categories exist

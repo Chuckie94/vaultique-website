@@ -184,6 +184,49 @@ stops you — putting one there would undo the point of the private table.
 > `site_settings_private`. It is safe to run more than once. Without it, the
 > bank and mobile money details cannot save.
 
+### Settings > Homepage
+
+The announcement bar, the hero, your story and the core values. Which sections
+appear and in what order is a separate piece of work, still to come.
+
+- **Announcement bar.** On or off, and what it says. `<b>bold</b>` works.
+- **Hero.** On or off, the three rotating photos, the small line, both heading
+  lines, the subtitle, and the button. Leave the button's link blank and it goes
+  to the shop as it always has; `#/policies` sends it to a page on your site, and
+  a full `https://` address opens elsewhere in a new tab.
+- **Our story.** The heading and two paragraphs. Clear a paragraph and it goes
+  rather than reverting to the words the site shipped with.
+- **Core values.** The row of promises under the story. Leave the list empty to
+  keep the four the site came with, or add your own — three or six work as well
+  as four, and each gets a mark automatically.
+
+A few things people look for here live elsewhere on purpose, each in one place:
+the **footer tagline** is in General, **payment information** is in Payments, the
+**customer care panels** will be in Customer Care, and the **newsletter wording**
+in Newsletter.
+
+- **Testimonials.** Quotes you write yourself, shown after the reviews customers
+  actually leave. Real reviews always come first and yours fill what is left.
+- **Lookbook photos.** Six squares for the lookbook band.
+- **Promotional banner.** A band for a sale or an announcement. It stays hidden
+  until you switch it on *and* give it a headline, and you place it in the
+  section list below.
+- **Sections.** Everything between the hero and the footer: switch a section off,
+  move it with the arrows, and give it your own heading. Leave a heading blank to
+  keep the wording the site came with. The hero is not in the list — it has its
+  own switch above, because it is the frame rather than the contents.
+
+**Best sellers** are ticked in **Products & Photos**, next to Featured and New.
+Your POS knows what sells but the product feed deliberately carries no sales
+figures, so this is your choice rather than a number's.
+
+> **The SQL adds a column** for that tick. `supabase-setup.sql` is safe to run
+> again and does the rest of nothing.
+
+**The Site Content tab is gone.** Everything it held now lives in Settings: the
+homepage here, contact details in Contact & Social, payment methods in Payments,
+the tagline and trading hours in General.
+
 ### Closing the website
 
 Two settings in **Settings > General** decide whether customers can shop:

@@ -855,3 +855,13 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .pay-way{margin-bottom:10px}
 .pay-way:last-child{margin-bottom:0}
 .pay-way-n{display:block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-strong);margin-bottom:2px}
+
+/* Promotional banner — a band the shop can place anywhere on the homepage */
+.promo{position:relative;overflow:hidden;background:var(--navy);color:var(--navy-on);padding:74px 0;text-align:center}
+.promo-bg{position:absolute;inset:0;background:center/cover no-repeat;opacity:.42}
+.promo-bg:empty{display:block}
+.promo::after{content:'';position:absolute;inset:0;background:radial-gradient(70% 120% at 50% 0,rgba(var(--gold-rgb),.18),transparent 62%)}
+.promo-inner{position:relative;z-index:2;max-width:640px}
+.promo h2{font-size:clamp(28px,5vw,42px);font-weight:600;line-height:1.12}
+.promo p{margin-top:12px;font-size:16px;line-height:1.65;color:rgba(var(--cream-rgb),.86)}
+.promo .btn{margin-top:26px}

@@ -711,6 +711,10 @@
 
     var add = el('button', 'btn btn-out btn-sm list-add', f.addLabel || 'Add');
     add.type = 'button';
+    /* A fixed list is a known set of things that can be reordered and
+       edited but not invented or thrown away, such as the sections of a
+       page. */
+    if (f.fixed) add.classList.add('hide');
     wrap.appendChild(add);
 
     var errLine = el('div', 'err-txt');
@@ -722,16 +726,29 @@
     function renumber() {
       rows.forEach(function (r, i) {
         var cap = r.node.querySelector('.list-cap');
-        if (!cap) return;
-        var vals = readRow(r);
-        var text = (typeof f.summary === 'function') ? f.summary(vals, i) : '';
-        cap.textContent = text || ((f.itemName || 'Item') + ' ' + (i + 1));
+        if (cap) {
+          var vals = readRow(r);
+          var text = (typeof f.summary === 'function') ? f.summary(vals, i) : '';
+          cap.textContent = text || ((f.itemName || 'Item') + ' ' + (i + 1));
+        }
+        var moves = r.node.querySelectorAll('.list-move');
+        if (moves.length === 2) {
+          moves[0].disabled = (i === 0);
+          moves[1].disabled = (i === rows.length - 1);
+        }
       });
-      add.classList[(f.max && rows.length >= f.max) ? 'add' : 'remove']('hide');
+      if (!f.fixed) add.classList[(f.max && rows.length >= f.max) ? 'add' : 'remove']('hide');
     }
 
+    /* A row keeps everything it was given and overwrites only what it
+       draws. Without this, a value the row carries but does not show — a
+       section's id, say — would be dropped the moment anything was saved,
+       and the row would come back as an anonymous one. */
     function readRow(r) {
-      var out = {};
+      var out = {}, k;
+      for (k in r.kept) {
+        if (Object.prototype.hasOwnProperty.call(r.kept, k)) out[k] = r.kept[k];
+      }
       (f.fields || []).forEach(function (sub) {
         if (r.ctrls[sub.name]) out[sub.name] = r.ctrls[sub.name].get();
       });
@@ -742,36 +759,85 @@
       var row = el('div', 'list-row');
       var head = el('div', 'list-head');
       head.appendChild(el('span', 'list-cap'));
+
+      var up = el('button', 'list-move', '\u2191');
+      up.type = 'button';
+      up.title = 'Move up';
+      up.setAttribute('aria-label', 'Move up');
+      var down = el('button', 'list-move', '\u2193');
+      down.type = 'button';
+      down.title = 'Move down';
+      down.setAttribute('aria-label', 'Move down');
+      if (f.reorder) { head.appendChild(up); head.appendChild(down); }
+
       var drop = el('button', 'list-drop', 'Remove');
       drop.type = 'button';
+      if (f.fixed) drop.classList.add('hide');
       head.appendChild(drop);
       row.appendChild(head);
 
       var body = el('div', 'list-body');
       row.appendChild(body);
 
-      var entry = { node: row, ctrls: {} };
+      var entry = { node: row, ctrls: {}, kept: values || {} };
 
-      (f.fields || []).forEach(function (sub) {
-        var builder = BUILDERS[sub.type];
-        if (!builder) return;
+      var subs = (f.fields || []).filter(function (x) { return BUILDERS[x.type]; });
+      var idx = rows.length;
+
+      function build(sub) {
         /* Sub-fields are named per row so two rows never share an id. */
         var scoped = {};
         for (var k in sub) scoped[k] = sub[k];
-        scoped.name = f.name + '__' + rows.length + '__' + sub.name;
-        var c = builder(scoped, function () { renumber(); changed(); });
+        scoped.name = f.name + '__' + idx + '__' + sub.name;
+        var c = BUILDERS[sub.type](scoped, function () { renumber(); changed(); });
         c.set(values ? values[sub.name] : undefined);
         entry.ctrls[sub.name] = c;
-        body.appendChild(c.node);
-      });
+        return c;
+      }
+
+      /* Two half-width sub-fields share a row here as well, which matters
+         most on a long list where every saved line is a shorter scroll. */
+      for (var i = 0; i < subs.length; i++) {
+        var a = build(subs[i]);
+        var next = subs[i + 1];
+        if (subs[i].half && next && next.half) {
+          var bcs = build(next);
+          var pair = el('div', 'grid2 pair');
+          pair.appendChild(a.node);
+          pair.appendChild(bcs.node);
+          body.appendChild(pair);
+          i++;
+          continue;
+        }
+        body.appendChild(a.node);
+      }
 
       drop.addEventListener('click', function () {
+        if (f.fixed) return;
         var i = rows.indexOf(entry);
         if (i >= 0) rows.splice(i, 1);
         row.parentNode.removeChild(row);
         renumber();
         changed();
       });
+
+      /* Up and down rather than dragging: this admin is used on a phone
+         as often as a desktop, and dragging a row on a touch screen
+         fights with scrolling the page. */
+      function move(by) {
+        var i = rows.indexOf(entry);
+        var j = i + by;
+        if (i < 0 || j < 0 || j >= rows.length) return;
+        rows.splice(i, 1);
+        rows.splice(j, 0, entry);
+        host.innerHTML = '';
+        rows.forEach(function (r) { host.appendChild(r.node); });
+        renumber();
+        changed();
+        try { (by < 0 ? up : down).focus(); } catch (e) {}
+      }
+      up.addEventListener('click', function () { move(-1); });
+      down.addEventListener('click', function () { move(1); });
 
       rows.push(entry);
       host.appendChild(row);

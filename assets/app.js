@@ -48,6 +48,11 @@
   // methods are accepted, what they are called and what customers are
   // told. Account numbers live in a table this key cannot read.
   var PAY = null;
+  // Settings > Homepage. The announcement, the hero, the story and the
+  // values: the parts of the page that are words rather than products.
+  var HOME = null;
+  var SEC = window.VBP_SECTIONS || null;
+  var HOME_TESTIMONIALS = [];       // quotes the shop wrote, not reviews customers left
   // Settings > Shopping. Defaults match the admin's, so the shop behaves the
   // same whether or not that section has ever been opened.
   var SHOP = {
@@ -312,6 +317,190 @@
   }
 
 
+
+
+  // ---------------------------------------------------------------- homepage
+  // Settings > Homepage on the page. Runs after applyContent, so where the
+  // two still overlap it is the setting that has the last word.
+  function applyHomepageSettings() {
+    var h = HOME;
+    if (!h) return;                       // never saved: leave Site Content's work
+
+    // Announcement bar
+    var bar = $('#announceBar');
+    if (bar) {
+      if (h.announceEnabled === false) bar.classList.add('hide');
+      else {
+        bar.classList.remove('hide');
+        if (h.announceText) bar.innerHTML = h.announceText;
+      }
+    }
+
+    // Hero
+    var hero = $('#hero');
+    if (h.heroEnabled === false) {
+      if (hero) hero.classList.add('hide');
+    } else {
+      if (hero) hero.classList.remove('hide');
+      setText('#heroEyebrow', h.heroEyebrow);
+      setText('#heroTitle', h.heroTitle);
+      setText('#heroTitleEm', h.heroTitleEm);
+      setText('#heroSub', h.heroSubtitle);
+      ['#heroPhoto1', '#heroPhoto2', '#heroPhoto3'].forEach(function (sel, i) {
+        var url = h['heroImage' + (i + 1)];
+        var e = $(sel);
+        if (e && url) e.style.backgroundImage = "url('" + url + "')";
+      });
+      applyHeroCta(h);
+    }
+
+    // Our story. Once this section has been saved, a paragraph left empty
+    // is meant to be gone rather than left as the words the site shipped.
+    setText('#storyHeading', h.storyHeading);
+    [['#storyP1', h.storyP1], ['#storyP2', h.storyP2]].forEach(function (pair) {
+      var e = $(pair[0]);
+      if (!e) return;
+      if (pair[1]) { e.textContent = pair[1]; e.classList.remove('hide'); }
+      else e.classList.add('hide');
+    });
+
+    applyValues(h.values);
+    applyTestimonials(h.testimonials);
+    applyLookbook(h.lookImages);
+    applyPromo();
+    applySections();      // last, so it moves sections that are already dressed
+  }
+
+  /* The first hero button. Blank sends it to the shop, which is what it has
+     always done; anything else is followed as written. */
+  function applyHeroCta(h) {
+    var btn = $('.hero-cta [data-go-shop]') || $('.hero-cta .btn');
+    if (!btn) return;
+    if (h.heroCtaText) btn.textContent = h.heroCtaText;
+
+    var link = (h.heroCtaLink || '').trim();
+    if (!link) return;                    // leave the built-in shop behaviour
+    var a = document.createElement('a');
+    a.className = btn.className;
+    a.textContent = btn.textContent;
+    a.href = link;
+    if (/^https?:/i.test(link)) { a.target = '_blank'; a.rel = 'noopener'; }
+    btn.parentNode.replaceChild(a, btn);
+  }
+
+  /* Quotes the shop has written down, shown alongside the reviews
+     customers leave. An empty list means only real reviews appear. */
+  function applyTestimonials(list) {
+    if (!Array.isArray(list)) return;
+    HOME_TESTIMONIALS = list.filter(function (t) { return t && t.quote; });
+    if (SHOP.showReviews) renderSiteReviews();
+  }
+
+  function applyLookbook(list) {
+    if (!Array.isArray(list)) return;
+    for (var i = 0; i < 6; i++) {
+      var e = $('#look' + (i + 1));
+      if (e && list[i]) e.style.backgroundImage = "url('" + list[i] + "')";
+    }
+  }
+
+  /* The row of promises under the story. Rebuilt rather than filled in, so
+     a shop can have three or six rather than exactly four. The icons cycle
+     through the set the design shipped with. */
+  var VALUE_ICONS = [
+    "<path d='M12 2l2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z'/>",
+    "<path d='M20 12l-8 8-8-8a5 5 0 017-7l1 1 1-1a5 5 0 017 7z'/>",
+    "<path d='M21 11.5a8.38 8.38 0 01-9 8.5 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.2A8.38 8.38 0 014 11.5 8.5 8.5 0 0112.5 3 8.5 8.5 0 0121 11.5z'/>",
+    "<path d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/>"
+  ];
+  function applyValues(list) {
+    if (!Array.isArray(list) || !list.length) return;   // keep the shipped four
+    var host = $('#valuesGrid');
+    if (!host) return;
+    host.innerHTML = '';
+    list.forEach(function (v, i) {
+      if (!v || (!v.t && !v.s)) return;
+      var cell = el('div', 'trust-cell');
+      cell.innerHTML =
+        "<svg viewBox='0 0 24 24'>" + VALUE_ICONS[i % VALUE_ICONS.length] + '</svg>' +
+        '<div><div class="t"></div><div class="s"></div></div>';
+      cell.querySelector('.t').textContent = v.t || '';
+      cell.querySelector('.s').textContent = v.s || '';
+      host.appendChild(cell);
+    });
+  }
+
+
+  // The order of the page, the sections that are on it, and their wording.
+  // Sections are siblings inside <main>, so putting them in the shop's order
+  // is a matter of re-appending them in that order.
+  function applySections() {
+    if (!HOME || !SEC) return;
+    var list = SEC.reconcile(HOME.sections);
+    if (!list.length) return;
+
+    var main = document.querySelector('main');
+    if (!main) return;
+
+    list.forEach(function (row) {
+      var sec = document.getElementById(row.id);
+      if (!sec || sec.parentNode !== main) return;   // never move a page view
+
+      if (row.on === false) { sec.classList.add('hide'); }
+      else if (row.id !== 'promo') { sec.classList.remove('hide'); }
+
+      /* Its own heading, where the shop has given one. */
+      if (row.title) {
+        var h = sec.querySelector('.section-head h2, .row-head h2');
+        if (h) h.textContent = row.title;
+      }
+      if (row.desc) {
+        var head = sec.querySelector('.section-head');
+        if (head) {
+          var para = head.querySelector('p');
+          if (!para) { para = el('p'); head.appendChild(para); }
+          para.textContent = row.desc;
+        }
+      }
+
+      main.appendChild(sec);        // moving, not copying: this is the order
+    });
+  }
+
+  /* The promotional banner. It only appears when it has been switched on
+     and given something to say, since an empty band is worse than none. */
+  function applyPromo() {
+    var sec = $('#promo');
+    if (!sec || !HOME) return;
+    if (!HOME.promoEnabled || !HOME.promoTitle) { sec.classList.add('hide'); return; }
+
+    setText('#promoTitle', HOME.promoTitle);
+    var text = $('#promoText');
+    if (text) {
+      text.textContent = HOME.promoText || '';
+      text.classList[HOME.promoText ? 'remove' : 'add']('hide');
+    }
+    var bg = $('#promoBg');
+    if (bg) bg.style.backgroundImage = HOME.promoImage ? "url('" + HOME.promoImage + "')" : '';
+
+    var cta = $('#promoCta');
+    if (cta) {
+      if (HOME.promoCtaText) {
+        cta.textContent = HOME.promoCtaText;
+        var link = (HOME.promoCtaLink || '').trim();
+        if (link) {
+          cta.href = link;
+          if (/^https?:/i.test(link)) { cta.target = '_blank'; cta.rel = 'noopener'; }
+        } else {
+          cta.href = '#/shop';
+        }
+        cta.classList.remove('hide');
+      } else {
+        cta.classList.add('hide');
+      }
+    }
+    sec.classList.remove('hide');
+  }
 
   // ---------------------------------------------------------------- payments
   // Which ways of paying to show, and what to say about each. The account
@@ -712,6 +901,7 @@
       mergeMeta();
       applySettings();
       applyShopSettings();
+      applyHomepageSettings();
       applyPaymentSettings();
       applyContactSettings();
       bindWa();                       // rebuild every link with the real numbers
@@ -741,7 +931,7 @@
     if (!WEB) { cb(); return; }
     var base = WEB.SUPABASE_URL.replace(/\/+$/, '');
     var h = { apikey: WEB.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + WEB.SUPABASE_ANON_KEY };
-    var pending = 9;
+    var pending = 10;
     function done() { if (--pending === 0) cb(); }
     fetch(base + '/rest/v1/product_meta?select=*', { headers: h })
       .then(function (r) { return r.ok ? r.json() : []; })
@@ -758,6 +948,10 @@
     fetch(base + '/rest/v1/policies?select=*&order=sort.asc', { headers: h })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (rows) { if (rows && rows.length) POLICIES = rows; })
+      .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.homepage&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) { HOME = (rows && rows[0] && rows[0].data) || null; })
       .catch(function () {}).then(done);
     fetch(base + '/rest/v1/site_settings?key=eq.payments&select=data', { headers: h })
       .then(function (r) { return r.ok ? r.json() : []; })
@@ -805,6 +999,7 @@
         p.videos = asArray(m.videos);
         p.featured = !!m.featured;
         p.is_new = !!m.is_new;
+        p.best_seller = !!m.best_seller;
         p.hidden = !!m.hidden;
         if (m.description) p.customDesc = m.description;
       }
@@ -901,6 +1096,7 @@
   }
   function buildHomeRows() {
     var featured = PRODUCTS.filter(function (p) { return p.featured; }).slice(0, 12);
+    var best = PRODUCTS.filter(function (p) { return p.best_seller; }).slice(0, 12);
     var newArrivals = PRODUCTS.filter(function (p) { return p.is_new; });
     if (!newArrivals.length) newArrivals = PRODUCTS.slice(0, 10); else newArrivals = newArrivals.slice(0, 12);
     var women = rowFor(function (p) { return /women|ladies/i.test(p.category); }, 10);
@@ -909,6 +1105,7 @@
 
     fillRow('row-featured', 'sec-featured', featured, false);
     fillRow('row-new', 'sec-new', newArrivals, true);
+    fillRow('row-best', 'sec-best', best, false);
     fillRow('row-women', 'sec-women', women, false);
     fillRow('row-men', 'sec-men', men, false);
     fillRow('row-acc', 'sec-acc', acc, false);
@@ -1553,13 +1750,12 @@
         if (t && v.t) t.textContent = v.t; if (s && v.s) s.textContent = v.s;
       });
     }
-    if (Array.isArray(c.testimonials)) {
-      $all('#testiGrid .testi').forEach(function (cell, i) {
-        var v = c.testimonials[i]; if (!v) return;
-        var q = cell.querySelector('p'), who = cell.querySelector('.who');
-        if (q && v.quote) q.textContent = v.quote;
-        if (who) who.innerHTML = '<b>' + esc(v.name || '') + '</b>' + (v.city ? ' · ' + esc(v.city) : '');
-      });
+    /* Testimonials used to be written into the grid here and then wiped a
+       moment later, because renderSiteReviews clears it and rebuilds from
+       the reviews customers actually left. They are drawn there now, after
+       the real ones. Settings > Homepage owns them. */
+    if (Array.isArray(c.testimonials) && !HOME_TESTIMONIALS.length) {
+      HOME_TESTIMONIALS = c.testimonials.filter(function (t) { return t && t.quote; });
     }
     /* Moved to Settings > Payments. Still read so a shop that has not
        opened that section keeps the list it already had;
@@ -1771,7 +1967,8 @@
         : '';
     }
     host.innerHTML = '';
-    if (!list.length) {
+    var quotes = HOME_TESTIMONIALS || [];
+    if (!list.length && !quotes.length) {
       host.innerHTML = '<div class="reviews-empty"><p class="serif">No reviews yet</p><p>Be the first to share your experience.</p></div>';
       return;
     }
@@ -1781,6 +1978,22 @@
       d.innerHTML = '<div class="mark serif">&ldquo;</div><p>' + esc(r.comment || '') + '</p>' + starsHtml(r.rating) +
         '<div class="who"><b>' + esc(r.name) + '</b>' + (r.verified ? ' · <span class="verified">Verified</span>' : '') +
         (when ? ' · <span class="when">' + esc(when) + '</span>' : '') + '</div>';
+      host.appendChild(d);
+    });
+
+    /* The shop's own quotes fill whatever room is left. A review someone
+       actually left is worth more than one the shop wrote down, so those
+       come first and these never push one out. */
+    quotes.slice(0, Math.max(0, 6 - Math.min(list.length, 6))).forEach(function (t) {
+      var d = el('div', 'testi reveal');
+      d.innerHTML = '<div class="mark serif">&ldquo;</div><p></p>' +
+        '<div class="who"><b></b></div>';
+      d.querySelector('p').textContent = t.quote || '';
+      var who = d.querySelector('.who b');
+      who.textContent = t.name || '';
+      if (t.city) {
+        d.querySelector('.who').appendChild(document.createTextNode(' \u00b7 ' + t.city));
+      }
       host.appendChild(d);
     });
     observeReveals();

@@ -83,7 +83,7 @@
 <main id="view-home">
 
   <!-- HERO -->
-  <section class="hero" aria-label="Featured">
+  <section class="hero" id="hero" aria-label="Featured">
     <div class="hero-slide active"><div class="bg"></div><div class="photo" id="heroPhoto1"></div><div class="scrim"></div></div>
     <div class="hero-slide"><div class="bg"></div><div class="photo" id="heroPhoto2"></div><div class="scrim"></div></div>
     <div class="hero-slide"><div class="bg"></div><div class="photo" id="heroPhoto3"></div><div class="scrim"></div></div>
@@ -101,7 +101,7 @@
   </section>
 
   <!-- TRUST -->
-  <section class="trust">
+  <section class="trust" id="trustbar">
     <div class="trust-grid">
       <div class="trust-cell"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><div><div class="t">Authentic Pieces</div><div class="s">Curated &amp; quality-checked</div></div></div>
       <div class="trust-cell"><svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg><div><div class="t">Nationwide Delivery</div><div class="s">Across Zambia where possible</div></div></div>
@@ -153,6 +153,20 @@
   </section>
 
   <!-- WOMEN -->
+  <section class="section tight" id="sec-best" style="display:none">
+    <div class="wrap">
+      <div class="row-head reveal">
+        <div><div class="eyebrow">Most loved</div><h2 class="serif">Best Sellers</h2></div>
+        <a class="link-more" data-go-shop>View all</a>
+      </div>
+      <div class="carousel">
+        <button class="car-btn prev" type="button" aria-label="Previous"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <div class="track" id="row-best"></div>
+        <button class="car-btn next" type="button" aria-label="Next"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+      </div>
+    </div>
+  </section>
+
   <section class="section tight" id="sec-women">
     <div class="wrap">
       <div class="row-head reveal">
@@ -168,7 +182,7 @@
   </section>
 
   <!-- EDITORIAL -->
-  <section class="editorial reveal">
+  <section class="editorial reveal" id="philosophy">
     <div class="ed-grid">
       <div class="ed-img" style="background-image:url('images/editorial-1.jpg')"></div>
       <div class="ed-text">
@@ -211,7 +225,16 @@
   </section>
 
   <!-- WHY CHOOSE -->
-  <section class="section why">
+  <section class="promo hide" id="promo">
+    <div class="promo-bg" id="promoBg"></div>
+    <div class="wrap promo-inner">
+      <h2 class="serif" id="promoTitle"></h2>
+      <p id="promoText"></p>
+      <a class="btn btn-gold hide" id="promoCta"></a>
+    </div>
+  </section>
+
+  <section class="section why" id="why">
     <div class="wrap">
       <div class="section-head reveal">
         <div class="eyebrow">Why Vaultique</div>
@@ -240,7 +263,7 @@
   </section>
 
   <!-- CORE VALUES -->
-  <section class="trust" aria-label="Our core values">
+  <section class="trust" id="values-sec" aria-label="Our core values">
     <div class="trust-grid" id="valuesGrid">
       <div class="trust-cell"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.4H22l-6 4.5 2.3 7.1L12 16.6 5.7 21l2.3-7.1-6-4.5h7.6z"/></svg><div><div class="t">Quality First</div><div class="s">Hand-selected, never compromised</div></div></div>
       <div class="trust-cell"><svg viewBox="0 0 24 24"><path d="M20 12l-8 8-8-8a5 5 0 017-7l1 1 1-1a5 5 0 017 7z"/></svg><div><div class="t">Honest Value</div><div class="s">Premium pieces, fair prices</div></div></div>
@@ -336,7 +359,7 @@
   </section>
 
   <!-- WHATSAPP BANNER -->
-  <section class="wa-banner">
+  <section class="wa-banner" id="wabanner">
     <div class="inner reveal">
       <div class="ic"><svg viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg></div>
       <h2 class="serif">Shopping made personal</h2>
@@ -346,7 +369,7 @@
   </section>
 
   <!-- NEWSLETTER -->
-  <section class="section newsletter">
+  <section class="section newsletter" id="newsletter">
     <div class="wrap">
       <div class="nl-inner reveal">
         <div class="eyebrow">Stay in the know</div>
@@ -513,6 +536,7 @@
 <script src="assets/formats.js"></script>
 <script src="assets/theme.js"></script>
 <script src="assets/contact.js"></script>
+<script src="assets/sections.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>

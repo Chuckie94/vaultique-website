@@ -181,6 +181,9 @@
   .list-row{border:1px solid var(--line);border-radius:8px;background:#fff;padding:12px 14px;margin-bottom:10px}
   .list-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
   .list-cap{flex:1 1 auto;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .list-move{flex:0 0 auto;width:26px;height:26px;border:1px solid var(--line);border-radius:6px;background:#fff;font:inherit;font-size:13px;line-height:1;color:var(--navy);cursor:pointer}
+  .list-move:hover:not(:disabled){border-color:var(--gold);color:var(--gold-d)}
+  .list-move:disabled{opacity:.3;cursor:default}
   .list-drop{background:none;border:none;padding:2px 0;font:inherit;font-size:12px;color:var(--err);cursor:pointer}
   .list-drop:hover{text-decoration:underline}
   .list-body .field:last-child{margin-bottom:0}
@@ -251,7 +254,6 @@
       <div class="tab" data-tab="reviews">Reviews</div>
       <div class="tab" data-tab="subscribers">Subscribers</div>
       <div class="tab" data-tab="policies">Policies</div>
-      <div class="tab" data-tab="content">Site Content</div>
       <div class="tab" data-tab="settings">Settings</div>
       <div class="tab" data-tab="activity">Activity Log</div>
     </div>
@@ -266,95 +268,6 @@
         <span class="count" id="prodCount"></span>
       </div>
       <div id="prodList"><p class="count">Loading products…</p></div>
-    </div>
-
-    <!-- CONTENT -->
-    <div id="tab-content" class="hide">
-      <div class="card">
-        <h3>Announcement bar</h3>
-        <input type="text" id="c_announce" placeholder="Top banner text" />
-        <div class="hint">Basic bold allowed with &lt;b&gt;…&lt;/b&gt;.</div>
-      </div>
-
-      <div class="card">
-        <h3>Hero</h3>
-        <div class="field"><label>Eyebrow (small line)</label><input type="text" id="c_hero_eyebrow" /></div>
-        <div class="grid2">
-          <div class="field"><label>Title line 1</label><input type="text" id="c_hero_title" /></div>
-          <div class="field"><label>Title line 2 (gold)</label><input type="text" id="c_hero_titleEm" /></div>
-        </div>
-        <div class="field"><label>Subtitle</label><textarea id="c_hero_sub"></textarea></div>
-        <label>Hero photos (large background)</label>
-        <div class="grid2" id="heroImgs"></div>
-      </div>
-
-      <div class="card">
-        <h3>Our Story</h3>
-        <div class="field"><label>Heading</label><input type="text" id="c_story_heading" /></div>
-        <div class="field"><label>Paragraph 1</label><textarea id="c_story_p1"></textarea></div>
-        <div class="field"><label>Paragraph 2</label><textarea id="c_story_p2"></textarea></div>
-      </div>
-
-      <div class="card">
-        <h3>Core values</h3>
-        <div id="valuesEdit"></div>
-      </div>
-
-      <div class="card">
-        <h3>Testimonials</h3>
-        <div id="testiEdit"></div>
-      </div>
-
-      <div class="card">
-        <h3>Contact &amp; details</h3>
-        <p class="moved">WhatsApp numbers, email addresses and social media now live in
-          <button type="button" class="goContact">Settings &rsaquo; Contact &amp; Social</button>,
-          together with the messages WhatsApp pre-fills.</p>
-        <div class="field"><label>Support hours</label>
-          <p class="moved">Trading hours now live in
-            <button type="button" class="goGeneral">Settings &rsaquo; General</button>,
-            where each day has its own opening and closing time.</p>
-        </div>
-        <div class="field"><label>Payment methods</label>
-          <p class="moved">Payment methods now live in
-            <button type="button" class="goPayments">Settings &rsaquo; Payments</button>,
-            where each one carries its own wording, instructions and account details.</p>
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>Customer care</h3>
-        <div class="field"><label>Size &amp; style advice — title</label><input type="text" id="c_care_sizeTitle" /></div>
-        <div class="field"><label>Size &amp; style advice — text</label><textarea id="c_care_sizeBody" rows="4"></textarea></div>
-        <div class="field"><label>Deliveries — title</label><input type="text" id="c_care_deliveryTitle" /></div>
-        <div class="field"><label>Deliveries — text (use new lines for steps)</label><textarea id="c_care_deliveryBody" rows="5"></textarea></div>
-        <div class="field"><label>Exchanges &amp; returns — title</label><input type="text" id="c_care_returnsTitle" /></div>
-        <div class="field"><label>Exchanges &amp; returns — text (use new lines for steps)</label><textarea id="c_care_returnsBody" rows="5"></textarea></div>
-      </div>
-
-      <div class="card">
-        <h3>Rewards programme</h3>
-        <div class="field"><label>Title</label><input type="text" id="c_rewards_title" /></div>
-        <div class="field"><label>Text</label><textarea id="c_rewards_body" rows="4"></textarea></div>
-      </div>
-
-      <div class="card">
-        <h3>Lookbook photos</h3>
-        <div class="hint" style="margin-bottom:8px">Six square images for the homepage lookbook.</div>
-        <div class="grid2" id="lookImgs"></div>
-      </div>
-
-      <div class="card">
-        <h3>Footer tagline</h3>
-        <p class="moved">The tagline now lives in
-          <button type="button" class="goGeneral">Settings &rsaquo; General</button>,
-          so the same words are not kept in two places.</p>
-      </div>
-
-      <div class="save-bar">
-        <button class="btn btn-gold" id="saveContent">Save content</button>
-        <span class="stat" id="contentStat"></span>
-      </div>
     </div>
 
     <!-- REVIEWS -->
@@ -408,6 +321,7 @@
 <script src="assets/formats.js"></script>
 <script src="assets/theme.js"></script>
 <script src="assets/contact.js"></script>
+<script src="assets/sections.js"></script>
 <script src="assets/admin/registry.js"></script>
 <script src="assets/admin/settings-store.js"></script>
 <script src="assets/admin/settings-ui.js"></script>
@@ -448,7 +362,6 @@
   window.VBP_ADMIN.sb = sb;
   var metaMap = {};       // sku -> meta row
   var products = [];      // POS products
-  var contentData = {};   // site content
 
   // ---------- auth ----------
   sb.auth.getSession().then(function (res) {
@@ -470,14 +383,14 @@
   function enterAdmin() {
     show('topbar', true); show('admin', true);
     adminReady = true;
-    loadProducts(); loadContent();
+    loadProducts();
     applyRoute();
   }
 
   // ---------- navigation ----------
   // Routes are hash based: #/policies, #/settings, #/settings/general.
   // With no hash the admin opens on Products & Photos, as it always has.
-  var TABS = ['dashboard', 'products', 'reviews', 'subscribers', 'policies', 'content', 'settings', 'activity'];
+  var TABS = ['dashboard', 'products', 'reviews', 'subscribers', 'policies', 'settings', 'activity'];
   var pageCtx = null;
   var setIndexBuilt = false;
 
@@ -790,6 +703,9 @@
     var flags = document.createElement('div'); flags.className = 'row';
     flags.appendChild(checkbox('Featured', !!m.featured, function (v) { m.featured = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
     flags.appendChild(checkbox('New', !!m.is_new, function (v) { m.is_new = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
+    /* The POS knows what sells; the feed deliberately does not carry it, so
+       Best Seller is a choice made here rather than a number decided there. */
+    flags.appendChild(checkbox('Best seller', !!m.best_seller, function (v) { m.best_seller = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
     flags.appendChild(checkbox('Hide from site', !!m.hidden, function (v) { m.hidden = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
     var flagStat = document.createElement('span'); flagStat.className = 'stat';
     flags.appendChild(flagStat);
@@ -821,136 +737,12 @@
   }
   $('prodSearch').addEventListener('input', renderProducts);
 
-  // ---------- content ----------
-  function loadContent() {
-    sb.from('site_content').select('data').eq('id', 1).maybeSingle().then(function (r) {
-      contentData = (r.data && r.data.data) || {};
-      fillContentForm();
-    });
-  }
-  function val(id) { return $(id).value.trim(); }
-  function fillContentForm() {
-    var c = contentData;
-    $('c_announce').value = c.announce || '';
-    var h = c.hero || {};
-    $('c_hero_eyebrow').value = h.eyebrow || '';
-    $('c_hero_title').value = h.title || '';
-    $('c_hero_titleEm').value = h.titleEm || '';
-    $('c_hero_sub').value = h.subtitle || '';
-    buildHeroImgs(h.images || []);
-    var s = c.story || {};
-    $('c_story_heading').value = s.heading || '';
-    $('c_story_p1').value = s.p1 || '';
-    $('c_story_p2').value = s.p2 || '';
-    buildValues(c.values || []);
-    buildTesti(c.testimonials || []);
-    var care = c.care || {};
-    $('c_care_sizeTitle').value = care.sizeTitle || '';
-    $('c_care_sizeBody').value = care.sizeBody || '';
-    $('c_care_deliveryTitle').value = care.deliveryTitle || '';
-    $('c_care_deliveryBody').value = care.deliveryBody || '';
-    $('c_care_returnsTitle').value = care.returnsTitle || '';
-    $('c_care_returnsBody').value = care.returnsBody || '';
-    var rw = c.rewards || {};
-    $('c_rewards_title').value = rw.title || '';
-    $('c_rewards_body').value = rw.body || '';
-    buildLookImgs(c.lookImages || []);
-  }
-  var lookImgUrls = ['', '', '', '', '', ''];
-  function buildLookImgs(arr) {
-    lookImgUrls = [];
-    for (var k = 0; k < 6; k++) lookImgUrls.push(arr[k] || '');
-    var host = $('lookImgs'); host.innerHTML = '';
-    for (var i = 0; i < 6; i++) (function (i) {
-      var box = document.createElement('div'); box.className = 'field';
-      var lbl = document.createElement('label'); lbl.textContent = 'Photo ' + (i + 1);
-      var prev = document.createElement('div'); prev.style.cssText = 'height:70px;border-radius:6px;border:1px solid var(--line);background:#0B1F3A center/cover no-repeat;margin-bottom:6px';
-      if (lookImgUrls[i]) prev.style.backgroundImage = "url('" + lookImgUrls[i] + "')";
-      var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.className = 'file';
-      var st = document.createElement('span'); st.className = 'stat';
-      inp.addEventListener('change', function () {
-        if (!inp.files[0]) return; st.textContent = 'Uploading…'; st.className = 'stat busy';
-        uploadImage(inp.files[0], 'look/l' + (i + 1)).then(function (url) {
-          lookImgUrls[i] = url; prev.style.backgroundImage = "url('" + url + "')"; st.textContent = 'Uploaded (remember to Save)'; st.className = 'stat ok';
-        }).catch(function () { st.textContent = 'Error'; st.className = 'stat err'; });
-      });
-      box.appendChild(lbl); box.appendChild(prev); box.appendChild(inp); box.appendChild(st); host.appendChild(box);
-    })(i);
-  }
-  var heroImgUrls = ['', '', ''];
-  function buildHeroImgs(arr) {
-    heroImgUrls = [arr[0] || '', arr[1] || '', arr[2] || ''];
-    var host = $('heroImgs'); host.innerHTML = '';
-    for (var i = 0; i < 3; i++) (function (i) {
-      var box = document.createElement('div'); box.className = 'field';
-      var lbl = document.createElement('label'); lbl.textContent = 'Photo ' + (i + 1);
-      var prev = document.createElement('div'); prev.style.cssText = 'height:70px;border-radius:6px;border:1px solid var(--line);background:#0B1F3A center/cover no-repeat;margin-bottom:6px';
-      if (heroImgUrls[i]) prev.style.backgroundImage = "url('" + heroImgUrls[i] + "')";
-      var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.className = 'file';
-      var st = document.createElement('span'); st.className = 'stat';
-      inp.addEventListener('change', function () {
-        if (!inp.files[0]) return; st.textContent = 'Uploading…'; st.className = 'stat busy';
-        uploadImage(inp.files[0], 'hero/h' + (i + 1)).then(function (url) {
-          heroImgUrls[i] = url; prev.style.backgroundImage = "url('" + url + "')"; st.textContent = 'Uploaded (remember to Save)'; st.className = 'stat ok';
-        }).catch(function (e) { st.textContent = 'Error'; st.className = 'stat err'; });
-      });
-      box.appendChild(lbl); box.appendChild(prev); box.appendChild(inp); box.appendChild(st); host.appendChild(box);
-    })(i);
-  }
-  function buildValues(arr) {
-    var host = $('valuesEdit'); host.innerHTML = '';
-    for (var i = 0; i < 4; i++) (function (i) {
-      var v = arr[i] || {};
-      var d = document.createElement('div'); d.className = 'grid2'; d.style.marginBottom = '8px';
-      d.innerHTML = '<div class="field"><label>Value ' + (i + 1) + ' title</label><input type="text" id="val_t_' + i + '"></div>' +
-        '<div class="field"><label>Subtitle</label><input type="text" id="val_s_' + i + '"></div>';
-      host.appendChild(d);
-      $('val_t_' + i).value = v.t || ''; $('val_s_' + i).value = v.s || '';
-    })(i);
-  }
-  function buildTesti(arr) {
-    var host = $('testiEdit'); host.innerHTML = '';
-    for (var i = 0; i < 3; i++) (function (i) {
-      var v = arr[i] || {};
-      var d = document.createElement('div'); d.style.cssText = 'border-top:1px solid var(--line);padding-top:10px;margin-bottom:8px';
-      d.innerHTML = '<div class="field"><label>Quote ' + (i + 1) + '</label><textarea id="t_q_' + i + '"></textarea></div>' +
-        '<div class="grid2"><div class="field"><label>Name</label><input type="text" id="t_n_' + i + '"></div>' +
-        '<div class="field"><label>City</label><input type="text" id="t_c_' + i + '"></div></div>';
-      host.appendChild(d);
-      $('t_q_' + i).value = v.quote || ''; $('t_n_' + i).value = v.name || ''; $('t_c_' + i).value = v.city || '';
-    })(i);
-  }
-  $('saveContent').addEventListener('click', function () {
-    var c = {};
-    c.announce = val('c_announce');
-    c.hero = { eyebrow: val('c_hero_eyebrow'), title: val('c_hero_title'), titleEm: val('c_hero_titleEm'), subtitle: val('c_hero_sub'), images: heroImgUrls.filter(Boolean) };
-    c.story = { heading: val('c_story_heading'), p1: val('c_story_p1'), p2: val('c_story_p2') };
-    c.values = []; for (var i = 0; i < 4; i++) { var t = val('val_t_' + i), s = val('val_s_' + i); if (t || s) c.values.push({ t: t, s: s }); }
-    c.testimonials = []; for (var j = 0; j < 3; j++) { var q = val('t_q_' + j); if (q) c.testimonials.push({ quote: q, name: val('t_n_' + j), city: val('t_c_' + j) }); }
-    c.care = {
-      sizeTitle: val('c_care_sizeTitle'), sizeBody: $('c_care_sizeBody').value.trim(),
-      deliveryTitle: val('c_care_deliveryTitle'), deliveryBody: $('c_care_deliveryBody').value.trim(),
-      returnsTitle: val('c_care_returnsTitle'), returnsBody: $('c_care_returnsBody').value.trim()
-    };
-    c.rewards = { title: val('c_rewards_title'), body: $('c_rewards_body').value.trim() };
-    c.lookImages = lookImgUrls.filter(Boolean);
-    contentData = c;
-    var st = $('contentStat'); st.textContent = 'Saving…'; st.className = 'stat busy';
-    sb.from('site_content').upsert({ id: 1, data: c, updated_at: new Date().toISOString() }, { onConflict: 'id' }).then(function (r) {
-      if (r.error) { st.textContent = 'Error: ' + r.error.message; st.className = 'stat err'; return; }
-      st.textContent = 'Saved ✓ — changes appear on the site within ~1 minute'; st.className = 'stat ok';
-    });
-  });
-
-  Array.prototype.forEach.call(document.querySelectorAll('.goGeneral'), function (b) {
-    b.addEventListener('click', function () { navigate('settings', 'general'); });
-  });
-  Array.prototype.forEach.call(document.querySelectorAll('.goContact'), function (b) {
-    b.addEventListener('click', function () { navigate('settings', 'contact'); });
-  });
-  Array.prototype.forEach.call(document.querySelectorAll('.goPayments'), function (b) {
-    b.addEventListener('click', function () { navigate('settings', 'payments'); });
-  });
+  /* Site Content has been retired. Everything it held now lives in
+     Settings: the homepage in Settings > Homepage, contact details in
+     Contact & Social, payment methods in Payments, the tagline and hours
+     in General. The site_content row is left exactly as it is, so the
+     storefront keeps reading it as a fallback for a shop that has not
+     opened those sections yet. */
 
   // ---------- reviews ----------
   function loadReviews() {
