@@ -188,17 +188,31 @@ async function shop(browser, contact, general) {
     });
 
     // The count is here to catch links quietly losing their wiring; it moves
-    // whenever the page gains one, as it did when How to pay was added.
-    ok('all ten order links point at the order number',
-       links.wa.length === 10 && links.wa.every(l => l.href.indexOf('https://wa.me/260978323036') === 0),
+    // whenever the page gains or loses one, as it did when the customer
+    // care panels moved to the enquiry number.
+    ok('every order link points at the order number',
+       links.wa.length > 0 && links.wa.every(l => l.href.indexOf('https://wa.me/260978323036') === 0),
        [links.wa.length, links.wa[0] && links.wa[0].href]);
+    ok('and there are six of them', links.wa.length === 6, links.wa.length);
     ok('both enquiry links point at the enquiry number',
        links.enq.length === 2 && links.enq.every(l => l.href.indexOf('https://wa.me/260963539728') === 0),
        [links.enq.length, links.enq[0] && links.enq[0].href]);
     ok('each order link keeps its own reason',
-       links.wa.some(l => decodeURIComponent(l.href).includes('size and style advice')) &&
        links.wa.some(l => decodeURIComponent(l.href).includes('place an order')),
        links.wa.map(l => decodeURIComponent(l.href).split('text=')[1]).slice(0, 3));
+
+    /* A question about sizing or returns is an enquiry, not an order.
+       Contact & Social separates the two numbers on purpose — "the one
+       they message from is not always the one to call about a delivery" —
+       so the help panels ask on the enquiry number rather than
+       interrupting whoever is taking orders. */
+    const care = await page.$$eval('#careGrid .care-wa', a => a.map(e => e.href));
+    ok('the help panels ask on the enquiry number',
+       care.length > 0 && care.every(h => h.indexOf('https://wa.me/260963539728') === 0),
+       care.slice(0, 2));
+    ok('and each still carries its own question',
+       care.some(h => decodeURIComponent(h).includes('size and style advice')),
+       care.map(h => decodeURIComponent(h).split('text=')[1]));
     ok('and the business name in front of it',
        links.wa.every(l => decodeURIComponent(l.href).includes('Hello Vaultique Boutique Point,')),
        decodeURIComponent(links.wa[0].href));

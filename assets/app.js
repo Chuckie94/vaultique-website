@@ -86,10 +86,24 @@
   var MONEY = null;                 // the shop's money style, built once per load
   var ACCT = window.VBP_ACCOUNT || null;
   var SEO = window.VBP_SEO || null;
+  var CARE = window.VBP_CARE || null;
+  // Settings > Customer Care. An empty card list means the four the site
+  // came with, so a shop that has never opened the section keeps them.
+  var CARESET = {
+    careEnabled: true,
+    careEyebrow: 'Here to help',
+    careHeading: 'Size, delivery & returns',
+    careSub: 'Everything you need to shop with confidence. Still unsure? Message us any time.',
+    cards: [],
+    faqEnabled: false, faqEyebrow: 'Questions', faqHeading: 'Frequently asked',
+    faqSub: '', faqs: [], faqAskEnabled: true,
+    faqAskText: 'Still not sure? Ask us on WhatsApp'
+  };
   // Settings > SEO. Empty by default: with nothing saved, every page falls
   // back to General's name and description, which is what it did before.
   var SEOSET = {
-    title: '', description: '', keywords: '', canonicalBase: '',
+    title: '', description: '', keywords: '',
+    canonicalBase: 'https://vaultiqueboutique.com',
     ogTitle: '', ogDescription: '',
     googleVerification: '', bingVerification: '',
     sitemapEnabled: true, indexing: 'index', robotsExtra: '',
@@ -793,6 +807,170 @@
     if (ACCT) ACCT.render($('#accountBody'));
   }
 
+  /* ---- the help panels and the FAQ -----------------------------------
+     Three of the four panels used to have their wording written into
+     index.html, where nobody could edit them; the fourth was already
+     filled from Settings > Payments. All four are settings now, and a
+     panel can still borrow its answer from the section that owns it
+     rather than repeating it here. */
+
+  function applyCare() {
+    drawCare();
+    drawFaq();
+  }
+
+  function careSource(card) {
+    /* A borrowing panel takes the lines the owning section already
+       produces. Its own words are the fallback, so a panel set to borrow
+       from a section that has nothing to say is not left blank. */
+    if (card.source === 'delivery') {
+      var d = deliveryLines().concat(pickupLines());
+      if (d.length) return d;
+    }
+    if (card.source === 'payments') {
+      var told = (payMethods() || []).filter(function (m) { return m.instructions; });
+      if (told.length) {
+        return told.map(function (m) { return m.name + ': ' + m.instructions; });
+      }
+    }
+    return String(card.body || '').split(/\n+/).filter(function (t) { return t.trim(); });
+  }
+
+  function policyHref(title) {
+    if (!title || !SEO) return '';
+    var found = (POLICIES || []).filter(function (p) {
+      return p && p.title === title;
+    })[0];
+    if (!found) return '';
+    return pathFor('policies/' + SEO.slug(found.title));
+  }
+
+  function drawCare() {
+    var sec = $('#care'), grid = $('#careGrid');
+    if (!sec || !grid) return;
+
+    if (CARESET.careEnabled === false) { sec.classList.add('hide'); return; }
+
+    var list = CARE ? CARE.cards(CARESET.cards) : (CARESET.cards || []);
+    grid.innerHTML = '';
+
+    var drawn = 0;
+    list.forEach(function (card, i) {
+      var lines = careSource(card);
+      /* A panel with nothing to say is worse than one fewer panel. */
+      if (!lines.length) return;
+      drawn++;
+
+      var cell = el('div', 'care-card reveal d' + ((i % 3) + 1));
+      var ic = el('div', 'ic');
+      ic.innerHTML = CARE ? CARE.icon(card.icon) : '';
+      cell.appendChild(ic);
+
+      var h = el('h3', 'serif');
+      h.textContent = card.title || '';
+      cell.appendChild(h);
+
+      var body = el('div', 'care-body');
+      body.textContent = lines.join('\n');
+      cell.appendChild(body);
+
+      var href = policyHref(card.policy);
+      if (href) {
+        var more = el('a', 'care-policy');
+        more.href = href;
+        more.textContent = 'Read the full policy';
+        cell.appendChild(more);
+      }
+
+      if (card.ask) {
+        var wa = el('a', 'btn btn-wa care-wa');
+        wa.href = waUrl(enquiryNumber(), waSay(card.ask));
+        wa.target = '_blank'; wa.rel = 'noopener';
+        wa.textContent = 'Ask on WhatsApp';
+        cell.appendChild(wa);
+      }
+      grid.appendChild(cell);
+    });
+
+    setText('#careEyebrow', CARESET.careEyebrow);
+    setText('#careHeading', CARESET.careHeading);
+    var sub = $('#careSub');
+    if (sub) {
+      sub.textContent = CARESET.careSub || '';
+      sub.classList[CARESET.careSub ? 'remove' : 'add']('hide');
+    }
+    sec.classList[drawn ? 'remove' : 'add']('hide');
+  }
+
+  function drawFaq() {
+    var sec = $('#faq'), host = $('#faqList');
+    if (!sec || !host) return;
+
+    var qs = (CARESET.faqs || []).filter(function (f) { return f && f.q && f.a; });
+    /* Switched on with nothing written is an empty heading, so the
+       questions decide rather than the switch. */
+    if (!CARESET.faqEnabled || !qs.length) { sec.classList.add('hide'); return; }
+
+    setText('#faqEyebrow', CARESET.faqEyebrow);
+    setText('#faqHeading', CARESET.faqHeading);
+    var sub = $('#faqSub');
+    if (sub) {
+      sub.textContent = CARESET.faqSub || '';
+      sub.classList[CARESET.faqSub ? 'remove' : 'add']('hide');
+    }
+
+    host.innerHTML = '';
+    qs.forEach(function (f, i) {
+      var item = el('div', 'faq-item');
+      var head = el('button', 'faq-q');
+      head.type = 'button';
+      head.setAttribute('aria-expanded', 'false');
+      head.setAttribute('aria-controls', 'faq-a-' + i);
+      head.innerHTML = '<span></span><span class="pm">+</span>';
+      head.querySelector('span').textContent = f.q;
+
+      var body = el('div', 'faq-a');
+      body.id = 'faq-a-' + i;
+      var inner = el('div', 'inner');
+      inner.textContent = f.a;
+
+      var href = policyHref(f.policy);
+      if (href) {
+        var more = el('a', 'care-policy');
+        more.href = href;
+        more.textContent = 'Read the full policy';
+        inner.appendChild(document.createElement('br'));
+        inner.appendChild(more);
+      }
+      body.appendChild(inner);
+
+      head.addEventListener('click', function () {
+        var open = item.classList.toggle('open');
+        head.setAttribute('aria-expanded', open ? 'true' : 'false');
+        head.querySelector('.pm').textContent = open ? '−' : '+';
+      });
+
+      item.appendChild(head); item.appendChild(body);
+      host.appendChild(item);
+    });
+
+    var foot = $('#faqAsk');
+    if (!foot) {
+      foot = el('div', 'faq-foot');
+      foot.id = 'faqAsk';
+      host.parentNode.appendChild(foot);
+    }
+    foot.innerHTML = '';
+    if (CARESET.faqAskEnabled !== false) {
+      var a = el('a', 'btn btn-wa');
+      a.href = waUrl(enquiryNumber(), waSay('I have a question.'));
+      a.target = '_blank'; a.rel = 'noopener';
+      a.innerHTML = waIcon() + (CARESET.faqAskText || 'Ask us on WhatsApp');
+      foot.appendChild(a);
+    }
+    sec.classList.remove('hide');
+  }
+
   function applyLookbook(list) {
     if (!Array.isArray(list)) return;
     for (var i = 0; i < 6; i++) dressTile($('#look' + (i + 1)), list[i]);
@@ -1002,23 +1180,9 @@
       row.classList[list.length ? 'remove' : 'add']('hide');
     }
 
-    /* The How to pay panel only earns its place when there is something
-       to explain, so it stays hidden until a method carries instructions. */
-    var card = $('#payCard'), body = $('#payBody');
-    if (!card || !body) return;
-    var told = list.filter(function (m) { return m.instructions; });
-    if (!told.length) { card.classList.add('hide'); return; }
-
-    body.innerHTML = '';
-    told.forEach(function (m) {
-      var line = el('div', 'pay-way');
-      var nm = el('span', 'pay-way-n');
-      nm.textContent = m.name;
-      line.appendChild(nm);
-      line.appendChild(document.createTextNode(m.instructions));
-      body.appendChild(line);
-    });
-    card.classList.remove('hide');
+    /* The How to pay panel used to be built here. It is a Customer Care
+       panel now, like the other three, and borrows these instructions
+       instead of being a fourth card with its own rules. */
   }
 
   // ---------------------------------------------------------------- ordering
@@ -1570,6 +1734,9 @@
       applyDeliveryBand();
       applyHomepageSettings();
       applyPaymentSettings();
+      /* After Payments and Delivery, because a panel can borrow from
+         either and both have to have spoken first. */
+      applyCare();
       applyContactSettings();
       bindWa();                       // rebuild every link with the real numbers
       bindEmailIg();
@@ -1599,7 +1766,7 @@
     if (!WEB) { cb(); return; }
     var base = WEB.SUPABASE_URL.replace(/\/+$/, '');
     var h = { apikey: WEB.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + WEB.SUPABASE_ANON_KEY };
-    var pending = 14;
+    var pending = 15;
     function done() { if (--pending === 0) cb(); }
     fetch(base + '/rest/v1/product_meta?select=*', { headers: h })
       .then(function (r) { return r.ok ? r.json() : []; })
@@ -1632,6 +1799,18 @@
         if (!d) return;
         for (var k in d) {
           if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) SHOP[k] = d[k];
+        }
+      })
+      .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.customer-care&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) {
+        var d = rows && rows[0] && rows[0].data;
+        if (!d) return;
+        for (var k in d) {
+          if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) {
+            CARESET[k] = d[k];
+          }
         }
       })
       .catch(function () {}).then(done);
@@ -2453,6 +2632,18 @@
       }
       showView('home'); return;
     }
+    if (h === 'faq') {
+      /* The FAQ has its own address so it can be linked to and found, but
+         it lives on the home page: send them there and scroll to it. */
+      showView('home');
+      var f = $('#faq');
+      if (f && !f.classList.contains('hide')) {
+        setTimeout(function () { f.scrollIntoView({ behavior: 'smooth' }); }, 60);
+      } else {
+        window.scrollTo(0, 0);
+      }
+      return;
+    }
     if (h === 'wishlist') {
       mode = 'wishlist'; filterCat = 'All'; searchTerm = '';
       var si = $('#shopSearch'); if (si) si.value = '';
@@ -2700,11 +2891,10 @@
     if (c.waEnquiry) { WA_ENQUIRY = String(c.waEnquiry).replace(/[^0-9]/g, ''); setText('#waEnqNum', c.waEnquiry); }
     if (c.email) EMAIL = c.email;
     if (c.ig) IG_HANDLE = String(c.ig).replace(/^@/, '');
-    if (c.care) {
-      setText('#careSizeTitle', c.care.sizeTitle); setText('#careSizeBody', c.care.sizeBody);
-      setText('#careDeliveryTitle', c.care.deliveryTitle); setText('#careDeliveryBody', c.care.deliveryBody);
-      setText('#careReturnsTitle', c.care.returnsTitle); setText('#careReturnsBody', c.care.returnsBody);
-    }
+    /* The care panels used to be filled from here, and three of them had
+       no other home at all. They are Settings > Customer Care's now, and
+       a shop that has written none of its own still gets the four the
+       site came with. */
     if (c.rewards) { setText('#rewardsTitle', c.rewards.title); setText('#rewardsBody', c.rewards.body); }
     if (Array.isArray(c.lookImages)) {
       for (var li = 0; li < 6; li++) {

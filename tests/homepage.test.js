@@ -414,7 +414,7 @@ async function shop(browser, home, content) {
 
     console.log('\n== the section list ==');
     const rows = await p.$$eval('#f_sections .list-row', e => e.length);
-    ok('every section of the page is listed', rows === 21, rows);
+    ok('every section of the page is listed', rows === 22, rows);
     ok('there is no Add button, since sections are not invented here',
        await p.evaluate(() => document.querySelector('#f_sections')
          .parentNode.querySelector('.list-add').classList.contains('hide')));
@@ -455,7 +455,7 @@ async function shop(browser, home, content) {
     await p.waitForTimeout(400);
     const savedSecs = await p.evaluate(() =>
       window.__saves.filter(s => s.payload.key === 'homepage').pop());
-    ok('the order is stored', savedSecs && savedSecs.payload.data.sections.length === 21,
+    ok('the order is stored', savedSecs && savedSecs.payload.data.sections.length === 22,
        savedSecs && savedSecs.payload.data.sections.length);
     ok('with the section that was switched off',
        savedSecs && savedSecs.payload.data.sections.some(r => r.id === 'lookbook' && r.on === false));

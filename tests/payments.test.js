@@ -124,10 +124,16 @@ const PUBLIC_PAY = {
        JSON.stringify(row) === JSON.stringify(['Cash', 'Bank Transfer', 'Mobile Money']), row);
     ok('and not the ones that are off',
        !row.includes('Card Payment') && !row.includes('Payment on Delivery'), row);
-    ok('the How to pay panel is shown',
-       await page.evaluate(() => !document.querySelector('#payCard').classList.contains('hide')));
-    const told = await page.textContent('#payBody');
-    ok('with the instructions for each', /Pay when you collect/.test(told) &&
+    /* How to pay used to be a card of its own with its own rules. It is a
+       Customer Care panel now, like the other three, and borrows these
+       instructions rather than being built separately. */
+    const told = await page.evaluate(() => {
+      const c = [...document.querySelectorAll('#careGrid .care-card')]
+        .filter(x => /How to pay/.test(x.querySelector('h3').textContent))[0];
+      return c ? c.querySelector('.care-body').textContent : null;
+    });
+    ok('the How to pay panel is shown', told !== null);
+    ok('with the instructions for each', told && /Pay when you collect/.test(told) &&
        /Transfer before dispatch/.test(told), told);
     await ctx.close();
   }
@@ -152,8 +158,11 @@ const PUBLIC_PAY = {
     const row = await page.$$eval('#payRow span', e => e.map(x => x.textContent));
     ok('the old Site Content list still shows, so nothing goes blank',
        JSON.stringify(row) === JSON.stringify(['Old', 'List']), row);
+    /* Nothing saved in Payments means the panel has nothing to explain,
+       and a panel with nothing to say is worse than one fewer panel. */
     ok('and How to pay stays out of the way',
-       await page.evaluate(() => document.querySelector('#payCard').classList.contains('hide')));
+       await page.evaluate(() => ![...document.querySelectorAll('#careGrid .care-card')]
+         .some(x => /How to pay/.test(x.querySelector('h3').textContent))));
     await ctx.close();
   }
 

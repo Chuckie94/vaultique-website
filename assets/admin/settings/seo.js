@@ -53,7 +53,11 @@
     title: '',
     description: '',
     keywords: '',
-    canonicalBase: '',
+    /* Filled in rather than left blank. Without it the canonical address
+       is guessed from whatever the browser happens to be on, so a shop
+       reachable at both www and the bare name looks to Google like two
+       shops carrying the same pages. */
+    canonicalBase: 'https://vaultiqueboutique.com',
 
     ogTitle: '',
     ogDescription: '',
@@ -290,10 +294,27 @@
         var card = document.createElement('div');
         card.className = 'card';
         card.innerHTML = '<h3>The block for index.html</h3>' +
-          '<p class="hint">Copy this into the &lt;head&gt; of index.html, replacing the ' +
-          'title and meta tags already there, then upload. WhatsApp and Facebook read ' +
-          'the file itself, so this is the only way a shared link shows the right ' +
-          'picture and words.</p>';
+          '<div class="seo-how">' +
+          '<p>WhatsApp and Facebook read <b>index.html</b> as it is served and never run ' +
+          'any JavaScript, so this is the only way a shared link shows the right picture ' +
+          'and words. It takes about a minute.</p>' +
+          '<ol>' +
+          '<li>Press <b>Copy the block</b> below.</li>' +
+          '<li>Open <b>index.html</b> in a text editor.</li>' +
+          '<li>Near the top you will see a line reading ' +
+          '<code>&lt;!-- SEO BLOCK — START --&gt;</code> and, a few lines down, ' +
+          '<code>&lt;!-- SEO BLOCK — END --&gt;</code>.</li>' +
+          '<li><b>Delete everything between those two lines</b> and paste in its place. ' +
+          'Leave the two marker lines where they are.</li>' +
+          '<li>Save the file and upload it.</li>' +
+          '</ol>' +
+          '<p class="seo-how-note">Nothing above or below the markers needs to change. ' +
+          'The charset, the icon and the fonts are not SEO tags, and this block does not ' +
+          'replace them. If your index.html has no markers, it is from before they were ' +
+          'added: delete the <code>&lt;title&gt;</code> line, the ' +
+          '<code>description</code> line and the three <code>og:</code> lines, and paste ' +
+          'where they were.</p>' +
+          '</div>';
 
         snip = document.createElement('pre');
         snip.className = 'seo-snip';

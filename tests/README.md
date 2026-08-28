@@ -18,6 +18,7 @@ here touches Supabase, the POS, or the live site.
     node tests/delivery.test.js      # Settings > Delivery & Collection, and the checkout
     node tests/account.test.js       # Settings > Customer Accounts, and the database rules
     node tests/seo.test.js           # Settings > SEO, and the real addresses under it
+    node tests/care.test.js          # Settings > Customer Care, the FAQ, and the policies
 
 `general.test.js` also drops two screenshots next to itself.
 

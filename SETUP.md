@@ -234,6 +234,59 @@ figures, so this is your choice rather than a number's.
 homepage here, contact details in Contact & Social, payment methods in Payments,
 the tagline and trading hours in General.
 
+### Settings > Customer Care
+
+The help panels on the home page, and the questions customers ask before they
+buy.
+
+> **Most of what you would expect here is already set, elsewhere — on purpose.**
+> Support email, phone and WhatsApp are in **Contact & Social**, along with
+> support hours, which the site already shows beside your trading hours.
+> Delivery information is in **Delivery & Collection**, payment information in
+> **Payments**. And all seven policies — Privacy, Terms, Return, Exchange,
+> Delivery, Cancellation and Payment — were **already written** in the Policies
+> tab, along with fifty-seven more. Nothing here repeats any of it.
+
+#### The help panels
+
+Your home page shows four. **Three of them had their wording written into the
+site itself and could not be edited from anywhere** — that was the real gap this
+section fills.
+
+They are a list now: add, remove, reorder, retitle, choose an icon. Opening the
+section shows the four you already have, filled in and ready to change. Remove
+them all and the site falls back to exactly those four rather than showing an
+empty band.
+
+**A panel can borrow its answer** from the section that owns it. Set *Where the
+answer comes from* to Delivery and the panel shows your real areas, fees and
+collection address; set it to Payments and it lists your real methods and
+instructions — which is how the How to pay panel already worked. Change a
+delivery fee once, in Delivery, and the panel follows.
+
+**Each panel can link to a policy**, chosen by name from the ones you actually
+have. A Returns panel offers *Read the full policy* under it, so the short answer
+and the long one finally point at each other. A panel naming a policy you later
+delete simply stops offering the link rather than sending anyone nowhere.
+
+#### The FAQ
+
+Questions that open when tapped, at their own address `/faq`, and placeable in
+the Homepage section list like any other band.
+
+Each answer can link to a policy too. At the end there is a WhatsApp button,
+because a question you have not answered is the one somebody needs answered.
+
+It stays hidden until you have written at least one question, whatever the
+switch says — a heading over nothing helps no one.
+
+#### The policies themselves
+
+They stay in the **Policies tab**. They are long documents rather than settings,
+and a settings page cannot be a better editor for sixty-four of them than the tab
+built for exactly that. What is new is that a panel or a question can now point
+at one.
+
 ### Settings > SEO
 
 How the shop describes itself to search engines, and to whoever sees a link

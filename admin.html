@@ -93,6 +93,14 @@
   /* the delivery preview: what a customer will actually read */
   /* SEO: the block to paste, and what a result and a shared card look
      like — a length in characters says less than seeing it cut off */
+  /* the paste instructions: a numbered list beats a paragraph when
+     somebody is about to edit a file they have never opened */
+  .seo-how{background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:14px}
+  .seo-how p{font-size:13px;color:var(--ink);line-height:1.65}
+  .seo-how ol{margin:10px 0 0 18px;padding:0}
+  .seo-how li{font-size:13px;color:var(--ink);line-height:1.75;margin-bottom:5px}
+  .seo-how code{background:var(--navy);color:#dfe6f0;padding:1px 6px;border-radius:4px;font-size:11.5px;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .seo-how-note{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);color:var(--muted)!important;font-size:12.5px!important}
   .seo-snip{background:var(--navy);color:#dfe6f0;border-radius:8px;padding:14px;font-size:11.5px;line-height:1.7;overflow-x:auto;white-space:pre;font-family:ui-monospace,Menlo,Consolas,monospace}
   .seo-drift{font-size:12.5px;line-height:1.6;margin-top:10px;padding:9px 12px;border-radius:6px}
   .seo-drift:empty{display:none}
@@ -406,6 +414,7 @@
 <script src="assets/theme.js"></script>
 <script src="assets/contact.js"></script>
 <script src="assets/sections.js"></script>
+<script src="assets/care.js"></script>
 <script src="assets/seo.js"></script>
 <script src="assets/admin/registry.js"></script>
 <script src="assets/admin/settings-store.js"></script>

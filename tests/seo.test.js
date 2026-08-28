@@ -132,6 +132,37 @@ console.log('\n== the tags ==');
        { general: {}, seo: {} }))));
 }
 
+/* The block is pasted by hand, so where it goes has to be unmistakable
+   in the file itself rather than something to work out from a sentence. */
+console.log('\n== the paste is marked out in the file ==');
+{
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const start = html.indexOf('SEO BLOCK — START');
+  const end = html.indexOf('SEO BLOCK — END');
+  ok('index.html marks where the block goes', start > -1 && end > start, [start, end]);
+
+  const between = html.slice(start, end);
+  ok('the title is inside the markers', /<title>/.test(between));
+  ok('so is the description', /name="description"/.test(between));
+  ok('and the Open Graph tags', /property="og:title"/.test(between));
+
+  /* Everything else must stay put: the block does not replace them, and
+     a shop deleting them would lose its icon and its fonts. */
+  const before = html.slice(0, start);
+  ok('the charset stays above', /charset=/.test(before));
+  ok('so does the icon', /rel="icon"/.test(before));
+  const after = html.slice(end);
+  ok('and the fonts and stylesheet stay below',
+     /fonts\.googleapis/.test(after) && /styles\.css/.test(after));
+
+  const admin = fs.readFileSync(path.join(ROOT, 'assets/admin/settings/seo.js'), 'utf8');
+  ok('the admin points at those markers by name', /SEO BLOCK — START/.test(admin));
+  ok('and says to leave them in place', /Leave the two marker lines/.test(admin));
+  /* Somebody upgrading from an older index.html has no markers. */
+  ok('with instructions for a file that has none',
+     /has no markers/.test(admin), 'no fallback instructions');
+}
+
 console.log('\n== the sharing image has one home ==');
 {
   const seoAdmin = fs.readFileSync(path.join(ROOT, 'assets/admin/settings/seo.js'), 'utf8');
