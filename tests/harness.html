@@ -1,0 +1,43 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>kit test</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- the admin stylesheet is injected by the test run --></head><body>
+<div class="wrap"><div class="crumb"><button>‹ Settings</button></div><div class="page-head"><h2>General</h2><p>Business name, branch details, trading hours, currency and time zone.</p></div><div id="host" class="page-body"></div></div>
+<script>
+/* stand-in for supabase-js: one in-memory table */
+window.__rows = {};
+window.__saves = [];
+function tbl(name){
+  var q = { _name:name, _key:null, _val:null };
+  q.select=function(){return q;};
+  q.eq=function(col,v){q._key=col;q._val=v;return q;};
+  q.maybeSingle=function(){
+    var row = window.__rows[name+':'+q._val] || null;
+    return Promise.resolve({ data: row ? JSON.parse(JSON.stringify(row)) : null, error: null });
+  };
+  q.upsert=function(payload){
+    var id = payload.key !== undefined ? payload.key : payload.id;
+    window.__rows[name+':'+id] = JSON.parse(JSON.stringify({ data: payload.data }));
+    window.__saves.push({ table:name, payload:payload });
+    return Promise.resolve({ data:null, error:null });
+  };
+  q.then=function(f){return Promise.resolve({data:null,error:null}).then(f);};
+  return q;
+}
+window.VBP_ADMIN = { sb: { from: tbl } };
+</script>
+<script src="../assets/formats.js"></script>
+<script src="../assets/admin/registry.js"></script>
+<script src="../assets/admin/settings-store.js"></script>
+<script src="../assets/admin/settings-ui.js"></script>
+<script src="../assets/admin/settings/general.js"></script>
+<script>
+window.__ready = new Promise(function(res){
+  var A = window.VBP_ADMIN;
+  var def = A.setting('general');
+  window.__def = def;
+  var ctx = { sb:A.sb, cfg:{}, esc:function(x){return x;}, navigate:function(){}, ui:A.ui, store:A.store };
+  def.render(document.getElementById('host'), ctx);
+  setTimeout(res, 300);
+});
+</script>
+</body></html>

@@ -452,7 +452,10 @@
       setImage(doc, '.mm-logo', b.logoMobile || b.logoMain);
       setImage(doc, '.foot-logo', b.logoFooter || b.logoMain);
       setLink(doc, 'icon', b.favicon);
-      setMeta(doc, 'og:image', b.socialImage);
+      /* og:image used to be written here. It is Settings > SEO's now,
+         along with every other tag in the head, so there is one writer
+         rather than two taking turns. The picture itself is still
+         Branding's — SEO reads socialImage rather than asking again. */
     }
 
     /* Custom CSS is written by the shop owner and applies to the

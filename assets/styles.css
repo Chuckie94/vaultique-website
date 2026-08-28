@@ -90,6 +90,20 @@
   --btn-radius:2px;
   --navy-on:#ffffff;
 }
+/* The one rule the whole site leans on.
+
+   index.html ships elements already carrying `hide` — the promotional
+   banner, the empty phone row, the delivery band — and app.js adds and
+   removes it in dozens of places. There was no rule behind it, so none of
+   them were ever hidden: a shop with the promo band switched off still
+   showed the band, and an empty Phone row sat under the address.
+
+   !important because the class has to beat whatever the element already
+   is. `.section.tight` is two classes and would otherwise outrank a
+   single-class utility, and a thing asked to be hidden should be hidden
+   whatever else it is. */
+.hide{display:none !important}
+
 
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
@@ -268,7 +282,12 @@ header.site.solid .brand .v{color:var(--navy)}
 .col-card{position:relative;aspect-ratio:3/4;overflow:hidden;border-radius:var(--radius-md);background:var(--navy);cursor:pointer;display:block}
 .col-card.tall{grid-row:span 2;aspect-ratio:auto}
 .col-card .ph{position:absolute;inset:0;background-size:cover;background-position:center;transition:transform 1s var(--ease)}
-.col-card .ph.fallback{background:linear-gradient(150deg,var(--navy-3),var(--navy-2));}
+/* background-image, not the `background` shorthand: the shorthand also
+   resets size, position and repeat, so a photo set on a tile that still
+   carries this class would render at natural size in the corner. The class
+   is meant to be removed when a photo arrives, but the stylesheet should
+   not punish forgetting. */
+.col-card .ph.fallback{background-image:linear-gradient(150deg,var(--navy-3),var(--navy-2))}
 .col-card:hover .ph{transform:scale(1.07)}
 .col-card .ov{position:absolute;inset:0;background:linear-gradient(180deg,rgba(var(--navy-3-rgb),.1),rgba(var(--navy-3-rgb),.7));display:flex;flex-direction:column;justify-content:flex-end;padding:26px;color:#fff}
 .col-card .ov .k{font-size:10.5px;letter-spacing:.3em;text-transform:uppercase;color:var(--gold-2)}
@@ -305,6 +324,10 @@ header.site.solid .brand .v{color:var(--navy)}
 .card .badges{position:absolute;top:12px;left:12px;display:flex;flex-direction:column;gap:6px;z-index:2}
 .tag{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;padding:5px 10px;border-radius:var(--radius-2xl);font-weight:500;backdrop-filter:blur(4px)}
 .tag.new{background:var(--accent);color:var(--accent-on)}
+/* A reduced piece wears the same colour as a new one: the theme engine
+   already guarantees --accent-on reads against --accent in every palette,
+   and the two badges say different words. The ring separates them. */
+.tag.sale{background:var(--accent);color:var(--accent-on);font-weight:700;box-shadow:inset 0 0 0 1px var(--accent-strong)}
 .tag.stock{background:rgba(var(--navy-rgb),.84);color:var(--gold-2)}
 .tag.out{background:rgba(60,60,60,.8);color:#eee}
 .wish{position:absolute;top:12px;right:12px;z-index:2;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.9);border:none;display:flex;align-items:center;justify-content:center;color:var(--navy);transition:.25s;opacity:0;transform:translateY(-6px)}
@@ -364,6 +387,18 @@ header.site.solid .brand .v{color:var(--navy)}
 .detail-info h1{font-family:var(--font-head);font-weight:600;font-size:clamp(30px,4.6vw,50px);color:var(--navy);line-height:1.06;margin:8px 0 12px}
 .detail-price{font-family:var(--font-head);font-size:32px;font-weight:600;color:var(--navy)}
 .detail-vat{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+/* Prices that have come down. --accent-strong is the theme's darkened
+   accent, already used for every other small piece of emphasis on a pale
+   ground, so the percentage stays readable whatever the palette. */
+.px-was{font-size:.62em;font-weight:400;color:var(--muted);text-decoration:line-through;margin-left:.4em;white-space:nowrap}
+.px-off{font-size:.5em;font-weight:600;letter-spacing:.1em;color:var(--accent-strong);margin-left:.5em;white-space:nowrap;vertical-align:middle}
+.card-info .p .px-was{font-size:14px}
+.card-info .p .px-off{font-size:11px}
+.detail-price .px-was{font-size:19px}
+.detail-price .px-off{font-size:14px}
+/* A piece whose price is settled in conversation: the words sit at reading
+   size rather than at the size of a figure. */
+.p.on-request .px-now,.detail-price.on-request .px-now{font-size:.62em;letter-spacing:.04em;color:var(--muted)}
 .desc{color:var(--ink);opacity:.85;margin:20px 0;font-size:15px;line-height:1.8}
 .opt-block{margin:18px 0}
 .opt-block .lbl{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
@@ -381,6 +416,14 @@ header.site.solid .brand .v{color:var(--navy)}
 .acc-item.open .acc-head .pm{transform:rotate(45deg)}
 .acc-body{max-height:0;overflow:hidden;transition:max-height .4s var(--ease)}
 .acc-body .inner{padding:0 0 18px;font-size:14px;color:var(--muted);line-height:1.75}
+/* Delivery and collection on the product page. Was one paragraph typed
+   into app.js; now as many lines as the shop has actually set. */
+.dl-block{margin-bottom:14px}
+.dl-block:last-of-type{margin-bottom:0}
+.dl-h{display:block;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent-strong);margin-bottom:5px}
+.dl-block div{margin-bottom:3px}
+.dl-terms{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.dl-more{display:inline-block;margin-top:10px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-strong);border-bottom:1px solid currentColor;padding-bottom:1px}
 .spec-table{width:100%;border-collapse:collapse;margin-top:6px}
 .spec-table td{padding:6px 0;font-size:13.5px}
 .spec-table td.l{color:var(--muted);width:120px}
@@ -449,7 +492,7 @@ header.site.solid .brand .v{color:var(--navy)}
 .ig-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
 .ig-tile{position:relative;aspect-ratio:1/1;overflow:hidden;border-radius:5px;background:var(--navy);cursor:pointer}
 .ig-tile .ph{position:absolute;inset:0;background-size:cover;background-position:center;transition:transform .8s var(--ease)}
-.ig-tile .ph.fallback{background:linear-gradient(135deg,var(--navy-3),var(--navy-2))}
+.ig-tile .ph.fallback{background-image:linear-gradient(135deg,var(--navy-3),var(--navy-2))}
 .ig-tile:hover .ph{transform:scale(1.1)}
 .ig-tile .ov{position:absolute;inset:0;background:rgba(var(--navy-3-rgb),.5);opacity:0;display:flex;align-items:center;justify-content:center;transition:.3s}
 .ig-tile:hover .ov{opacity:1}
@@ -640,6 +683,19 @@ footer.site{background:var(--navy-3);color:rgba(255,255,255,.72)}
 .care-body{font-size:14px;color:var(--muted);line-height:1.75;white-space:pre-line;margin-bottom:18px}
 .care-wa{margin-top:auto;align-self:flex-start}
 
+/* delivery & collection band — two cards at most, so they sit side by side
+   rather than being stretched across a three-column grid */
+.dl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:26px}
+.dl-card{background:var(--ivory);border:1px solid var(--line-2);border-radius:var(--radius-xl);padding:30px 26px;transition:transform .4s var(--ease),box-shadow .4s}
+.dl-card:hover{transform:translateY(-5px);box-shadow:var(--shadow)}
+.dl-card .ic{width:50px;height:50px;border-radius:50%;background:var(--navy);display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+.dl-card .ic svg{width:24px;height:24px;stroke:var(--gold);fill:none}
+.dl-card h3{font-family:var(--font-head);font-size:24px;color:var(--navy);margin-bottom:10px}
+.dl-card .dl-l{font-size:14px;color:var(--muted);line-height:1.75;margin-bottom:5px}
+.dl-card .dl-l:last-child{margin-bottom:0}
+.dl-foot{display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-top:26px}
+#deliverySub{color:var(--muted);margin-top:10px;max-width:60ch}
+
 /* rewards */
 .rewards-band{background:linear-gradient(120deg,var(--navy-3),var(--navy) 60%,var(--navy-2));color:#fff;border-radius:14px;text-align:center;padding:clamp(40px,6vw,70px) 26px;position:relative;overflow:hidden}
 .rewards-band::before{content:'';position:absolute;inset:0;background:radial-gradient(60% 120% at 50% 0,rgba(var(--gold-rgb),.18),transparent 60%)}
@@ -657,6 +713,7 @@ footer.site{background:var(--navy-3);color:rgba(255,255,255,.72)}
   .fab-label{display:none}
   .fab svg{width:28px;height:28px}
   .care-grid{grid-template-columns:1fr}
+  .dl-grid{grid-template-columns:1fr}
   .filters{width:100%;order:2}
 }
 
@@ -844,6 +901,57 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 
 /* The details step before WhatsApp */
 .od-lead{font-size:13.5px;color:var(--muted);line-height:1.6;margin:2px 0 4px}
+/* Delivered or collected, asked first because the answer decides whether
+   the address box below is worth filling in. */
+.od-how{display:flex;gap:10px;margin:12px 0 4px;flex-wrap:wrap}
+.od-pick{flex:1 1 150px;display:flex;align-items:center;gap:8px;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius-sm);cursor:pointer;font-size:13.5px;color:var(--ink);transition:.18s var(--ease)}
+.od-pick:hover{border-color:var(--accent)}
+.od-pick input{accent-color:var(--accent);width:15px;height:15px;flex:none;margin:0}
+.od-pick:has(input:checked){border-color:var(--accent);background:rgba(var(--accent-rgb),.07)}
+.od-how-note{font-size:12px;color:var(--muted);line-height:1.6;margin:8px 0 2px}
+
+/* ---- customer accounts ------------------------------------------------ */
+.account-view{padding:calc(var(--nav-h) + 44px) 0 80px;background:var(--cream);min-height:70vh}
+.account-view .wrap{max-width:720px}
+.ac-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.ac-head h1{font-family:var(--font-head);font-weight:600;font-size:clamp(28px,4vw,40px);color:var(--navy)}
+.ac-card{background:var(--ivory);border:1px solid var(--line-2);border-radius:var(--radius-xl);padding:26px;margin-bottom:18px}
+.ac-card h2{font-family:var(--font-head);font-size:22px;color:var(--navy);margin-bottom:14px}
+.ac-card h3{font-family:var(--font-head);font-size:22px;color:var(--navy);margin-bottom:8px}
+.ac-tabs{display:flex;gap:6px;margin:-4px 0 18px;border-bottom:1px solid var(--line)}
+.ac-tab{background:none;border:none;padding:9px 14px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.ac-tab.active{color:var(--navy);border-bottom-color:var(--accent)}
+.ac-actions{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:16px}
+.ac-link{background:none;border:none;padding:0;font-size:13px;color:var(--accent-strong);border-bottom:1px solid currentColor;cursor:pointer}
+.ac-msg{font-size:13px;margin-top:10px;min-height:1em}
+.ac-msg.err{color:#c0392b}.ac-msg.ok{color:#1f9d57}.ac-msg.busy{color:var(--muted)}
+.ac-quiet{font-size:13px;color:var(--muted);line-height:1.65;margin-top:8px}
+.ac-lead{font-size:14.5px;color:var(--ink);line-height:1.7;margin-top:6px}
+.ac-rule{font-size:12px;color:var(--muted);margin-top:6px}
+.ac-rule.bad{color:#c0392b}.ac-rule.ok{color:#1f9d57}
+.ac-warn{background:rgba(var(--accent-rgb),.12);border-left:3px solid var(--accent);border-radius:var(--radius-sm);padding:13px 15px;font-size:13.5px;color:var(--ink);line-height:1.65;margin-bottom:18px}
+.ac-inline{border:1px dashed var(--line);border-radius:var(--radius-sm);padding:16px;margin:14px 0}
+.ac-check{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink);margin:10px 0}
+.ac-check input{accent-color:var(--accent);width:15px;height:15px;margin:0}
+.ac-list{display:grid;gap:12px}
+.ac-addr{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:13px 15px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:13.5px;color:var(--muted);line-height:1.6}
+.ac-addr-l{color:var(--navy);font-weight:500}
+.ac-tag{display:inline-block;margin-top:5px;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;background:var(--accent);color:var(--accent-on);padding:3px 8px;border-radius:var(--radius-2xl)}
+.ac-order{padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius-sm)}
+.ac-order-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:4px}
+.ac-ref{font-family:var(--font-head);font-size:18px;color:var(--navy)}
+.ac-status{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;padding:4px 9px;border-radius:var(--radius-2xl);background:var(--cream);color:var(--muted)}
+.ac-status.is-confirmed{background:var(--accent);color:var(--accent-on)}
+.ac-status.is-completed{background:rgba(var(--ok-rgb),.16);color:#1f7a48}
+.ac-status.is-cancelled{background:rgba(0,0,0,.07);color:var(--muted);text-decoration:line-through}
+.ac-item{font-size:13.5px;color:var(--ink);margin-top:5px}
+.ac-total{font-family:var(--font-head);font-size:17px;color:var(--navy);margin-top:8px}
+.ac-danger{border-color:#c0392b;color:#c0392b}
+.ac-danger:hover{background:#c0392b;color:#fff}
+.ac-none{color:var(--muted);font-size:14px}
+.icon-btn.is-in::after{content:'';position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.account-view input,.account-view textarea,.account-view select{width:100%}
+@media (max-width:560px){ .ac-addr{flex-direction:column} }
 .od-opt{font-size:9.5px;letter-spacing:.1em;color:var(--muted);text-transform:none;margin-left:6px;opacity:.8}
 .od-note{font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:14px}
 #orderModal .modal-card{max-width:460px}

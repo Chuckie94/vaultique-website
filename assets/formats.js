@@ -71,8 +71,171 @@
     return CURRENCY[currency] || (currency ? currency + ' ' : 'K');
   }
 
-  function money(value, currency, numberFormat, forceDecimals) {
-    return symbol(currency) + number(value, numberFormat, forceDecimals);
+  /* The shop's own money style, gathered in one place. Settings > General
+     chooses the currency and the separators; Settings > Pricing chooses
+     the symbol, which side it sits on and how many decimals are shown.
+     Anything missing falls back to what the shop looked like before those
+     settings existed, so a shop that has never opened Pricing is unchanged. */
+  function moneyStyle(general, pricing) {
+    general = general || {}; pricing = pricing || {};
+    var code = general.currency || 'ZMW';
+    return {
+      currency: code,
+      symbol: String(pricing.currencySymbol || '').trim() || symbol(code),
+      position: pricing.currencyPosition || 'before',
+      decimals: pricing.decimalPlaces || 'auto',
+      numberFormat: general.numberFormat || '1,234.56'
+    };
+  }
+
+  /* Puts the symbol on the side the shop asked for. The space, where there
+     is one, is a non-breaking one: a price must never wrap between its
+     symbol and its digits. */
+  function place(sym, digits, position) {
+    switch (position) {
+      case 'after':        return digits + sym;
+      case 'after-space':  return digits + ' ' + sym;
+      case 'before-space': return sym + ' ' + digits;
+      default:             return sym + digits;
+    }
+  }
+
+  /* money(value, currency, numberFormat, forceDecimals) still works exactly
+     as it did. Pass a style object as the second argument instead and the
+     symbol, its side and the decimal places all come from the shop's own
+     settings. */
+  function money(value, currencyOrStyle, numberFormat, forceDecimals) {
+    if (currencyOrStyle && typeof currencyOrStyle === 'object') {
+      var st = currencyOrStyle;
+      var digits;
+      if (st.decimals === '0' || st.decimals === 0) {
+        digits = number(Math.round(toNum(value)), st.numberFormat, false);
+      } else if (st.decimals === '2' || st.decimals === 2) {
+        digits = number(value, st.numberFormat, true);
+      } else {
+        digits = number(value, st.numberFormat, !!forceDecimals);
+      }
+      return place(st.symbol, digits, st.position);
+    }
+    return symbol(currencyOrStyle) + number(value, numberFormat, forceDecimals);
+  }
+
+  /* ---- what a price says ---------------------------------------------
+
+     One product, one answer. The card, the quick view, the detail page,
+     the search row and the WhatsApp message all ask this, so none of them
+     can ever disagree about what a piece costs.
+
+       p        a product from the feed, carrying its saved meta
+       pricing  Settings > Pricing
+       style    from moneyStyle() above
+
+     Returns { onRequest, now, nowText, wasText, offText, percent, saved,
+     tax, isSale, overridden }. `now` is the number to send to WhatsApp and
+     to sort by; the rest is text for the page, and each piece of it is ''
+     when there is nothing to say. */
+  function priceView(p, pricing, style, opts) {
+    p = p || {}; pricing = pricing || {}; opts = opts || {};
+    var out = { onRequest: false, now: toNum(p.price), nowText: '', wasText: '',
+                offText: '', percent: 0, saved: 0, tax: '', isSale: false,
+                overridden: false };
+
+    if (p.priceOnRequest && pricing.onRequestEnabled !== false) {
+      out.onRequest = true;
+      out.nowText = pricing.onRequestText || 'Price on request';
+      out.now = 0;
+      return out;
+    }
+
+    /* An override replaces the till's price outright. A reduction is a
+       different thing: the till's own price, marked as having come down. */
+    var base = toNum(p.price);
+    if (pricing.overridesEnabled && toNum(p.priceOverride) > 0) {
+      base = toNum(p.priceOverride);
+      out.overridden = true;
+    }
+
+    var was = 0;
+    if (!out.overridden && pricing.trackReductions !== false) was = toNum(p.wasPrice);
+    if (was > 0 && !isRealReduction(was, base, pricing)) was = 0;
+
+    /* A shop-wide promotion applies only where the till has not already
+       brought the price down. A piece is never reduced twice. */
+    if (!was && !out.overridden) {
+      var promo = promoCut(p, pricing, opts.now);
+      if (promo > 0 && promo < base) { was = base; base = promo; }
+    }
+
+    out.now = base;
+    out.nowText = money(base, style);
+
+    if (was > base && pricing.showSalePrice !== false) {
+      out.isSale = true;
+      out.saved = Math.round((was - base) * 100) / 100;
+      out.percent = Math.round((was - base) / was * 100);
+      if (pricing.showOriginalPrice !== false) out.wasText = money(was, style);
+      if (pricing.showDiscountPercent !== false && out.percent > 0) {
+        out.offText = '-' + out.percent + '%';
+      }
+    }
+
+    out.tax = taxLine(pricing);
+    return out;
+  }
+
+  /* A price that moved by a hair is a correction, not a sale, and the shop
+     should not shout about it. Where "a hair" ends is the shop's to set. */
+  function isRealReduction(was, now, pricing) {
+    pricing = pricing || {};
+    if (!(was > now)) return false;
+    var floor = Number(pricing.minReductionPercent);
+    if (!isFinite(floor) || floor < 0) floor = 5;
+    return (was - now) / was * 100 >= floor;
+  }
+
+  /* What a shop-wide promotion brings one piece down to, or 0 when it does
+     not apply to it, is switched off, or is outside its dates. */
+  function promoCut(p, pricing, nowDate) {
+    p = p || {}; pricing = pricing || {};
+    if (!pricing.promoEnabled) return 0;
+
+    var today = dayStamp(nowDate || new Date());
+    if (pricing.promoFrom && today < pricing.promoFrom) return 0;
+    if (pricing.promoTo && today > pricing.promoTo) return 0;
+
+    if (pricing.promoScope === 'categories') {
+      var want = String(pricing.promoCategories || '').split(',').map(trimLower).filter(Boolean);
+      if (!want.length) return 0;
+      if (want.indexOf(trimLower(p.category)) < 0) return 0;
+    }
+
+    var base = toNum(p.price), amount = toNum(pricing.promoAmount);
+    if (!(base > 0) || !(amount > 0)) return 0;
+
+    var cut = pricing.promoType === 'amount' ? base - amount
+                                             : base - (base * amount / 100);
+    return cut > 0 ? Math.round(cut * 100) / 100 : 0;
+  }
+
+  /* The line under a price about tax. Empty when the shop would rather not
+     raise the subject at all. */
+  function taxLine(pricing) {
+    pricing = pricing || {};
+    var mode = pricing.taxMode || 'none';
+    if (mode !== 'included' && mode !== 'excluded') return '';
+    var rate = Number(pricing.taxRate);
+    var label = String(pricing.taxLabel || '').trim() || 'VAT';
+    var rateText = (isFinite(rate) && rate > 0)
+      ? (Math.round(rate * 100) / 100) + '% ' + label
+      : label;
+    return mode === 'included' ? 'Price includes ' + rateText
+                               : rateText + ' added at checkout';
+  }
+
+  function toNum(v) { var n = Number(v); return isFinite(n) ? n : 0; }
+  function trimLower(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
+  function dayStamp(d) {
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
   }
 
   /* ---- dates -------------------------------------------------------- */
@@ -192,6 +355,11 @@
     symbol: symbol,
     number: number,
     money: money,
+    moneyStyle: moneyStyle,
+    priceView: priceView,
+    taxLine: taxLine,
+    promoCut: promoCut,
+    isRealReduction: isRealReduction,
     date: date,
     minutes: minutes,
     prettyTime: prettyTime,

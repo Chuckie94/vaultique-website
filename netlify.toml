@@ -13,3 +13,48 @@
   from = "/api/products"
   to = "/.netlify/functions/products"
   status = 200
+
+# ---------------------------------------------------------------------
+# Real addresses for the storefront.
+#
+# The site draws every page itself, so /shop and /policies are not files
+# on disk. Without these rules a visitor typing one, or a search engine
+# following a link to one, would get a 404.
+#
+# The passthrough rules come FIRST and on purpose. Netlify serves an
+# existing file before applying a redirect, so the catch-all below would
+# not swallow the admin or the assets anyway — but relying on that is
+# relying on a default. Saying it plainly costs four lines and cannot be
+# got wrong by a later change.
+[[redirects]]
+  from = "/admin.html"
+  to = "/admin.html"
+  status = 200
+
+[[redirects]]
+  from = "/assets/*"
+  to = "/assets/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/images/*"
+  to = "/images/:splat"
+  status = 200
+
+# Crawlers only. Both are generated from Settings > SEO rather than kept
+# as files, so they follow the settings without anything to re-upload.
+[[redirects]]
+  from = "/robots.txt"
+  to = "/.netlify/functions/robots"
+  status = 200
+
+[[redirects]]
+  from = "/sitemap.xml"
+  to = "/.netlify/functions/sitemap"
+  status = 200
+
+# Everything else is a page the storefront draws.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

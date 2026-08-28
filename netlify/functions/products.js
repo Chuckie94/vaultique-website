@@ -39,9 +39,44 @@ function toSafeProduct(p) {
     // count ever crossing this line: the comparison happens here and only
     // its answer is sent. LOW_STOCK_AT sets where "a few" begins.
     lowStock: toNumber(p.stock) > 0 && toNumber(p.stock) <= LOW_STOCK_AT,
+    // The price this piece used to be, IF the till happens to record one.
+    // Some point of sale systems keep a "was" price beside the current one
+    // and some do not; this passes it through when it is there so the shop
+    // can show a reduction the moment it is made, rather than waiting for
+    // the website to notice. When the till has no such field this is 0 and
+    // the website falls back to remembering prices itself.
+    //
+    // This is a PRICE, the same class of thing as `price` above, which is
+    // already public. It is not, and must never become, `cost`: what the
+    // shop paid stays behind this line forever.
+    wasPrice: formerPrice(p),
   };
   // Deliberately omitted forever: cost, stock (number), id, vatable,
   // and anything outside this object.
+}
+
+// The names a till might use for the price before the current one. Only
+// fields that mean "this used to cost more" are read; anything to do with
+// what the shop paid is never looked at, whatever it is called.
+const FORMER_PRICE_KEYS = [
+  'was_price', 'wasPrice',
+  'old_price', 'oldPrice',
+  'original_price', 'originalPrice',
+  'compare_at_price', 'compareAtPrice', 'compare_price',
+  'list_price', 'listPrice',
+  'rrp', 'msrp',
+];
+
+function formerPrice(p) {
+  const now = toNumber(p.price);
+  for (const key of FORMER_PRICE_KEYS) {
+    const v = toNumber(p[key]);
+    // A former price is only a former price when it is above the current
+    // one. A till that mirrors the current price into one of these fields,
+    // or leaves it at zero, is saying nothing.
+    if (v > now) return v;
+  }
+  return 0;
 }
 
 // How few is "only a few left". Override with LOW_STOCK_AT in the Netlify

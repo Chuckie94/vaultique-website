@@ -67,6 +67,70 @@
   .card h3{font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--navy);margin-bottom:10px}
   .hint{font-size:12px;color:var(--muted);margin-top:4px}
   .save-bar{position:sticky;bottom:0;background:var(--cream);padding:12px 0;border-top:1px solid var(--line);display:flex;gap:12px;align-items:center}
+  /* number fields: the symbol or the % sits against the box rather than
+     floating in the label, so the figure reads as the amount it is */
+  .num-line{display:flex;align-items:stretch}
+  .num-line input.num{flex:1;min-width:0;border-radius:0}
+  .num-line input.num:first-child{border-top-left-radius:6px;border-bottom-left-radius:6px}
+  .num-line input.num:last-child{border-top-right-radius:6px;border-bottom-right-radius:6px}
+  .num-fix{display:flex;align-items:center;padding:0 10px;background:var(--cream);border:1px solid var(--line);color:var(--muted);font-size:13px;white-space:nowrap}
+  .num-line .num-fix:first-child{border-right:none;border-radius:6px 0 0 6px}
+  .num-line .num-fix:last-child{border-left:none;border-radius:0 6px 6px 0}
+  /* a paragraph in the middle of a group, where a hint under a box would
+     be the wrong shape */
+  .note-field{background:var(--cream);border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:6px;padding:10px 12px}
+  .note-field .note-body strong{display:block;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--navy);margin-bottom:4px}
+  .note-field .note-body p{font-size:13px;color:var(--muted);line-height:1.55}
+  .note-field.warn{border-left-color:var(--err)}
+  /* the per-piece pricing block in Products */
+  .px-box{margin-top:10px;padding:10px 12px;background:var(--cream);border:1px solid var(--line);border-radius:8px}
+  .px-box .px-now{font-size:13px;color:var(--navy)}
+  .px-box .px-now b{font-family:'Cormorant Garamond',serif;font-size:18px}
+  .px-was{color:var(--muted);text-decoration:line-through;margin-left:6px}
+  .px-off{color:var(--err);margin-left:6px;font-size:12px;letter-spacing:.08em}
+  .px-box .row{margin-top:8px;align-items:center;gap:10px}
+  .px-box input.px-in{width:120px}
+  /* the delivery preview: what a customer will actually read */
+  /* SEO: the block to paste, and what a result and a shared card look
+     like — a length in characters says less than seeing it cut off */
+  .seo-snip{background:var(--navy);color:#dfe6f0;border-radius:8px;padding:14px;font-size:11.5px;line-height:1.7;overflow-x:auto;white-space:pre;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .seo-drift{font-size:12.5px;line-height:1.6;margin-top:10px;padding:9px 12px;border-radius:6px}
+  .seo-drift:empty{display:none}
+  .seo-drift.is-ok{background:rgba(31,157,87,.1);color:#177544}
+  .seo-drift.is-stale{background:rgba(192,57,43,.09);color:#a3301f;border-left:3px solid var(--err)}
+  .seo-preview{display:grid;gap:16px;margin-top:16px}
+  .seo-serp{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px}
+  .seo-url{font-size:12px;color:#5f6368}
+  .seo-t{font-size:18px;color:#1a0dab;line-height:1.3;margin-top:2px}
+  .seo-d{font-size:13px;color:#4d5156;line-height:1.6;margin-top:3px}
+  .seo-card{background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;max-width:420px}
+  .seo-card-img{height:190px;background:var(--cream) center/cover no-repeat}
+  .seo-card-img.is-empty{display:flex;align-items:center;justify-content:center;height:90px;color:var(--muted);font-size:12px}
+  .seo-card-body{padding:11px 13px}
+  .seo-card-t{font-size:14px;color:var(--navy);font-weight:500;line-height:1.35}
+  .seo-card-d{font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:3px}
+  .seo-card-u{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:6px}
+  .dl-preview{display:grid;gap:8px}
+  .dl-line{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:start}
+  .dl-k{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-d);padding-top:2px}
+  .dl-v{font-size:14px;color:var(--navy);line-height:1.6;white-space:pre-line}
+  @media (max-width:560px){ .dl-line{grid-template-columns:1fr;gap:2px} }
+  /* Asking, in the shop's own voice. The browser's confirm() box carries
+     the site's domain and the browser's chrome, which is a jarring thing
+     to meet halfway through editing a policy. */
+  .ask-back{position:fixed;inset:0;background:rgba(11,31,58,.55);display:flex;align-items:center;justify-content:center;padding:20px;z-index:1000;opacity:0;transition:opacity .16s ease}
+  .ask-back.in{opacity:1}
+  .ask-card{background:var(--ivory);border:1px solid var(--line);border-radius:12px;box-shadow:0 24px 60px rgba(11,31,58,.28);max-width:420px;width:100%;padding:22px;transform:translateY(8px) scale(.985);transition:transform .16s ease}
+  .ask-back.in .ask-card{transform:none}
+  .ask-card h3{font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--navy);margin:0 0 8px}
+  .ask-card p{font-size:14px;color:var(--ink);line-height:1.6;margin:0}
+  .ask-card .ask-note{font-size:12.5px;color:var(--muted);margin-top:8px}
+  .ask-row{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+  .ask-row .btn{min-width:96px;justify-content:center}
+  .btn-danger{background:var(--err);color:#fff;border:1px solid var(--err)}
+  .btn-danger:hover{background:#a33224;border-color:#a33224}
+  @media (max-width:420px){ .ask-row{flex-direction:column-reverse} .ask-row .btn{width:100%} }
+  @media (prefers-reduced-motion:reduce){ .ask-back,.ask-card{transition:none} }
   /* main admin nav — lets the tab row wrap instead of squashing */
   .nav-main{flex-wrap:wrap}
   .nav-main .tab{flex:1 1 132px}
@@ -221,7 +285,7 @@
   <div class="wrap">
     <span class="v">VAULTIQUE</span><span style="font-size:11px;letter-spacing:.3em;color:var(--gold)">ADMIN</span>
     <span class="sp"></span>
-    <a class="btn btn-ghost btn-sm" href="index.html" target="_blank" rel="noopener">View site</a>
+    <a class="btn btn-ghost btn-sm" href="/" target="_blank" rel="noopener">View site</a>
     <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
   </div>
 </div>
@@ -251,6 +315,7 @@
     <div class="tabs nav-main">
       <div class="tab" data-tab="dashboard">Dashboard</div>
       <div class="tab active" data-tab="products">Products &amp; Photos</div>
+      <div class="tab" data-tab="orders">Orders</div>
       <div class="tab" data-tab="reviews">Reviews</div>
       <div class="tab" data-tab="subscribers">Subscribers</div>
       <div class="tab" data-tab="policies">Policies</div>
@@ -268,6 +333,25 @@
         <span class="count" id="prodCount"></span>
       </div>
       <div id="prodList"><p class="count">Loading products…</p></div>
+    </div>
+
+    <!-- ORDERS -->
+    <div id="tab-orders" class="hide">
+      <div class="toolbar">
+        <select id="ordFilter" style="min-width:150px">
+          <option value="pending">Pending</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="">All</option>
+        </select>
+        <span class="count" id="ordCount"></span>
+      </div>
+      <p class="hint" style="margin-bottom:12px">An order is written when a customer
+        presses Continue on WhatsApp, so it records what they <b>asked for</b>, not what
+        you agreed. Confirm or cancel each one as the conversation settles it — a customer
+        sees this status on their account page.</p>
+      <div id="ordList"><p class="count">Loading…</p></div>
     </div>
 
     <!-- REVIEWS -->
@@ -322,6 +406,7 @@
 <script src="assets/theme.js"></script>
 <script src="assets/contact.js"></script>
 <script src="assets/sections.js"></script>
+<script src="assets/seo.js"></script>
 <script src="assets/admin/registry.js"></script>
 <script src="assets/admin/settings-store.js"></script>
 <script src="assets/admin/settings-ui.js"></script>
@@ -361,6 +446,8 @@
   window.VBP_ADMIN = window.VBP_ADMIN || {};
   window.VBP_ADMIN.sb = sb;
   var metaMap = {};       // sku -> meta row
+  var pricing = {};       // Settings > Pricing, for the price watch and the boxes below
+  var generalSettings = {};  // Settings > General, for the currency behind them
   var products = [];      // POS products
 
   // ---------- auth ----------
@@ -390,7 +477,7 @@
   // ---------- navigation ----------
   // Routes are hash based: #/policies, #/settings, #/settings/general.
   // With no hash the admin opens on Products & Photos, as it always has.
-  var TABS = ['dashboard', 'products', 'reviews', 'subscribers', 'policies', 'settings', 'activity'];
+  var TABS = ['dashboard', 'products', 'orders', 'reviews', 'subscribers', 'policies', 'settings', 'activity'];
   var pageCtx = null;
   var setIndexBuilt = false;
 
@@ -442,6 +529,7 @@
       x.classList[x.getAttribute('data-tab') === which ? 'add' : 'remove']('active');
     });
     TABS.forEach(function (t) { show('tab-' + t, t === which); });
+    if (which === 'orders') loadOrders();
     if (which === 'reviews') loadReviews();
     if (which === 'subscribers') loadSubscribers();
     if (which === 'policies') loadPolicies();
@@ -542,6 +630,12 @@
   // the same bucket, with the same naming, as everything else.
   window.VBP_ADMIN.uploadImage = uploadImage;
 
+  /* Settings sections live in their own files and cannot reach in here, so
+     the dialog is shared the same way the uploader is. One way of asking
+     across the whole admin, in the shop's voice rather than the browser's. */
+  window.VBP_ADMIN.ask = ask;
+  window.VBP_ADMIN.tell = tell;
+
   function saveMeta(sku) {
     var m = metaMap[sku] || { sku: sku };
     m.sku = sku; m.updated_at = new Date().toISOString();
@@ -555,14 +649,89 @@
   function loadProducts() {
     Promise.all([
       fetch('/api/products', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : { products: [] }; }).catch(function () { return { products: [] }; }),
-      sb.from('product_meta').select('*')
+      sb.from('product_meta').select('*'),
+      window.VBP_ADMIN.store.load('pricing').catch(function () { return {}; }),
+      window.VBP_ADMIN.store.load('general').catch(function () { return {}; })
     ]).then(function (res) {
       products = (res[0] && res[0].products) || [];
       metaMap = {};
       var rows = (res[1] && res[1].data) || [];
       rows.forEach(function (m) { if (m && m.sku) metaMap[m.sku] = m; });
-      renderProducts();
+      pricing = res[2] || {};
+      generalSettings = res[3] || {};
+      return watchPrices();
+    }).then(renderProducts);
+  }
+
+  /* ---------- the price watch ------------------------------------------
+     Sale prices come from the POS. The POS sends one number per piece and
+     no history, so on its own the website can show a reduced price but
+     cannot know it was ever higher — no strike through, no percentage,
+     nothing to say a piece is on sale.
+
+     So the admin remembers. Against each piece it keeps the highest price
+     it has recently seen. When the POS comes in lower, that remembered
+     figure is the "was". When the POS comes in higher, the memory moves up
+     with it and the piece is simply not on sale.
+
+     This runs whenever the Products tab loads. A shop that never opens the
+     admin still shows correct prices; it just does not advertise the
+     reduction, which is the safe way round. */
+  function watchPrices() {
+    var changes = [];
+    products.forEach(function (p) {
+      var now = Number(p.price);
+      if (!isFinite(now) || now <= 0) return;
+
+      var m = metaMap[p.sku] || { sku: p.sku };
+      var ref = Number(m.ref_price);
+
+      /* Nothing recorded yet, or the till has gone above what we remember:
+         this is the piece's ordinary price, and there is no sale. */
+      if (!isFinite(ref) || ref <= 0 || now >= ref) {
+        if (ref === now) return;                 // already exactly right
+        m.ref_price = now;
+        m.ref_price_at = new Date().toISOString();
+        m.sku = p.sku;
+        metaMap[p.sku] = m;
+        changes.push(m);
+      }
+      /* Below what we remember: leave the memory alone. It is the "was". */
     });
+    if (!changes.length) return Promise.resolve();
+    changes.forEach(function (m) { m.updated_at = new Date().toISOString(); });
+    return sb.from('product_meta').upsert(changes, { onConflict: 'sku' })
+      .then(function () {}, function () {});     // a failed watch must never block the tab
+  }
+
+  /* What the storefront would show for this piece, worked out with the
+     same code the storefront uses, so the admin cannot disagree with it. */
+  function priceViewOf(p) {
+    var m = metaMap[p.sku] || {};
+    var item = {
+      price: Number(p.price) || 0,
+      category: p.category,
+      priceOnRequest: !!m.on_request,
+      priceOverride: m.price_override,
+      /* Same order as the storefront: the till's own former price first,
+         the remembered one only where the till keeps none. */
+      wasPrice: Number(p.wasPrice) > 0 ? Number(p.wasPrice)
+              : (freshRef(m) ? Number(m.ref_price) : 0)
+    };
+    var F = window.VBP_FORMAT;
+    if (!F || !F.priceView) return { nowText: String(item.price), wasText: '', offText: '' };
+    return F.priceView(item, pricing, F.moneyStyle(generalSettings, pricing));
+  }
+  /* A reduction the shop has stopped calling recent. Mirrors the rule the
+     storefront applies, so both stop advertising a sale on the same day. */
+  function freshRef(m) {
+    if (pricing.trackReductions === false) return false;
+    var days = Number(pricing.reductionDays);
+    if (!isFinite(days) || days <= 0) return true;
+    if (!m.ref_price_at) return true;
+    var t = new Date(m.ref_price_at).getTime();
+    if (isNaN(t)) return true;
+    return (Date.now() - t) <= days * 86400000;
   }
   function renderProducts() {
     var term = ($('prodSearch').value || '').toLowerCase().trim();
@@ -588,7 +757,10 @@
 
     var body = document.createElement('div');
     body.innerHTML = '<div class="nm">' + escapeHtml(p.name) + '</div><div class="sku">' + escapeHtml(p.sku) +
-      ' · K' + (Number(p.price) || 0).toLocaleString('en-US') + '</div>';
+      /* The POS price, written the shop's way rather than with a K typed
+         in: a shop trading in dollars should not see kwacha in its own
+         product list. */
+      ' · ' + escapeHtml(fmtMoney(p.price)) + '</div>';
 
     // main photo upload
     var mainWrap = document.createElement('div'); mainWrap.className = 'row';
@@ -606,11 +778,16 @@
         .catch(function (e) { mainStat.textContent = 'Error: ' + (e.message || e); mainStat.className = 'stat err'; });
     });
     mainDel.addEventListener('click', function () {
-      if (!confirm('Remove the main photo?')) return;
+      ask('Remove the main photo for ' + p.name + '?',
+          { danger: true, okText: 'Remove',
+            note: 'The other photos stay. You can upload a new one at any time.' })
+      .then(function (yes) {
+      if (!yes) return;
       m.image_url = ''; metaMap[p.sku] = m; img.src = placeholder();
       mainStat.textContent = 'Removing…'; mainStat.className = 'stat busy';
       saveMeta(p.sku).then(function () { mainStat.textContent = 'Removed'; mainStat.className = 'stat ok'; mainDel.style.display = 'none'; mainIn.value = ''; })
         .catch(function (e) { mainStat.textContent = 'Error: ' + (e.message || e); mainStat.className = 'stat err'; });
+      });
     });
     mainWrap.appendChild(mainLbl); mainWrap.appendChild(mainIn); mainWrap.appendChild(mainDel); mainWrap.appendChild(mainStat);
     body.appendChild(mainWrap);
@@ -711,6 +888,9 @@
     flags.appendChild(flagStat);
     body.appendChild(flags);
 
+    // pricing
+    body.appendChild(priceBox(p, m));
+
     // description
     var dWrap = document.createElement('div'); dWrap.className = 'field';
     var dLbl = document.createElement('label'); dLbl.textContent = 'Custom description (optional)';
@@ -728,6 +908,114 @@
     wrap.appendChild(body);
     return wrap;
   }
+  /* What this piece costs on the website, and the two things the shop can
+     say about it that the POS cannot. The price itself is never edited
+     here: it belongs to the till. */
+  function priceBox(p, m) {
+    var box = document.createElement('div'); box.className = 'px-box';
+    var stat = document.createElement('span'); stat.className = 'stat';
+
+    var line = document.createElement('div'); line.className = 'px-now';
+    var hint = document.createElement('div'); hint.className = 'hint';
+
+    function redraw() {
+      var v = priceViewOf(p);
+      var html = '<b>' + escapeHtml(v.nowText) + '</b>';
+      if (v.wasText) html += '<span class="px-was">' + escapeHtml(v.wasText) + '</span>';
+      if (v.offText) html += '<span class="px-off">' + escapeHtml(v.offText) + '</span>';
+      line.innerHTML = 'On the website: ' + html;
+
+      var cur = metaMap[p.sku] || {};
+      var ref = Number(cur.ref_price);
+      var bits = [];
+      if (v.onRequest) {
+        bits.push('No figure is shown. The POS has it at ' + fmtMoney(p.price) +
+                  ', and the WhatsApp button asks rather than buys.');
+      } else if (v.overridden) {
+        bits.push('Overridden — the POS says ' + fmtMoney(p.price) + '.');
+      } else if (v.wasText) {
+        bits.push('Reduced in the POS from ' + fmtMoney(ref) +
+                  (cur.ref_price_at ? ' on ' + shortDate(cur.ref_price_at) : '') + '.');
+      } else if (isFinite(ref) && ref > 0 && ref > Number(p.price)) {
+        bits.push('Was ' + fmtMoney(ref) + ', but that is too old or too small a drop to ' +
+                  'advertise. Settings > Pricing decides both.');
+      } else {
+        bits.push('The POS price, shown as it is.');
+      }
+      hint.textContent = bits.join(' ');
+      clearBtn.style.display = (isFinite(ref) && ref > Number(p.price)) ? '' : 'none';
+    }
+
+    /* Clearing the memory is how a correction stops looking like a sale. */
+    var clearBtn = document.createElement('button');
+    clearBtn.className = 'btn btn-out btn-sm'; clearBtn.textContent = 'Not a sale';
+    clearBtn.title = 'Forget the older price. Use this when the price was corrected rather than reduced.';
+    clearBtn.addEventListener('click', function () {
+      var cur = metaMap[p.sku] || { sku: p.sku };
+      cur.ref_price = Number(p.price) || 0;
+      cur.ref_price_at = new Date().toISOString();
+      metaMap[p.sku] = cur;
+      stat.textContent = 'Saving…'; stat.className = 'stat busy';
+      saveMeta(p.sku).then(function () {
+        stat.textContent = 'Saved ✓'; stat.className = 'stat ok'; redraw();
+      }).catch(function () { stat.textContent = 'Error'; stat.className = 'stat err'; });
+    });
+
+    box.appendChild(line); box.appendChild(hint);
+
+    var row = document.createElement('div'); row.className = 'row';
+    row.appendChild(checkbox('Price on request', !!m.on_request, function (v) {
+      m.on_request = v; metaMap[p.sku] = m;
+      saveMeta(p.sku).then(redraw);
+    }));
+    row.appendChild(clearBtn);
+
+    /* The override box appears only where overrides are switched on, so a
+       shop running straight off the POS never sees a place to diverge. */
+    if (pricing.overridesEnabled) {
+      var oLbl = document.createElement('label');
+      oLbl.textContent = 'Website price'; oLbl.style.cssText = 'margin:0 6px 0 0;text-transform:none;letter-spacing:0';
+      var oIn = document.createElement('input');
+      oIn.type = 'text'; oIn.className = 'px-in'; oIn.inputMode = 'decimal';
+      oIn.placeholder = String(Number(p.price) || 0);
+      oIn.value = (m.price_override === null || m.price_override === undefined) ? '' : String(m.price_override);
+      oIn.addEventListener('change', function () {
+        var raw = String(oIn.value || '').trim().replace(/,/g, '');
+        if (raw === '') { m.price_override = null; }
+        else {
+          var n = Number(raw);
+          if (!isFinite(n) || n <= 0) {
+            stat.textContent = 'Enter an amount above zero, or leave it empty.';
+            stat.className = 'stat err';
+            return;
+          }
+          m.price_override = n;
+        }
+        metaMap[p.sku] = m;
+        stat.textContent = 'Saving…'; stat.className = 'stat busy';
+        saveMeta(p.sku).then(function () {
+          stat.textContent = 'Saved ✓'; stat.className = 'stat ok'; redraw();
+        }).catch(function () { stat.textContent = 'Error'; stat.className = 'stat err'; });
+      });
+      row.appendChild(oLbl); row.appendChild(oIn);
+    }
+
+    row.appendChild(stat);
+    box.appendChild(row);
+    redraw();
+    return box;
+  }
+  function fmtMoney(n) {
+    var F = window.VBP_FORMAT;
+    if (!F) return String(n);
+    return F.money(n, F.moneyStyle(generalSettings, pricing));
+  }
+  function shortDate(iso) {
+    var F = window.VBP_FORMAT;
+    if (F) { var t = F.date(iso, generalSettings.dateFormat); if (t) return t; }
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString();
+  }
   function checkbox(label, val, on) {
     var l = document.createElement('label'); l.className = 'chk'; l.style.textTransform = 'none'; l.style.letterSpacing = '0'; l.style.margin = '0';
     var c = document.createElement('input'); c.type = 'checkbox'; c.checked = val;
@@ -743,6 +1031,144 @@
      in General. The site_content row is left exactly as it is, so the
      storefront keeps reading it as a fallback for a shop that has not
      opened those sections yet. */
+
+  // ---------- orders ----------
+  /* What these rows are: a customer pressed Continue and the site wrote
+     down what they asked for. Nothing here is an agreement. The shop
+     confirms or cancels each one as the WhatsApp conversation settles it,
+     and the customer sees that status on their account page — which is
+     the only thing that makes the list worth showing them at all. */
+  var STATUSES = ['pending', 'confirmed', 'completed', 'cancelled'];
+
+  function loadOrders() {
+    var host = $('ordList');
+    host.innerHTML = '<p class="count">Loading…</p>';
+    /* Totals here are written in the shop's own money. Those settings are
+       normally fetched by the Products tab, so Orders fetches them too
+       rather than showing kwacha to a shop that trades in dollars. */
+    Promise.all([
+      window.VBP_ADMIN.store.load('general').catch(function () { return {}; }),
+      window.VBP_ADMIN.store.load('pricing').catch(function () { return {}; })
+    ]).then(function (r) {
+      generalSettings = r[0] || generalSettings;
+      pricing = r[1] || pricing;
+      drawOrders();
+    });
+  }
+  function drawOrders() {
+    var host = $('ordList');
+    var want = $('ordFilter').value;
+    var q = sb.from('orders')
+      .select('*, order_items(sku, name, price, qty)')
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (want) q = q.eq('status', want);
+
+    q.then(function (r) {
+      if (r.error) { host.innerHTML = '<p class="count">Error: ' + escapeHtml(r.error.message) + '</p>'; return; }
+      var rows = r.data || [];
+      $('ordCount').textContent = rows.length + (want ? ' ' + want : '') + ' order' + (rows.length === 1 ? '' : 's');
+      if (!rows.length) {
+        host.innerHTML = '<p class="count">Nothing here. Orders appear once customers ' +
+          'start checking out, and only while Order history is on in Settings &gt; Customer Accounts.</p>';
+        return;
+      }
+      host.innerHTML = '';
+      rows.forEach(function (o) { host.appendChild(orderRow(o)); });
+    });
+  }
+  $('ordFilter').addEventListener('change', drawOrders);
+
+  function orderRow(o) {
+    var d = document.createElement('div');
+    d.className = 'card';
+    d.style.padding = '16px';
+
+    var head = document.createElement('div');
+    head.className = 'row';
+    head.style.justifyContent = 'space-between';
+    var who = [o.name, o.phone].filter(Boolean).join(' · ') || 'No details given';
+    head.innerHTML =
+      '<div><b>' + escapeHtml(o.ref || '') + '</b> · ' + escapeHtml(who) +
+      '<div class="hint">' + escapeHtml(shortDate(o.created_at)) +
+      (o.customer_id ? ' · signed in' : ' · guest') +
+      ' · ' + escapeHtml(o.fulfilment === 'collection' ? 'collection' : 'delivery') + '</div></div>' +
+      '<div style="text-align:right"><b>' +
+      (o.total == null ? '—' : escapeHtml(fmtMoney(o.total))) + '</b></div>';
+    d.appendChild(head);
+
+    var items = document.createElement('div');
+    items.className = 'hint';
+    items.style.marginTop = '8px';
+    items.innerHTML = (o.order_items || []).map(function (it) {
+      return escapeHtml((it.qty > 1 ? it.qty + ' × ' : '') + (it.name || it.sku || '')) +
+             (it.price == null ? '' : ' — ' + escapeHtml(fmtMoney(it.price)));
+    }).join('<br>') || 'No items recorded.';
+    d.appendChild(items);
+
+    [['Email', o.email], ['Address', o.address], ['Notes', o.notes]].forEach(function (pair) {
+      if (!pair[1]) return;
+      var e = document.createElement('div');
+      e.className = 'hint';
+      e.style.marginTop = '4px';
+      e.innerHTML = '<b>' + pair[0] + ':</b> ' + escapeHtml(pair[1]);
+      d.appendChild(e);
+    });
+
+    var row = document.createElement('div');
+    row.className = 'row';
+    row.style.marginTop = '10px';
+    var stat = document.createElement('span');
+    stat.className = 'stat';
+
+    var sel = document.createElement('select');
+    sel.style.minWidth = '150px';
+    STATUSES.forEach(function (v) {
+      var op = document.createElement('option');
+      op.value = v;
+      op.textContent = v.charAt(0).toUpperCase() + v.slice(1);
+      if ((o.status || 'pending') === v) op.selected = true;
+      sel.appendChild(op);
+    });
+    sel.addEventListener('change', function () {
+      stat.textContent = 'Saving…'; stat.className = 'stat busy';
+      sb.from('orders')
+        .update({ status: sel.value, updated_at: new Date().toISOString() })
+        .eq('id', o.id)
+        .then(function (r) {
+          if (r.error) { stat.textContent = 'Error'; stat.className = 'stat err'; return; }
+          o.status = sel.value;
+          stat.textContent = 'Saved ✓'; stat.className = 'stat ok';
+        });
+    });
+    row.appendChild(sel);
+
+    if (o.phone) {
+      var wa = document.createElement('a');
+      wa.className = 'btn btn-out btn-sm';
+      wa.textContent = 'Open in WhatsApp';
+      wa.target = '_blank'; wa.rel = 'noopener';
+      wa.href = 'https://wa.me/' + String(o.phone).replace(/[^0-9]/g, '');
+      row.appendChild(wa);
+    }
+
+    var del = document.createElement('button');
+    del.className = 'btn btn-out btn-sm';
+    del.textContent = 'Delete';
+    del.addEventListener('click', function () {
+      ask('Delete order ' + (o.ref || '') + '?',
+          { danger: true, note: 'This removes the record entirely. To keep it but mark it ' +
+                                'off, set the status to Cancelled instead.' })
+        .then(function (yes) {
+          if (!yes) return;
+          sb.from('orders').delete().eq('id', o.id).then(function () { d.remove(); });
+        });
+    });
+    row.appendChild(del);
+    row.appendChild(stat);
+    d.appendChild(row);
+    return d;
+  }
 
   // ---------- reviews ----------
   function loadReviews() {
@@ -767,7 +1193,14 @@
     row.appendChild(checkbox('Verified', !!rev.verified, function (v) { sb.from('reviews').update({ verified: v }).eq('id', rev.id); }));
     row.appendChild(checkbox('Shown', rev.approved !== false, function (v) { sb.from('reviews').update({ approved: v }).eq('id', rev.id); }));
     var del = document.createElement('button'); del.className = 'btn btn-out btn-sm'; del.textContent = 'Delete';
-    del.addEventListener('click', function () { if (!confirm('Delete this review?')) return; sb.from('reviews').delete().eq('id', rev.id).then(function () { d.remove(); }); });
+    del.addEventListener('click', function () {
+      ask('Delete the review from ' + (rev.name || 'this customer') + '?',
+          { danger: true, note: 'This cannot be undone. To hide it instead, untick Shown.' })
+        .then(function (yes) {
+          if (!yes) return;
+          sb.from('reviews').delete().eq('id', rev.id).then(function () { d.remove(); });
+        });
+    });
     row.appendChild(del);
     d.appendChild(row);
     return d;
@@ -788,13 +1221,20 @@
     });
   }
   $('subCopy').addEventListener('click', function () {
-    if (!subEmails.length) { alert('No subscribers yet.'); return; }
+    if (!subEmails.length) { tell('No subscribers yet.', { title: 'Nothing to copy' }); return; }
     var text = subEmails.join(', ');
-    if (navigator.clipboard) { navigator.clipboard.writeText(text).then(function () { alert('Copied ' + subEmails.length + ' emails.'); }); }
-    else { window.prompt('Copy these emails:', text); }
+    /* Where the clipboard is unavailable the addresses are shown in a box
+       ready to select, rather than in a browser prompt that truncates a
+       long list and cannot be scrolled. */
+    function show() { tell('', { title: 'Copy these addresses', copyText: text }); }
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(
+        function () { tell('Copied ' + subEmails.length + ' addresses.', { title: 'Done' }); },
+        show);
+    } else show();
   });
   $('subEmail').addEventListener('click', function () {
-    if (!subEmails.length) { alert('No subscribers yet.'); return; }
+    if (!subEmails.length) { tell('No subscribers yet.', { title: 'Nothing to send' }); return; }
     var subject = encodeURIComponent('New arrivals at Vaultique Boutique');
     var body = encodeURIComponent('Hello,\n\nWe have new pieces in store. Shop the latest: \n\nVaultique Boutique Point');
     window.location.href = 'mailto:?bcc=' + encodeURIComponent(subEmails.join(',')) + '&subject=' + subject + '&body=' + body;
@@ -840,33 +1280,153 @@
       });
     });
     var del = document.createElement('button'); del.className = 'btn btn-out btn-sm'; del.textContent = 'Delete';
-    del.addEventListener('click', function () { if (!confirm('Delete this policy?')) return; sb.from('policies').delete().eq('id', p.id).then(function () { d.remove(); }); });
+    del.addEventListener('click', function () {
+      ask('Delete "' + (p.title || 'this policy') + '"?',
+          { danger: true, note: 'This cannot be undone. Customers will no longer see it on the policies page.' })
+        .then(function (yes) {
+          if (!yes) return;
+          sb.from('policies').delete().eq('id', p.id).then(function () { d.remove(); });
+        });
+    });
     row.appendChild(save); row.appendChild(del); row.appendChild(stat);
     d.appendChild(row);
     return d;
   }
   $('polAdd').addEventListener('click', function () {
     sb.from('policies').insert({ section: 'General', title: 'New policy', body: '', sort: 999 }).then(function (r) {
-      if (r.error) { alert('Error: ' + r.error.message); return; }
+      if (r.error) { tell(r.error.message, { title: 'That did not save' }); return; }
       loadPolicies();
     });
   });
   $('polImport').addEventListener('click', function () {
     var defs = window.VBP_DEFAULT_POLICIES || [];
-    if (!defs.length) { alert('No starter policies found.'); return; }
+    if (!defs.length) { tell('No starter policies found.'); return; }
     sb.from('policies').select('id').then(function (r) {
       var have = (r.data || []).length;
-      if (have && !confirm('You already have ' + have + ' policies. Add the ' + defs.length + ' starter policies as well?')) return;
-      var rows = defs.map(function (p) { return { section: p.section, title: p.title, body: p.body, sort: p.sort }; });
-      $('polCount').textContent = 'Importing…';
-      sb.from('policies').insert(rows).then(function (r2) {
-        if (r2.error) { alert('Error: ' + r2.error.message); return; }
-        loadPolicies();
+      var first = have
+        ? ask('Add the ' + defs.length + ' starter policies as well?',
+              { title: 'You already have ' + have,
+                okText: 'Add them',
+                note: 'They are added alongside what you have, not instead of it. ' +
+                      'You can delete any you do not want afterwards.' })
+        : Promise.resolve(true);
+      first.then(function (yes) {
+        if (!yes) return;
+        var rows = defs.map(function (p) { return { section: p.section, title: p.title, body: p.body, sort: p.sort }; });
+        $('polCount').textContent = 'Importing…';
+        sb.from('policies').insert(rows).then(function (r2) {
+          if (r2.error) { tell('Error: ' + r2.error.message, { title: 'That did not save' }); return; }
+          loadPolicies();
+        });
       });
     });
   });
 
   function escapeHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  /* ---------- asking, in the shop's own voice ---------------------------
+     Replaces confirm() and alert(). Those carry the browser's chrome and
+     the site's domain, which is a strange thing to be shown by your own
+     admin halfway through deleting a policy.
+
+       ask('Delete this policy?', { danger: true }) -> Promise<boolean>
+       tell('No subscribers yet.')                  -> Promise<true>
+
+     Escape cancels, Enter confirms, and focus goes back to whatever
+     opened it, so a keyboard never gets stranded. */
+  function ask(question, opts) {
+    opts = opts || {};
+    var came = document.activeElement;
+
+    return new Promise(function (resolve) {
+      var back = document.createElement('div');
+      back.className = 'ask-back';
+      back.setAttribute('role', 'dialog');
+      back.setAttribute('aria-modal', 'true');
+
+      var card = document.createElement('div');
+      card.className = 'ask-card';
+      card.innerHTML =
+        '<h3></h3><p></p>' +
+        (opts.note ? '<div class="ask-note"></div>' : '') +
+        '<div class="ask-row"></div>';
+      card.querySelector('h3').textContent = opts.title || (opts.tell ? 'Just so you know' : 'Are you sure?');
+      card.querySelector('p').textContent = question;
+      if (!question) card.querySelector('p').style.display = 'none';
+      if (opts.note) card.querySelector('.ask-note').textContent = opts.note;
+
+      var box = null;
+      if (opts.copyText) {
+        box = document.createElement('textarea');
+        box.readOnly = true;
+        box.value = opts.copyText;
+        box.style.cssText = 'width:100%;height:110px;margin-top:10px;font-size:12.5px';
+        card.insertBefore(box, card.querySelector('.ask-row'));
+      }
+
+      var row = card.querySelector('.ask-row');
+      var no = null;
+      if (!opts.tell) {
+        no = document.createElement('button');
+        no.type = 'button';
+        no.className = 'btn btn-out btn-sm';
+        no.textContent = opts.cancelText || 'Cancel';
+        row.appendChild(no);
+      }
+      var yes = document.createElement('button');
+      yes.type = 'button';
+      yes.className = 'btn btn-sm ' + (opts.danger ? 'btn-danger' : 'btn-gold');
+      yes.textContent = opts.okText || (opts.tell ? 'Close' : (opts.danger ? 'Delete' : 'Yes'));
+      row.appendChild(yes);
+
+      back.appendChild(card);
+      document.body.appendChild(back);
+      requestAnimationFrame(function () { back.classList.add('in'); });
+
+      /* A destructive answer should not be the one a stray keypress
+         lands on, so Cancel takes the focus when there is something to
+         destroy. */
+      if (box) { box.focus(); box.select(); }
+      else (opts.danger && no ? no : yes).focus();
+
+      function close(answer) {
+        document.removeEventListener('keydown', onKey, true);
+        back.classList.remove('in');
+        var gone = false;
+        function drop() {
+          if (gone) return;
+          gone = true;
+          if (back.parentNode) back.parentNode.removeChild(back);
+          if (came && came.focus) { try { came.focus(); } catch (e) {} }
+          resolve(answer);
+        }
+        back.addEventListener('transitionend', drop);
+        setTimeout(drop, 220);            // in case the transition never fires
+      }
+
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); close(false); return; }
+        if (e.key === 'Enter' && document.activeElement !== no) { e.preventDefault(); close(true); return; }
+        if (e.key !== 'Tab') return;
+        /* Keep the tab ring inside the dialog: behind it sits a whole
+           admin page nobody should be able to reach right now. */
+        var stops = [box, no, yes].filter(Boolean);
+        var first = stops[0], last = stops[stops.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+
+      document.addEventListener('keydown', onKey, true);
+      yes.addEventListener('click', function () { close(true); });
+      if (no) no.addEventListener('click', function () { close(false); });
+      back.addEventListener('click', function (e) { if (e.target === back) close(false); });
+    });
+  }
+  function tell(message, opts) {
+    opts = opts || {};
+    opts.tell = true;
+    return ask(message, opts);
+  }
 })();
 </script>
 </body>

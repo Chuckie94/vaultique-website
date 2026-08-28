@@ -59,9 +59,73 @@
     showOutOfStock: true, showSku: true, showLowStock: true, showCategory: true,
     showBadges: true, showReviews: true, defaultSort: 'featured',
     enquiries: true, wishlist: true, sharing: true, customerReviews: true,
-    whatsappCheckout: true, guestCheckout: true,
+    whatsappCheckout: true,
     requireName: true, requirePhone: true, requireEmail: false, requireAddress: false,
     orderNotes: true, checkoutLabel: 'Buy on WhatsApp'
+  };
+  // Settings > Pricing & Tax. Defaults match the admin's, and match the way
+  // the shop was written before the section existed: a K in front, decimals
+  // only when the amount has them, and the VAT line that used to be typed
+  // into the product page by hand.
+  var PRICING = {
+    currencySymbol: '', currencyPosition: 'before', decimalPlaces: 'auto',
+    taxMode: 'included', taxRate: 16, taxLabel: 'VAT',
+    trackReductions: true, minReductionPercent: 5, reductionDays: 30,
+    showSalePrice: true, showOriginalPrice: true, showDiscountPercent: true,
+    percentWhere: 'both',
+    onRequestEnabled: true, onRequestText: 'Price on request',
+    onRequestButton: 'Ask about this piece',
+    // promoName is the shop's own label for a promotion and is never shown
+    // to a customer. It is mirrored here anyway so this list and the admin's
+    // stay identical: a settings row the storefront only half-knows is how
+    // a shop starts behaving differently the moment somebody presses Save.
+    promoEnabled: false, promoName: '', promoType: 'percent', promoAmount: '',
+    promoScope: 'all', promoCategories: '', promoFrom: '', promoTo: '',
+    overridesEnabled: false
+  };
+  var MONEY = null;                 // the shop's money style, built once per load
+  var ACCT = window.VBP_ACCOUNT || null;
+  var SEO = window.VBP_SEO || null;
+  // Settings > SEO. Empty by default: with nothing saved, every page falls
+  // back to General's name and description, which is what it did before.
+  var SEOSET = {
+    title: '', description: '', keywords: '', canonicalBase: '',
+    ogTitle: '', ogDescription: '',
+    googleVerification: '', bingVerification: '',
+    sitemapEnabled: true, indexing: 'index', robotsExtra: '',
+    pages: {}
+  };
+  // Settings > Customer Accounts. Off by default: a shop that has never
+  // opened the section has no sign in anywhere, which is how it ran before.
+  var ACCOUNTS = {
+    accountsEnabled: false, registration: 'open', guestCheckout: true,
+    emailVerification: true, phoneVerification: false,
+    passwordMinLength: 8, passwordNeedsNumber: true, passwordNeedsSymbol: false,
+    passwordReset: true,
+    accountDeletion: true,
+    deletionNote: 'Your account and saved addresses are removed. Orders already placed ' +
+                  'are kept, since we need them for our own records.',
+    orderHistory: true, historyScope: 'all', historyMonths: 12,
+    savedAddresses: true, maxAddresses: 5,
+    wishlistFollowsAccount: true
+  };
+  // Settings > Delivery & Collection. Defaults match the admin's, and the
+  // wording matches the paragraph that used to be printed into the product
+  // page, so a shop that has never opened the section reads as it did.
+  var DELIVERY = {
+    deliveryEnabled: true, areas: [], showFees: false,
+    standardFee: '', standardDays: 'Confirmed on WhatsApp', freeOver: '',
+    feesNote: 'Fees are calculated by distance and confirmed on WhatsApp before dispatch.',
+    speeds: 'standard', sameDayFee: '', sameDayCutoff: '14:00',
+    sameDayNote: 'Same-day delivery in Lusaka for orders confirmed before the cut-off.',
+    pickupEnabled: true, pickupUseShopAddress: true, pickupLocation: '',
+    pickupInstructions: 'Message us when you are on your way and we will have your order ready.',
+    pickupNumberOverride: false, pickupNumber: '',
+    terms: 'We deliver nationwide across Zambia where possible. Collection in person ' +
+           'can also be arranged.',
+    instructions: 'Tell us your area when you message and we will confirm the fee and ' +
+                  'the timing before anything is dispatched.',
+    numberOverride: false, number: ''
   };
   var BRANDING = null;              // Settings > Branding & Appearance
   var THEME_MEMO = 'vbp_theme';     // last applied theme, so a return visit is not repainted
@@ -79,13 +143,58 @@
   function slug(s) {
     return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   }
+  function moneyStyle() {
+    if (MONEY) return MONEY;
+    if (FMT) MONEY = FMT.moneyStyle(SETTINGS, PRICING);
+    return MONEY;
+  }
   function formatPrice(n) {
-    if (FMT) return FMT.money(n, SETTINGS.currency, SETTINGS.numberFormat);
+    if (FMT) return FMT.money(n, moneyStyle());
     var num = Number(n) || 0;
     var hasDec = (Math.round(num * 100) / 100) % 1 !== 0;
     return 'K' + num.toLocaleString('en-US', {
       minimumFractionDigits: hasDec ? 2 : 0, maximumFractionDigits: 2
     });
+  }
+  /* Everything a price has to say about one piece, worked out once. The
+     card, the quick view, the detail page, the search row and the message
+     that goes to WhatsApp all read this, so none of them can disagree. */
+  function priceOf(p) {
+    if (FMT && FMT.priceView) return FMT.priceView(p, PRICING, moneyStyle());
+    return { onRequest: false, now: Number(p.price) || 0, nowText: formatPrice(p.price),
+             wasText: '', offText: '', percent: 0, saved: 0, tax: '', isSale: false };
+  }
+  /* The price as a line of text, with the original and the saving where
+     there is one. Used wherever a price is a string rather than markup. */
+  function priceLine(p) {
+    var v = priceOf(p);
+    if (v.onRequest) return v.nowText;
+    return v.wasText ? v.nowText + ' (was ' + v.wasText + ')' : v.nowText;
+  }
+  /* The price as markup, for the places that can afford the strike
+     through and the percentage. */
+  function priceHtml(p, cls) {
+    var v = priceOf(p);
+    var out = '<span class="px-now">' + esc(v.nowText) + '</span>';
+    if (v.wasText) out += ' <span class="px-was">' + esc(v.wasText) + '</span>';
+    if (v.offText && PRICING.percentWhere !== 'badge') {
+      out += ' <span class="px-off">' + esc(v.offText) + '</span>';
+    }
+    return '<div class="' + (cls || 'p') + (v.onRequest ? ' on-request' : '') + '">' + out + '</div>';
+  }
+  /* The tax line, or nothing at all when the shop would rather not say. */
+  function taxHtml() {
+    var t = FMT && FMT.taxLine ? FMT.taxLine(PRICING) : '';
+    return t ? '<div class="detail-vat">' + esc(t) + '</div>' : '';
+  }
+  /* A piece with no price shown cannot be bought, only asked about: nobody
+     can agree to a figure they have not seen. */
+  function sortPrice(p, whenHidden) {
+    if (onRequest(p)) return whenHidden;
+    return priceOf(p).now;
+  }
+  function onRequest(p) {
+    return !!(p && p.priceOnRequest) && PRICING.onRequestEnabled !== false;
   }
   function formatDate(v) {
     if (FMT) return FMT.date(v, SETTINGS.dateFormat);
@@ -113,7 +222,7 @@
       "Hello {business}, I'd like to buy: {product} (SKU: {sku}), {price}. Is it available?";
     if (!CT) return tpl;
     return CT.fill(tpl, {
-      business: shopName(), product: p.name, sku: p.sku, price: formatPrice(p.price)
+      business: shopName(), product: p.name, sku: p.sku, price: priceLine(p)
     });
   }
   function enquiryMessage() {
@@ -126,7 +235,19 @@
     return CT ? CT.greet(shopName(), intent, enquiryMessage()) : (intent || '');
   }
   function waLink(p) {
+    /* A piece held back for a conversation asks what it costs; it does not
+       offer to buy at a figure nobody has been shown. Sold out pieces keep
+       the ordinary message, which already ends by asking if it is
+       available. */
+    if (onRequest(p)) {
+      return waUrl(enquiryNumber(), askPriceMessage(p));
+    }
     return waUrl(orderNumber(), orderMessage(p));
+  }
+  function askPriceMessage(p) {
+    var text = "Hello " + shopName() + ", could you tell me the price of " +
+               p.name + " (SKU: " + p.sku + ")?";
+    return text;
   }
   function checkoutLabel() {
     return (SHOP && SHOP.checkoutLabel) || 'Buy on WhatsApp';
@@ -135,10 +256,26 @@
      shop is a catalogue: the pieces and prices stay, the buy buttons go.
      Enquiries are a separate switch and are unaffected. */
   function canBuy(p) {
+    if (onRequest(p)) return false;
     return !!p.available && SHOP.whatsappCheckout !== false;
   }
+  /* Whether THIS person may reach the WhatsApp step. Guest checkout and
+     email confirmation both live in Settings > Customer Accounts, so the
+     question is asked there rather than answered here twice. */
+  function mayCheckout() { return !ACCT || ACCT.mayCheckout(); }
   function canAsk(p) {
-    return !p.available && SHOP.enquiries !== false;
+    if (SHOP.enquiries === false) return false;
+    /* A piece whose price is not shown can only be asked about, whether or
+       not it is in stock: the price is the thing the conversation settles. */
+    if (onRequest(p)) return true;
+    return !p.available;
+  }
+  /* What the button says when it is not a buy button. A piece held back
+     for a conversation gets the shop's own wording; a sold out piece keeps
+     the plain word. */
+  function askLabel(p, long) {
+    if (onRequest(p) && PRICING.onRequestButton) return PRICING.onRequestButton;
+    return long ? 'Enquire on WhatsApp' : 'Enquire';
   }
   function waGeneral(text) {
     return waUrl(orderNumber(), waSay(text));
@@ -198,7 +335,7 @@
     var i = -1;
     function next() {
       i++;
-      if (i < IMG_EXTS.length) { imgEl.src = 'images/' + sku + '.' + IMG_EXTS[i]; }
+      if (i < IMG_EXTS.length) { imgEl.src = '/images/' + sku + '.' + IMG_EXTS[i]; }
       else { imgEl.onerror = null; imgEl.src = placeholderSrc(); }
     }
     imgEl.onerror = next;
@@ -219,7 +356,7 @@
     var i = 0;
     (function tryNext() {
       if (i >= IMG_EXTS.length) { cb(placeholderSrc()); return; }
-      var url = 'images/' + sku + '.' + IMG_EXTS[i++];
+      var url = '/images/' + sku + '.' + IMG_EXTS[i++];
       var im = new Image();
       im.onload = function () { cb(url); };
       im.onerror = tryNext;
@@ -253,7 +390,13 @@
   var wishlist = parseList(store.get('vbp_wishlist'));
   var recent = parseList(store.get('vbp_recent'));
   function parseList(s) { try { return s ? JSON.parse(s) : []; } catch (e) { return []; } }
-  function saveWishlist() { store.set('vbp_wishlist', JSON.stringify(wishlist)); }
+  function saveWishlist() {
+    store.set('vbp_wishlist', JSON.stringify(wishlist));
+    /* The device keeps its own copy either way, so a customer who signs
+       out still has what they saved. The account copy is the one that
+       travels. */
+    if (ACCT && ACCT.wishlistFollows()) ACCT.pushWishlist(wishlist);
+  }
   function saveRecent() { store.set('vbp_recent', JSON.stringify(recent)); }
 
   function bySku(sku) { for (var i = 0; i < PRODUCTS.length; i++) if (PRODUCTS[i].sku === sku) return PRODUCTS[i]; return null; }
@@ -396,12 +539,263 @@
     if (SHOP.showReviews) renderSiteReviews();
   }
 
+  /* The placeholder class has to come off before the photo goes on. It
+     paints its gradient with the `background` shorthand, which quietly
+     resets size, position and repeat as well, so a photo left underneath
+     it renders at its natural size in the tile's top left corner and
+     tiles across — which looks like a flat patch of colour rather than a
+     photograph. The category cards have always taken it off; the lookbook
+     never did. */
+  function dressTile(e, url) {
+    if (!e || !url) return;
+    e.classList.remove('fallback');
+    e.style.backgroundImage = "url('" + url + "')";
+  }
+  /* One row of hours: the chip saying where the clock stands right now,
+     then the week itself. The chip is left off when the browser cannot
+     work with the shop's time zone, because a guess about whether the
+     shop is open is worse than saying nothing. */
+  function writeHours(sel, line, state) {
+    var host = $(sel);
+    if (!host) return;
+    host.textContent = '';
+    if (state && state.known) {
+      var chip = el('span', 'open-chip' + (state.open ? ' is-open' : ''));
+      chip.textContent = state.text;
+      host.appendChild(chip);
+      host.appendChild(document.createTextNode(' '));
+    }
+    host.appendChild(document.createTextNode(line));
+  }
+
+  /* ---- delivery and collection, in words ----------------------------
+     One place answers what the shop offers, so the product page, the
+     checkout step and the homepage band cannot describe it differently.
+     Everything here returns '' when there is nothing to say, and a shop
+     that offers neither says nothing at all rather than an empty heading. */
+
+  function deliversAnywhere() { return DELIVERY.deliveryEnabled !== false; }
+  function collectsInPerson() { return DELIVERY.pickupEnabled !== false; }
+  function feesShown() { return deliversAnywhere() && !!DELIVERY.showFees; }
+  function sameDayOffered() { return deliversAnywhere() && DELIVERY.speeds === 'both'; }
+
+  function deliveryAreas() {
+    return (DELIVERY.areas || []).filter(function (a) { return a && a.name; });
+  }
+
+  /* A fee written the shop's way, or the word for having none. An area
+     with an empty fee is free where fees are shown, because a shop that
+     publishes its charges and leaves one blank is saying it costs
+     nothing, not that it forgot. */
+  function feeText(fee) {
+    if (fee === '' || fee === null || fee === undefined) return 'Free';
+    var n = Number(fee);
+    if (!isFinite(n) || n <= 0) return 'Free';
+    return formatPrice(n);
+  }
+
+  /* 'Lusaka · same day · K80' — as much of it as the shop has said. */
+  function areaLine(a) {
+    var bits = [a.name];
+    if (a.days) bits.push(a.days);
+    if (feesShown()) bits.push(feeText(a.fee));
+    return bits.join(' · ');
+  }
+
+  /* Where an order can be collected: the shop's own address unless the
+     shop collects somewhere else. */
+  function pickupWhere() {
+    if (!collectsInPerson()) return '';
+    if (DELIVERY.pickupUseShopAddress === false) return String(DELIVERY.pickupLocation || '').trim();
+    var bits = [SETTINGS.address, SETTINGS.city, SETTINGS.country]
+      .map(function (x) { return String(x || '').trim(); })
+      .filter(Boolean);
+    return bits.join(', ');
+  }
+
+  /* Which number answers a delivery or collection question. Contact &
+     Social holds the numbers; this only chooses between them, so a shop
+     never ends up with two that disagree. */
+  function deliveryNumber() {
+    if (DELIVERY.numberOverride && DELIVERY.number) {
+      return String(DELIVERY.number).replace(/[^0-9]/g, '');
+    }
+    return orderNumber();
+  }
+  function pickupNumber() {
+    if (DELIVERY.pickupNumberOverride && DELIVERY.pickupNumber) {
+      return String(DELIVERY.pickupNumber).replace(/[^0-9]/g, '');
+    }
+    return orderNumber();
+  }
+
+  /* The delivery half, as lines of text. */
+  function deliveryLines() {
+    if (!deliversAnywhere()) return [];
+    var out = [];
+    var areas = deliveryAreas();
+    if (areas.length) areas.forEach(function (a) { out.push(areaLine(a)); });
+    else if (DELIVERY.standardDays) out.push(DELIVERY.standardDays);
+
+    if (feesShown()) {
+      var charge = [];
+      if (DELIVERY.standardFee !== '' && Number(DELIVERY.standardFee) > 0) {
+        charge.push('Elsewhere ' + formatPrice(DELIVERY.standardFee));
+      }
+      if (DELIVERY.freeOver !== '' && Number(DELIVERY.freeOver) > 0) {
+        charge.push('Free over ' + formatPrice(DELIVERY.freeOver));
+      }
+      if (charge.length) out.push(charge.join(' · '));
+    } else if (DELIVERY.feesNote) {
+      out.push(DELIVERY.feesNote);
+    }
+
+    if (sameDayOffered()) {
+      var sd = DELIVERY.sameDayNote || 'Same-day delivery available.';
+      if (DELIVERY.sameDayCutoff) sd += ' Order by ' + DELIVERY.sameDayCutoff + '.';
+      if (feesShown() && DELIVERY.sameDayFee !== '' && Number(DELIVERY.sameDayFee) > 0) {
+        sd += ' ' + formatPrice(DELIVERY.sameDayFee) + '.';
+      }
+      out.push(sd);
+    }
+    return out;
+  }
+
+  /* The collection half. */
+  function pickupLines() {
+    if (!collectsInPerson()) return [];
+    var out = [];
+    var where = pickupWhere();
+    out.push(where ? 'Collect in person from ' + where + '.' : 'Collection in person can be arranged.');
+    if (DELIVERY.pickupInstructions) out.push(DELIVERY.pickupInstructions);
+    return out;
+  }
+
+  /* What the product page's Delivery & collection panel says. This used
+     to be a paragraph typed into the source, stating the areas, the
+     charging and the collection offer, changeable only by editing code. */
+  function deliveryPanelHtml() {
+    var parts = [];
+    var d = deliveryLines();
+    if (d.length) {
+      parts.push('<div class="dl-block"><span class="dl-h">Delivery</span>' +
+                 d.map(function (t) { return '<div>' + esc(t) + '</div>'; }).join('') + '</div>');
+    }
+    var c = pickupLines();
+    if (c.length) {
+      parts.push('<div class="dl-block"><span class="dl-h">Collection</span>' +
+                 c.map(function (t) { return '<div>' + esc(t) + '</div>'; }).join('') + '</div>');
+    }
+    /* Terms are terms of something. On a shop that neither delivers nor
+       collects there is nothing for them to be about, and a panel built
+       from leftover wording alone would stand there saying so. */
+    if (!parts.length) return '';
+    if (DELIVERY.terms) parts.push('<div class="dl-terms">' + esc(DELIVERY.terms) + '</div>');
+    /* The seven delivery policies already on the site are one tap away
+       rather than repeated here. */
+    if (hasDeliveryPolicy()) {
+      parts.push('<a class="dl-more" href="' + pathFor('policies') + '">Read the full delivery policy</a>');
+    }
+    return parts.join('');
+  }
+  function hasDeliveryPolicy() {
+    return (POLICIES || []).some(function (p) {
+      return p && String(p.section || '').toLowerCase().indexOf('deliver') > -1;
+    });
+  }
+
+  /* ---- customer accounts ---------------------------------------------
+     Everything about accounts lives in assets/account.js. This is only
+     the wiring: hand it the client and the settings, then keep the
+     header, the wishlist and the checkout in step with who is signed in.
+
+     A shop with accounts off never gets past the first line. */
+  function startAccounts() {
+    if (!ACCT) return;
+    ACCT.hooks.money = formatPrice;
+    ACCT.hooks.date = formatDate;
+    /* Told what the shop has decided straight away, so the router knows
+       whether #/account is a page here before the client has downloaded. */
+    ACCT.configure(ACCOUNTS);
+
+    withClient(function (client) { begin(client); });
+
+    function begin(client) {
+    ACCT.start(client, ACCOUNTS).then(function () {
+      paintAccount();
+      /* A session found after the page had already drawn: the account
+         view needs redrawing, or it would sit there offering a sign-in to
+         somebody already signed in. */
+      if (location.hash === '#/account') renderAccount();
+      /* Whatever was wished for on this device before signing in is
+         merged with whatever the account already held, so nothing is
+         lost by signing in on a second phone. */
+      if (ACCT.wishlistFollows()) {
+        ACCT.mergeWishlist(wishlist).then(function (merged) {
+          if (merged && merged.join('|') !== wishlist.join('|')) {
+            wishlist = merged;
+            saveWishlist();
+            updateWishCount();
+            if (mode === 'wishlist') renderGrid();
+          }
+        });
+      }
+    });
+
+    ACCT.onChange(function () {
+      paintAccount();
+      if (location.hash === '#/account') renderAccount();
+    });
+    }
+  }
+
+  /* Fetches the Supabase client, but only for a shop that has accounts
+     switched on. Everyone else never asks for it, so the library is not
+     on the critical path of a page that would never use it. */
+  var CLIENT_SRC = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+  function withClient(then) {
+    if (!WEB || !ACCOUNTS.accountsEnabled) { then(null); return; }
+    if (window.supabase && window.supabase.createClient) { then(webClient()); return; }
+    var tag = document.createElement('script');
+    tag.src = CLIENT_SRC;
+    tag.async = true;
+    tag.onload = function () { then(webClient()); };
+    /* A shop whose customers cannot reach the CDN still sells: the
+       account panel simply never appears, and guests carry on. */
+    tag.onerror = function () { then(null); };
+    document.head.appendChild(tag);
+  }
+
+  /* The storefront reads with the anon key; the account layer needs the
+     same client so a signed-in customer's own rows come back. Built once,
+     and only where accounts are actually on. */
+  var WEB_CLIENT = null;
+  function webClient() {
+    if (WEB_CLIENT) return WEB_CLIENT;
+    if (!WEB || !ACCOUNTS.accountsEnabled) return null;
+    if (!window.supabase || !window.supabase.createClient) return null;
+    try {
+      WEB_CLIENT = window.supabase.createClient(WEB.SUPABASE_URL, WEB.SUPABASE_ANON_KEY);
+    } catch (e) { WEB_CLIENT = null; }
+    return WEB_CLIENT;
+  }
+
+  function paintAccount() {
+    var btn = $('#acctBtn');
+    if (!btn) return;
+    if (!ACCT || !ACCT.enabled()) { btn.classList.add('hide'); return; }
+    btn.classList.remove('hide');
+    btn.setAttribute('aria-label', ACCT.signedIn() ? 'Your account' : 'Sign in');
+    btn.classList[ACCT.signedIn() ? 'add' : 'remove']('is-in');
+  }
+
+  function renderAccount() {
+    if (ACCT) ACCT.render($('#accountBody'));
+  }
+
   function applyLookbook(list) {
     if (!Array.isArray(list)) return;
-    for (var i = 0; i < 6; i++) {
-      var e = $('#look' + (i + 1));
-      if (e && list[i]) e.style.backgroundImage = "url('" + list[i] + "')";
-    }
+    for (var i = 0; i < 6; i++) dressTile($('#look' + (i + 1)), list[i]);
   }
 
   /* The row of promises under the story. Rebuilt rather than filled in, so
@@ -469,6 +863,73 @@
 
   /* The promotional banner. It only appears when it has been switched on
      and given something to say, since an empty band is worse than none. */
+  /* The homepage band. Two cards at most, and it hides itself entirely
+     when the shop offers neither, rather than standing there as a heading
+     over nothing. */
+  function applyDeliveryBand() {
+    var sec = $('#delivery-sec');
+    if (!sec) return;
+
+    var cards = [];
+    var d = deliveryLines();
+    if (d.length) cards.push(['Delivery', deliveryIcon(), d]);
+    var c = pickupLines();
+    if (c.length) cards.push(['Collection', pickupIcon(), c]);
+
+    if (!cards.length) { sec.classList.add('hide'); return; }
+
+    var grid = $('#deliveryGrid');
+    if (grid) {
+      grid.innerHTML = '';
+      cards.forEach(function (card) {
+        var cell = el('div', 'dl-card');
+        cell.innerHTML = '<div class="ic">' + card[1] + '</div>' +
+          '<h3 class="serif"></h3>' +
+          card[2].map(function () { return '<div class="dl-l"></div>'; }).join('');
+        cell.querySelector('h3').textContent = card[0];
+        var lines = cell.querySelectorAll('.dl-l');
+        card[2].forEach(function (t, i) { if (lines[i]) lines[i].textContent = t; });
+        grid.appendChild(cell);
+      });
+    }
+
+    var sub = $('#deliverySub');
+    if (sub) {
+      sub.textContent = DELIVERY.terms || '';
+      sub.classList[DELIVERY.terms ? 'remove' : 'add']('hide');
+    }
+
+    var foot = $('#deliveryFoot');
+    if (foot) {
+      foot.innerHTML = '';
+      var num = deliversAnywhere() ? deliveryNumber() : pickupNumber();
+      if (num) {
+        var a = el('a', 'btn btn-wa');
+        a.href = waUrl(num, waSay('I have a question about delivery.'));
+        a.target = '_blank'; a.rel = 'noopener';
+        a.innerHTML = waIcon() + 'Ask about delivery';
+        foot.appendChild(a);
+      }
+      if (hasDeliveryPolicy()) {
+        var more = el('a', 'dl-more');
+        more.href = pathFor('policies');
+        more.textContent = 'Read the full delivery policy';
+        foot.appendChild(more);
+      }
+    }
+    sec.classList.remove('hide');
+  }
+  function deliveryIcon() {
+    return "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.4'>" +
+           "<rect x='1' y='3' width='15' height='13'/><path d='M16 8h4l3 3v5h-7V8z'/>" +
+           "<circle cx='5.5' cy='18.5' r='2.5'/><circle cx='18.5' cy='18.5' r='2.5'/></svg>";
+  }
+  function pickupIcon() {
+    return "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.4'>" +
+           "<path d='M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z'/>" +
+           "<circle cx='12' cy='10' r='3'/></svg>";
+  }
+
   function applyPromo() {
     var sec = $('#promo');
     if (!sec || !HOME) return;
@@ -578,10 +1039,24 @@
       { key: 'name',    on: SHOP.requireName,    label: 'Your name',        type: 'text',  ac: 'name' },
       { key: 'phone',   on: SHOP.requirePhone,   label: 'Phone number',     type: 'tel',   ac: 'tel' },
       { key: 'email',   on: SHOP.requireEmail,   label: 'Email address',    type: 'email', ac: 'email' },
-      { key: 'address', on: SHOP.requireAddress, label: 'Delivery address', type: 'area',  ac: 'street-address' }
+      /* Only worth asking where something is going if something is being
+         sent. With delivery off, or with the customer collecting, the box
+         asks for what nobody needs. */
+      { key: 'address', on: SHOP.requireAddress && deliversAnywhere(),
+        label: 'Delivery address', type: 'area',  ac: 'street-address',
+        onlyWhenDelivering: true }
     ].filter(function (f) { return f.on; });
   }
 
+  /* The customer is asked how they want the order only when there is a
+     real choice to make. One option is not a choice, it is a sentence. */
+  function offersBoth() { return deliversAnywhere() && collectsInPerson(); }
+
+  /* The delivery-or-collection choice rides along inside the details step
+     rather than being a reason to create one. A shop that has switched off
+     every question is saying "do not interrupt, just open WhatsApp", and
+     putting a step back for one more question would contradict it. Where
+     there is no step, the conversation settles it, as it always did. */
   function needsDetails() {
     return buyerFields().length > 0 || !!SHOP.orderNotes;
   }
@@ -604,6 +1079,11 @@
       var v = details && details[k];
       if (v) lines.push(labels[k] + ': ' + v);
     });
+    /* Only said when the customer was actually given the choice. On a
+       shop that only delivers, "Delivery" in the message is noise. */
+    if (offersBoth() && details && details.how) {
+      lines.push(details.how === 'collection' ? 'Collecting in person' : 'To be delivered');
+    }
     return lines.join('\n');
   }
 
@@ -614,11 +1094,55 @@
     var fields = buyerFields();
     var saved = savedBuyer();
 
+    /* A signed-in customer's default address beats what this device
+       happens to remember: they chose it deliberately, and it is the one
+       that follows them between phones. */
+    var book = (ACCT && ACCT.addressesOn()) ? ACCT.state.addresses : [];
+    var chosen = (ACCT && ACCT.addressesOn()) ? ACCT.defaultAddress() : null;
+    var me = (ACCT && ACCT.signedIn()) ? (ACCT.state.profile || {}) : {};
+
+    /* Somebody signed in has already told the shop their name, their phone
+       and where they live. Asking again is asking them to prove they can
+       type. Their own details come first, then the address they chose,
+       then whatever this device happened to remember. */
+    if (chosen || me.name || me.phone) {
+      saved = {
+        name: (chosen && chosen.recipient) || me.name || saved.name || '',
+        phone: (chosen && chosen.phone) || me.phone || saved.phone || '',
+        email: (ACCT && ACCT.signedIn() && ACCT.state.user.email) || saved.email || '',
+        address: chosen ? [chosen.address, chosen.city].filter(Boolean).join(', ')
+                        : (saved.address || ''),
+        how: saved.how
+      };
+    }
+
     body.innerHTML =
       '<button class="qv-close" id="odClose" aria-label="Close">&times;</button>' +
       '<div class="c">' + esc(p.name) + '</div>' +
       '<h3 class="serif">Your details</h3>' +
       '<p class="od-lead">So your order arrives complete. We will carry on from here on WhatsApp.</p>' +
+      /* Delivery or collection, asked before anything else, because the
+         answer decides whether the address below is worth filling in. */
+      (offersBoth()
+        ? '<div class="od-how" role="radiogroup" aria-label="How would you like your order">' +
+            '<label class="od-pick"><input type="radio" name="odHow" value="delivery"' +
+              (saved.how === 'collection' ? '' : ' checked') + '><span>Delivered</span></label>' +
+            '<label class="od-pick"><input type="radio" name="odHow" value="collection"' +
+              (saved.how === 'collection' ? ' checked' : '') + '><span>Collected in person</span></label>' +
+          '</div>'
+        : '') +
+      /* Only where there is a choice to make. One saved address needs no
+         picker: it is already in the boxes below. */
+      (book.length > 1
+        ? '<label class="rv-lbl" for="od_book">Deliver to</label>' +
+          '<select id="od_book">' +
+          book.map(function (a, i) {
+            var t = [a.label, a.address, a.city].filter(Boolean).join(' · ');
+            return '<option value="' + i + '"' +
+              (chosen && a.id === chosen.id ? ' selected' : '') + '>' + esc(t) + '</option>';
+          }).join('') +
+          '</select>'
+        : '') +
       fields.map(function (f) {
         var v = esc(saved[f.key] || '');
         return '<label class="rv-lbl" for="od_' + f.key + '">' + esc(f.label) + '</label>' +
@@ -639,21 +1163,85 @@
 
     $('#odClose').addEventListener('click', closeOrderForm);
 
+    var picker = $('#od_book', body);
+    if (picker) {
+      picker.addEventListener('change', function () {
+        var a = book[Number(picker.value)] || {};
+        var an = $('#od_address', body), nm = $('#od_name', body), ph = $('#od_phone', body);
+        if (an) an.value = [a.address, a.city].filter(Boolean).join(', ');
+        if (nm && a.recipient) nm.value = a.recipient;
+        if (ph && a.phone) ph.value = a.phone;
+      });
+    }
+
+    /* The address box follows the choice: asked for when the order is
+       being sent somewhere, put away when it is being fetched. The note
+       under it follows too, so the customer reads the right thing. */
+    var howInputs = $all('input[name="odHow"]', body);
+    var addrWrap = null, addrLabel = null;
+    if (howInputs.length) {
+      var addrBox = $('#od_address', body);
+      if (addrBox) {
+        addrWrap = addrBox;
+        addrLabel = body.querySelector('label[for="od_address"]');
+      }
+      var howNote = el('p', 'od-how-note');
+      var howAnchor = body.querySelector('.od-how');
+      if (howAnchor) howAnchor.parentNode.insertBefore(howNote, howAnchor.nextSibling);
+
+      var applyHow = function () {
+        var collecting = chosenHow() === 'collection';
+        if (addrWrap) {
+          addrWrap.classList[collecting ? 'add' : 'remove']('hide');
+          if (addrLabel) addrLabel.classList[collecting ? 'add' : 'remove']('hide');
+        }
+        /* Short, here. A customer at the point of sending is deciding, not
+           reading a tariff: where to come if they are collecting, and what
+           happens next if they are not. The full areas and fees are on the
+           product page and the homepage band. */
+        var lines = collecting
+          ? pickupLines()
+          : (DELIVERY.instructions ? [DELIVERY.instructions] : []);
+        howNote.textContent = lines.join(' ');
+        howNote.classList[lines.length ? 'remove' : 'add']('hide');
+      };
+      howInputs.forEach(function (r) { r.addEventListener('change', applyHow); });
+      applyHow();
+    }
+
+    function chosenHow() {
+      if (!offersBoth()) return deliversAnywhere() ? 'delivery' : 'collection';
+      var picked = body.querySelector('input[name="odHow"]:checked');
+      return picked ? picked.value : 'delivery';
+    }
+
     function collect() {
       var out = {};
+      var how = chosenHow();
       fields.forEach(function (f) {
+        /* An address typed before the customer switched to collection is
+           not sent: it would have you delivering to somewhere they said
+           they were coming to fetch from. */
+        if (f.onlyWhenDelivering && how === 'collection') { out[f.key] = ''; return; }
         var e = $('#od_' + f.key);
         out[f.key] = e ? e.value.trim() : '';
       });
       var n = $('#od_notes');
       if (n) out.notes = n.value.trim();
+      out.how = how;
       return out;
     }
 
     function go() {
       var d = collect();
       var msg = $('#odMsg');
-      var missing = fields.filter(function (f) { return !d[f.key]; });
+      /* A field that does not apply cannot be missing. Asking a customer
+         who is collecting to fill in a delivery address before they are
+         allowed to continue would be a dead end. */
+      var missing = fields.filter(function (f) {
+        if (f.onlyWhenDelivering && d.how === 'collection') return false;
+        return !d[f.key];
+      });
       if (missing.length) {
         msg.textContent = 'Please fill in ' + missing[0].label.toLowerCase() + '.';
         msg.className = 'rv-msg err';
@@ -667,9 +1255,32 @@
         $('#od_email').focus();
         return;
       }
-      var keep = {};
-      fields.forEach(function (f) { keep[f.key] = d[f.key]; });
+      /* Remembered for next time: their details and how they liked to
+         receive it. An address is only overwritten when one was given, so
+         collecting once does not lose the address they typed before. */
+      var keep = savedBuyer();
+      fields.forEach(function (f) {
+        if (f.onlyWhenDelivering && d.how === 'collection') return;
+        keep[f.key] = d[f.key];
+      });
+      keep.how = d.how;
       rememberBuyer(keep);                 // notes are for this order only
+
+      /* Recorded before the tab opens, and never in its way. The WhatsApp
+         message IS the order; this row is a convenience on top of it, so
+         a write that fails or is slow must not cost the sale. */
+      if (ACCT) {
+        var view = priceOf(p);
+        ACCT.recordOrder({
+          name: d.name, phone: d.phone, email: d.email,
+          address: d.address, notes: d.notes,
+          fulfilment: d.how,
+          total: view.onRequest ? null : view.now,
+          currency: SETTINGS.currency,
+          items: [{ sku: p.sku, name: p.name,
+                    price: view.onRequest ? null : view.now, qty: 1 }]
+        });
+      }
 
       var url = waUrl(orderNumber(), composeOrder(p, d));
       closeOrderForm();
@@ -696,9 +1307,37 @@
   /* Every buy button comes through here. With nothing to ask for, it is
      the straight-to-WhatsApp link the shop has always had. */
   function startOrder(e, p) {
+    /* A shop that requires an account, or an unconfirmed email address,
+       stops here rather than at WhatsApp. Being told why on the page is
+       better than a conversation that goes nowhere. */
+    if (!mayCheckout()) {
+      e.preventDefault();
+      openCheckoutBlock();
+      return;
+    }
     if (!needsDetails()) return;          // let the anchor follow its href
     e.preventDefault();
     openOrderForm(p);
+  }
+
+  /* Not a form: a sentence and a way forward. */
+  function openCheckoutBlock() {
+    var modal = $('#orderModal'), body = $('#orderBody');
+    var why = ACCT ? ACCT.whyNotCheckout() : '';
+    if (!modal || !body) { go('account'); return; }
+    body.innerHTML =
+      '<button class="qv-close" id="odClose" aria-label="Close">&times;</button>' +
+      '<h3 class="serif">One moment</h3>' +
+      '<p class="od-lead"></p>' +
+      '<div class="rv-actions"><button class="btn btn-gold" id="odAcct">Go to your account</button></div>';
+    body.querySelector('.od-lead').textContent = why;
+    $('#odClose').addEventListener('click', closeOrderForm);
+    $('#odAcct').addEventListener('click', function () {
+      closeOrderForm();
+      go('account');
+    });
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
   }
 
   // ------------------------------------------------------------------ share
@@ -715,7 +1354,11 @@
     var url = location.origin + location.pathname + '#/product/' + encodeURIComponent(p.sku);
     var data = {
       title: p.name,
-      text: p.name + ' · ' + formatPrice(p.price) + ' · ' + shopName(),
+      /* priceLine, not the till's number: a shared piece must carry the
+         price the page was showing. Sharing the raw figure would put the
+         old price on a reduced piece, and the hidden one on a piece whose
+         price is meant to be asked for. */
+      text: p.name + ' · ' + priceLine(p) + ' · ' + shopName(),
       url: url
     };
     function said(msg) {
@@ -857,6 +1500,24 @@
     document.body.appendChild(wrap);
     document.documentElement.classList.add('vbp-gated');
     document.title = (SETTINGS.businessName || 'Vaultique Boutique Point') + ' · ' + c.eyebrow;
+
+    /* A shop that is closed, coming soon or under maintenance should not
+       be gathering search traffic to a notice. The page stays followable
+       so a crawler still finds the links, and comes back to a real shop
+       once the notice is gone.
+
+       The whole set is applied rather than the one tag, because apply()
+       replaces what it owns: handing it robots alone would take the shop
+       name and the sharing picture off a page people still share. */
+    if (SEO) {
+      try {
+        var c = seoContext();
+        var view = SEO.forRoute(c, '');
+        view.robots = 'noindex, follow';
+        view.title = document.title;      // the notice named itself just above
+        SEO.apply(SEO.tagsFor(view, c));
+      } catch (e) {}
+    }
   }
 
   // Returns true when the site is gated and the shop must not be built.
@@ -901,12 +1562,19 @@
       mergeMeta();
       applySettings();
       applyShopSettings();
+      /* Before the homepage, and outside it: applyHomepageSettings gives up
+         early on a shop that has never saved that section, and the delivery
+         band is not the homepage's to withhold. Drawn first so that when
+         the homepage does run, applySections can move a band that is
+         already dressed. */
+      applyDeliveryBand();
       applyHomepageSettings();
       applyPaymentSettings();
       applyContactSettings();
       bindWa();                       // rebuild every link with the real numbers
       bindEmailIg();
       applyLocalBackgrounds();
+      startAccounts();
       boot();
     });
   }
@@ -917,13 +1585,13 @@
     if (!USE_LOCAL) return;
     ['#heroPhoto1', '#heroPhoto2', '#heroPhoto3'].forEach(function (id, i) {
       var e = $(id); if (!e || e.style.backgroundImage) return;
-      var u = 'images/hero-' + (i + 1) + '.jpg';
+      var u = '/images/hero-' + (i + 1) + '.jpg';
       preload(u, function (ok) { if (ok) e.style.backgroundImage = "url('" + u + "')"; });
     });
     for (var k = 1; k <= 6; k++) (function (k) {
       var e = $('#look' + k); if (!e || e.style.backgroundImage) return;
-      var u = 'images/look-' + k + '.jpg';
-      preload(u, function (ok) { if (ok) e.style.backgroundImage = "url('" + u + "')"; });
+      var u = '/images/look-' + k + '.jpg';
+      preload(u, function (ok) { if (ok) dressTile(e, u); });
     })(k);
   }
   // pull the website's own photos + content (separate Supabase, read-only here)
@@ -931,7 +1599,7 @@
     if (!WEB) { cb(); return; }
     var base = WEB.SUPABASE_URL.replace(/\/+$/, '');
     var h = { apikey: WEB.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + WEB.SUPABASE_ANON_KEY };
-    var pending = 10;
+    var pending = 14;
     function done() { if (--pending === 0) cb(); }
     fetch(base + '/rest/v1/product_meta?select=*', { headers: h })
       .then(function (r) { return r.ok ? r.json() : []; })
@@ -967,6 +1635,54 @@
         }
       })
       .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.seo&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) {
+        var d = rows && rows[0] && rows[0].data;
+        if (!d) return;
+        for (var k in d) {
+          if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) {
+            SEOSET[k] = d[k];
+          }
+        }
+      })
+      .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.customer-accounts&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) {
+        var d = rows && rows[0] && rows[0].data;
+        if (!d) return;
+        for (var k in d) {
+          if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) {
+            ACCOUNTS[k] = d[k];
+          }
+        }
+      })
+      .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.delivery&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) {
+        var d = rows && rows[0] && rows[0].data;
+        if (!d) return;
+        for (var k in d) {
+          if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) {
+            DELIVERY[k] = d[k];
+          }
+        }
+      })
+      .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.pricing&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) {
+        var d = rows && rows[0] && rows[0].data;
+        if (!d) return;
+        for (var k in d) {
+          if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) {
+            PRICING[k] = d[k];
+          }
+        }
+      })
+      .catch(function () {}).then(done);
     fetch(base + '/rest/v1/site_settings?key=eq.contact&select=data', { headers: h })
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (rows) { CONTACT = (rows && rows[0] && rows[0].data) || null; })
@@ -990,6 +1706,19 @@
   }
   function asArray(v) { if (Array.isArray(v)) return v; try { var a = JSON.parse(v); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
   // attach per-product photos/flags from the website DB, and drop hidden items
+  /* A sale that has been running for months is not news. After the shop's
+     chosen number of days the piece keeps its lower price and simply stops
+     being advertised as reduced. A missing date is treated as recent,
+     because a reduction we cannot date is better shown than hidden. */
+  function freshReduction(recordedAt) {
+    if (PRICING.trackReductions === false) return false;
+    var days = Number(PRICING.reductionDays);
+    if (!isFinite(days) || days <= 0) return true;
+    if (!recordedAt) return true;
+    var t = new Date(recordedAt).getTime();
+    if (isNaN(t)) return true;
+    return (Date.now() - t) <= days * 86400000;
+  }
   function mergeMeta() {
     PRODUCTS = PRODUCTS.map(function (p) {
       var m = META[p.sku];
@@ -1002,6 +1731,24 @@
         p.best_seller = !!m.best_seller;
         p.hidden = !!m.hidden;
         if (m.description) p.customDesc = m.description;
+
+        /* Pricing. The price itself is the POS's and is left alone. What
+           the meta adds is only what the POS cannot say: the higher price
+           this piece was last seen at, a website price that replaces the
+           till's, and whether the figure is shown at all. */
+        p.priceOnRequest = !!m.on_request;
+        if (m.price_override !== null && m.price_override !== undefined && m.price_override !== '') {
+          p.priceOverride = Number(m.price_override) || 0;
+        }
+        /* A former price sent by the till itself outranks the one the
+           admin remembered: it is the shop's own record rather than the
+           website's observation. The memory is the fallback for tills that
+           do not keep one. */
+        var ref = Number(m.ref_price);
+        if (!(Number(p.wasPrice) > 0) &&
+            isFinite(ref) && ref > 0 && freshReduction(m.ref_price_at)) {
+          p.wasPrice = ref;
+        }
       }
       return p;
     }).filter(function (p) { return !p.hidden; });
@@ -1014,6 +1761,7 @@
     buildFilters();
     if (SHOP.showReviews) renderSiteReviews();
     updateWishCount();
+    bindAccountButton();
     route();
   }
   function catHasProducts(c) {
@@ -1072,8 +1820,8 @@
       card.setAttribute('role', 'button');
       card.setAttribute('aria-label', c + ' collection');
       var ph = el('div', 'ph fallback');
-      preload('images/collection-' + slug(c) + '.jpg', function (ok) {
-        if (ok) { ph.classList.remove('fallback'); ph.style.cssText = bgStyle('images/collection-' + slug(c) + '.jpg'); }
+      preload('/images/collection-' + slug(c) + '.jpg', function (ok) {
+        if (ok) { ph.classList.remove('fallback'); ph.style.cssText = bgStyle('/images/collection-' + slug(c) + '.jpg'); }
       });
       var ov = el('div', 'ov');
       ov.innerHTML = '<div class="k">Collection</div><div class="n serif">' + esc(c) + '</div>' +
@@ -1138,10 +1886,10 @@
       var s2 = el('img', 'secondary'); s2.alt = p.name + ' alternate view';
       s2.loading = 'lazy'; s2.src = sec2; thumb.appendChild(s2);
     } else {
-      preload('images/' + p.sku + '-2.jpg', function (ok) {
+      preload('/images/' + p.sku + '-2.jpg', function (ok) {
         if (!ok) return;
         var s = el('img', 'secondary'); s.alt = p.name + ' alternate view';
-        s.loading = 'lazy'; s.src = 'images/' + p.sku + '-2.jpg';
+        s.loading = 'lazy'; s.src = '/images/' + p.sku + '-2.jpg';
         thumb.appendChild(s);
       });
     }
@@ -1149,6 +1897,14 @@
     if (SHOP.showBadges) {
       var badges = el('div', 'badges');
       if (markNew || p.is_new) { var nb = el('span', 'tag new'); nb.textContent = 'New In'; badges.appendChild(nb); }
+      /* Reduced pieces say so here rather than under their own switch:
+         Settings > Products & Shopping already governs badges. */
+      var pv = priceOf(p);
+      if (pv.offText && PRICING.percentWhere !== 'inline') {
+        var db = el('span', 'tag sale'); db.textContent = pv.offText; badges.appendChild(db);
+      } else if (pv.isSale && !pv.offText) {
+        var sb0 = el('span', 'tag sale'); sb0.textContent = 'Sale'; badges.appendChild(sb0);
+      }
       var sb = el('span', 'tag ' + (p.available ? 'stock' : 'out'));
       /* The feed says whether only a few are left without saying how many. */
       sb.textContent = !p.available ? 'Sold Out'
@@ -1175,7 +1931,7 @@
       (SHOP.showCategory ? '<div class="c">' + esc(p.category) + '</div>' : '') +
       '<div class="n serif"></div>' +
       '<div class="a">' + esc(attrs) + '</div>' +
-      '<div class="p">' + formatPrice(p.price) + '</div>';
+      priceHtml(p);
     var nm = info.querySelector('.n'); nm.textContent = p.name;
     nm.addEventListener('click', function () { openProduct(p.sku); });
 
@@ -1186,7 +1942,7 @@
       var waLine = el('div', 'wa-line');
       var wa = el('a', 'btn btn-wa');
       wa.href = waLink(p); wa.target = '_blank'; wa.rel = 'noopener';
-      wa.innerHTML = waIcon() + (canBuy(p) ? checkoutLabel() : 'Enquire');
+      wa.innerHTML = waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, false));
       if (canBuy(p)) wa.addEventListener('click', function (e) { startOrder(e, p); });
       waLine.appendChild(wa);
       info.appendChild(waLine);
@@ -1197,6 +1953,10 @@
   }
 
   // ------------------------------------------------------------------ wishlist
+  function bindAccountButton() {
+    var b = $('#acctBtn');
+    if (b) b.addEventListener('click', function () { go('account'); });
+  }
   function isWished(sku) { return wishlist.indexOf(sku) > -1; }
   function toggleWish(sku, btn) {
     var i = wishlist.indexOf(sku);
@@ -1229,8 +1989,14 @@
         (p.material && p.material.toLowerCase().indexOf(term) > -1);
       return catOk && s;
     });
-    if (sortBy === 'price-asc') list.sort(function (a, b) { return a.price - b.price; });
-    else if (sortBy === 'price-desc') list.sort(function (a, b) { return b.price - a.price; });
+    /* Sort by what a piece actually costs today, not what the till holds:
+       a reduced piece belongs where its reduced price puts it. A piece with
+       no price shown sorts last either way, having no figure to place. */
+    if (sortBy === 'price-asc') {
+      list.sort(function (a, b) { return sortPrice(a, Infinity) - sortPrice(b, Infinity); });
+    } else if (sortBy === 'price-desc') {
+      list.sort(function (a, b) { return sortPrice(b, -Infinity) - sortPrice(a, -Infinity); });
+    }
     else if (sortBy === 'name') list.sort(function (a, b) { return a.name.localeCompare(b.name); });
     else if (sortBy === 'available') list.sort(function (a, b) { return (b.available ? 1 : 0) - (a.available ? 1 : 0); });
     return list;
@@ -1300,8 +2066,8 @@
       '<button class="qv-close" aria-label="Close">&times;</button>' +
       (SHOP.showCategory ? '<div class="c">' + esc(p.category) + '</div>' : '') +
       '<h3 class="serif">' + esc(p.name) + '</h3>' +
-      '<div class="p serif">' + formatPrice(p.price) + '</div>' +
-      '<div class="detail-vat">Price includes 16% VAT</div>' +
+      priceHtml(p, 'p serif') +
+      taxHtml() +
       '<div class="meta">' + attrs.map(function (r) { return '<div><b style="color:#15202e">' + esc(r[0]) + ':</b> ' + esc(r[1]) + '</div>'; }).join('') +
       '<div style="margin-top:6px">' +
         (p.available
@@ -1310,7 +2076,7 @@
       '<div class="detail-cta" style="max-width:none">' +
       ((canBuy(p) || canAsk(p))
         ? '<a class="btn btn-wa" id="qvBuy" target="_blank" rel="noopener" href="' + waLink(p) + '">' +
-          waIcon() + (canBuy(p) ? checkoutLabel() : 'Enquire on WhatsApp') + '</a>'
+          waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       '<button class="btn btn-outline" id="qvFull">View full details</button></div>';
     body.querySelector('.qv-close').addEventListener('click', closeQuickView);
@@ -1326,7 +2092,7 @@
   function closeQuickView() { $('#qv').classList.remove('open'); document.body.style.overflow = ''; }
 
   // ------------------------------------------------------------------ product detail
-  function openProduct(sku) { location.hash = '#/product/' + encodeURIComponent(sku); }
+  function openProduct(sku) { go('product/' + encodeURIComponent(sku)); }
   function pushRecent(sku) {
     recent = recent.filter(function (s) { return s !== sku; });
     recent.unshift(sku);
@@ -1357,8 +2123,8 @@
       '<div class="detail-info">' +
       (SHOP.showCategory ? '<div class="eyebrow">' + esc(p.category) + '</div>' : '') +
       '<h1 class="serif">' + esc(p.name) + '</h1>' +
-      '<div class="detail-price serif">' + formatPrice(p.price) + '</div>' +
-      '<div class="detail-vat">Price includes 16% VAT</div>' +
+      priceHtml(p, 'detail-price serif') +
+      taxHtml() +
       ((SHOP.showReviews && prList.length) ? '<div class="detail-rating">' + starsHtml(avgRating(prList)) + ' <a class="rating-link" id="ratingLink">' + avgRating(prList).toFixed(1) + ' (' + prList.length + ' review' + (prList.length > 1 ? 's' : '') + ')</a></div>' : '') +
       '<p class="desc">' + esc(desc) + '</p>' +
       (p.size ? '<div class="opt-block"><div class="lbl">Size</div><span class="opt-chip">' + esc(p.size) + '</span></div>' : '') +
@@ -1370,7 +2136,7 @@
       '<div class="detail-cta">' +
       ((canBuy(p) || canAsk(p))
         ? '<a class="btn btn-wa" id="buyDetail" target="_blank" rel="noopener" href="' + waLink(p) + '">' +
-          waIcon() + (canBuy(p) ? checkoutLabel() : 'Enquire on WhatsApp') + '</a>'
+          waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       (SHOP.wishlist
         ? '<button class="btn btn-outline" id="wishDetail">' +
@@ -1395,8 +2161,8 @@
       var extra = [null, null, null];
       var pend = 3;
       ['-2', '-3', '-4'].forEach(function (suf, k) {
-        preload('images/' + p.sku + suf + '.jpg', function (ok) {
-          if (ok) { var u = 'images/' + p.sku + suf + '.jpg'; if (list.indexOf(u) < 0) extra[k] = u; }
+        preload('/images/' + p.sku + suf + '.jpg', function (ok) {
+          if (ok) { var u = '/images/' + p.sku + suf + '.jpg'; if (list.indexOf(u) < 0) extra[k] = u; }
           if (--pend === 0) setupGallery(list.concat(extra.filter(Boolean)));
         });
       });
@@ -1472,8 +2238,16 @@
     if (p.material) bits.push('crafted in ' + p.material.toLowerCase());
     if (p.color) bits.push('finished in ' + p.color.toLowerCase());
     var tail = bits.length ? ', ' + bits.join(' and ') + '.' : '.';
+    /* The closing sentence used to promise nationwide delivery and
+       collection whatever the shop actually offered. */
+    var how = deliversAnywhere() && collectsInPerson() ? 'delivery or collection'
+            : deliversAnywhere() ? 'delivery'
+            : collectsInPerson() ? 'collection' : '';
+    var close = how
+      ? ' To purchase, arrange payment and ' + how + ' directly with us on WhatsApp.'
+      : ' To purchase, message us on WhatsApp.';
     return 'A considered piece from the Vaultique edit' + tail +
-      ' Thoughtfully selected for quality and quiet sophistication. To purchase, arrange payment and nationwide delivery or collection directly with us on WhatsApp.';
+      ' Thoughtfully selected for quality and quiet sophistication.' + close;
   }
   function accordion(specs) {
     return '<div class="accordion">' +
@@ -1481,11 +2255,23 @@
         '<table class="spec-table">' + specs.map(function (r) {
           return '<tr><td class="l">' + esc(r[0]) + '</td><td class="r">' + esc(r[1]) + '</td></tr>';
         }).join('') + '</table>') +
-      accItem('Delivery & collection',
-        'We deliver nationwide across Zambia where possible, with fees calculated by distance and confirmed on WhatsApp before dispatch. Collection in person can also be arranged. Payment by Airtel Money, MTN Money, bank transfer or cash.') +
+      /* Was a paragraph typed into this file, naming the areas, the
+         charging and the collection offer. It is Settings > Delivery &
+         Collection's to say now, and the panel disappears entirely for a
+         shop that offers neither. */
+      (deliveryPanelHtml()
+        ? accItem(deliveryPanelTitle(), deliveryPanelHtml())
+        : '') +
       accItem('Returns & assistance',
         'If something is not right, message us on WhatsApp within a reasonable time of receipt and we will make it right. Our team is happy to advise on sizing, fit and styling before you buy.') +
       '</div>';
+  }
+  /* A panel called "Delivery & collection" on a shop that only collects
+     is a small lie in a heading. */
+  function deliveryPanelTitle() {
+    if (deliversAnywhere() && collectsInPerson()) return 'Delivery & collection';
+    if (deliversAnywhere()) return 'Delivery';
+    return 'Collection';
   }
   function accItem(title, inner) {
     return '<div class="acc-item"><button class="acc-head">' + esc(title) +
@@ -1517,27 +2303,162 @@
     $('#view-shop').style.display = which === 'shop' ? 'block' : 'none';
     $('#view-detail').style.display = which === 'detail' ? 'block' : 'none';
     var vp = $('#view-policies'); if (vp) vp.style.display = which === 'policies' ? 'block' : 'none';
+    var va = $('#view-account'); if (va) va.style.display = which === 'account' ? 'block' : 'none';
     document.body.classList.toggle('on-home', which === 'home');
     updateHeader();
   }
-  function goHome() { location.hash = ''; }
+  /* ---- addresses -----------------------------------------------------
+     The site used to live entirely behind a #, which meant every page
+     shared one address. To a search engine that is one page: a sitemap
+     would list a single entry, every canonical URL would be identical,
+     and per-page titles would describe a page nobody could link to.
+
+     So paths are real now. #/shop still works — anyone with one
+     bookmarked, or sitting in a WhatsApp thread from months ago, is
+     moved to the real address on arrival rather than shown nothing.
+
+     netlify.toml sends unmatched paths to index.html so /shop is not a
+     404, with the assets, the admin and the API listed above the
+     catch-all so it cannot swallow them. */
+
+  var BASE = (function () {
+    /* Where the site is mounted — usually '/', but a subfolder install
+       still works.
+
+       It cannot be worked out from location.pathname. On /product/WF-1
+       that would read as the folder /product/, and every address after
+       it would be wrong: the canonical URL would say /WF-1 and the route
+       would never match. The address bar is a page the site drew, not a
+       place on disk.
+
+       So it comes from where this script is actually served, which is a
+       real file path whatever page is being shown. */
+    var src = '';
+    try {
+      var here = document.currentScript;
+      if (!here) {
+        var all = document.getElementsByTagName('script');
+        for (var i = all.length - 1; i >= 0; i--) {
+          if (/\/app\.js(\?|$)/.test(all[i].src || '')) { here = all[i]; break; }
+        }
+      }
+      src = (here && here.src) || '';
+    } catch (e) {}
+    var m = src && src.match(/^(?:https?:)?\/\/[^/]+(\/.*?)assets\/[^/]*$/);
+    if (m) return m[1];
+    var rel = src && src.match(/^(\/.*?)assets\/[^/]*$/);
+    if (rel) return rel[1];
+    return '/';
+  })();
+
+  function pathFor(route) {
+    return BASE + String(route || '').replace(/^\/+/, '');
+  }
+  function go(route, replace) {
+    var url = pathFor(route) + location.search;
+    try {
+      history[replace ? 'replaceState' : 'pushState']({}, '', url);
+      route_();
+    } catch (e) {
+      /* No History API, or a file:// page: fall back to the hash, which
+         still routes correctly. */
+      location.hash = '#/' + String(route || '').replace(/^\/+/, '');
+    }
+  }
+  function goHome() { go(''); }
   function goShop(cat) {
     mode = 'shop';
-    location.hash = '#/shop' + (cat && cat !== 'All' ? '/' + encodeURIComponent(cat) : '');
+    go('shop' + (cat && cat !== 'All' ? '/' + encodeURIComponent(cat) : ''));
   }
-  function route() {
-    closeMobile(); closeSearch();
+
+  /* Where we are, as a plain route with no leading slash: '', 'shop',
+     'product/WF-1'. A hash address is read as one and then rewritten. */
+  /* What this page says about itself. Google runs JavaScript, so this is
+     eventually read; WhatsApp and Facebook do not, which is why the
+     static <head> matters and why Settings > SEO hands over a block to
+     paste into it. Both are kept saying the same thing. */
+  function applySeo(route) {
+    if (!SEO) return;
+    var extra = {};
+    var pm = String(route || '').match(/^product\/(.+)$/);
+    if (pm) {
+      var p = bySku(decodeURIComponent(pm[1]));
+      if (p) extra.product = p;
+    }
+    var polm = String(route || '').match(/^policies\/(.+)$/);
+    if (polm) {
+      var want = decodeURIComponent(polm[1]);
+      extra.policy = (POLICIES || []).filter(function (x) {
+        return x && SEO.slug(x.title) === want;
+      })[0];
+    }
+    try {
+      var view = SEO.forRoute(seoContext(), route, extra);
+      SEO.apply(SEO.tagsFor(view, seoContext()));
+    } catch (e) { /* a page that draws is worth more than a perfect tag */ }
+  }
+
+  /* Everything the SEO engine needs, gathered once so the storefront, the
+     admin preview and the sitemap all describe a page the same way. */
+  function seoContext() {
+    return {
+      general: SETTINGS,
+      seo: SEOSET,
+      branding: BRANDING || {},
+      categories: ALLCATS || [],
+      money: { text: function (p) {
+        var v = priceOf(p);
+        return v.onRequest ? '' : v.nowText;
+      } }
+    };
+  }
+
+  function currentRoute() {
     var h = location.hash;
-    var pm = h.match(/^#\/product\/(.+)$/);
+    if (h && h.indexOf('#/') === 0) return h.slice(2);
+    var p = location.pathname;
+    if (p.indexOf(BASE) === 0) p = p.slice(BASE.length);
+    return p.replace(/^\/+/, '').replace(/index\.html?$/i, '');
+  }
+
+  function route() {
+    /* An old #/ address is swapped for the real one before anything is
+       drawn, so the page a visitor lands on and the page they can link
+       to are the same page. */
+    if (location.hash && location.hash.indexOf('#/') === 0) {
+      var r = location.hash.slice(2);
+      try {
+        history.replaceState({}, '', pathFor(r) + location.search);
+      } catch (e) { /* leave the hash alone where history is unavailable */ }
+    }
+    route_();
+  }
+
+  function route_() {
+    closeMobile(); closeSearch();
+    var h = currentRoute();
+    applySeo(h);
+
+    var pm = h.match(/^product\/(.+)$/);
     if (pm) { renderDetail(decodeURIComponent(pm[1])); return; }
-    var polm = h.match(/^#\/policies(?:\/([^?]+))?$/);
+
+    var polm = h.match(/^policies(?:\/([^?]+))?$/);
     if (polm) { renderPolicies(polm[1] ? decodeURIComponent(polm[1]) : null); showView('policies'); window.scrollTo(0, 0); return; }
-    if (h === '#/wishlist') {
+
+    if (h === 'account') {
+      /* Asking for the account page on a shop that has none is not an
+         error, it is a shop without accounts: show the home page. */
+      if (ACCT && ACCT.enabled()) {
+        renderAccount(); showView('account'); window.scrollTo(0, 0); return;
+      }
+      showView('home'); return;
+    }
+    if (h === 'wishlist') {
       mode = 'wishlist'; filterCat = 'All'; searchTerm = '';
       var si = $('#shopSearch'); if (si) si.value = '';
       updateShopTitle(); renderChips(); renderGrid(); showView('shop'); window.scrollTo(0, 0); return;
     }
-    var sm = h.match(/^#\/shop(?:\/(.+))?$/);
+    var sm = h.match(/^shop(?:\/(.+))?$/);
     if (sm) {
       mode = 'shop';
       filterCat = sm[1] ? decodeURIComponent(sm[1]) : 'All';
@@ -1597,7 +2518,7 @@
     if (!res.length) { host.innerHTML = '<div class="so-result"><span class="nm serif">No matches</span></div>'; return; }
     res.forEach(function (p) {
       var r = el('div', 'so-result');
-      r.innerHTML = '<span><span class="nm serif">' + esc(p.name) + '</span> &nbsp;<span style="opacity:.6;font-size:12px;letter-spacing:.1em">' + esc(p.category) + '</span></span><span class="px serif">' + formatPrice(p.price) + '</span>';
+      r.innerHTML = '<span><span class="nm serif">' + esc(p.name) + '</span> &nbsp;<span style="opacity:.6;font-size:12px;letter-spacing:.1em">' + esc(p.category) + '</span></span><span class="px serif">' + esc(priceOf(p).nowText) + '</span>';
       r.addEventListener('click', function () { closeSearch(); openProduct(p.sku); });
       host.appendChild(r);
     });
@@ -1659,13 +2580,22 @@
     $all('[data-go-home]').forEach(function (e) { e.addEventListener('click', goHome); });
     $all('[data-go-shop]').forEach(function (e) { e.addEventListener('click', function () { goShop('All'); }); });
     $all('[data-scroll]').forEach(function (e) {
-      e.addEventListener('click', function () { var id = e.getAttribute('data-scroll'); var t = document.getElementById(id); if (location.hash) { location.hash = ''; setTimeout(function () { if (t) t.scrollIntoView({ behavior: 'smooth' }); }, 60); } else if (t) t.scrollIntoView({ behavior: 'smooth' }); });
+      e.addEventListener('click', function () {
+        var id = e.getAttribute('data-scroll');
+        var t = document.getElementById(id);
+        /* These point at bands on the home page, so from anywhere else we
+           go home first and scroll once it is drawn. */
+        if (currentRoute()) {
+          go('');
+          setTimeout(function () { if (t) t.scrollIntoView({ behavior: 'smooth' }); }, 60);
+        } else if (t) t.scrollIntoView({ behavior: 'smooth' });
+      });
     });
     $('#menuBtn').addEventListener('click', openMobile);
     $('#mmClose').addEventListener('click', closeMobile);
     $('#searchBtn').addEventListener('click', openSearch);
     $('#soClose').addEventListener('click', closeSearch);
-    $('#wishBtn').addEventListener('click', function () { location.hash = '#/wishlist'; });
+    $('#wishBtn').addEventListener('click', function () { go('wishlist'); });
     $('#soInput').addEventListener('input', function () { runOverlaySearch(this.value); });
     $('#toTop').addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
     $('#lbClose').addEventListener('click', closeLightbox);
@@ -1790,6 +2720,7 @@
   // Put Settings > General on the page. Runs after applyContent, so where the
   // two ever overlapped it is General that has the last word.
   function applySettings() {
+    MONEY = null;                   // currency or pricing may just have changed
     var s = SETTINGS;
 
     if (s.tagline) setText('#footTagline', s.tagline);
@@ -1807,44 +2738,40 @@
       setText('#footLocation', s.city && s.country ? s.city + ', ' + s.country : placeLine);
     }
 
-    // Trading hours, plus whether the shop is open at this moment. When
-    // Contact & Social says support runs to a different timetable, that is
-    // what the Support hours row should show.
-    var hours = s.businessHours;
-    if (CONTACT && CONTACT.supportHoursOverride && CONTACT.supportHours) {
-      hours = CONTACT.supportHours;
-    }
-    if (hours && FMT) {
-      var line = FMT.summariseHours(hours);
-      if (line) {
-        setText('#footHours', line);
-        var state = FMT.openState(hours, s.timezone);
-        var host = $('#hoursVal');
-        if (host) {
-          host.textContent = '';
-          if (state.known) {
-            var chip = el('span', 'open-chip' + (state.open ? ' is-open' : ''));
-            chip.textContent = state.text;
-            host.appendChild(chip);
-            host.appendChild(document.createTextNode(' '));
-          }
-          host.appendChild(document.createTextNode(line));
-        }
+    /* Two timetables, and they are not the same question. Trading hours
+       say when the shop is open; support hours say when somebody answers
+       WhatsApp. The site used to show one row that quietly became the
+       other, so a shop whose support ran later than its doors had no way
+       to say so.
+
+       The second row only appears when the two actually differ. Printing
+       the same line twice under two headings tells a customer nothing and
+       makes them read it twice to find that out. */
+    if (FMT && s.businessHours) {
+      var trading = FMT.summariseHours(s.businessHours);
+      if (trading) {
+        setText('#footHours', trading);
+        writeHours('#hoursVal', trading, FMT.openState(s.businessHours, s.timezone));
       }
     }
 
-    // Page title and description. The SEO section will be able to override
-    // these later; until then General is the only thing that sets them.
-    if (s.businessName) {
-      var bits = [s.businessName];
-      if (s.tagline) bits.push(s.tagline);
-      if (s.country) bits.push(s.country);
-      document.title = bits.join(' · ');
+    var supportRow = $('#supportRow');
+    var support = (CONTACT && CONTACT.supportHoursOverride && CONTACT.supportHours)
+      ? CONTACT.supportHours : null;
+    if (supportRow) {
+      var supportLine = (support && FMT) ? FMT.summariseHours(support) : '';
+      if (supportLine) {
+        writeHours('#supportVal', supportLine, FMT.openState(support, s.timezone));
+        supportRow.classList.remove('hide');
+      } else {
+        supportRow.classList.add('hide');
+      }
     }
-    if (s.description) {
-      var meta = document.querySelector('meta[name="description"]');
-      if (meta) meta.setAttribute('content', s.description);
-    }
+
+    /* The title and the description used to be assembled here. They are
+       Settings > SEO's now — it falls back to exactly this when nothing
+       has been written there, so the wording is unchanged, but only one
+       place decides it and the two cannot drift apart. */
   }
 
 
@@ -2141,7 +3068,30 @@
     initNewsletter();
     observeReveals();
     window.addEventListener('scroll', updateHeader, { passive: true });
+    /* Back and forward now move through real addresses, so popstate is
+       what carries navigation. hashchange stays for the old #/ links,
+       which are still typed, bookmarked and pasted into WhatsApp. */
+    window.addEventListener('popstate', route);
     window.addEventListener('hashchange', route);
+
+    /* Any link to a page of this site is followed without a reload. The
+       browser would otherwise fetch the whole page again for something
+       the shop can already draw. Anything else — another site, a file, a
+       new tab, a modified click — is left alone. */
+    document.addEventListener('click', function (e) {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      var a = e.target.closest && e.target.closest('a[href]');
+      if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+      var href = a.getAttribute('href') || '';
+      if (!href || href.charAt(0) === '#' || /^[a-z]+:/i.test(href)) return;
+      var url;
+      try { url = new URL(a.href); } catch (err) { return; }
+      if (url.origin !== location.origin) return;
+      if (url.pathname.indexOf(BASE) !== 0) return;
+      if (/\.[a-z0-9]+$/i.test(url.pathname) && !/\.html?$/i.test(url.pathname)) return;
+      e.preventDefault();
+      go(url.pathname.slice(BASE.length) + url.hash);
+    });
     updateHeader();
     load();
   }

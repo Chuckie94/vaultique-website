@@ -134,6 +134,86 @@
     return ctrl;
   }
 
+  /* A figure rather than a sentence: a tax rate, a percentage off, a
+     price. Kept as a number in the saved data, or as '' when the box is
+     empty, so an unset figure is never mistaken for a zero one. */
+  function numberField(f, changed) {
+    var c = baseField(f);
+    var line = el('div', 'num-line');
+    if (f.prefix) line.appendChild(el('span', 'num-fix', f.prefix));
+
+    var input = el('input');
+    input.type = 'text';                 // type=number varies too much between browsers
+    input.inputMode = 'decimal';
+    input.id = 'f_' + f.name;
+    input.className = 'num';
+    if (f.placeholder) input.placeholder = f.placeholder;
+    line.appendChild(input);
+
+    if (f.suffix) line.appendChild(el('span', 'num-fix', f.suffix));
+    c.wrap.appendChild(line);
+
+    var ctrl = { node: c.wrap, wrap: c.wrap };
+    attachExtras(ctrl, f, input);
+    input.addEventListener('input', function () { ctrl.mark(''); changed(); });
+
+    ctrl.get = function () {
+      var raw = String(input.value || '').trim();
+      if (!raw) return '';
+      var n = Number(raw.replace(/,/g, ''));
+      return isFinite(n) ? n : raw;      // nonsense is kept so validate() can complain
+    };
+    ctrl.set = function (v) {
+      input.value = (v === undefined || v === null || v === '') ? '' : String(v);
+    };
+    /* Every number field checks itself for the three things that make a
+       figure wrong, so no section has to write these out again. */
+    ctrl.selfCheck = function (v) {
+      if (v === '' || v === undefined || v === null) return '';
+      var n = Number(v);
+      if (!isFinite(n)) return 'Enter a number.';
+      if (f.min !== undefined && n < f.min) return 'Cannot be less than ' + f.min + '.';
+      if (f.max !== undefined && n > f.max) return 'Cannot be more than ' + f.max + '.';
+      return '';
+    };
+    return ctrl;
+  }
+
+  /* A calendar day, held as YYYY-MM-DD. */
+  function dateField(f, changed) {
+    var c = baseField(f);
+    var input = el('input');
+    input.type = 'date';
+    input.id = 'f_' + f.name;
+    c.wrap.appendChild(input);
+
+    var ctrl = { node: c.wrap, wrap: c.wrap };
+    attachExtras(ctrl, f, input);
+    input.addEventListener('change', function () { ctrl.mark(''); changed(); });
+    input.addEventListener('input', function () { ctrl.mark(''); changed(); });
+
+    ctrl.get = function () { return input.value || ''; };
+    ctrl.set = function (v) { input.value = v || ''; };
+    return ctrl;
+  }
+
+  /* Not a field at all: a paragraph the section wants to say in the middle
+     of a group, where a hint under a box would be the wrong shape. It reads
+     and writes nothing, so it never reaches the saved data. */
+  function noteField(f) {
+    var wrap = el('div', 'field note-field' + (f.tone ? ' ' + f.tone : ''));
+    var body = el('div', 'note-body');
+    if (f.label) body.appendChild(el('strong', null, f.label));
+    if (f.text) body.appendChild(el('p', null, f.text));
+    wrap.appendChild(body);
+    return {
+      node: wrap, wrap: wrap, passive: true,
+      get: function () { return undefined; },
+      set: function () {},
+      mark: function () {}, count: function () {}, focus: function () {}
+    };
+  }
+
   function textareaField(f, changed) {
     var c = baseField(f);
     var input = el('textarea');
@@ -889,6 +969,9 @@
 
   var BUILDERS = {
     text: textField,
+    number: numberField,
+    date: dateField,
+    note: noteField,
     textarea: textareaField,
     select: selectField,
     toggle: toggleField,
@@ -934,7 +1017,10 @@
 
     function current() {
       var out = {};
-      order.forEach(function (n) { out[n] = fields[n].get(); });
+      order.forEach(function (n) {
+        if (fields[n].passive) return;   // a note holds nothing to save
+        out[n] = fields[n].get();
+      });
       return out;
     }
     function isDirty() {
@@ -1034,10 +1120,12 @@
 
       order.forEach(function (n) {
         var f = defs[n], ctrl = fields[n], v = values[n];
+        if (ctrl.passive) return;                            // nothing to be wrong
         if (ctrl.node.classList.contains('hide')) return;   // hidden, so not required
 
         var msg = '';
         if (typeof ctrl.check === 'function') msg = ctrl.check();
+        if (!msg && typeof ctrl.selfCheck === 'function') msg = ctrl.selfCheck(v) || '';
         if (!msg && f.required) {
           var blank = (v === '' || v === null || v === undefined);
           if (blank) msg = f.label + ' cannot be left blank.';

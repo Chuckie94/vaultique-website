@@ -56,7 +56,6 @@
     customerReviews: true,
 
     whatsappCheckout: true,
-    guestCheckout: true,
     requireName: true,
     requirePhone: true,
     requireEmail: false,
@@ -128,11 +127,12 @@
                 maxLength: 40, required: true,
                 showIf: function (v) { return !!v.whatsappCheckout; },
                 hint: 'What the button on each piece says.' },
-              { type: 'toggle', name: 'guestCheckout', label: 'Guest checkout',
-                disabled: true,
-                disabledReason: 'Customer accounts have not been built yet.',
-                hint: 'Everyone shops as a guest at the moment. This becomes a real choice ' +
-                      'once Settings > Customer Accounts exists.' },
+              { type: 'note', name: 'guestNote',
+                label: 'Guest checkout moved',
+                text: 'Whether somebody may buy without an account is a question about ' +
+                      'accounts, so it now sits in Settings > Customer Accounts beside ' +
+                      'registration and the rest of them, rather than here beside the ' +
+                      'catalogue.' },
               { type: 'toggle', name: 'requireName', label: 'Ask for a name',
                 showIf: function (v) { return !!v.whatsappCheckout; } },
               { type: 'toggle', name: 'requirePhone', label: 'Ask for a phone number',

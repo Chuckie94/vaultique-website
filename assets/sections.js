@@ -31,6 +31,8 @@
     { id: 'sec-acc',         label: 'Accessories', row: true },
     { id: 'promo',           label: 'Promotional banner',
       note: 'Off until you give it something to say in the section above.' },
+    { id: 'delivery-sec',    label: 'Delivery & collection',
+      note: 'Built from Settings > Delivery & Collection. Hidden while you offer neither.' },
     { id: 'why',             label: 'Why Vaultique' },
     { id: 'story',           label: 'Our story' },
     { id: 'values-sec',      label: 'Core values' },
