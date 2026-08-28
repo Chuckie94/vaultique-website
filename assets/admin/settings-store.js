@@ -102,11 +102,20 @@
       if (!sb) return Promise.reject(new Error('The database is not connected.'));
 
       var payload = copy(values || {});
+      /* Taken before the write, because afterwards there is nothing left
+         to compare against. */
+      var before = cache[key] ? copy(cache[key]) : null;
+
       return sb.from(TABLE)
         .upsert({ key: key, data: payload, updated_at: new Date().toISOString() }, { onConflict: 'key' })
         .then(function (r) {
           if (r.error) throw r.error;
           cache[key] = merge(key, payload);
+          /* The activity log is told after the save has succeeded, and
+             never before: a line saying something changed when it did
+             not is worse than no line at all. It cannot fail the save -
+             see the note at the top of audit.js. */
+          if (api.audit) api.audit.settingsSaved(key, before, cache[key]);
           return copy(cache[key]);
         });
     },
@@ -127,13 +136,25 @@
     savePrivate: function (key, values) {
       var sb = api.sb;
       if (!sb) return Promise.reject(new Error('The database is not connected.'));
-      return sb.from(PRIVATE_TABLE)
-        .upsert({ key: key, data: copy(values || {}), updated_at: new Date().toISOString() },
-                { onConflict: 'key' })
-        .then(function (r) {
-          if (r.error) throw r.error;
-          return copy(values || {});
-        });
+
+      /* Private rows are not cached, so the previous version has to be
+         read to know which fields moved. Only the NAMES are ever
+         recorded - audit.js will not write the values of a private
+         category whatever it is handed. */
+      var before = null;
+      var known = api.audit
+        ? store.loadPrivate(key).then(function (v) { before = v; }).catch(function () {})
+        : Promise.resolve();
+
+      return known.then(function () {
+        return sb.from(PRIVATE_TABLE)
+          .upsert({ key: key, data: copy(values || {}), updated_at: new Date().toISOString() },
+                  { onConflict: 'key' });
+      }).then(function (r) {
+        if (r.error) throw r.error;
+        if (api.audit) api.audit.settingsSaved(key, before, copy(values || {}));
+        return copy(values || {});
+      });
     },
 
     /* Drop a cached category so the next load() re-reads it. No key

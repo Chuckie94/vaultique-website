@@ -309,21 +309,22 @@ arrival.
 > admin, assets and images through untouched before the catch-all, so nothing
 > else changes.
 
-#### The block you have to paste
+#### The block in index.html — already done
 
 **WhatsApp and Facebook do not run JavaScript.** They fetch your page, read the
 `<head>` as it arrives, and never run a line of script — so nothing the site sets
 afterwards reaches a shared-link preview. Since your whole shop runs on people
 sending each other links, this is probably the most valuable thing on the page.
 
-So the section shows the **exact block** for `index.html`, with a Copy button.
-Paste it into the `<head>`, replacing the title and meta tags already there, and
-upload.
+**This is already filled in for you.** The block sits in `index.html` between two
+comments marked `SEO BLOCK — START` and `END`, written with your business name,
+tagline, description and logo. There is nothing to copy and nothing to paste.
 
-Then it watches. The page **fetches your live `index.html`, reads the tags
-actually deployed, and tells you when they no longer match your settings** — so
-the one weakness of pasting by hand, forgetting to re-paste, is the one thing it
-protects you from.
+The page then watches it. It **fetches your live `index.html`, reads the tags
+actually deployed, and tells you when they no longer match your settings.** It
+stays green while they agree. It only turns red if you change your business name,
+tagline, description or sharing picture — and then it shows the new block, with a
+Copy button, so it can be brought back into line.
 
 #### What is set here
 
@@ -555,6 +556,327 @@ with no price shown has no figure to place and goes last.
 > **This needs the SQL run again.** `supabase-setup.sql` adds four columns to
 > `product_meta` for the remembered price, its date, an override and the
 > price-on-request tick. It is safe to run more than once.
+
+### The Activity / Audit Log
+
+A record of every change made in this admin: what changed, when, who changed
+it, and what it changed from and to.
+
+| Column | What it holds |
+| --- | --- |
+| Date & time | When the change was saved |
+| Administrator | The email address of whoever was signed in |
+| Action | Added, Changed or Deleted |
+| Module | Where in the admin it happened |
+| Record affected | Which product, policy, order or section |
+| Previous & new value | What the field said before and after |
+| Session information | The browser and device used |
+
+Filter by section, by action, or search by person, section or record. **Show
+older** loads further back.
+
+#### Two things worth knowing
+
+**Nothing private is ever recorded.** A change to your bank account number
+appears as *"bankAccountNumber changed · value not recorded"* — never the number
+itself. Writing it here would put it straight back into a table your admin can
+read, in plain text, for years, which is the whole thing the private settings
+table exists to prevent. The value is held back when the line is **written**, so
+it is not in the database at all — not merely hidden on screen.
+
+**Nobody can edit or delete a line — including you.** The database has a rule to
+write a line and a rule to read the lines, and none at all to change or remove
+one. A record the recorded person can tidy up afterwards is not a record of
+anything. This is tested against a real database, not assumed.
+
+**Session information** is the browser and device, because that is what a web
+page can honestly know. It is not a location and not an internet address — a
+browser cannot see either, and a column filled with a guess would be worse than
+one filled with the little that is true.
+
+#### What gets recorded
+
+Every settings change in any section; products edited; policies added, edited
+and deleted; order status changes and deletions; reviews shown, verified or
+deleted; and subscribers unsubscribed or deleted.
+
+Recording can never break what it records. If the log is unreachable, your change
+still saves — a missing line is a far smaller problem than a shop that cannot
+change its prices.
+
+### Settings > Newsletter
+
+Every word on the sign-up band used to be written into the website's files, where
+you could not reach it. This section hands them back.
+
+- **Run a newsletter** is the master switch. Off means the band appears nowhere,
+  the tick box on the sign-up form is not offered, and nothing new is accepted.
+  Everyone already on your list stays on it.
+- **The invitation** — the small line above, the heading, the sentence explaining
+  what joining actually gets someone, the grey text in the box, and the button.
+- **When somebody joins** — what they see the moment they sign up, and the small
+  print underneath the box. Leave the small print empty and the line disappears
+  rather than sitting there blank.
+- **The welcome email** — the subject, the message, and the footer under it.
+- **Leaving the list** — the words you send somebody you have taken off.
+
+The wording it starts with is exactly what your site says today, so uploading
+this build changes nothing until you decide to change it.
+
+#### Where the band appears
+
+Two different questions, two different places:
+
+- **Whether you run a list at all** is the switch at the top of this page, and
+  it wins over everything else.
+- **Where the band sits on the homepage**, and in what order among the other
+  bands, is **Settings > Homepage**.
+
+#### The email account
+
+**Not here.** The sender name, sender address and signature are in
+**Settings > Notifications**, and everything the shop sends uses them — one
+account, set once.
+
+#### The welcome email
+
+Sent from the **Subscribers** tab, one person at a time, using the wording on
+this page. Nobody is written to by accident, and there is no way to empty your
+whole list into a spam folder with one click.
+
+The message goes out as: your welcome text, then your signature from
+Notifications, then the footer. Any part you leave empty is simply left out.
+
+### The Subscribers tab
+
+- **Search** narrows the list as you type.
+- **Export as CSV** saves a file of everyone still subscribed, which opens in
+  Excel or Google Sheets.
+- **Copy all emails** and **Email all (BCC)** cover only people still
+  subscribed — never anyone who has left.
+
+#### Unsubscribe, or delete?
+
+These are not the same thing and the difference matters.
+
+- **Unsubscribe** records that they left. The address stays in the list, greyed
+  out. **That record is what stops any form on your site signing them up again**
+  — and you are handed your unsubscribe wording, ready to send back to them.
+- **Delete** erases them completely. Use it when somebody asks to be forgotten
+  entirely. Afterwards nothing stops the address being added again.
+
+If somebody asks to stop hearing from you, **unsubscribe** them. If they ask to
+be erased, delete them. Anyone unsubscribed can be put back on with one button.
+
+#### Offering it at sign up
+
+Somebody creating an account has already typed their email. Switch
+**Offer the list when someone registers** on, and a tick box appears on the
+sign-up form in whatever words you choose.
+
+It starts **unticked**, on purpose. A list somebody joined without noticing is a
+list they report as spam, and that damage lands on your email address, not
+theirs.
+
+Joining happens after the account is made and never blocks it — if the list
+write fails for any reason, they still get their account.
+
+### Settings > Notifications
+
+What you say to a customer as their order moves along, and the email account
+behind it.
+
+#### The six messages
+
+An order moves through six states: **Received, Confirmed, Ready, On its way,
+Delivered, Cancelled.** Each one has a message, already written for you, which
+you can rewrite in your own words.
+
+You can use these anywhere in a message, and they are filled in when you send it:
+
+| You type | You get |
+| --- | --- |
+| `{name}` | the customer's first name |
+| `{ref}` | the order reference, e.g. VB-3F9K |
+| `{items}` | the items, one per line |
+| `{total}` | the order total, in your currency |
+| `{business}` | your shop name |
+| `{fulfilment}` | delivery or collection |
+
+Leave a message empty and the wording shown underneath it is used, so you can
+never end up sending a blank message by accident.
+
+The preview at the bottom shows exactly how each one will read, against an
+example order. It follows what you type as you type it.
+
+#### How a message reaches the customer
+
+In the **Orders** tab, set an order to its new status. The WhatsApp button beside
+it then says **Message about this order** — tap it, and WhatsApp opens on that
+customer's own conversation with the right message already written. You press
+send.
+
+Nothing goes out behind your back. Every order on this site is a conversation,
+and this keeps it that way — it just saves you typing the same thing forty times
+a week.
+
+> The message a **customer** sends **you** when they tap a product is a different
+> thing, and lives in Settings > Contact & Social. These are the ones you send
+> back.
+
+#### Sending email
+
+Your email provider gives you five details: **host, port, encryption, username
+and password.** Put them in and press **Send test email**.
+
+That button sends a real email using exactly the details you saved, so you find
+out whether they work rather than hoping. If it fails, it tells you *which* part
+failed — a wrong password and an unreachable host need completely different
+fixes.
+
+- Most providers use **port 587 with STARTTLS**, or **465 with SSL/TLS**.
+- Your **SMTP password is kept in the private table**, with your bank details,
+  where the website cannot read it. It never reaches a customer's browser.
+- Save your changes before testing — the test uses what is stored, not what is
+  on screen.
+
+> The test only works on your live website address. Opening `admin.html` from a
+> folder on your computer means the sender is not there to answer.
+
+Password reset and account verification emails are **not** set here — Supabase
+sends those using its own settings, and one place for them is enough.
+
+### Settings > Security
+
+The account you sign in with can change every price, read your bank details and
+empty the shop. This page is where a password stops being the only thing in the
+way.
+
+#### Your login
+
+- **Signed in as** is the email you use here. Changing it asks for your current
+  password, then sends a confirmation link. **Your login does not change until
+  you open that link**, so a typo cannot lock you out.
+- **Change password** asks for the current one first, then the new one twice.
+  An admin password must be at least **10 characters and contain a number** —
+  a higher bar than the one you set for customers, and if you set a stricter
+  rule for customers, that one applies here instead.
+- After changing it, you are offered the chance to sign out every other device.
+  Take it: anyone still signed in elsewhere stays signed in otherwise.
+
+#### Two factor authentication — turn this on
+
+A six digit code from an app on your phone, on top of your password. Someone who
+learns your password still cannot get in.
+
+Press **Set up two factor**, scan the square with Google Authenticator, Microsoft
+Authenticator, Authy or any app of that kind, then type the code it shows. From
+then on, signing in asks for a code as well.
+
+> **Keep the app.** If you lose the phone and have no other way in, only Supabase
+> can let you back into your own admin. Most authenticator apps can back
+> themselves up — turn that on when you set it up.
+
+This is checked **every time you sign in**, including when you come back to a tab
+that was already open. It is enforced by this admin page, which is what stops a
+person with your password. Someone who bypassed the page entirely and spoke to
+the database directly would not be stopped by it — if you ever want that closed
+too, say so and I will add the database rule for it.
+
+#### Signing in
+
+- **Sign me out automatically** ends your session after a stretch with no
+  activity. Worth setting on any computer on the shop floor. Moving the mouse or
+  typing counts as activity.
+- **Keep me signed in** appears on the sign-in screen. Switch the option off here
+  and closing the browser always signs you out.
+- **Slow down repeated failed sign-ins** makes this device wait after several
+  wrong passwords.
+
+Be clear about that last one: it stops somebody **guessing at your own counter**.
+It does not stop a real attacker, who would just open a different browser.
+Supabase limits sign-in attempts on its own side, and that is the part that
+actually protects you. It is on by default because the counter is the realistic
+risk in a shop.
+
+#### Other devices
+
+**Sign out every other device** ends every session except the one you are using —
+a phone left at home, a laptop sold, a computer in a shop you no longer use.
+
+There is no list of those devices, and that is deliberate. Only a key that can
+read and write your entire database while ignoring every security rule could ask
+for such a list, and that key has no business being on a website. So you get the
+button the list would have been for, and none of the risk.
+
+#### Administrators
+
+Everyone who can sign in. Adding and removing is done in Supabase rather than
+here, on purpose — a page that can promote an account is a page worth attacking.
+
+**Roles and permissions are not built.** Hiding a tab is not a permission: every
+rule in the database asks only "is this an administrator", so a limited admin
+whose tabs were hidden could still change anything by other means. Real roles
+mean a change to the database and a decision about staff. If you have people who
+need their own logins, tell me and I will build it properly.
+
+### Settings > System & Maintenance
+
+This section has nothing to fill in. Everything on it is either a fact read live
+from your site, or a button that does something.
+
+#### System information
+
+- **Website version** and **build number** identify exactly which upload is
+  running. They come from a stamp written into the build itself, so they cannot
+  drift or be guessed.
+- **This build was packaged** is when the zip was made. **Went live** is when
+  that build first reached your site — the admin notices a new build number and
+  records the date itself. The two differ whenever a zip waits before upload.
+- **Database** and **Photo storage** are tested when you open the page: a real
+  request, timed, reporting whatever actually came back.
+- **Settings last changed** is the last time anything in this admin was saved.
+
+#### Maintenance
+
+The **maintenance switch is not here** — it is in Settings > General with the
+rest of the website status, so there is only ever one switch to find. This page
+shows its live state and links straight to it.
+
+- **Refresh website data** throws away the copy of your settings the admin keeps
+  while you work, and reads everything fresh. Use it if something you saved is
+  not showing up. It affects the admin only: customers read your settings on
+  every visit anyway, so a change reaches them next time they open the site.
+- **Run health check** tests everything at once — database, photo storage, the
+  till feed, whether your settings are filled in, whether the shop is open, and
+  **whether your bank details are still sealed off from the public.**
+
+That last one is worth understanding. It opens a second, deliberately
+**signed-out** connection — the same view of your database a stranger on the
+internet gets — and asks it for your payment details. Nothing coming back is the
+pass. If it ever goes red, your bank and mobile money details are readable by
+anyone visiting the site: stop and re-run `supabase-setup.sql`. **Run it after
+every upload.**
+
+#### Backup
+
+- **Download a backup** saves every setting on every page of this admin into one
+  file: business details, prices, delivery, payment details, the lot. Take one
+  before big changes.
+- The file holds your **bank account and mobile money details in plain readable
+  text**. Anyone who opens it can read them. Keep it somewhere only you can get
+  to and do not email it to anyone. You are warned before it downloads.
+- It does **not** include product photos, orders, customers or reviews. Those
+  stay in the database, which Supabase backs up itself.
+- **Restore from a backup** reads a file back. It shows you which sections will
+  be replaced and asks first. Anything not in the file is left exactly as it is,
+  so restoring an old backup cannot blank a section it never knew about.
+
+#### Deployment history
+
+Every build that has gone live, newest first, with the date and a line on what
+changed. Written automatically the first time the admin sees a new build, so
+there is nothing to keep up to date.
 
 ### Closing the website
 

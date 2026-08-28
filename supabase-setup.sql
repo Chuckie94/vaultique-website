@@ -171,6 +171,18 @@ create table if not exists public.subscribers (
   email      text primary key,
   created_at timestamptz default now()
 );
+
+-- Somebody who asks to come off the list is recorded rather than simply
+-- deleted. Deleting them looks the same today and is not the same thing:
+-- the row is what stops any form on the site quietly signing them up
+-- again, because the address is still the primary key and a second
+-- attempt has nowhere to go. Their wish outlives the request.
+--
+-- Added separately so an existing list keeps every address and date it
+-- already had. Running this file again on a list that already has the
+-- column does nothing at all.
+alter table public.subscribers add column if not exists unsubscribed_at timestamptz;
+
 alter table public.subscribers enable row level security;
 drop policy if exists sub_insert on public.subscribers;
 drop policy if exists sub_admin  on public.subscribers;
@@ -372,6 +384,43 @@ create policy oi_own    on public.order_items for select
   ));
 create policy oi_admin  on public.order_items for all
   using (public.is_admin()) with check (public.is_admin());
+
+-- 12) Activity log ------------------------------------------------------
+-- What changed in the admin, when, and who changed it.
+--
+-- Append only, and deliberately so. There is a policy to write a line
+-- and a policy to read the lines, and none at all to change or remove
+-- one - not even for an administrator. A record that the person being
+-- recorded can quietly edit is not a record of anything, and the whole
+-- value of this table is that it cannot be tidied up after the fact.
+--
+-- What it must never hold: the VALUE of anything private. A bank account
+-- number written into "previous value" would be readable by exactly the
+-- people the private settings table was built to keep it from, and it
+-- would sit there in plain text for years. The admin records that such a
+-- field changed and never what it changed to; see assets/admin/audit.js,
+-- which is where that is enforced.
+create table if not exists public.activity_log (
+  id          uuid primary key default gen_random_uuid(),
+  at          timestamptz default now(),
+  actor_id    uuid references auth.users(id) on delete set null,
+  actor_email text,
+  action      text,        -- added | changed | deleted
+  module      text,        -- where in the admin it happened
+  record      text,        -- which thing it happened to
+  changes     jsonb,       -- [{ field, from, to }], never for private settings
+  device      text         -- the browser and device, as the browser reports them
+);
+create index if not exists al_at on public.activity_log(at desc);
+
+alter table public.activity_log enable row level security;
+drop policy if exists al_read   on public.activity_log;
+drop policy if exists al_write  on public.activity_log;
+drop policy if exists al_admin  on public.activity_log;
+-- An older run of this file may have created a policy that allowed
+-- everything. Dropped above, and not recreated.
+create policy al_read  on public.activity_log for select using (public.is_admin());
+create policy al_write on public.activity_log for insert with check (public.is_admin());
 
 -- Done. Next: create your admin login under Authentication > Users,
 -- then paste the Project URL and anon key into config.js.

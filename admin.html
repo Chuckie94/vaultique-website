@@ -278,6 +278,95 @@
   .warn.bad-contrast{background:#fdecea;border-color:#f3c2bd}
   .warn b{font-weight:500}
   .warns:empty{display:none}
+
+  /* System & Maintenance: status read-outs, health check, history.
+     A status row keeps its label and its live result on one line, and
+     wraps rather than truncating - a half shown error message is how a
+     real problem gets ignored. */
+  .sys-row{display:flex;gap:14px;justify-content:space-between;align-items:baseline;flex-wrap:wrap;
+           padding:9px 0;border-bottom:1px solid var(--line)}
+  .sys-row:last-child{border-bottom:none}
+  .sys-label{font-size:13px;color:var(--muted);flex:0 0 auto}
+  .sys-value{font-size:13px;color:var(--ink);text-align:right;flex:1 1 220px;word-break:break-word}
+  .sys-ok{color:#1c7a44}
+  .sys-warn{color:#8a6100}
+  .sys-bad{color:var(--err);font-weight:500}
+  .sys-sub{margin-top:22px}
+  .sys-health:empty{display:none}
+  .sys-health{margin-top:12px;border:1px solid var(--line);border-radius:8px;padding:4px 12px;background:var(--ivory)}
+  .sys-health .warn,.sys-health .count{margin:10px 0}
+  .sys-hist{margin-top:4px}
+  .sys-deploy{border-bottom:1px solid var(--line);padding:12px 0}
+  .sys-deploy:last-child{border-bottom:none}
+  .sys-deploy-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px}
+  .sys-now{border-left:3px solid var(--gold);padding-left:12px;margin-left:-15px}
+  .sys-tag{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+           border:1px solid var(--line);border-radius:20px;padding:2px 9px;background:#fff}
+  .sys-now .sys-tag{color:var(--navy);border-color:var(--gold);background:var(--cream)}
+  .sys-notes{margin:5px 0 0;font-size:12.5px;line-height:1.6;color:var(--ink)}
+
+  /* Security: the sign-in extras, and the small forms that open in place
+     rather than in a dialog - a password change wants three boxes and a
+     rule to read, which a one-line dialog cannot hold. */
+  .sec-remember{display:flex;gap:9px;align-items:center;margin-top:14px;font-size:13px;cursor:pointer}
+  .sec-remember input{width:auto;margin:0}
+  .sec-form{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--ivory)}
+  .sec-form h4{margin:0 0 10px;font-size:14px;font-weight:500}
+  .sec-form .field{margin-bottom:12px}
+  .sec-msg{margin:6px 0 0;font-size:12.5px;min-height:1em;color:var(--muted)}
+  .sec-msg.err{color:var(--err)}
+  .sec-msg.ok{color:var(--ok)}
+  .sec-qr{display:block;width:184px;height:184px;margin:10px 0;background:#fff;
+          border:1px solid var(--line);border-radius:8px;padding:8px}
+  .sec-secret{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;
+              letter-spacing:.08em;word-break:break-all;background:#fff;border:1px solid var(--line);
+              border-radius:6px;padding:9px 11px;margin:4px 0 12px}
+  .sec-admins .sys-row:last-child{border-bottom:none}
+
+  /* Notifications: the message preview, drawn as the customer will see
+     it rather than as a form field, so wording that runs long or reads
+     coldly is obvious before it is sent to anybody. */
+  .note-pick{max-width:340px;margin-bottom:12px}
+  .wa-preview{margin:0;padding:13px 15px;background:#e7ffdb;border:1px solid #cdebbd;
+              border-radius:10px 10px 10px 2px;max-width:460px;white-space:pre-wrap;
+              word-break:break-word;font-family:inherit;font-size:13.5px;line-height:1.65;color:#111b21}
+  .btn.is-off{opacity:.55;cursor:not-allowed}
+
+  /* Subscribers. An address somebody has left is dimmed rather than
+     hidden: the record is the point, and an owner should be able to see
+     that it is there. */
+  .sub-search{max-width:240px;padding:8px 11px;border:1px solid var(--line);border-radius:6px;
+              font-family:'Jost',sans-serif;font-size:13px;background:#fff}
+  .sub-row{display:flex;gap:14px;justify-content:space-between;align-items:center;flex-wrap:wrap;
+           padding:10px 0;border-bottom:1px solid var(--line)}
+  .sub-row:last-child{border-bottom:none}
+  .sub-who{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;min-width:0}
+  .sub-addr{font-size:13.5px;word-break:break-all}
+  .sub-acts{display:flex;gap:8px;flex-wrap:wrap;flex:none}
+  .sub-row.is-off .sub-addr{color:var(--muted);text-decoration:line-through}
+
+  /* Activity log. Each entry reads as a sentence first - what happened,
+     where, to what - with the detail under it and the when, who and
+     which device quietly at the foot. */
+  .al-pick{max-width:220px;padding:8px 30px 8px 11px;font-size:13px}
+  .al-list{margin-top:6px}
+  .al-item{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:9px;background:#fff}
+  .al-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .al-action{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;padding:2px 9px;
+             border-radius:20px;background:var(--cream);color:var(--navy);flex:none}
+  .al-action.is-added{background:rgba(31,157,87,.14);color:#1a7a45}
+  .al-action.is-deleted{background:#fdecea;color:var(--err)}
+  .al-module{font-size:13.5px;color:var(--navy);font-weight:500}
+  .al-record{font-size:13px;color:var(--muted)}
+  .al-changes{margin:9px 0 2px;padding-left:2px}
+  .al-change{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:12.5px;padding:3px 0}
+  .al-field{color:var(--muted);min-width:130px}
+  .al-from{color:var(--muted);text-decoration:line-through;word-break:break-word}
+  .al-arrow{color:var(--gold-d)}
+  .al-to{color:var(--ink);word-break:break-word}
+  .al-hidden{color:var(--muted);font-style:italic}
+  .al-foot{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px;padding-top:8px;
+           border-top:1px solid var(--line);font-size:11.5px;color:var(--muted)}
   /* the sharing-image snippet */
   .snip{margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
   .snip pre{margin:0;padding:11px 12px;background:var(--navy);color:#e8eef6;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.7;overflow-x:auto;white-space:pre}
@@ -314,8 +403,24 @@
     <input type="email" id="email" autocomplete="username" />
     <label for="password">Password</label>
     <input type="password" id="password" autocomplete="current-password" />
+    <label class="sec-remember hide" id="rememberRow">
+      <input type="checkbox" id="rememberMe" checked /> <span>Keep me signed in on this device</span>
+    </label>
     <div style="margin-top:18px"><button class="btn btn-gold" id="loginBtn" style="width:100%">Sign in</button></div>
     <div class="msg" id="loginMsg"></div>
+  </div>
+
+  <!-- second step: the code from the authenticator app. Shown only when
+       the account has two factor set up, and the admin stays out of reach
+       until it is answered. -->
+  <div class="panel hide" id="mfa">
+    <h1 class="serif">One more step</h1>
+    <p>Enter the six digit code from your authenticator app.</p>
+    <label for="mfaCode">Code</label>
+    <input type="text" id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="7" />
+    <div style="margin-top:18px"><button class="btn btn-gold" id="mfaBtn" style="width:100%">Continue</button></div>
+    <div class="msg" id="mfaMsg"></div>
+    <div style="margin-top:14px"><button class="btn btn-out btn-sm" id="mfaCancel">Sign out instead</button></div>
   </div>
 
   <!-- admin -->
@@ -372,6 +477,8 @@
     <div id="tab-subscribers" class="hide">
       <div class="toolbar">
         <span class="count" id="subCount"></span>
+        <input type="search" id="subSearch" class="sub-search" placeholder="Search by address" aria-label="Search subscribers" />
+        <button class="btn btn-out btn-sm" id="subExport">Export as CSV</button>
         <button class="btn btn-out btn-sm" id="subCopy">Copy all emails</button>
         <button class="btn btn-gold btn-sm" id="subEmail">Email all (BCC)</button>
       </div>
@@ -410,15 +517,19 @@
 <script src="assets/policies-data.js"></script>
 
 <!-- admin pages: each file is independent and owns one page -->
+<script src="assets/version.js"></script>
 <script src="assets/formats.js"></script>
 <script src="assets/theme.js"></script>
 <script src="assets/contact.js"></script>
 <script src="assets/sections.js"></script>
 <script src="assets/care.js"></script>
+<script src="assets/notify.js"></script>
 <script src="assets/seo.js"></script>
 <script src="assets/admin/registry.js"></script>
+<script src="assets/admin/audit.js"></script>
 <script src="assets/admin/settings-store.js"></script>
 <script src="assets/admin/settings-ui.js"></script>
+<script src="assets/admin/security-core.js"></script>
 <script src="assets/admin/dashboard.js"></script>
 <script src="assets/admin/activity-log.js"></script>
 <!-- settings categories, listed in the order they appear in the menu -->
@@ -450,7 +561,14 @@
   if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) { show('needConfig', true); return; }
   if (!window.supabase || !window.supabase.createClient) { show('needConfig', true); return; }
 
-  var sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  /* The session is kept wherever Settings > Security says: localStorage
+     when the owner asked to stay signed in, sessionStorage when they did
+     not, so closing the browser really does sign them out. */
+  var SEC = (window.VBP_ADMIN || {}).security || null;
+  var sb = SEC
+    ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY,
+        { auth: { storage: SEC.sessionStore(), persistSession: true } })
+    : window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
   // The settings store and form kit reach the database through here.
   window.VBP_ADMIN = window.VBP_ADMIN || {};
   window.VBP_ADMIN.sb = sb;
@@ -460,20 +578,162 @@
   var products = [];      // POS products
 
   // ---------- auth ----------
-  sb.auth.getSession().then(function (res) {
-    if (res.data && res.data.session) enterAdmin(); else show('login', true);
+  /* Settings > Security, read before anyone signs in. site_settings is
+     readable without a session, so the sign-in panel can honour the
+     owner's choices before there is an owner to ask. */
+  var secSettings = null;
+  var idle = null;
+  var TIMED_OUT = 'vbp_timed_out';
+
+  function securitySettings() {
+    if (secSettings) return Promise.resolve(secSettings);
+    var reg = window.VBP_ADMIN || {};
+    if (!reg.store) return Promise.resolve({});
+    return reg.store.load('security')
+      .then(function (v) { secSettings = v || {}; return secSettings; })
+      .catch(function () { secSettings = {}; return secSettings; });
+  }
+
+  function waitWord(seconds) {
+    if (seconds >= 90) return 'about ' + Math.ceil(seconds / 60) + ' minutes';
+    return seconds + ' seconds';
+  }
+
+  securitySettings().then(function (s) {
+    if (s.offerRememberMe !== false) {
+      show('rememberRow', true);
+      var box = $('rememberMe');
+      if (box && SEC) box.checked = SEC.remembering();
+    } else if (SEC) {
+      /* The shop has turned the option off, so the session must not
+         outlive the browser regardless of what was chosen before. */
+      SEC.remember(false);
+    }
   });
+
+  /* Say why, rather than dropping the owner on a login screen with no
+     explanation. */
+  try {
+    if (sessionStorage.getItem(TIMED_OUT) === '1') {
+      sessionStorage.removeItem(TIMED_OUT);
+      var tmsg = $('loginMsg');
+      tmsg.textContent = 'You were signed out because the admin was left idle.';
+      tmsg.className = 'msg';
+    }
+  } catch (e) {}
+
+  sb.auth.getSession().then(function (res) {
+    if (res.data && res.data.session) return afterPassword();
+    show('login', true);
+  });
+
+  /* The password is only the first half.
+
+     Supabase hands back a session the moment the password is right, and
+     that session sits at assurance level 1. An account with an
+     authenticator set up needs level 2, which only a code can reach. If
+     nothing checked, enrolling would change nothing about signing in -
+     the whole feature would be decoration. This is that check, and it
+     runs on a returning session as well as a fresh sign in, so closing
+     the tab and coming back cannot walk around it. */
+  function afterPassword() {
+    show('login', false);
+    if (!SEC) { enterAdmin(); return Promise.resolve(); }
+    return SEC.codeOwed(sb).then(function (owed) {
+      if (!owed) { show('mfa', false); enterAdmin(); return; }
+      show('mfa', true);
+      var box = $('mfaCode');
+      if (box) { box.value = ''; box.focus(); }
+    });
+  }
+
   $('loginBtn').addEventListener('click', doLogin);
   $('password').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+
   function doLogin() {
-    var msg = $('loginMsg'); msg.textContent = 'Signing in…'; msg.className = 'msg';
-    sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('password').value })
-      .then(function (r) {
-        if (r.error) { msg.textContent = r.error.message; msg.className = 'msg err'; return; }
-        msg.textContent = ''; show('login', false); enterAdmin();
-      });
+    var msg = $('loginMsg');
+    var email = $('email').value.trim();
+
+    return securitySettings().then(function (s) {
+      /* Recorded before signing in, because the session is written the
+         moment the password is accepted and the store reads this to
+         decide where it goes. */
+      var box = $('rememberMe');
+      if (SEC) {
+        /* With the option switched off for the shop, the session must not
+           outlive the browser whatever the box happens to say. */
+        SEC.remember(s.offerRememberMe === false ? false : (box ? box.checked : true));
+      }
+
+      var wait = SEC ? SEC.lockedFor(email, s) : 0;
+      if (wait > 0) {
+        msg.textContent = 'Too many wrong passwords on this device. Try again in ' +
+                          waitWord(wait) + '.';
+        msg.className = 'msg err';
+        return;
+      }
+
+      msg.textContent = 'Signing in…'; msg.className = 'msg';
+      return sb.auth.signInWithPassword({ email: email, password: $('password').value })
+        .then(function (r) {
+          if (r.error) {
+            if (SEC) SEC.noteFailure(email);
+            var again = SEC ? SEC.lockedFor(email, s) : 0;
+            msg.textContent = again > 0
+              ? 'Too many wrong passwords on this device. Try again in ' + waitWord(again) + '.'
+              : r.error.message;
+            msg.className = 'msg err';
+            return;
+          }
+          if (SEC) SEC.clearFailures(email);
+          msg.textContent = '';
+          $('password').value = '';
+          return afterPassword();
+        });
+    });
   }
+
+  $('mfaBtn').addEventListener('click', doCode);
+  $('mfaCode').addEventListener('keydown', function (e) { if (e.key === 'Enter') doCode(); });
+  $('mfaCancel').addEventListener('click', function () {
+    sb.auth.signOut().then(function () { location.reload(); });
+  });
+
+  function doCode() {
+    var msg = $('mfaMsg');
+    var typed = String($('mfaCode').value || '').replace(/\s/g, '');
+    if (!/^\d{6}$/.test(typed)) {
+      msg.textContent = 'The code is six digits.'; msg.className = 'msg err'; return;
+    }
+    msg.textContent = 'Checking…'; msg.className = 'msg';
+    SEC.submitCode(sb, typed).then(function () {
+      msg.textContent = '';
+      $('mfaCode').value = '';
+      show('mfa', false);
+      enterAdmin();
+    }).catch(function (e) {
+      msg.textContent = (e && e.message) || 'That code was not accepted.';
+      msg.className = 'msg err';
+    });
+  }
+
   $('logoutBtn').addEventListener('click', function () { sb.auth.signOut().then(function () { location.reload(); }); });
+
+  /* Sign out after a stretch of no activity, if the shop asked for it.
+     Real, in the sense that matters here: the session in this browser is
+     genuinely ended, not merely hidden behind a screen. */
+  function startIdleTimer() {
+    if (!SEC) return;
+    securitySettings().then(function (s) {
+      var mins = Number(s.sessionTimeout);
+      if (idle) { idle.stop(); idle = null; }
+      if (!mins) return;
+      idle = SEC.idleTimer(mins, function () {
+        try { sessionStorage.setItem(TIMED_OUT, '1'); } catch (e) {}
+        sb.auth.signOut({ scope: 'local' }).then(function () { location.reload(); });
+      });
+    });
+  }
 
   var adminReady = false;
   function enterAdmin() {
@@ -481,6 +741,13 @@
     adminReady = true;
     loadProducts();
     applyRoute();
+    /* Note the build that is running, so System & Maintenance can say
+       when it went live. Costs one read per new build and nothing after
+       that, and a failure here is silent by design: the deployment
+       history is never worth keeping an owner out of their shop for. */
+    var sys = (window.VBP_ADMIN || {}).system;
+    if (sys && sys.record) { try { sys.record(); } catch (e) {} }
+    startIdleTimer();
   }
 
   // ---------- navigation ----------
@@ -493,7 +760,8 @@
   function ctx() {
     if (!pageCtx) {
       var reg = window.VBP_ADMIN || {};
-      pageCtx = { sb: sb, cfg: cfg, esc: escapeHtml, navigate: navigate, ui: reg.ui, store: reg.store };
+      pageCtx = { sb: sb, cfg: cfg, esc: escapeHtml, navigate: navigate, ui: reg.ui,
+                  store: reg.store, ask: ask, tell: tell };
     }
     return pageCtx;
   }
@@ -645,12 +913,22 @@
   window.VBP_ADMIN.ask = ask;
   window.VBP_ADMIN.tell = tell;
 
+  /* The activity log. Fetched each time rather than held, because it is
+     allowed not to be there: a shop that has not run the newest setup
+     file yet must still be able to work. */
+  var AUDIT = function () { return (window.VBP_ADMIN || {}).audit; };
+
   function saveMeta(sku) {
     var m = metaMap[sku] || { sku: sku };
     m.sku = sku; m.updated_at = new Date().toISOString();
     metaMap[sku] = m;
+    var known = !!(products || []).length;
     return sb.from('product_meta').upsert(m, { onConflict: 'sku' }).then(function (r) {
-      if (r.error) throw r.error; return r;
+      if (r.error) throw r.error;
+      var a = AUDIT();
+      if (a) a.record({ action: 'changed', module: 'Products & Photos', record: sku,
+                        changes: [{ field: 'presentation', from: '', to: 'updated' }] });
+      return r;
     });
   }
 
@@ -1047,7 +1325,14 @@
      confirms or cancels each one as the WhatsApp conversation settles it,
      and the customer sees that status on their account page — which is
      the only thing that makes the list worth showing them at all. */
-  var STATUSES = ['pending', 'confirmed', 'completed', 'cancelled'];
+  /* Taken from the message engine rather than written out again, so a
+     status can never exist here with no message, or the other way
+     round. The legacy value is kept on the end: orders marked before
+     this list grew still have to read correctly rather than being
+     quietly rewritten to something they never were. */
+  var NOTIFY = window.VBP_NOTIFY || { FLOW: ['pending', 'confirmed', 'cancelled'], LEGACY: [], CHOICES: {} };
+  var STATUSES = NOTIFY.FLOW.concat(NOTIFY.LEGACY);
+  var notifySettings = null;
 
   function loadOrders() {
     var host = $('ordList');
@@ -1057,10 +1342,12 @@
        rather than showing kwacha to a shop that trades in dollars. */
     Promise.all([
       window.VBP_ADMIN.store.load('general').catch(function () { return {}; }),
-      window.VBP_ADMIN.store.load('pricing').catch(function () { return {}; })
+      window.VBP_ADMIN.store.load('pricing').catch(function () { return {}; }),
+      window.VBP_ADMIN.store.load('notifications').catch(function () { return {}; })
     ]).then(function (r) {
       generalSettings = r[0] || generalSettings;
       pricing = r[1] || pricing;
+      notifySettings = r[2] || {};
       drawOrders();
     });
   }
@@ -1135,7 +1422,7 @@
     STATUSES.forEach(function (v) {
       var op = document.createElement('option');
       op.value = v;
-      op.textContent = v.charAt(0).toUpperCase() + v.slice(1);
+      op.textContent = NOTIFY.CHOICES[v] || (v.charAt(0).toUpperCase() + v.slice(1));
       if ((o.status || 'pending') === v) op.selected = true;
       sel.appendChild(op);
     });
@@ -1146,20 +1433,57 @@
         .eq('id', o.id)
         .then(function (r) {
           if (r.error) { stat.textContent = 'Error'; stat.className = 'stat err'; return; }
+          var wasStatus = o.status || 'pending';
           o.status = sel.value;
           stat.textContent = 'Saved ✓'; stat.className = 'stat ok';
+          var a = AUDIT();
+          if (a) a.record({ action: 'changed', module: 'Orders', record: o.ref || 'an order',
+                            changes: [{ field: 'status', from: wasStatus, to: sel.value }] });
+          paintWhatsApp();
         });
     });
     row.appendChild(sel);
 
+    /* The message follows the status. Changing an order to Ready and
+       then tapping through to WhatsApp opens the customer's own thread
+       with the ready message already written - which is how every other
+       message on this site works, and the only way an owner will
+       actually send them.
+
+       Nothing is sent from here. The message is handed to WhatsApp and
+       the owner presses send, in the conversation the order came from. */
+    var wa = null;
     if (o.phone) {
-      var wa = document.createElement('a');
+      wa = document.createElement('a');
       wa.className = 'btn btn-out btn-sm';
-      wa.textContent = 'Open in WhatsApp';
       wa.target = '_blank'; wa.rel = 'noopener';
-      wa.href = 'https://wa.me/' + String(o.phone).replace(/[^0-9]/g, '');
       row.appendChild(wa);
     }
+
+    function paintWhatsApp() {
+      if (!wa) return;
+      var status = o.status || 'pending';
+      var offer = NOTIFY.enabled && NOTIFY.enabled(status, notifySettings || {});
+      var text = offer && NOTIFY.messageFor
+        ? NOTIFY.messageFor(status, o, notifySettings || {}, {
+            business: generalSettings.businessName || 'us',
+            money: fmtMoney
+          })
+        : '';
+      var href = NOTIFY.link ? NOTIFY.link(o.phone, text) : '';
+      /* A number too short to be a real one gives no link at all, so the
+         button says so rather than opening WhatsApp on nothing. */
+      if (!href) {
+        wa.removeAttribute('href');
+        wa.className = 'btn btn-out btn-sm is-off';
+        wa.textContent = 'No usable number';
+        return;
+      }
+      wa.href = href;
+      wa.className = 'btn btn-out btn-sm';
+      wa.textContent = text ? 'Message about this order' : 'Open in WhatsApp';
+    }
+    paintWhatsApp();
 
     var del = document.createElement('button');
     del.className = 'btn btn-out btn-sm';
@@ -1170,7 +1494,11 @@
                                 'off, set the status to Cancelled instead.' })
         .then(function (yes) {
           if (!yes) return;
-          sb.from('orders').delete().eq('id', o.id).then(function () { d.remove(); });
+          sb.from('orders').delete().eq('id', o.id).then(function () {
+            var a = AUDIT();
+            if (a) a.record({ action: 'deleted', module: 'Orders', record: o.ref || 'an order' });
+            d.remove();
+          });
         });
     });
     row.appendChild(del);
@@ -1199,15 +1527,32 @@
       '<div class="sku">' + (rev.sku ? escapeHtml(rev.sku) : 'Whole shop') + ' · ' + new Date(rev.created_at).toLocaleDateString() + '</div>' +
       '<p style="margin:8px 0;color:#15202e">' + escapeHtml(rev.comment || '') + '</p>';
     var row = document.createElement('div'); row.className = 'row';
-    row.appendChild(checkbox('Verified', !!rev.verified, function (v) { sb.from('reviews').update({ verified: v }).eq('id', rev.id); }));
-    row.appendChild(checkbox('Shown', rev.approved !== false, function (v) { sb.from('reviews').update({ approved: v }).eq('id', rev.id); }));
+    function reviewFlag(field, value) {
+      var was = field === 'verified' ? !!rev.verified : rev.approved !== false;
+      rev[field] = value;
+      sb.from('reviews').update((function () { var o = {}; o[field] = value; return o; })())
+        .eq('id', rev.id).then(function () {
+          var a = AUDIT();
+          if (a) a.record({ action: 'changed', module: 'Reviews',
+                            record: rev.name || 'a review',
+                            changes: [{ field: field, from: was ? 'on' : 'off',
+                                        to: value ? 'on' : 'off' }] });
+        });
+    }
+    row.appendChild(checkbox('Verified', !!rev.verified, function (v) { reviewFlag('verified', v); }));
+    row.appendChild(checkbox('Shown', rev.approved !== false, function (v) { reviewFlag('approved', v); }));
     var del = document.createElement('button'); del.className = 'btn btn-out btn-sm'; del.textContent = 'Delete';
     del.addEventListener('click', function () {
       ask('Delete the review from ' + (rev.name || 'this customer') + '?',
           { danger: true, note: 'This cannot be undone. To hide it instead, untick Shown.' })
         .then(function (yes) {
           if (!yes) return;
-          sb.from('reviews').delete().eq('id', rev.id).then(function () { d.remove(); });
+          sb.from('reviews').delete().eq('id', rev.id).then(function () {
+            var a = AUDIT();
+            if (a) a.record({ action: 'deleted', module: 'Reviews',
+                              record: rev.name || 'a review' });
+            d.remove();
+          });
         });
     });
     row.appendChild(del);
@@ -1216,21 +1561,243 @@
   }
 
   // ---------- subscribers ----------
-  var subEmails = [];
+  /* The list, and the five things an owner needs to do with it. Two of
+     them matter more than they look.
+
+     Somebody who asks to come off the list is UNSUBSCRIBED rather than
+     deleted. Deleting them looks the same today and is not the same
+     thing: while the row is there, the address is still the primary key,
+     so no form on the site can quietly sign them up again. Delete is
+     kept for the other case - erasing somebody entirely because they
+     asked to be forgotten.
+
+     And everything that writes to people - copy, BCC, export - covers
+     only those still subscribed. Mailing somebody who left is exactly
+     what recording their leaving was for. */
+  var subRows = [];        // every row, newest first
+  var subEmails = [];      // the addresses still subscribed
+
+  function subActive(x) { return !x.unsubscribed_at; }
+
   function loadSubscribers() {
     var host = $('subList'); host.innerHTML = '<p class="count">Loading…</p>';
     sb.from('subscribers').select('*').order('created_at', { ascending: false }).then(function (r) {
       if (r.error) { host.innerHTML = '<p class="count">Error: ' + r.error.message + '</p>'; return; }
-      var rows = r.data || []; subEmails = rows.map(function (x) { return x.email; });
-      $('subCount').textContent = rows.length + ' subscribers';
-      if (!rows.length) { host.innerHTML = '<p class="count">No subscribers yet.</p>'; return; }
-      host.innerHTML = '<div class="card" style="padding:14px">' + rows.map(function (x) {
-        return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:7px 0"><span>' + escapeHtml(x.email) + '</span><span class="sku">' + new Date(x.created_at).toLocaleDateString() + '</span></div>';
-      }).join('') + '</div>';
+      subRows = r.data || [];
+      drawSubscribers();
     });
   }
+
+  function drawSubscribers() {
+    var host = $('subList');
+    var q = ($('subSearch').value || '').trim().toLowerCase();
+    var shown = q ? subRows.filter(function (x) {
+      return String(x.email || '').toLowerCase().indexOf(q) > -1;
+    }) : subRows;
+
+    var active = subRows.filter(subActive);
+    subEmails = active.map(function (x) { return x.email; });
+    var gone = subRows.length - active.length;
+    $('subCount').textContent = active.length + (active.length === 1 ? ' subscriber' : ' subscribers') +
+      (gone ? ' · ' + gone + ' unsubscribed' : '') +
+      (q ? ' · showing ' + shown.length : '');
+
+    host.innerHTML = '';
+    if (!subRows.length) {
+      host.innerHTML = '<p class="count">No subscribers yet.</p>';
+      return;
+    }
+    if (!shown.length) {
+      host.innerHTML = '<p class="count">No address matches “' + escapeHtml(q) + '”.</p>';
+      return;
+    }
+
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.style.padding = '6px 14px';
+    shown.forEach(function (x) { card.appendChild(subscriberRow(x)); });
+    host.appendChild(card);
+  }
+
+  function subscriberRow(x) {
+    var row = document.createElement('div');
+    row.className = 'sub-row' + (subActive(x) ? '' : ' is-off');
+
+    var who = document.createElement('div');
+    who.className = 'sub-who';
+    var addr = document.createElement('span');
+    addr.className = 'sub-addr';
+    addr.textContent = x.email;
+    who.appendChild(addr);
+    var when = document.createElement('span');
+    when.className = 'sku';
+    when.textContent = subActive(x)
+      ? 'joined ' + shortDate(x.created_at)
+      : 'left ' + shortDate(x.unsubscribed_at);
+    who.appendChild(when);
+    row.appendChild(who);
+
+    var acts = document.createElement('div');
+    acts.className = 'sub-acts';
+
+    if (subActive(x)) {
+      var welcome = document.createElement('button');
+      welcome.className = 'btn btn-out btn-sm';
+      welcome.textContent = 'Send welcome';
+      welcome.addEventListener('click', function () { sendWelcome(x.email, welcome); });
+      acts.appendChild(welcome);
+
+      var off = document.createElement('button');
+      off.className = 'btn btn-out btn-sm';
+      off.textContent = 'Unsubscribe';
+      off.addEventListener('click', function () { setSubscribed(x, false); });
+      acts.appendChild(off);
+    } else {
+      var back = document.createElement('button');
+      back.className = 'btn btn-out btn-sm';
+      back.textContent = 'Put back on';
+      back.addEventListener('click', function () { setSubscribed(x, true); });
+      acts.appendChild(back);
+    }
+
+    var del = document.createElement('button');
+    del.className = 'btn btn-out btn-sm';
+    del.textContent = 'Delete';
+    del.addEventListener('click', function () { deleteSubscriber(x); });
+    acts.appendChild(del);
+
+    row.appendChild(acts);
+    return row;
+  }
+
+  function setSubscribed(x, on) {
+    var go = on
+      ? Promise.resolve(true)
+      : ask('Take ' + x.email + ' off the list? They stay recorded, which is what stops ' +
+            'any form on the site signing them up again.',
+            { title: 'Unsubscribe', okText: 'Take them off' });
+
+    go.then(function (yes) {
+      if (!yes) return;
+      return sb.from('subscribers')
+        .update({ unsubscribed_at: on ? null : new Date().toISOString() })
+        .eq('email', x.email)
+        .then(function (r) {
+          if (r.error) { tell(r.error.message, { title: 'That did not save' }); return; }
+          x.unsubscribed_at = on ? null : new Date().toISOString();
+          var a = AUDIT();
+          if (a) a.record({ action: 'changed', module: 'Subscribers', record: x.email,
+                            changes: [{ field: 'on the list', from: on ? 'off' : 'on',
+                                        to: on ? 'on' : 'off' }] });
+          drawSubscribers();
+          if (on) return;
+          /* The words the shop wrote for this, ready to send back. */
+          return window.VBP_ADMIN.store.load('newsletter').then(function (n) {
+            if (!n || !n.unsubscribeMessage) return;
+            return tell('', { title: 'Send them this', copyText: n.unsubscribeMessage });
+          }).catch(function () {});
+        });
+    });
+  }
+
+  function deleteSubscriber(x) {
+    ask('Delete ' + x.email + ' entirely?',
+        { danger: true,
+          note: 'This erases the record. Nothing then stops the address being added again ' +
+                'by any form on the site. To honour a request to stop hearing from you, ' +
+                'use Unsubscribe instead.' })
+      .then(function (yes) {
+        if (!yes) return;
+        sb.from('subscribers').delete().eq('email', x.email).then(function (r) {
+          if (r.error) { tell(r.error.message, { title: 'That did not work' }); return; }
+          subRows = subRows.filter(function (o) { return o.email !== x.email; });
+          var a = AUDIT();
+          if (a) a.record({ action: 'deleted', module: 'Subscribers', record: x.email });
+          drawSubscribers();
+        });
+      });
+  }
+
+  /* One person at a time, using the email account set up in Settings >
+     Notifications and the wording in Settings > Newsletter. */
+  function sendWelcome(email, btn) {
+    btn.disabled = true;
+    var was = btn.textContent;
+    btn.textContent = 'Sending…';
+    var reset = function () { btn.disabled = false; btn.textContent = was; };
+
+    Promise.all([
+      window.VBP_ADMIN.store.load('newsletter'),
+      window.VBP_ADMIN.store.load('notifications'),
+      window.VBP_ADMIN.store.loadPrivate('notifications'),
+      sb.auth.getSession()
+    ]).then(function (r) {
+      var news = r[0] || {}, mail = r[1] || {}, shut = r[2] || {};
+      var session = r[3] && r[3].data && r[3].data.session;
+      if (!mail.emailEnabled || !mail.smtpHost) {
+        throw new Error('Email is not set up yet. Settings > Notifications has the five ' +
+                        'details your provider gives you.');
+      }
+      if (!session) throw new Error('You are not signed in.');
+
+      var body = [news.welcomeEmail || '', mail.signature || '', news.footer || '']
+        .filter(function (part) { return String(part || '').trim(); })
+        .join('\n\n');
+
+      return fetch('/.netlify/functions/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+                   Authorization: 'Bearer ' + session.access_token },
+        body: JSON.stringify({
+          smtpHost: mail.smtpHost, smtpPort: mail.smtpPort, encryption: mail.encryption,
+          smtpUser: mail.smtpUser, smtpPassword: shut.smtpPassword,
+          senderName: mail.senderName, senderEmail: mail.senderEmail, replyTo: mail.replyTo,
+          to: email,
+          subject: news.welcomeSubject || 'Welcome',
+          text: body
+        })
+      });
+    }).then(function (res) {
+      return res.json().catch(function () { throw new Error('The sender did not answer properly.'); });
+    }).then(function (out) {
+      reset();
+      if (out.sent) { tell('Sent to ' + email + '.', { title: 'Welcome sent' }); return; }
+      tell(out.error || 'It did not send.', { title: 'That did not send' });
+    }).catch(function (e) {
+      reset();
+      tell((e && e.message) || String(e), { title: 'That did not send' });
+    });
+  }
+
+  $('subSearch').addEventListener('input', drawSubscribers);
+
+  $('subExport').addEventListener('click', function () {
+    if (!subEmails.length) { tell('No subscribers yet.', { title: 'Nothing to export' }); return; }
+    /* A spreadsheet reads a leading =, + or @ as a formula, so a crafted
+       address could run when the file is opened. Every field is quoted
+       and anything starting that way is nudged clear of it. */
+    var safe = function (v) {
+      var t = String(v == null ? '' : v);
+      if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
+      return '"' + t.replace(/"/g, '""') + '"';
+    };
+    var lines = ['Email,Joined'];
+    subRows.filter(subActive).forEach(function (x) {
+      lines.push(safe(x.email) + ',' + safe(shortDate(x.created_at)));
+    });
+    var blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var d = new Date();
+    a.href = url;
+    a.download = 'vaultique-subscribers-' + d.getFullYear() + '-' +
+      ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2) + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  });
+
   $('subCopy').addEventListener('click', function () {
-    if (!subEmails.length) { tell('No subscribers yet.', { title: 'Nothing to copy' }); return; }
+    if (!subEmails.length) { tell('Nobody is on the list.', { title: 'Nothing to copy' }); return; }
     var text = subEmails.join(', ');
     /* Where the clipboard is unavailable the addresses are shown in a box
        ready to select, rather than in a browser prompt that truncates a
@@ -1242,11 +1809,15 @@
         show);
     } else show();
   });
+
   $('subEmail').addEventListener('click', function () {
-    if (!subEmails.length) { tell('No subscribers yet.', { title: 'Nothing to send' }); return; }
-    var subject = encodeURIComponent('New arrivals at Vaultique Boutique');
-    var body = encodeURIComponent('Hello,\n\nWe have new pieces in store. Shop the latest: \n\nVaultique Boutique Point');
-    window.location.href = 'mailto:?bcc=' + encodeURIComponent(subEmails.join(',')) + '&subject=' + subject + '&body=' + body;
+    if (!subEmails.length) { tell('Nobody is on the list.', { title: 'Nothing to send' }); return; }
+    var subject = encodeURIComponent('New arrivals at ' +
+      (generalSettings.businessName || 'Vaultique Boutique'));
+    var body = encodeURIComponent('Hello,\n\nWe have new pieces in store.\n\n' +
+      (generalSettings.businessName || 'Vaultique Boutique Point'));
+    window.location.href = 'mailto:?bcc=' + encodeURIComponent(subEmails.join(',')) +
+      '&subject=' + subject + '&body=' + body;
   });
 
   // ---------- policies ----------
@@ -1283,9 +1854,15 @@
       };
       if (!upd.title) { stat.textContent = 'Title required'; stat.className = 'stat err'; return; }
       stat.textContent = 'Saving…'; stat.className = 'stat busy';
+      var was = { section: p.section, title: p.title, body: p.body, sort: p.sort };
       sb.from('policies').update(upd).eq('id', p.id).then(function (r) {
-        if (r.error) { stat.textContent = 'Error'; stat.className = 'stat err'; }
-        else { stat.textContent = 'Saved ✓'; stat.className = 'stat ok'; }
+        if (r.error) { stat.textContent = 'Error'; stat.className = 'stat err'; return; }
+        stat.textContent = 'Saved ✓'; stat.className = 'stat ok';
+        p.section = upd.section; p.title = upd.title; p.body = upd.body; p.sort = upd.sort;
+        var a = AUDIT();
+        if (a) a.record({ action: 'changed', module: 'Policies', record: upd.title,
+                          changes: a.diff(was, { section: upd.section, title: upd.title,
+                                                 body: upd.body, sort: upd.sort }, 'policies') });
       });
     });
     var del = document.createElement('button'); del.className = 'btn btn-out btn-sm'; del.textContent = 'Delete';
@@ -1294,7 +1871,11 @@
           { danger: true, note: 'This cannot be undone. Customers will no longer see it on the policies page.' })
         .then(function (yes) {
           if (!yes) return;
-          sb.from('policies').delete().eq('id', p.id).then(function () { d.remove(); });
+          sb.from('policies').delete().eq('id', p.id).then(function () {
+            var a = AUDIT();
+            if (a) a.record({ action: 'deleted', module: 'Policies', record: p.title || 'a policy' });
+            d.remove();
+          });
         });
     });
     row.appendChild(save); row.appendChild(del); row.appendChild(stat);
@@ -1304,6 +1885,8 @@
   $('polAdd').addEventListener('click', function () {
     sb.from('policies').insert({ section: 'General', title: 'New policy', body: '', sort: 999 }).then(function (r) {
       if (r.error) { tell(r.error.message, { title: 'That did not save' }); return; }
+      var a = AUDIT();
+      if (a) a.record({ action: 'added', module: 'Policies', record: 'New policy' });
       loadPolicies();
     });
   });

@@ -526,6 +526,21 @@
       var pw = field(body, 'ac_pw2', 'Choose a password', 'password', '', 'new-password');
       var rule = el('p', 'ac-rule', passwordRule());
       body.appendChild(rule);
+      /* The newsletter, offered once, here, where the address is already
+         typed. It starts unticked on purpose: a list somebody joined
+         without noticing is a list they report as spam. */
+      var nl = renderHooks.newsletter || {};
+      var joinBox = null;
+      if (nl.enabled !== false && nl.offerAtSignup) {
+        var joinLbl = el('label', 'ac-check');
+        joinBox = document.createElement('input');
+        joinBox.type = 'checkbox';
+        joinLbl.appendChild(joinBox);
+        joinLbl.appendChild(document.createTextNode(
+          ' ' + (nl.signupLabel || 'Email me new arrivals and private offers')));
+        body.appendChild(joinLbl);
+      }
+
       var msg = el('p', 'ac-msg');
       var go = el('button', 'btn btn-gold', 'Create account');
       go.type = 'button';
@@ -543,6 +558,12 @@
         if (!name.value.trim()) { say(msg, 'Please give us a name to call you by.', 'err'); return; }
         say(msg, 'Creating your account…', 'busy');
         signUp(email.value, pw.value, name.value).then(function (r) {
+          /* After the account, never instead of it. Joining a list must
+             not be able to hold up or fail the thing they came to do, so
+             it is fired and forgotten. */
+          if (joinBox && joinBox.checked && typeof renderHooks.subscribe === 'function') {
+            try { renderHooks.subscribe(email.value.trim()); } catch (e) {}
+          }
           if (r && r.confirm) {
             body.innerHTML = '';
             body.appendChild(el('h3', 'serif', 'Almost there'));

@@ -358,7 +358,7 @@ header.site.solid .brand .v{color:var(--navy)}
 .toolbar-inner{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .search-field{position:relative;flex:1;min-width:200px;max-width:360px}
 .search-field svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:17px;height:17px;stroke:var(--muted);fill:none;stroke-width:1.6}
-.search-field input{width:100%;padding:11px 14px 11px 40px;border:1px solid var(--line);background:var(--surface);border-radius:var(--radius-2xl);font-family:var(--font-body);font-size:14px;outline:none;transition:border-color .2s}
+.search-field input:not([type=radio]):not([type=checkbox]){width:100%;padding:11px 14px 11px 40px;border:1px solid var(--line);background:var(--surface);border-radius:var(--radius-2xl);font-family:var(--font-body);font-size:14px;outline:none;transition:border-color .2s}
 .search-field input:focus{border-color:var(--gold)}
 .chips{display:flex;gap:9px;flex-wrap:wrap;min-width:0;padding-bottom:2px}
 .chips::-webkit-scrollbar{display:none}
@@ -606,6 +606,13 @@ footer.site{background:var(--navy-3);color:rgba(255,255,255,.72)}
   .modal-card .qv-img{aspect-ratio:16/10}
 }
 @media(max-width:560px){
+  /* The order and review dialogs, on a phone. Less border, more room for
+     the thing being asked, and the two fulfilment choices one above the
+     other rather than squeezed side by side. */
+  .modal{padding:12px}
+  #reviewBody,#orderBody{padding:24px 20px;max-height:88vh}
+  #reviewBody h3,#orderBody h3{font-size:25px}
+  .od-pick{flex:1 1 100%}
   .wrap{padding:0 18px}
   .collections{grid-template-columns:1fr}
   .ig-grid{grid-template-columns:repeat(3,1fr)}
@@ -656,15 +663,20 @@ footer.site{background:var(--navy-3);color:rgba(255,255,255,.72)}
 
 /* review modal */
 .review-card{display:block!important;grid-template-columns:none!important;max-width:460px}
-#reviewBody,#orderBody{padding:34px}
+#reviewBody,#orderBody{padding:34px;overflow-y:auto;max-height:90vh}
 #reviewBody .c,#orderBody .c{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold-deep);font-weight:500}
 #reviewBody h3,#orderBody h3{font-family:var(--font-head);font-weight:600;font-size:30px;color:var(--navy);margin:4px 0 14px}
 .rv-stars{display:flex;gap:8px;font-size:34px;color:var(--sand);cursor:pointer;margin-bottom:12px}
 .rv-stars span{transition:.15s}
 .rv-stars span.on{color:var(--gold)}
 .rv-lbl{display:block;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:12px 0 6px}
-#reviewBody input,#reviewBody textarea,#orderBody input,#orderBody textarea{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);font-family:var(--font-body);font-size:14px;color:var(--ink);outline:none}
-#reviewBody input:focus,#reviewBody textarea:focus,#orderBody input:focus,#orderBody textarea:focus{border-color:var(--gold)}
+/* Text boxes only. A radio or a checkbox is not a text box, and an id
+   selector here beats any class rule a control might carry of its own,
+   so they have to be named out rather than corrected afterwards. */
+#reviewBody input:not([type=radio]):not([type=checkbox]),#reviewBody textarea,
+#orderBody input:not([type=radio]):not([type=checkbox]),#orderBody textarea{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);font-family:var(--font-body);font-size:14px;color:var(--ink);outline:none}
+#reviewBody input:not([type=radio]):not([type=checkbox]):focus,#reviewBody textarea:focus,
+#orderBody input:not([type=radio]):not([type=checkbox]):focus,#orderBody textarea:focus{border-color:var(--gold)}
 .rv-actions{margin-top:16px;display:flex;align-items:center;gap:12px}
 .rv-msg{font-size:13px}.rv-msg.err{color:var(--err)}.rv-msg.ok{color:var(--ok)}
 
@@ -920,7 +932,8 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 /* Delivered or collected, asked first because the answer decides whether
    the address box below is worth filling in. */
 .od-how{display:flex;gap:10px;margin:12px 0 4px;flex-wrap:wrap}
-.od-pick{flex:1 1 150px;display:flex;align-items:center;gap:8px;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius-sm);cursor:pointer;font-size:13.5px;color:var(--ink);transition:.18s var(--ease)}
+.od-pick{flex:1 1 150px;min-width:0;display:flex;align-items:center;gap:8px;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius-sm);cursor:pointer;font-size:13.5px;line-height:1.4;color:var(--ink);transition:.18s var(--ease)}
+.od-pick span{min-width:0;overflow-wrap:anywhere}
 .od-pick:hover{border-color:var(--accent)}
 .od-pick input{accent-color:var(--accent);width:15px;height:15px;flex:none;margin:0}
 .od-pick:has(input:checked){border-color:var(--accent);background:rgba(var(--accent-rgb),.07)}
@@ -959,6 +972,9 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .ac-status{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;padding:4px 9px;border-radius:var(--radius-2xl);background:var(--cream);color:var(--muted)}
 .ac-status.is-confirmed{background:var(--accent);color:var(--accent-on)}
 .ac-status.is-completed{background:rgba(var(--ok-rgb),.16);color:#1f7a48}
+.ac-status.is-ready{background:rgba(var(--ok-rgb),.13);color:#1f7a48}
+.ac-status.is-dispatched{background:var(--accent);color:var(--accent-on)}
+.ac-status.is-delivered{background:rgba(var(--ok-rgb),.16);color:#1f7a48}
 .ac-status.is-cancelled{background:rgba(0,0,0,.07);color:var(--muted);text-decoration:line-through}
 .ac-item{font-size:13.5px;color:var(--ink);margin-top:5px}
 .ac-total{font-family:var(--font-head);font-size:17px;color:var(--navy);margin-top:8px}
@@ -966,7 +982,13 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .ac-danger:hover{background:#c0392b;color:#fff}
 .ac-none{color:var(--muted);font-size:14px}
 .icon-btn.is-in::after{content:'';position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
-.account-view input,.account-view textarea,.account-view select{width:100%}
+/* Text boxes only. A tick box is not a text box: stretched to the full
+   width of its row it strands its own wording somewhere off to the
+   right, which is exactly what happened to the delivery choice in the
+   order dialog. Naming the types is what the admin stylesheet does, and
+   it is the version that cannot be got wrong by adding a control later. */
+.account-view input:not([type=radio]):not([type=checkbox]),
+.account-view textarea,.account-view select{width:100%}
 @media (max-width:560px){ .ac-addr{flex-direction:column} }
 .od-opt{font-size:9.5px;letter-spacing:.1em;color:var(--muted);text-transform:none;margin-left:6px;opacity:.8}
 .od-note{font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:14px}

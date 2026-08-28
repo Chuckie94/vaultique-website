@@ -392,16 +392,20 @@
   <section class="section newsletter" id="newsletter">
     <div class="wrap">
       <div class="nl-inner reveal">
-        <div class="eyebrow">Stay in the know</div>
-        <h2 class="serif" style="font-size:clamp(28px,4.4vw,44px);color:var(--navy);margin-top:10px">Join the Vaultique list</h2>
-        <p style="color:var(--muted);margin-top:10px">New arrivals, private offers and styling notes, straight to your inbox.</p>
+        <!-- The wording here is edited in Settings > Newsletter. It is left
+             written out so a visitor whose scripts never arrive still reads
+             the invitation; the settings overwrite it once they load, and
+             the two say the same thing until the shop changes one. -->
+        <div class="eyebrow" id="nlEyebrow">Stay in the know</div>
+        <h2 class="serif" id="nlHeading" style="font-size:clamp(28px,4.4vw,44px);color:var(--navy);margin-top:10px">Join the Vaultique list</h2>
+        <p id="nlBlurb" style="color:var(--muted);margin-top:10px">New arrivals, private offers and styling notes, straight to your inbox.</p>
         <!-- Subscribers are saved to the website database (see assets/app.js) -->
         <form id="nlForm" class="nl-form">
           <input id="nlEmail" type="email" name="email" autocomplete="email" placeholder="Your email address" required aria-label="Email address" />
-          <button class="btn btn-navy" type="submit">Subscribe</button>
+          <button class="btn btn-navy" id="nlBtn" type="submit">Subscribe</button>
         </form>
         <div class="nl-success" id="nlSuccess">Thank you. You are on the list.</div>
-        <div class="nl-note">We respect your privacy and will never share your details.</div>
+        <div class="nl-note" id="nlNote">We respect your privacy and will never share your details.</div>
       </div>
     </div>
   </section>

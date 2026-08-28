@@ -57,4 +57,4 @@ function originFrom(event) {
   return host ? `${proto}://${host}` : '';
 }
 
-module.exports = { rows, settings, originFrom };
+module.exports = { rows, settings, originFrom, readConfig };

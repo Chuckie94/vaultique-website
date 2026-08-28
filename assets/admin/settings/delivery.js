@@ -69,7 +69,7 @@
     pickupEnabled: true,
     pickupUseShopAddress: true,
     pickupLocation: '',
-    pickupInstructions: 'Message us when you are on your way and we will have your order ready.',
+    pickupInstructions: 'Your order is held at the boutique for collection during trading hours. We will confirm on WhatsApp as soon as it is ready.',
     pickupNumberOverride: false,
     pickupNumber: '',
 

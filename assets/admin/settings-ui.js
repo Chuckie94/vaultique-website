@@ -120,7 +120,11 @@
   function textField(f, changed) {
     var c = baseField(f);
     var input = el('input');
-    input.type = 'text';
+    /* A secret is masked on screen. It still saves and loads exactly as
+       any other text field: the difference is only that somebody
+       standing behind the counter cannot read it. */
+    input.type = f.secret ? 'password' : 'text';
+    if (f.secret) input.autocomplete = 'new-password';
     input.id = 'f_' + f.name;
     if (f.placeholder) input.placeholder = f.placeholder;
     c.wrap.appendChild(input);

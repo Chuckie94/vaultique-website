@@ -89,6 +89,28 @@
   var CARE = window.VBP_CARE || null;
   // Settings > Customer Care. An empty card list means the four the site
   // came with, so a shop that has never opened the section keeps them.
+  /* Settings > Newsletter. Every one of these was written into
+     index.html until now. The values here are exactly what the page has
+     always said, so a shop that never opens the section sees no change. */
+  var NEWSLETTER = {
+    enabled: true,
+    eyebrow: 'Stay in the know',
+    heading: 'Join the Vaultique list',
+    blurb: 'New arrivals, private offers and styling notes, straight to your inbox.',
+    placeholder: 'Your email address',
+    buttonLabel: 'Subscribe',
+    welcome: 'Thank you. You are on the list.',
+    privacyNote: 'We respect your privacy and will never share your details.',
+    /* Carried so the admin and the shop declare the same set. The sign-up
+       form reads them from here through account.js, not from the band. */
+    offerAtSignup: false,
+    signupLabel: 'Email me new arrivals and private offers',
+    /* Carried so the admin and the shop declare the same set. These four
+       are the wording of an email the shop sends from the admin; nothing
+       on the customer's side of the site reads them. */
+    welcomeSubject: '', welcomeEmail: '', unsubscribeMessage: '', footer: ''
+  };
+
   var CARESET = {
     careEnabled: true,
     careEyebrow: 'Here to help',
@@ -133,7 +155,7 @@
     speeds: 'standard', sameDayFee: '', sameDayCutoff: '14:00',
     sameDayNote: 'Same-day delivery in Lusaka for orders confirmed before the cut-off.',
     pickupEnabled: true, pickupUseShopAddress: true, pickupLocation: '',
-    pickupInstructions: 'Message us when you are on your way and we will have your order ready.',
+    pickupInstructions: 'Your order is held at the boutique for collection during trading hours. We will confirm on WhatsApp as soon as it is ready.',
     pickupNumberOverride: false, pickupNumber: '',
     terms: 'We deliver nationwide across Zambia where possible. Collection in person ' +
            'can also be arranged.',
@@ -728,6 +750,14 @@
     if (!ACCT) return;
     ACCT.hooks.money = formatPrice;
     ACCT.hooks.date = formatDate;
+    /* The newsletter wording, and the one way to join it. Handed over
+       rather than reached for, so account.js never has to know how this
+       site talks to its database. */
+    ACCT.hooks.newsletter = NEWSLETTER;
+    ACCT.hooks.subscribe = function (email) {
+      if (!WEB || !email) return Promise.resolve();
+      return webPost('subscribers', { email: email }).catch(function () {});
+    };
     /* Told what the shop has decided straight away, so the router knows
        whether #/account is a page here before the client has downloaded. */
     ACCT.configure(ACCOUNTS);
@@ -1732,6 +1762,7 @@
          the homepage does run, applySections can move a band that is
          already dressed. */
       applyDeliveryBand();
+      applyNewsletter();
       applyHomepageSettings();
       applyPaymentSettings();
       /* After Payments and Delivery, because a panel can borrow from
@@ -1766,7 +1797,7 @@
     if (!WEB) { cb(); return; }
     var base = WEB.SUPABASE_URL.replace(/\/+$/, '');
     var h = { apikey: WEB.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + WEB.SUPABASE_ANON_KEY };
-    var pending = 15;
+    var pending = 16;
     function done() { if (--pending === 0) cb(); }
     fetch(base + '/rest/v1/product_meta?select=*', { headers: h })
       .then(function (r) { return r.ok ? r.json() : []; })
@@ -1799,6 +1830,18 @@
         if (!d) return;
         for (var k in d) {
           if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) SHOP[k] = d[k];
+        }
+      })
+      .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.newsletter&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) {
+        var d = rows && rows[0] && rows[0].data;
+        if (!d) return;
+        for (var k in d) {
+          if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) {
+            NEWSLETTER[k] = d[k];
+          }
         }
       })
       .catch(function () {}).then(done);
@@ -3180,12 +3223,49 @@
   }
 
   // ---------------- newsletter -> subscribers ----------------
+
+  /* The band's wording. index.html still carries the same words, so a
+     visitor whose scripts never arrive reads the shop's own invitation
+     rather than an empty box - these overwrite them once the settings
+     are in, and the two agree until somebody edits the settings. */
+  function applyNewsletter() {
+    var n = NEWSLETTER;
+
+    /* A shop that is not running a list should not be asking anybody to
+       join one. This is the switch in Settings > Newsletter, and it wins
+       over the homepage's own ordering: Homepage decides where the band
+       sits, this decides whether there is a band at all. */
+    var band = $('#newsletter');
+    if (band) band.classList[n.enabled === false ? 'add' : 'remove']('hide');
+    if (n.enabled === false) return;
+
+    setText('#nlEyebrow', n.eyebrow);
+    setText('#nlHeading', n.heading);
+    setText('#nlBlurb', n.blurb);
+    setText('#nlBtn', n.buttonLabel);
+    setText('#nlSuccess', n.welcome);
+
+    var box = $('#nlEmail');
+    if (box && n.placeholder) box.placeholder = n.placeholder;
+
+    /* An empty note is no note, rather than an empty line under the box. */
+    var note = $('#nlNote');
+    if (note) {
+      note.textContent = n.privacyNote || '';
+      note.classList[n.privacyNote ? 'remove' : 'add']('hide');
+    }
+  }
+
   function initNewsletter() {
     var form = $('#nlForm'); if (!form) return;
     form.addEventListener('submit', function (e) {
       e.preventDefault();
+      if (NEWSLETTER.enabled === false) return;   // not running a list
       var email = $('#nlEmail').value.trim();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { $('#nlEmail').focus(); return; }
+      /* An address already on the list comes back as a conflict. That is
+         still a success as far as the person is concerned, and saying so
+         also avoids telling a stranger who is on the list. */
       var done = function () { form.classList.add('hide'); $('#nlSuccess').classList.add('show'); };
       if (WEB) { webPost('subscribers', { email: email }).then(done).catch(done); }
       else { done(); }
