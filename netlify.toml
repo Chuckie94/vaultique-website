@@ -7,6 +7,17 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+  # robots.js, sitemap.js and send-email.js read this website's Supabase
+  # address and public key out of config.js, so that they live in one
+  # place rather than being copied into the Netlify environment as well,
+  # where the two could drift apart.
+  #
+  # esbuild bundles the function, not the publish directory, so without
+  # this line the deployed function has no config.js to read and all
+  # three fail quietly: robots.txt drops to two hardcoded lines, the
+  # sitemap loses the catalogue and the policies, and every attempt to
+  # send email is refused as though the sender were not an administrator.
+  included_files = ["config.js"]
 
 # Pretty path so the storefront calls /api/products
 [[redirects]]

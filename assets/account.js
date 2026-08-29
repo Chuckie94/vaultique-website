@@ -140,6 +140,7 @@
     return sb.auth.getSession().then(function (res) {
       var session = res && res.data && res.data.session;
       api.user = readUser(session && session.user);
+      api.token = (session && session.access_token) || null;
       return loadProfile();
     }, function () {})
     .then(function () {
@@ -151,6 +152,7 @@
         sb.auth.onAuthStateChange(function (_e, session) {
           var was = api.user && api.user.id;
           api.user = readUser(session && session.user);
+          api.token = (session && session.access_token) || null;
           if ((api.user && api.user.id) === was) { tell(); return; }
           loadProfile().then(tell);
         });
@@ -365,45 +367,67 @@
     return enabled() && api.settings.orderHistory !== false;
   }
 
-  /* Short, sayable over a phone, and not sequential: a running number
-     would tell anyone who ordered how many orders the shop has had. */
-  function makeRef() {
-    var pool = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';   // no O/0, no I/1
-    var out = '';
-    for (var i = 0; i < 5; i++) out += pool.charAt(Math.floor(Math.random() * pool.length));
-    return 'VB-' + out;
-  }
+  /* Written through place_order() in the database rather than by
+     inserting here, because a guest cannot do it from this side.
+     `or_insert` lets the row in, but PostgreSQL applies the table's
+     SELECT policies to anything an insert RETURNs, and asking for the
+     new row's id — which the lines need — made the whole insert fail
+     for anyone not signed in. The lines were refused as well:
+     `oi_insert` asks whether the order exists, and that question is
+     answered under the caller's own reading rights, which show a guest
+     nothing. One call to a function that has the standing to do it
+     settles both, and writes the order and its lines together, so the
+     Orders tab never shows half of one.
 
+     The reference is made in there too, so two people pressing Continue
+     in the same second cannot land on the same one.
+
+     Recorded whether or not customer accounts are switched on. This is
+     the shop's own record of what was asked for; `orderHistory` is a
+     setting about what an ACCOUNT holds, and it still governs whether a
+     customer is shown their own, in myOrders() below. */
   function recordOrder(order) {
-    if (!sb || !historyOn()) return Promise.resolve(null);
-
-    var ref = makeRef();
-    var row = {
-      ref: ref,
-      customer_id: (signedIn() ? api.user.id : null),
-      name: order.name || null, phone: order.phone || null,
-      email: order.email || null, address: order.address || null,
-      notes: order.notes || null,
-      fulfilment: order.fulfilment === 'collection' ? 'collection' : 'delivery',
-      total: (order.total === undefined || order.total === null) ? null : Number(order.total),
-      currency: order.currency || null,
-      status: 'pending'
+    var payload = {
+      p_order: {
+        name: order.name || null, phone: order.phone || null,
+        email: order.email || null, address: order.address || null,
+        notes: order.notes || null,
+        fulfilment: order.fulfilment === 'collection' ? 'collection' : 'delivery',
+        total: (order.total === undefined || order.total === null) ? null : Number(order.total),
+        currency: order.currency || null
+      },
+      p_items: (order.items || []).map(function (it) {
+        return { sku: it.sku || null, name: it.name || null,
+                 price: (it.price === undefined ? null : Number(it.price)),
+                 qty: it.qty || 1 };
+      })
     };
 
-    return sb.from('orders').insert(row).select('id, ref').maybeSingle()
-      .then(function (r) {
-        if (r.error || !r.data) throw (r.error || new Error('no row'));
-        var id = r.data.id;
-        var items = (order.items || []).map(function (it) {
-          return { order_id: id, sku: it.sku || null, name: it.name || null,
-                   price: (it.price === undefined ? null : Number(it.price)),
-                   qty: it.qty || 1 };
-        });
-        if (!items.length) return { id: id, ref: r.data.ref };
-        return sb.from('order_items').insert(items)
-          .then(function () { return { id: id, ref: r.data.ref }; });
-      })
-      .catch(function () { return null; });   // never block the sale
+    function answer(d) {
+      if (d && d.id) return { id: d.id, ref: d.ref };
+      return { error: new Error('The order was not recorded.') };
+    }
+    function lost(e) { return { error: e }; }
+
+    /* With a client, because it carries the session: an order placed by
+       somebody signed in has to be filed under them, and auth.uid()
+       inside the function is what does that. */
+    if (sb) {
+      return sb.rpc('place_order', payload).then(function (r) {
+        if (r && r.error) return lost(r.error);
+        return answer(r && r.data);
+      }, lost);
+    }
+
+    /* Without one, because a shop with accounts switched off never
+       downloads it — and those orders are still the shop's to keep. The
+       storefront hands over the same call made plainly, the way reviews
+       and the newsletter already go. Nobody can be signed in without a
+       client, so this path is always a guest and the function files it
+       as one. */
+    var direct = renderHooks.placeOrder;
+    if (!direct) return Promise.resolve(null);
+    return Promise.resolve().then(function () { return direct(payload); }).then(answer, lost);
   }
 
   function myOrders() {
@@ -829,8 +853,16 @@
     return c;
   }
 
+  /* The signed-in customer's own access token. Nothing is minted here:
+     it is the session Supabase already holds, and it is null whenever
+     nobody is signed in. It exists so another part of the site — the
+     chat — can make a request AS the customer rather than as the anon
+     key, which is what lets the database recognise them. */
+  function accessToken() { return api.token || null; }
+
   window.VBP_ACCOUNT = {
     render: render,
+    accessToken: accessToken,
     hooks: renderHooks,
     state: api,
     configure: configure,

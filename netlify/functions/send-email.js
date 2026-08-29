@@ -233,6 +233,20 @@ exports.handler = async function (event) {
 
   const auth = (event.headers && (event.headers.authorization || event.headers.Authorization)) || '';
   const token = auth.replace(/^Bearer\s+/i, '').trim();
+
+  // Being unable to ask is not the same as having asked and been told
+  // no, and the two need different fixes. Without this the one case
+  // reads as the other: a site whose functions cannot reach config.js
+  // refuses every send, and tells the owner it is their account.
+  const site = readConfig();
+  if (!site.url || !site.key) {
+    return json(500, {
+      error: 'The sender cannot read this website\'s own settings, so it cannot ' +
+             'check that you are an administrator. This is a setup problem on the ' +
+             'website, not a problem with your account.',
+    });
+  }
+
   if (!(await callerIsAdmin(token))) {
     return json(403, { error: 'Only an administrator can send email from here.' });
   }

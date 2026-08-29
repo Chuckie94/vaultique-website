@@ -25,6 +25,26 @@ You will do five short steps. It takes about 10 minutes.
 > to run more than once, and it adds the `site_settings` table that the admin's
 > Settings section needs. Without it, Settings > General cannot save.
 
+> ### Run `supabase-fixes.sql` as well
+>
+> **Everybody who set this up before today needs this, once.** Same place —
+> SQL Editor > New query > paste the whole of **supabase-fixes.sql** > Run. It
+> is safe to run again, and it drops nothing and deletes nothing.
+>
+> Two things were wrong in the database and neither announced itself:
+>
+> - **Orders placed by anybody not signed in were never recorded.** They went
+>   to WhatsApp as always and the sale was fine, but the Orders tab never saw
+>   them. On a shop with customer accounts switched off — which is how it
+>   comes — that was every single order.
+> - **A review could arrive already wearing the "Verified" badge.** That badge
+>   means the shop confirmed this person bought from them. Nothing stopped a
+>   review posted straight at the database from setting it, and once approved
+>   it wore the badge with the shop never having ticked it.
+>
+> Running this file fixes both. Nothing on the website needs changing for it
+> beyond the files in this package.
+
 ## 3. Create your admin login
 1. Open **Authentication** > **Users** > **Add user** > **Create new user**.
 2. Enter your email and a password. (Tick "Auto Confirm User" if shown.)
@@ -353,6 +373,24 @@ search entirely.
 
 Only crawlers ever request them, so no visitor waits on them.
 
+> **How they read your settings.** These two run on Netlify, not in the browser,
+> so they cannot use `config.js` the way a page does — they read it off the
+> disk. The `[functions]` block in `netlify.toml` is what puts `config.js` where
+> they can see it. Setting `WEB_SUPABASE_URL` and `WEB_SUPABASE_ANON_KEY` in
+> Site settings → Environment variables does the same job and wins over the
+> file; it is the **anon** key, the public one, never the service role key.
+>
+> **Checking:** open `/sitemap.xml` on your live site and look for your policy
+> pages. If `/policies` is there but none of the individual policies are, your
+> settings are not being read. `/robots.txt` looks normal either way, so it is
+> not the test — but it is quietly ignoring anything you changed, **Do not let
+> search engines index my site** included, and the sitemap is listing pieces you
+> marked hidden.
+>
+> **Send a test** under Settings > Notifications tells you the same thing in
+> words: a message about the website not being able to read its own settings
+> means this, and not that there is anything wrong with your account.
+
 #### Pages, and what is not a page
 
 **Home, Shop and Policies** get their own title, description and canonical
@@ -603,6 +641,44 @@ deleted; and subscribers unsubscribed or deleted.
 Recording can never break what it records. If the log is unreachable, your change
 still saves — a missing line is a far smaller problem than a shop that cannot
 change its prices.
+
+### Settings > Reviews
+
+Whether reviews appear, who may write them, and what happens to a new one.
+
+**Two of these used to be in Settings > Shopping** — *Show reviews* and *Customer
+reviews*. They have moved here with the rest of the subject. If you had switched
+either off, your answer is carried across the first time you open this page; press
+Save to keep it.
+
+- **Show reviews** — whether the reviews you have appear on the site.
+- **Show the star rating** — the score and the count. Turn it off to show what
+  people wrote without a mark out of five on everything.
+- **Let customers write reviews** — whether new ones can be left.
+- **Allow a review without a name** — some people say what they think more
+  honestly when they do not have to sign it. You choose the word shown in place
+  of a name.
+
+#### What happens to a new review
+
+**Publish new reviews straight away** is off to begin with, which means nothing
+appears until you approve it in the Reviews tab. Turn it on and reviews appear at
+once — you can still remove any of them afterwards.
+
+With it on, **Except below** holds anything under the rating you pick. A one-star
+review still waits for you while five-star ones go up on their own. Nothing is
+hidden or thrown away: an unhappy customer simply gets read before they are
+published, which is worth doing anyway.
+
+> **This is enforced by the database, not just by the website.** A rule the site
+> merely honours is a request — anyone can talk to the database directly, and a
+> review arriving already marked as approved would appear on your shop without you
+> ever seeing it. The database checks your setting before it accepts a published
+> review. Tested against a real database, including the obvious way round it.
+
+Reading and approving happens in the **Reviews** tab, where every review — live
+or waiting — can be marked as from a genuine buyer, shown, hidden or deleted.
+There is a button on this page that takes you straight there.
 
 ### Settings > Newsletter
 

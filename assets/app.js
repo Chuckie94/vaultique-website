@@ -92,6 +92,22 @@
   /* Settings > Newsletter. Every one of these was written into
      index.html until now. The values here are exactly what the page has
      always said, so a shop that never opens the section sees no change. */
+  /* Settings > Reviews. showReviews and customerReviews used to live in
+     Shopping; they are read from there as a fallback so a shop that
+     switched either off, and has not opened the new section yet, keeps
+     its answer. See reviewsShown() and reviewsOpen(). */
+  var REVIEWSET = {
+    showReviews: true,
+    showRatings: true,
+    customerReviews: true,
+    anonymous: false,
+    anonymousLabel: 'A customer',
+    autoPublish: false,
+    minAutoRating: 4
+  };
+
+  var REVIEW_ROW = false;   // whether Settings > Reviews has ever been saved
+
   var NEWSLETTER = {
     enabled: true,
     eyebrow: 'Stay in the know',
@@ -125,7 +141,13 @@
   // back to General's name and description, which is what it did before.
   var SEOSET = {
     title: '', description: '', keywords: '',
-    canonicalBase: 'https://vaultiqueboutique.com',
+    /* Empty, so that a shop which has never opened Settings > SEO
+       describes itself by the address it is actually being read at.
+       A domain written in here would be claimed as the real home of
+       every page on any site running this code, which is how a site
+       gets dropped in favour of the one it names. seo.js falls back to
+       location.origin when this is blank. */
+    canonicalBase: '',
     ogTitle: '', ogDescription: '',
     googleVerification: '', bingVerification: '',
     sitemapEnabled: true, indexing: 'index', robotsExtra: '',
@@ -403,6 +425,10 @@
 
   // ------------------------------------------------------------------ state
   var PRODUCTS = [];
+  /* Whether the feed has answered yet. The cart can be opened before it
+     has, and a cart that called every piece in it missing because the
+     products had not arrived would be lying. */
+  var FEED_LOADED = false;
   var PREVIEW = false;
   var CATEGORIES = [];   // categories that currently have products
   var ALLCATS = [];      // all categories to show (master list + product categories)
@@ -425,6 +451,16 @@
 
   var wishlist = parseList(store.get('vbp_wishlist'));
   var recent = parseList(store.get('vbp_recent'));
+  /* The cart lives in this browser and nowhere else. Adding a piece to it
+     reserves nothing, holds nothing and deducts no stock: the POS is not
+     told, because until an order is sent there is no order. */
+  var CART_MEMO = 'vbp_cart';
+  var CART_MAX = 99;
+  /* Photos already worked out for the cart, kept for as long as the page
+     lives. The panel is redrawn whole on every change, and without this
+     every thumbnail would blink each time somebody tapped plus. */
+  var CART_IMG = {};
+  var cart = parseCart(store.get(CART_MEMO));
   function parseList(s) { try { return s ? JSON.parse(s) : []; } catch (e) { return []; } }
   function saveWishlist() {
     store.set('vbp_wishlist', JSON.stringify(wishlist));
@@ -485,12 +521,22 @@
       if (wb) wb.classList.add('hide');
     }
 
+    /* A shop with WhatsApp checkout switched off is a catalogue: no piece
+       carries a buy button, so no piece carries an add-to-cart button, and
+       a cart icon over an empty cart nobody can fill is furniture. The
+       cart itself is left alone — whatever a customer gathered before the
+       switch was thrown is still theirs when it is thrown back. */
+    if (SHOP.whatsappCheckout === false) {
+      var cbn = $('#cartBtn');
+      if (cbn) cbn.classList.add('hide');
+    }
+
     // Reviews: showing them and accepting them are separate switches.
-    if (!SHOP.showReviews) {
+    if (!reviewsShown()) {
       var sec = $('#reviews');
       if (sec) sec.classList.add('hide');
     }
-    if (!SHOP.customerReviews) {
+    if (!reviewsOpen()) {
       $all('#siteReviewBtn, [data-review-open]').forEach(function (b) { b.classList.add('hide'); });
     }
   }
@@ -572,7 +618,7 @@
   function applyTestimonials(list) {
     if (!Array.isArray(list)) return;
     HOME_TESTIMONIALS = list.filter(function (t) { return t && t.quote; });
-    if (SHOP.showReviews) renderSiteReviews();
+    if (reviewsShown()) renderSiteReviews();
   }
 
   /* The placeholder class has to come off before the photo goes on. It
@@ -757,6 +803,14 @@
     ACCT.hooks.subscribe = function (email) {
       if (!WEB || !email) return Promise.resolve();
       return webPost('subscribers', { email: email }).catch(function () {});
+    };
+    /* Recording an order needs the database, and a shop with accounts
+       switched off never asks for the client. The Orders tab is the
+       shop's own record either way, so the call is offered here as well,
+       plainly. */
+    ACCT.hooks.placeOrder = function (payload) {
+      if (!WEB) return Promise.reject(new Error('not configured'));
+      return webRpc('place_order', payload);
     };
     /* Told what the shop has decided straight away, so the router knows
        whether #/account is a page here before the client has downloaded. */
@@ -1216,15 +1270,16 @@
   }
 
   // ---------------------------------------------------------------- ordering
-  // The shop has no cart and keeps no order records: WhatsApp is the
-  // checkout. What this adds is the step before it. Whatever Settings >
-  // Shopping asks for is collected here and folded into the message, so
-  // the first thing the shop receives is a complete order rather than
-  // "is this available?" followed by four rounds of questions.
+  // WhatsApp is the checkout, and this is the step in front of it.
+  // Whatever Settings > Shopping asks for is collected here and folded
+  // into the message, so the first thing the shop receives is a complete
+  // order rather than "is this available?" followed by four rounds of
+  // questions. A single piece and a whole cart both come through here:
+  // see orderOf() and orderOfCart() below.
   //
-  // Nothing is sent anywhere and nothing is stored on a server. The
-  // details are kept in this browser only, so a returning customer does
-  // not retype them, and they travel inside the WhatsApp message.
+  // The buyer's own details are kept in this browser only, so a returning
+  // customer does not retype them, and they travel inside the WhatsApp
+  // message rather than being sent anywhere on their own.
 
   var ORDER_MEMO = 'vbp_buyer';
 
@@ -1263,10 +1318,66 @@
     try { store.set(ORDER_MEMO, JSON.stringify(d)); } catch (e) {}
   }
 
-  /* The order message: the template first, then whatever was collected,
-     each on its own line so it reads as an order in WhatsApp. */
-  function composeOrder(p, details) {
-    var lines = [orderMessage(p)];
+  /* What is being ordered, in the one shape the details step, the record
+     and the message all read. A piece bought on its own is a cart of one,
+     which is what lets both go through the same door rather than growing
+     a second checkout beside the first. */
+  function orderOf(p) {
+    return { lines: [{ product: p, qty: 1 }], single: p };
+  }
+  /* The cart as an order: the lines the shop can actually sell today. A
+     piece that sold out while it sat there is left behind rather than
+     sent, so the message and the total agree with the panel. */
+  function orderOfCart() {
+    var lines = cartRows().filter(function (r) { return r.priced; })
+      .map(function (r) { return { product: r.product, qty: r.line.qty }; });
+    return { lines: lines, single: null };
+  }
+  function orderTotal(order) {
+    var t = 0;
+    order.lines.forEach(function (l) {
+      var v = priceOf(l.product);
+      if (!v.onRequest) t += v.now * l.qty;
+    });
+    return t;
+  }
+  function orderItemCount(order) {
+    var n = 0;
+    order.lines.forEach(function (l) { n += l.qty; });
+    return n;
+  }
+  /* What the details step calls the thing being bought. */
+  function orderTitle(order) {
+    if (order.single) return order.single.name;
+    var n = orderItemCount(order);
+    return n + (n === 1 ? ' item' : ' items');
+  }
+
+  /* A whole cart as a message. The single-piece template is not stretched
+     over it: {product}, {sku} and {price} each name one thing, and a shop
+     that rewrote that template wrote it about one piece. So the list is
+     built here instead, from the same prices, currency and tax line the
+     cart panel was showing a moment ago. */
+  function cartMessageLines(order) {
+    var out = ['Hello ' + shopName() + ", I'd like to order:", ''];
+    order.lines.forEach(function (l, i) {
+      var v = priceOf(l.product);
+      out.push((i + 1) + '. ' + l.product.name + ' (SKU: ' + l.product.sku + ')');
+      out.push('   ' + l.qty + ' \u00d7 ' + v.nowText + ' = ' + formatPrice(v.now * l.qty));
+    });
+    out.push('');
+    out.push('Total: ' + formatPrice(orderTotal(order)));
+    var tax = taxLineText();
+    if (tax) out.push('(' + tax + ')');
+    return out;
+  }
+
+  /* The order message: what is being bought first, then whatever was
+     collected, each on its own line so it reads as an order in WhatsApp. */
+  function composeOrder(order, details) {
+    /* One piece keeps the shop's own template, exactly as it always has:
+       a shop that customised it sees no change. */
+    var lines = order.single ? [orderMessage(order.single)] : cartMessageLines(order);
     var labels = { name: 'Name', phone: 'Phone', email: 'Email',
                    address: 'Delivery address', notes: 'Notes' };
     ['name', 'phone', 'email', 'address', 'notes'].forEach(function (k) {
@@ -1281,9 +1392,17 @@
     return lines.join('\n');
   }
 
-  function openOrderForm(p) {
+  function openOrderForm(order) {
     var modal = $('#orderModal'), body = $('#orderBody');
-    if (!modal || !body) { window.open(waLink(p), '_blank', 'noopener'); return; }
+    /* No dialog on the page: straight to WhatsApp with what we have,
+       which for a cart still has to be composed rather than read off a
+       link the markup was carrying. */
+    if (!modal || !body) {
+      var direct = order.single ? waLink(order.single)
+                                : waUrl(orderNumber(), composeOrder(order, null));
+      if (direct) window.open(direct, '_blank', 'noopener');
+      return;
+    }
 
     var fields = buyerFields();
     var saved = savedBuyer();
@@ -1312,7 +1431,7 @@
 
     body.innerHTML =
       '<button class="qv-close" id="odClose" aria-label="Close">&times;</button>' +
-      '<div class="c">' + esc(p.name) + '</div>' +
+      '<div class="c">' + esc(orderTitle(order)) + '</div>' +
       '<h3 class="serif">Your details</h3>' +
       '<p class="od-lead">So your order arrives complete. We will carry on from here on WhatsApp.</p>' +
       /* Delivery or collection, asked before anything else, because the
@@ -1464,19 +1583,23 @@
          message IS the order; this row is a convenience on top of it, so
          a write that fails or is slow must not cost the sale. */
       if (ACCT) {
-        var view = priceOf(p);
+        /* recordOrder has always taken a list of items; until now it only
+           ever got one. A cart fills the same list. */
         ACCT.recordOrder({
           name: d.name, phone: d.phone, email: d.email,
           address: d.address, notes: d.notes,
           fulfilment: d.how,
-          total: view.onRequest ? null : view.now,
+          total: orderTotal(order),
           currency: SETTINGS.currency,
-          items: [{ sku: p.sku, name: p.name,
-                    price: view.onRequest ? null : view.now, qty: 1 }]
+          items: order.lines.map(function (l) {
+            var v = priceOf(l.product);
+            return { sku: l.product.sku, name: l.product.name,
+                     price: v.onRequest ? null : v.now, qty: l.qty };
+          })
         });
       }
 
-      var url = waUrl(orderNumber(), composeOrder(p, d));
+      var url = waUrl(orderNumber(), composeOrder(order, d));
       closeOrderForm();
       if (url) window.open(url, '_blank', 'noopener');
     }
@@ -1511,7 +1634,26 @@
     }
     if (!needsDetails()) return;          // let the anchor follow its href
     e.preventDefault();
-    openOrderForm(p);
+    openOrderForm(orderOf(p));
+  }
+
+  /* The cart's way to the same place. There is no anchor behind this one
+     to fall through to, so where a piece with nothing to ask would follow
+     its href, a cart composes its message and opens WhatsApp itself. */
+  function startCartCheckout() {
+    var order = orderOfCart();
+    /* An empty cart cannot be sent, and neither can one holding only
+       pieces the shop can no longer sell. The button is not drawn in
+       either case; this is the second lock, for a click that reached
+       here another way. */
+    if (!order.lines.length) return;
+    if (!mayCheckout()) { closeCart(); openCheckoutBlock(); return; }
+    closeCart();
+    if (needsDetails()) { openOrderForm(order); return; }
+    /* Nothing to ask for: straight out, the way a buy button with no
+       questions behind it goes straight to WhatsApp. */
+    var url = waUrl(orderNumber(), composeOrder(order, null));
+    if (url) window.open(url, '_blank', 'noopener');
   }
 
   /* Not a form: a sentence and a way forward. */
@@ -1797,7 +1939,7 @@
     if (!WEB) { cb(); return; }
     var base = WEB.SUPABASE_URL.replace(/\/+$/, '');
     var h = { apikey: WEB.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + WEB.SUPABASE_ANON_KEY };
-    var pending = 16;
+    var pending = 17;
     function done() { if (--pending === 0) cb(); }
     fetch(base + '/rest/v1/product_meta?select=*', { headers: h })
       .then(function (r) { return r.ok ? r.json() : []; })
@@ -1830,6 +1972,19 @@
         if (!d) return;
         for (var k in d) {
           if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) SHOP[k] = d[k];
+        }
+      })
+      .catch(function () {}).then(done);
+    fetch(base + '/rest/v1/site_settings?key=eq.reviews&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) {
+        var d = rows && rows[0] && rows[0].data;
+        if (!d) return;
+        REVIEW_ROW = true;
+        for (var k in d) {
+          if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) {
+            REVIEWSET[k] = d[k];
+          }
         }
       })
       .catch(function () {}).then(done);
@@ -1976,13 +2131,18 @@
     }).filter(function (p) { return !p.hidden; });
   }
   function boot() {
+    FEED_LOADED = true;
     computeCats();
     buildCategoryMenus();
     buildCollections();
     buildHomeRows();
     buildFilters();
-    if (SHOP.showReviews) renderSiteReviews();
+    if (reviewsShown()) renderSiteReviews();
     updateWishCount();
+    updateCartCount();
+    /* Opened before the products landed, the cart said "one moment". They
+       have landed, so it can now say what it holds. */
+    if (cartOpen()) renderCart();
     bindAccountButton();
     route();
   }
@@ -2167,6 +2327,10 @@
       wa.innerHTML = waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, false));
       if (canBuy(p)) wa.addEventListener('click', function (e) { startOrder(e, p); });
       waLine.appendChild(wa);
+      /* Beneath the buy button, not instead of it. A piece that can be
+         bought can also be gathered for later; one that can only be asked
+         about has nothing to gather. */
+      if (canBuy(p)) waLine.appendChild(cartButton(p));
       info.appendChild(waLine);
     }
 
@@ -2191,6 +2355,403 @@
     var c = $('#wishCount'); if (!c) return;
     c.textContent = wishlist.length;
     c.style.display = wishlist.length ? 'flex' : 'none';
+  }
+
+
+  // ---------------------------------------------------------------------- cart
+  /* Pieces a customer has gathered, before they say a word to the shop.
+     It is a list held in this browser: nothing is reserved, no stock is
+     deducted and the POS never hears about it, because a cart is not an
+     order. Checkout is still WhatsApp, unchanged and still one piece at a
+     time; this is the step in front of it.
+
+     Only the SKU and the quantity are kept. Names, prices and photos are
+     read from the live feed every time the cart is drawn, so a piece that
+     changed price overnight can never be shown at yesterday's figure. The
+     name is stored beside them as a label of last resort, and used for
+     one thing only: saying which piece has since left the shop. */
+
+  function parseCart(s) {
+    var raw;
+    try { raw = s ? JSON.parse(s) : []; } catch (e) { return []; }
+    if (!Array.isArray(raw)) return [];
+    var seen = {}, out = [];
+    raw.forEach(function (it) {
+      if (!it || typeof it !== 'object') return;
+      var sku = String(it.sku == null ? '' : it.sku);
+      /* One line per piece. Two lines for the same SKU would be two
+         answers to "how many of these do you want". */
+      if (!sku || seen[sku]) return;
+      seen[sku] = 1;
+      out.push({ sku: sku, qty: clampQty(it.qty), name: String(it.name == null ? '' : it.name) });
+    });
+    return out;
+  }
+  function clampQty(n) {
+    n = Math.floor(Number(n));
+    if (!isFinite(n) || n < 1) return 1;
+    return n > CART_MAX ? CART_MAX : n;
+  }
+  function saveCart() { store.set(CART_MEMO, JSON.stringify(cart)); }
+  function cartLine(sku) {
+    for (var i = 0; i < cart.length; i++) if (cart[i].sku === sku) return cart[i];
+    return null;
+  }
+  function cartQty(sku) { var l = cartLine(sku); return l ? l.qty : 0; }
+  function cartCount() {
+    var n = 0;
+    cart.forEach(function (l) { n += l.qty; });
+    return n;
+  }
+
+  /* Everything the cart needs to know about one line, worked out against
+     the feed as it stands now. A piece that has sold out, or left the shop
+     altogether, stays in the cart and says so rather than disappearing:
+     silently emptying somebody's cart is worse than telling them. */
+  function cartRows() {
+    return cart.map(function (line) {
+      var p = bySku(line.sku);
+      var view = p ? priceOf(p) : null;
+      var priced = !!(p && p.available && view && !view.onRequest);
+      return {
+        line: line,
+        product: p,
+        name: (p && p.name) || line.name || line.sku,
+        gone: !p,
+        soldOut: !!p && !p.available,
+        priced: priced,
+        unit: priced ? view.now : 0,
+        unitText: priced ? view.nowText : '',
+        sub: priced ? view.now * line.qty : 0
+      };
+    });
+  }
+  function cartTotal() {
+    var t = 0;
+    cartRows().forEach(function (r) { if (r.priced) t += r.sub; });
+    return t;
+  }
+
+  function addToCart(p, btn) {
+    /* The same rule the buy button follows. A piece that cannot be bought
+       cannot be gathered either, so nothing reaches the cart that the shop
+       would then have to explain. */
+    if (!p || !canBuy(p)) return;
+    var line = cartLine(p.sku);
+    if (line) {
+      if (line.qty >= CART_MAX) { flashCartBtn(btn, 'That is the most we can add'); return; }
+      line.qty = clampQty(line.qty + 1);
+      line.name = p.name;
+    } else {
+      cart.push({ sku: p.sku, qty: 1, name: p.name });
+    }
+    saveCart();
+    afterCartChange();
+    flashCartBtn(btn, 'Added');
+    bumpCartIcon();
+  }
+  function setCartQty(sku, qty) {
+    var line = cartLine(sku);
+    if (!line) return;
+    line.qty = clampQty(qty);
+    saveCart();
+    afterCartChange();
+  }
+  function removeFromCart(sku) {
+    cart = cart.filter(function (l) { return l.sku !== sku; });
+    saveCart();
+    afterCartChange();
+  }
+  /* One place for what has to happen after the cart moves, so a count, a
+     button and an open panel can never end up telling three stories. */
+  function afterCartChange() {
+    updateCartCount();
+    syncCartButtons();
+    if (!cartOpen()) return;
+    /* The panel is redrawn whole, which on its own would drop the keyboard
+       back to the top of the page on every tap. Whoever was on the plus
+       button is put back on it. */
+    var keep = focusedCartControl();
+    renderCart();
+    restoreCartFocus(keep);
+  }
+  function focusedCartControl() {
+    var node = document.activeElement;
+    if (!node || !node.getAttribute) return null;
+    var names = ['data-inc', 'data-dec', 'data-rm'];
+    for (var i = 0; i < names.length; i++) {
+      var v = node.getAttribute(names[i]);
+      if (v != null) return { attr: names[i], sku: v };
+    }
+    return null;
+  }
+  function restoreCartFocus(keep) {
+    if (!keep) return;
+    var body = $('#cartBody');
+    if (!body) return;
+    var line = body.querySelector('.cart-line[data-sku="' + cssEsc(keep.sku) + '"]');
+    var b = line && line.querySelector('[' + keep.attr + ']');
+    if (b && !b.disabled) { b.focus(); return; }
+    /* The button can disable itself under the finger — the minus that
+       reached one — and the line can be gone altogether. Fall back to the
+       nearest control that still exists, then to the way out. */
+    var alt = line && line.querySelector('.qty-btn:not(:disabled), .cart-rm');
+    if (alt) { alt.focus(); return; }
+    var c = $('#ctClose', body);
+    if (c) c.focus();
+  }
+
+  function updateCartCount() {
+    var n = cartCount();
+    var c = $('#cartCount');
+    if (c) {
+      c.textContent = n;
+      c.style.display = n ? 'flex' : 'none';
+    }
+    /* The badge is a number with no word beside it. Read aloud it would be
+       "cart, 3"; this says what the 3 is. */
+    var b = $('#cartBtn');
+    if (b) b.setAttribute('aria-label', n ? 'Cart, ' + n + (n === 1 ? ' item' : ' items') : 'Cart');
+  }
+  /* The icon acknowledges the tap, for the customer who added from the
+     bottom of a long page and never saw the header. */
+  function bumpCartIcon() {
+    var b = $('#cartBtn');
+    if (!b) return;
+    b.classList.remove('bump');
+    void b.offsetWidth;
+    b.classList.add('bump');
+  }
+
+  // ------------------------------------------------------------- cart buttons
+  function bagIcon() {
+    return "<svg viewBox='0 0 24 24' aria-hidden='true' fill='none' stroke='currentColor' " +
+      "stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'>" +
+      "<path d='M6.4 7h13.2l-1.5 10.4a2 2 0 01-2 1.6H9.9a2 2 0 01-2-1.6z'/>" +
+      "<path d='M9.2 7V5.6a2.8 2.8 0 015.6 0V7'/></svg>";
+  }
+  function tickIcon() {
+    return "<svg viewBox='0 0 24 24' aria-hidden='true' fill='none' stroke='currentColor' " +
+      "stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>" +
+      "<polyline points='20 6 9 17 4 12'/></svg>";
+  }
+  /* What an add-to-cart button says depends on what the cart already
+     holds, so it is written here rather than at each of the three places
+     one is drawn. */
+  function paintCartBtn(btn) {
+    var n = cartQty(btn.getAttribute('data-cart-sku'));
+    btn.innerHTML = bagIcon() + (n ? 'In cart · ' + n : 'Add to cart');
+    btn.setAttribute('aria-label', n ? 'In your cart, ' + n + '. Add another' : 'Add to cart');
+    btn.classList.toggle('in-cart', !!n);
+  }
+  function cartButton(p) {
+    var b = el('button', 'btn btn-outline btn-cart');
+    b.type = 'button';
+    b.setAttribute('data-cart-sku', p.sku);
+    paintCartBtn(b);
+    b.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      addToCart(p, b);
+    });
+    return b;
+  }
+  /* A tap has to be seen to have worked, and on a phone the header badge
+     is often off screen. The button says so itself for a moment, then goes
+     back to saying what the cart now holds. */
+  function flashCartBtn(btn, word) {
+    if (!btn) return;
+    btn.classList.add('is-flash');
+    btn.innerHTML = tickIcon() + esc(word);
+    clearTimeout(btn._cartFlash);
+    btn._cartFlash = setTimeout(function () {
+      btn.classList.remove('is-flash');
+      paintCartBtn(btn);
+    }, 1500);
+  }
+  /* Every add-to-cart button on the page, brought back into line after the
+     cart changes anywhere else — including from inside the cart itself. A
+     button mid-flash is left alone and repaints when its moment is up. */
+  function syncCartButtons() {
+    $all('[data-cart-sku]').forEach(function (b) {
+      if (!b.classList.contains('is-flash')) paintCartBtn(b);
+    });
+  }
+
+  // --------------------------------------------------------------- cart panel
+  function cartOpen() {
+    var m = $('#cartModal');
+    return !!m && m.classList.contains('open');
+  }
+  function openCart() {
+    var m = $('#cartModal');
+    if (!m) return;
+    renderCart();
+    m.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    var c = $('#ctClose');
+    if (c) setTimeout(function () { c.focus(); }, 60);
+  }
+  function closeCart() {
+    var m = $('#cartModal');
+    if (m) m.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function renderCart() {
+    var body = $('#cartBody');
+    if (!body) return;
+
+    var head =
+      '<button class="qv-close" id="ctClose" aria-label="Close">&times;</button>' +
+      '<div class="c">Your selection</div>' +
+      '<h3 class="serif">Your cart</h3>';
+
+    if (!cart.length) {
+      body.innerHTML = head +
+        '<p class="od-lead">Nothing here yet. Add a piece and it will wait for you, ' +
+        'on this device, until you are ready.</p>' +
+        '<div class="rv-actions"><button class="btn btn-gold" id="ctShop">Browse the collection</button></div>';
+      bindCartChrome(body);
+      return;
+    }
+
+    /* Opened before the feed has answered. The lines are known, their
+       prices are not, and inventing either would be worse than a pause. */
+    if (!FEED_LOADED) {
+      body.innerHTML = head +
+        '<p class="od-lead">One moment — fetching today\u2019s prices.</p>';
+      bindCartChrome(body);
+      return;
+    }
+
+    var rows = cartRows();
+    var n = cartCount();
+    var unbuyable = rows.filter(function (r) { return !r.priced; }).length;
+    /* Whether there is an order to send at all: at least one line the shop
+       can still sell, and a shop still taking orders. */
+    var sendable = rows.length > unbuyable && SHOP.whatsappCheckout !== false;
+
+    body.innerHTML = head +
+      '<p class="od-lead">' + n + (n === 1 ? ' item' : ' items') +
+        '. Nothing is reserved: your pieces are held here on this device only.</p>' +
+      '<div class="cart-lines">' +
+        rows.map(cartLineHtml).join('') +
+      '</div>' +
+      '<div class="cart-foot">' +
+        '<div class="cart-total"><span>Total</span><span class="serif" id="ctTotal">' +
+          esc(formatPrice(cartTotal())) + '</span></div>' +
+        (taxLineText() ? '<div class="cart-tax">' + esc(taxLineText()) + '</div>' : '') +
+        (unbuyable
+          ? '<div class="cart-warn">' +
+              (unbuyable === 1
+                ? 'One piece is no longer available and is not counted in the total' +
+                  (sendable ? ' or sent.' : '.')
+                : unbuyable + ' pieces are no longer available and are not counted in the total' +
+                  (sendable ? ' or sent.' : '.')) +
+            '</div>'
+          : '') +
+        /* Nothing to send is not an error to explain after the fact: the
+           button is simply not there, and the line says what is missing. */
+        (sendable
+          ? '<div class="cart-actions">' +
+              '<button class="btn btn-wa" id="ctGo">' + waIcon() + 'Checkout via WhatsApp</button>' +
+              '<button class="btn btn-outline" id="ctShop">Continue shopping</button>' +
+            '</div>' +
+            '<p class="cart-note">Your whole cart goes across in one message, ' +
+              'and we carry on from there. Nothing is paid on this site.</p>'
+          : '<p class="cart-note">Nothing here can be ordered at the moment. ' +
+              'Remove what has sold out, or add a piece that is in stock.</p>' +
+            '<div class="cart-actions">' +
+              '<button class="btn btn-gold" id="ctShop">Continue shopping</button>' +
+            '</div>') +
+      '</div>';
+
+    bindCartChrome(body);
+    bindCartLines(body);
+
+    /* Only the photos this page has not worked out yet. The ones it has
+       are already in the markup above; asking for them again is what made
+       the thumbnails blink on every tap. A piece with no photo of its own
+       gets the same stand-in the cards use. */
+    rows.forEach(function (r) {
+      if (!r.product || CART_IMG[r.line.sku]) return;
+      resolvePrimary(r.product, function (src) {
+        CART_IMG[r.line.sku] = src;
+        var t = body.querySelector('.cart-line[data-sku="' + cssEsc(r.line.sku) + '"] .cart-thumb');
+        if (t) t.innerHTML = cartThumbImg(src);
+      });
+    });
+  }
+
+  /* Quotes and backslashes inside a SKU would break out of the attribute
+     selector above. Nothing in the feed looks like that today, but a SKU
+     is typed by a person at a till. */
+  function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }
+
+  function taxLineText() {
+    return (FMT && FMT.taxLine) ? FMT.taxLine(PRICING) : '';
+  }
+
+  function cartLineHtml(r) {
+    var sku = r.line.sku;
+    /* Settings-sourced wording can reach this line, so it is built as
+       plain text and escaped once on the way in. */
+    var status = r.gone ? 'No longer in the collection'
+               : r.soldOut ? 'Sold out'
+               : !r.priced ? (PRICING.onRequestText || 'Price on request')
+               : r.unitText + ' each';
+    return '<div class="cart-line' + (r.priced ? '' : ' is-off') + '" data-sku="' + esc(sku) + '">' +
+      '<div class="cart-thumb">' + (CART_IMG[sku] ? cartThumbImg(CART_IMG[sku]) : '') + '</div>' +
+      '<div class="cart-meta">' +
+        '<div class="cart-name serif">' + esc(r.name) + '</div>' +
+        '<div class="cart-unit">' + esc(status) + '</div>' +
+        '<div class="cart-qty">' +
+          '<button type="button" class="qty-btn" data-dec="' + esc(sku) + '"' +
+            (r.line.qty <= 1 ? ' disabled' : '') +
+            ' aria-label="One fewer ' + esc(r.name) + '">&minus;</button>' +
+          '<span class="qty-n" aria-live="polite">' + r.line.qty + '</span>' +
+          '<button type="button" class="qty-btn" data-inc="' + esc(sku) + '"' +
+            (r.line.qty >= CART_MAX ? ' disabled' : '') +
+            ' aria-label="One more ' + esc(r.name) + '">+</button>' +
+          '<button type="button" class="cart-rm" data-rm="' + esc(sku) + '"' +
+            ' aria-label="Remove ' + esc(r.name) + ' from your cart">Remove</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="cart-sub serif">' + (r.priced ? esc(formatPrice(r.sub)) : '&mdash;') + '</div>' +
+    '</div>';
+  }
+
+  /* The name is already beside it, so the photo is decoration and is left
+     unnamed rather than read out twice. */
+  function cartThumbImg(src) { return '<img alt="" src="' + esc(src) + '">'; }
+
+  function bindCartChrome(body) {
+    var c = $('#ctClose', body);
+    if (c) c.addEventListener('click', closeCart);
+    var s = $('#ctShop', body);
+    if (s) s.addEventListener('click', function () { closeCart(); goShop('All'); });
+    var g = $('#ctGo', body);
+    if (g) g.addEventListener('click', startCartCheckout);
+  }
+  function bindCartLines(body) {
+    $all('[data-inc]', body).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var sku = b.getAttribute('data-inc');
+        setCartQty(sku, cartQty(sku) + 1);
+      });
+    });
+    $all('[data-dec]', body).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var sku = b.getAttribute('data-dec');
+        /* One is the floor. Removing is its own button, so that a customer
+           tapping minus quickly cannot delete a line by overshooting. */
+        if (cartQty(sku) > 1) setCartQty(sku, cartQty(sku) - 1);
+      });
+    });
+    $all('[data-rm]', body).forEach(function (b) {
+      b.addEventListener('click', function () { removeFromCart(b.getAttribute('data-rm')); });
+    });
   }
 
   // ------------------------------------------------------------------ shop grid
@@ -2300,8 +2861,14 @@
         ? '<a class="btn btn-wa" id="qvBuy" target="_blank" rel="noopener" href="' + waLink(p) + '">' +
           waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
+      '<span id="qvCartSlot"></span>' +
       '<button class="btn btn-outline" id="qvFull">View full details</button></div>';
     body.querySelector('.qv-close').addEventListener('click', closeQuickView);
+    /* The quick view keeps the modal open after an add: the point of it is
+       looking at several pieces without leaving the grid. */
+    var qcs = body.querySelector('#qvCartSlot');
+    if (qcs && canBuy(p)) qcs.parentNode.replaceChild(cartButton(p), qcs);
+    else if (qcs) qcs.parentNode.removeChild(qcs);
     var qb = body.querySelector('#qvBuy');
     if (qb && canBuy(p)) qb.addEventListener('click', function (e) {
       closeQuickView();
@@ -2347,7 +2914,7 @@
       '<h1 class="serif">' + esc(p.name) + '</h1>' +
       priceHtml(p, 'detail-price serif') +
       taxHtml() +
-      ((SHOP.showReviews && prList.length) ? '<div class="detail-rating">' + starsHtml(avgRating(prList)) + ' <a class="rating-link" id="ratingLink">' + avgRating(prList).toFixed(1) + ' (' + prList.length + ' review' + (prList.length > 1 ? 's' : '') + ')</a></div>' : '') +
+      ((ratingsShown() && prList.length) ? '<div class="detail-rating">' + starsHtml(avgRating(prList)) + ' <a class="rating-link" id="ratingLink">' + avgRating(prList).toFixed(1) + ' (' + prList.length + ' review' + (prList.length > 1 ? 's' : '') + ')</a></div>' : '') +
       '<p class="desc">' + esc(desc) + '</p>' +
       (p.size ? '<div class="opt-block"><div class="lbl">Size</div><span class="opt-chip">' + esc(p.size) + '</span></div>' : '') +
       (p.color ? '<div class="opt-block"><div class="lbl">Colour</div><span class="opt-chip">' + esc(p.color) + '</span></div>' : '') +
@@ -2360,6 +2927,7 @@
         ? '<a class="btn btn-wa" id="buyDetail" target="_blank" rel="noopener" href="' + waLink(p) + '">' +
           waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
+      (canBuy(p) ? '<span id="cartSlot"></span>' : '') +
       (SHOP.wishlist
         ? '<button class="btn btn-outline" id="wishDetail">' +
           (isWished(p.sku) ? 'Saved to wishlist' : 'Add to wishlist') + '</button>'
@@ -2371,7 +2939,7 @@
       accordion(specs) +
       '</div></div>' +
       ((p.videos && p.videos.length) ? '<div class="prod-videos"><div class="eyebrow">Watch</div><div class="pv-grid">' + p.videos.slice(0, 2).map(function (u) { return '<video controls preload="metadata" playsinline src="' + esc(u) + '"></video>'; }).join('') + '</div></div>' : '') +
-      (SHOP.showReviews ? '<div id="prodReviews" class="prod-reviews"></div>' : '') +
+      (reviewsShown() ? '<div id="prodReviews" class="prod-reviews"></div>' : '') +
       (related.length ? relatedBlock('You may also like', 'More in ' + p.category, 'relGrid') : '') +
       (recentItems.length ? relatedBlock('Recently viewed', 'Pieces you looked at', 'recGrid') : '') +
       '</div>';
@@ -2405,10 +2973,12 @@
     if (sd) sd.addEventListener('click', function () { shareProduct(p, sd); });
     var bd = $('#buyDetail');
     if (bd && canBuy(p)) bd.addEventListener('click', function (e) { startOrder(e, p); });
+    var cs = $('#cartSlot', host);
+    if (cs) cs.parentNode.replaceChild(cartButton(p), cs);
     setupAccordion(host);
     if (related.length) { var rg = $('#relGrid'); related.forEach(function (rp, i) { rg.appendChild(productCard(rp, i, false)); }); }
     if (recentItems.length) { var cg = $('#recGrid'); recentItems.forEach(function (rp, i) { cg.appendChild(productCard(rp, i, false)); }); }
-    if (SHOP.showReviews) renderProductReviews(p.sku);
+    if (reviewsShown()) renderProductReviews(p.sku);
     var rl = $('#ratingLink'); if (rl) rl.addEventListener('click', function () { var t = $('#prodReviews'); if (t) t.scrollIntoView({ behavior: 'smooth' }); });
 
     showView('detail');
@@ -2830,6 +3400,8 @@
     $('#searchBtn').addEventListener('click', openSearch);
     $('#soClose').addEventListener('click', closeSearch);
     $('#wishBtn').addEventListener('click', function () { go('wishlist'); });
+    var cb = $('#cartBtn');
+    if (cb) cb.addEventListener('click', openCart);
     $('#soInput').addEventListener('input', function () { runOverlaySearch(this.value); });
     $('#toTop').addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
     $('#lbClose').addEventListener('click', closeLightbox);
@@ -2849,16 +3421,18 @@
 
     var srb = $('#siteReviewBtn');
     if (srb) srb.addEventListener('click', function () {
-      if (!SHOP.customerReviews) return;
+      if (!reviewsOpen()) return;
       openReviewForm(null);
     });
     var rvm = $('#reviewModal');
     if (rvm) rvm.addEventListener('click', function (e) { if (e.target === this) closeReviewModal(); });
     var odm = $('#orderModal');
     if (odm) odm.addEventListener('click', function (e) { if (e.target === this) closeOrderForm(); });
+    var ctm = $('#cartModal');
+    if (ctm) ctm.addEventListener('click', function (e) { if (e.target === this) closeCart(); });
 
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { closeSearch(); closeMobile(); closeQuickView(); closeLightbox(); closeReviewModal(); closeOrderForm(); }
+      if (e.key === 'Escape') { closeSearch(); closeMobile(); closeQuickView(); closeLightbox(); closeReviewModal(); closeOrderForm(); closeCart(); }
     });
 
     // WhatsApp / email / Instagram links
@@ -3096,6 +3670,21 @@
     if (extra) { for (var k in extra) h[k] = extra[k]; }
     return h;
   }
+  /* The same REST endpoint the Supabase client would call, for the shops
+     that never download it. A database function is addressed under rpc/,
+     and unlike webPost the answer is wanted: place_order hands back the
+     order's id and its reference. */
+  function webRpc(name, args) {
+    if (!WEB) return Promise.reject(new Error('not configured'));
+    return fetch(webBase() + 'rpc/' + name, {
+      method: 'POST',
+      headers: webHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(args || {})
+    }).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error(t || ('HTTP ' + r.status)); });
+      return r.json();
+    });
+  }
   function webPost(table, obj) {
     if (!WEB) return Promise.reject(new Error('not configured'));
     return fetch(webBase() + table, {
@@ -3108,6 +3697,35 @@
   }
 
   // ---------------- stars + reviews ----------------
+
+  /* Whether reviews appear, and whether new ones may be written.
+
+     Both moved from Settings > Shopping to Settings > Reviews. A shop
+     that never opens the new section, or that switched one off in the
+     old one and has not saved the new one yet, keeps the answer it gave:
+     the Reviews row wins only once it exists. */
+  function reviewsShown() {
+    if (REVIEW_ROW) return REVIEWSET.showReviews !== false;
+    return SHOP.showReviews !== false;
+  }
+  function reviewsOpen() {
+    if (!reviewsShown()) return false;
+    if (REVIEW_ROW) return REVIEWSET.customerReviews !== false;
+    return SHOP.customerReviews !== false;
+  }
+  /* The score and the count, which a shop can drop while still showing
+     what people wrote. */
+  function ratingsShown() { return reviewsShown() && REVIEWSET.showRatings !== false; }
+
+  /* Whether a review of this rating publishes itself. The database asks
+     the same question of the same settings before it accepts the row -
+     this is only so the page can tell the customer the truth about what
+     just happened. */
+  function autoPublishes(rating) {
+    if (!REVIEWSET.autoPublish) return false;
+    return Number(rating) >= (Number(REVIEWSET.minAutoRating) || 1);
+  }
+
   function starsHtml(rating, cls) {
     var r = Math.round(rating || 0), out = '';
     for (var i = 1; i <= 5; i++) out += '<span class="' + (i <= r ? 'on' : '') + '">\u2605</span>';
@@ -3120,11 +3738,14 @@
   function renderSiteReviews() {
     var host = $('#testiGrid'); if (!host) return;
     var list = siteReviews();
+    /* The score is a separate decision from the words: a shop may want
+       what people wrote without a mark out of five on everything. */
     var avgEl = $('#reviewsAvg');
     if (avgEl) {
-      avgEl.innerHTML = list.length
+      avgEl.innerHTML = (ratingsShown() && list.length)
         ? starsHtml(avgRating(list), 'stars lg') + ' <span class="avg-n">' + avgRating(list).toFixed(1) + ' / 5 · ' + list.length + ' review' + (list.length > 1 ? 's' : '') + '</span>'
         : '';
+      avgEl.classList[ratingsShown() && list.length ? 'remove' : 'add']('hide');
     }
     host.innerHTML = '';
     var quotes = HOME_TESTIMONIALS || [];
@@ -3135,7 +3756,8 @@
     list.slice(0, 6).forEach(function (r) {
       var d = el('div', 'testi reveal');
       var when = r.created_at ? formatDate(r.created_at) : '';
-      d.innerHTML = '<div class="mark serif">&ldquo;</div><p>' + esc(r.comment || '') + '</p>' + starsHtml(r.rating) +
+      d.innerHTML = '<div class="mark serif">&ldquo;</div><p>' + esc(r.comment || '') + '</p>' +
+        (ratingsShown() ? starsHtml(r.rating) : '') +
         '<div class="who"><b>' + esc(r.name) + '</b>' + (r.verified ? ' · <span class="verified">Verified</span>' : '') +
         (when ? ' · <span class="when">' + esc(when) + '</span>' : '') + '</div>';
       host.appendChild(d);
@@ -3163,12 +3785,14 @@
     var list = reviewsFor(sku), avg = avgRating(list);
     host.innerHTML =
       '<div class="pr-head"><div><div class="eyebrow">Reviews</div><h2 class="serif" style="font-size:clamp(24px,3.4vw,34px)">Customer reviews</h2></div>' +
-      '<button class="btn btn-outline btn-sm" id="prWrite">Write a review</button></div>' +
+      (reviewsOpen() ? '<button class="btn btn-outline btn-sm" id="prWrite">Write a review</button>' : '') + '</div>' +
       (list.length
-        ? '<div class="pr-avg">' + starsHtml(avg, 'stars lg') + ' <span class="avg-n">' + avg.toFixed(1) + ' / 5 · ' + list.length + ' review' + (list.length > 1 ? 's' : '') + '</span></div>'
+        ? (ratingsShown()
+            ? '<div class="pr-avg">' + starsHtml(avg, 'stars lg') + ' <span class="avg-n">' + avg.toFixed(1) + ' / 5 · ' + list.length + ' review' + (list.length > 1 ? 's' : '') + '</span></div>'
+            : '')
         : '<p class="pr-none">No reviews yet for this piece. Be the first to review it.</p>') +
       '<div class="pr-list">' + list.map(function (r) {
-        return '<div class="pr-item">' + starsHtml(r.rating) + '<p>' + esc(r.comment || '') + '</p><div class="who"><b>' + esc(r.name) + '</b>' + (r.verified ? ' · <span class="verified">Verified</span>' : '') + '</div></div>';
+        return '<div class="pr-item">' + (ratingsShown() ? starsHtml(r.rating) : '') + '<p>' + esc(r.comment || '') + '</p><div class="who"><b>' + esc(r.name) + '</b>' + (r.verified ? ' · <span class="verified">Verified</span>' : '') + '</div></div>';
       }).join('') + '</div>';
     var w = $('#prWrite'); if (w) w.addEventListener('click', function () { openReviewForm(sku); });
   }
@@ -3179,8 +3803,15 @@
       '<div class="c">' + (sku ? 'Your feedback' : 'Tell others about us') + '</div>' +
       '<h3 class="serif">' + (sku ? 'Write a review' : 'Review Vaultique') + '</h3>' +
       '<div class="rv-stars" id="rvStars">' + [1, 2, 3, 4, 5].map(function (i) { return '<span data-v="' + i + '">\u2605</span>'; }).join('') + '</div>' +
-      '<label class="rv-lbl">Your name</label><input type="text" id="rvName" maxlength="60" autocomplete="name">' +
+      '<label class="rv-lbl">Your name' +
+        (REVIEWSET.anonymous ? '<span class="od-opt">optional</span>' : '') +
+        '</label><input type="text" id="rvName" maxlength="60" autocomplete="name">' +
       '<label class="rv-lbl">Your review</label><textarea id="rvComment" maxlength="1000" rows="4"></textarea>' +
+      /* Said before they write, not after they submit. Somebody who
+         would rather not be read straight away should know that. */
+      (REVIEWSET.autoPublish ? '' :
+        '<p class="rv-wait">Reviews are read before they appear, so yours will not show ' +
+        'straight away.</p>') +
       '<div class="rv-actions"><button class="btn btn-navy" id="rvSubmit">Submit review</button><span class="rv-msg" id="rvMsg"></span></div>';
     var rating = 5, stars = $all('#rvStars span');
     function paint() { stars.forEach(function (s, i) { s.classList.toggle('on', i < rating); }); }
@@ -3189,15 +3820,34 @@
     $('#rvClose').addEventListener('click', closeReviewModal);
     $('#rvSubmit').addEventListener('click', function () {
       var name = $('#rvName').value.trim(), comment = $('#rvComment').value.trim(), msg = $('#rvMsg');
+      /* The table needs a name, so an unsigned review carries the word
+         the shop chose rather than an empty one. */
+      if (!name && REVIEWSET.anonymous) name = REVIEWSET.anonymousLabel || 'A customer';
       if (!name) { msg.textContent = 'Please enter your name.'; msg.className = 'rv-msg err'; return; }
       if (!WEB) { msg.textContent = 'Reviews are not enabled yet.'; msg.className = 'rv-msg err'; return; }
       msg.textContent = 'Submitting…'; msg.className = 'rv-msg';
-      var rec = { name: name, rating: rating, comment: comment }; if (sku) rec.sku = sku;
+
+      /* Sent explicitly, and checked again by the database, which asks
+         the same settings before it will accept a published one. */
+      var live = autoPublishes(rating);
+      var rec = { name: name, rating: rating, comment: comment, approved: live };
+      if (sku) rec.sku = sku;
+
       webPost('reviews', rec).then(function () {
-        REVIEWS.unshift({ sku: sku || null, name: name, rating: rating, comment: comment, verified: false, created_at: new Date().toISOString() });
-        msg.textContent = 'Thank you! Your review is posted.'; msg.className = 'rv-msg ok';
-        if (sku) renderProductReviews(sku); else renderSiteReviews();
-        setTimeout(closeReviewModal, 1100);
+        if (live) {
+          /* Only shown at once when it really did publish at once.
+             Telling somebody their review is up when it is waiting is
+             how they come back, not find it, and write again. */
+          REVIEWS.unshift({ sku: sku || null, name: name, rating: rating, comment: comment,
+                            verified: false, created_at: new Date().toISOString() });
+          msg.textContent = 'Thank you! Your review is posted.';
+          if (sku) renderProductReviews(sku); else renderSiteReviews();
+        } else {
+          msg.textContent = 'Thank you. We read every review before it appears, so yours ' +
+                            'will show shortly.';
+        }
+        msg.className = 'rv-msg ok';
+        setTimeout(closeReviewModal, live ? 1100 : 2200);
       }).catch(function () { msg.textContent = 'Could not submit. Please try again.'; msg.className = 'rv-msg err'; });
     });
     modal.classList.add('open'); document.body.style.overflow = 'hidden';
@@ -3333,6 +3983,10 @@
     preHideIfLastGated();   // only hides when this browser was gated last time
     preApplyCachedTheme();  // the colours from last time, until the real ones land
     bindStatic();
+    /* The badge is drawn from the cart alone, so it is right before the
+       feed answers. A returning customer sees what they left in it
+       straight away rather than after the products land. */
+    updateCartCount();
     initHero();
     initCarousels();
     initNewsletter();

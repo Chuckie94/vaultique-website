@@ -19,8 +19,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.17.0',
-  build: 30,
-  builtAt: '2026-08-28T14:54:13Z',
-  notes: 'The activity log: every change recorded, append only, with nothing private ever written down.'
+  version: '1.18.0',
+  build: 31,
+  builtAt: '2026-08-28T15:17:02Z',
+  notes: 'Reviews: shown, written and approved in one place, with holding a review enforced by the database.'
 };

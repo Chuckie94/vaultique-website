@@ -3,13 +3,9 @@
    ---------------------------------------------------------------------
    What customers see on a product, and what they can do with it.
 
-   Two things that look like duplicates but are not:
-
-     Show product reviews    whether the reviews you already have appear
-     Customer reviews        whether new ones can be written
-
-   Turning the second off leaves the reviews already collected on show;
-   turning the first off hides them without deleting anything.
+   Reviews used to live here, split across two groups. They are all in
+   Settings > Reviews now - shown or not, written or not, and what
+   happens to a new one - together rather than in two places.
 
    Stock: the POS feed sends whether a piece is in stock and whether only
    a few are left, and never the count itself. That comparison happens on
@@ -17,11 +13,13 @@
    ever reaching a browser. Where "a few" begins is set by LOW_STOCK_AT
    in the Netlify environment variables, and is three by default.
 
-   Checkout: the shop has no cart and no order records. Ordering happens
-   on WhatsApp, which is the design. What the checkout settings decide is
-   what gets asked for before that message is composed, so the first
-   thing to arrive is a complete order rather than "is this available?".
-   Nothing is stored; the details travel in the message.
+   Checkout: ordering happens on WhatsApp, which is the design. A
+   customer can gather several pieces in the cart and send them as one
+   order, or buy a single piece straight from its card; both compose a
+   message rather than taking a payment. What the checkout settings
+   decide is what gets asked for before that message is composed, so the
+   first thing to arrive is a complete order rather than "is this
+   available?". The details travel in the message.
 
    Guest checkout is shown but locked. With no customer accounts there is
    nothing for it to be the alternative to, and a switch that does
@@ -47,6 +45,10 @@
     showLowStock: true,
     showCategory: true,
     showBadges: true,
+    /* Moved to Settings > Reviews. Kept here so a shop that had already
+       switched either of them off still loads that answer, which is what
+       the Reviews section reads once to carry it across. Neither is
+       drawn on this page any more. */
     showReviews: true,
     defaultSort: 'featured',
 
@@ -93,8 +95,6 @@
               { type: 'toggle', name: 'showSku', label: 'Show product code',
                 hint: 'The SKU row in the product details. Customers rarely need it, ' +
                       'but it makes an order unambiguous.' },
-              { type: 'toggle', name: 'showReviews', label: 'Show reviews',
-                hint: 'Whether reviews already left appear on the site.' },
               { type: 'select', name: 'defaultSort', label: 'Default sorting', options: SORTS,
                 hint: 'How the shop is ordered before anyone changes it.' }
             ]
@@ -110,9 +110,10 @@
               { type: 'toggle', name: 'sharing', label: 'Product sharing',
                 hint: 'A share button on each piece. Opens the phone’s own share ' +
                       'sheet, and copies the link on a computer.' },
-              { type: 'toggle', name: 'customerReviews', label: 'Customer reviews',
-                hint: 'Whether new reviews can be written. Reviews already left are ' +
-                      'unaffected; use Show reviews above to hide those.' }
+              { type: 'note', label: 'Reviews',
+                text: 'Whether reviews appear, who may write them, and what happens to a new ' +
+                      'one are all in Settings > Reviews now, together rather than split ' +
+                      'across two sections.' }
             ]
           },
           {
@@ -151,12 +152,6 @@
           }
         ],
 
-        validate: function (values, fail) {
-          if (!values.showReviews && values.customerReviews) {
-            fail('customerReviews', 'Reviews are hidden, so a customer would write one and ' +
-                                    'never see it appear. Turn this off too, or show reviews.');
-          }
-        }
       });
     }
   });

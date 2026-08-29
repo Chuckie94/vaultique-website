@@ -14,6 +14,7 @@ vaultique-website/
 ├── admin.html                 the admin: the shell, routing and the older tabs
 ├── config.js                  this site's own Supabase keys
 ├── supabase-setup.sql         run once in Supabase to create the tables
+├── supabase-fixes.sql         run once more if the site was set up before
 ├── netlify.toml               Netlify config + /api/products redirect
 ├── netlify/
 │   └── functions/
@@ -86,6 +87,33 @@ should see product JSON. If you do, the live feed is working.
 ### Optional hardening
 Move the POS read key into Netlify env vars (Site settings → Environment
 variables): `POS_SUPABASE_URL` and `POS_SUPABASE_KEY`.
+
+### The website's own Supabase, as seen by the functions
+`/robots.txt`, `/sitemap.xml` and the email sender run on Netlify rather than in
+the browser, so they cannot use `config.js` the way a page does — they read it
+off disk. The `[functions]` block in `netlify.toml` puts `config.js` into the
+function bundle for them, and that is all most sites need.
+
+If you would rather not ship the file into the bundle, set these two instead
+(Site settings → Environment variables) and they win over the file:
+
+| Variable | Value |
+|---|---|
+| `WEB_SUPABASE_URL` | the same as `SUPABASE_URL` in `config.js` |
+| `WEB_SUPABASE_ANON_KEY` | the same as `SUPABASE_ANON_KEY` in `config.js` |
+
+It is the **anon** key, the public one the storefront already uses — never the
+service role key.
+
+**To check it is working:** open `https://YOUR-SITE/sitemap.xml` and look for
+your policy pages. If the only one there is `/policies` and none of the
+individual policies are listed, the functions are not reading your settings —
+and the same is true of `/robots.txt` and the email sender.
+
+`/robots.txt` is not a good test on its own: it looks normal either way, because
+its standard lines are built without needing any settings. What it quietly loses
+is anything you changed — including **Do not let search engines index my site**,
+which is ignored entirely when the settings cannot be read.
 
 ### Newsletter
 The signup uses Netlify Forms (no backend). Submissions appear under **Forms**

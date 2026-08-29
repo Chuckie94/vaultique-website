@@ -53,11 +53,15 @@
     title: '',
     description: '',
     keywords: '',
-    /* Filled in rather than left blank. Without it the canonical address
-       is guessed from whatever the browser happens to be on, so a shop
-       reachable at both www and the bare name looks to Google like two
-       shops carrying the same pages. */
-    canonicalBase: 'https://vaultiqueboutique.com',
+    /* Left blank on purpose. Worth filling in — a shop reachable at both
+       www and the bare name looks to Google like two shops carrying the
+       same pages, and stating the address settles it — but it has to be
+       THIS shop's address. A default here is written into the canonical
+       tag of every page of every site that has not changed it, telling
+       search engines the real version lives somewhere else. Blank falls
+       back to the address the page is being read at, which is always
+       true even when it is not the whole answer. */
+    canonicalBase: '',
 
     ogTitle: '',
     ogDescription: '',
