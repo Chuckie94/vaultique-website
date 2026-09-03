@@ -387,6 +387,35 @@ Copy button, so it can be brought back into line.
 > the logos and the favicon, where it already was and already worked. This
 > section uses it rather than asking for it again.
 
+#### The chat window, and who can see a conversation
+
+**For the customer.** The window has two buttons now. The dash puts it away and
+keeps the conversation; the cross ends it, and asks first. A small light in the
+header says whether anybody is at the desk — green when somebody is, red when
+nobody is — and **Seen** appears under their last message once you have read it.
+
+**A browser is not a person.** The conversation used to be remembered in that
+browser indefinitely, so on a shop tablet, a counter computer or any shared
+machine the next person to open the site inherited the last one's conversation,
+unread badge and all, and could read every word. Now:
+
+- it is remembered for **four hours** of not being used, and then forgotten;
+- it is forgotten outright the moment the conversation is closed, by either
+  side;
+- the customer can end it themselves with the cross.
+
+A customer coming back the same afternoon still finds their thread. Somebody
+opening the same browser the next morning gets a clean window.
+
+#### Your name in Live Chats
+
+The box at the top of **Live Chats** is the name your colleagues see beside a
+conversation. It starts from your sign-in address, which is rarely how anybody
+writes their name — type yours properly and it stays. Beside it, your own
+status, and beside each conversation a light saying whether that customer is
+still on the site. **End this chat** closes one; it asks first, and either of
+you can start a new one afterwards.
+
 #### robots.txt and sitemap.xml
 
 Both are generated from your live settings and catalogue at `/robots.txt` and
@@ -992,9 +1021,46 @@ Two settings in **Settings > General** decide whether customers can shop:
 - **Maintenance mode** is for short interruptions and overrides the status
   while it is on, showing the message you write underneath it.
 
-Either way the storefront is replaced, not merely hidden, so nothing can be
-scrolled to or ordered behind the notice. **The admin is not affected** — you
-can always sign in at `/admin.html` and switch the site back on.
+Either way the storefront is replaced, not merely hidden. **The admin is not
+affected** — you can always sign in at `/admin.html` and switch the site back
+on.
+
+#### It is a real closure, not just a notice
+
+Until now the notice was only a notice: the page hid itself, but the product
+feed carried on handing out the whole catalogue, an order sent straight at the
+database was accepted, a chat could still be started, and a search engine that
+does not run JavaScript saw the shop rather than the notice. All four are shut
+now:
+
+- `/api/products` returns nothing while the shop is shut.
+- The database refuses an order and refuses to start a chat.
+- `/robots.txt` says `Disallow: /` for as long as the notice is up.
+- The chat panel stops asking for messages instead of quietly polling on.
+
+#### Testing while the shop is shut — the preview key
+
+The awkward part of maintenance mode is that you have to open the site to see
+your own changes, and the moment you do, a customer can be on it too.
+
+**Settings > General > Preview key** solves that. Put any word in it, then open
+your site as:
+
+```
+https://yourshop.com/?preview=THATWORD
+```
+
+You get the real shop — products, checkout, chat, all of it working — while
+everybody else still gets the notice. The key is remembered for that tab, so
+you can click around without repeating it, and closing the tab forgets it.
+
+**Be clear about what it is.** It is a door key, not a password. It sits in the
+same settings the storefront reads, so it is not a secret and is not meant to
+be one. What it stops is a customer wandering in while you work, which is the
+thing that actually happens. If you leave it empty, nobody gets past the notice
+— including you.
+
+Change it whenever you like; the old one stops working the moment you save.
 - **Reviews:** every review left on the site appears here. Mark a review as
   Verified, hide it, or delete it.
 - **Subscribers:** see everyone who signed up to the newsletter, copy all

@@ -137,7 +137,29 @@ function tryParse(s) {
   }
 }
 
-exports.handler = async function () {
+/* A shop that has told its customers it is shut should not still be
+   handing out its catalogue. The settings say whether it is, and the
+   preview key is how the owner still sees it while testing. */
+const { settings } = require('./_seo-data');
+
+async function closedToThisCaller(event) {
+  try {
+    const g = await settings('general');
+    const closed = g.maintenanceMode === true ||
+                   ['closed', 'coming-soon'].indexOf(g.websiteStatus || 'live') > -1;
+    if (!closed) return false;
+    const key = String((g.previewKey || '')).trim();
+    const asked = String(((event && event.queryStringParameters) || {}).preview || '').trim();
+    return !(key && asked === key);
+  } catch (e) {
+    /* The settings could not be read. A shop that cannot be asked is
+       treated as open: refusing every product because of a failed
+       lookup would close a shop nobody closed. */
+    return false;
+  }
+}
+
+exports.handler = async function (event) {
   const headers = {
     'Content-Type': 'application/json; charset=utf-8',
     // Cache at the CDN for a short while. POS edits appear within ~2 minutes.
@@ -145,6 +167,14 @@ exports.handler = async function () {
     // Only safe product data is ever returned, so cross-origin reads are fine.
     'Access-Control-Allow-Origin': '*',
   };
+
+  if (await closedToThisCaller(event)) {
+    return {
+      statusCode: 200,
+      headers: Object.assign({}, headers, { 'Cache-Control': 'no-store' }),
+      body: JSON.stringify({ products: [], closed: true }),
+    };
+  }
 
   try {
     const res = await fetch(

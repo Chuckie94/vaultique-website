@@ -38,7 +38,8 @@
     businessHours: null,
     websiteStatus: 'live',
     maintenanceMode: false,
-    maintenanceMessage: ''
+    maintenanceMessage: '',
+    previewKey: ''
   };
   var FMT = window.VBP_FORMAT || null;
   var THEME = window.VBP_THEME || null;
@@ -816,6 +817,9 @@
       if (!WEB) return Promise.reject(new Error('not configured'));
       return webRpc('place_order', payload);
     };
+    /* The database refuses an order while the shop is shut. This is what
+       lets the owner place one anyway while they are testing. */
+    ACCT.hooks.previewKey = previewKey;
     /* Told what the shop has decided straight away, so the router knows
        whether #/account is a page here before the client has downloaded. */
     ACCT.configure(ACCOUNTS);
@@ -1738,7 +1742,45 @@
   // view of that browser can flash the shop.
   var GATE_MEMO = 'vbp_gate';
 
+  /* Testing a shop that is shut.
+
+     The owner has to open the site to see their changes, and the moment
+     they do a customer can be on it as well. A preview key settles that:
+     the shop stays shut to everybody, and one address lets the owner in.
+
+         https://yourshop.com/?preview=YOURKEY
+
+     Held for the tab rather than carried in every link, so moving around
+     the site does not need it repeated and closing the tab forgets it.
+
+     It is a door key, not a lock. It sits in the settings the storefront
+     already reads, so it is not a secret and is not meant to be one:
+     what it stops is a customer wandering in during an hour's work,
+     which is the thing that actually happens. Left empty, nobody walks
+     past the notice at all. */
+  var PREVIEW_MEMO = 'vbp_preview';
+  function previewKey() {
+    var given = '';
+    try {
+      var m = (location.search || '').match(/[?&]preview=([^&#]*)/);
+      if (m) given = decodeURIComponent(m[1]);
+    } catch (e) {}
+    try {
+      if (given) { sessionStorage.setItem(PREVIEW_MEMO, given); return given; }
+      return sessionStorage.getItem(PREVIEW_MEMO) || '';
+    } catch (e) { return given; }
+  }
+  /* Whether this browser may see the shop while it is shut. The database
+     asks the same question again of anything that writes, so a browser
+     saying yes to itself here buys nothing it should not have. */
+  function previewing() {
+    var want = String(SETTINGS.previewKey || '').trim();
+    return !!want && previewKey().trim() === want;
+  }
+  window.VBP_PREVIEW = previewKey;      // the chat widget sends it too
+
   function gateReason() {
+    if (previewing()) return '';        // the owner, testing
     if (SETTINGS.maintenanceMode) return 'maintenance';
     if (SETTINGS.websiteStatus === 'coming-soon') return 'coming-soon';
     if (SETTINGS.websiteStatus === 'closed') return 'closed';
@@ -1869,12 +1911,20 @@
       return false;
     }
     renderGate(reason);
+    /* Nothing should carry on working behind the notice. The chat panel
+       is hidden by the gate's stylesheet, but hidden is not stopped: it
+       would go on asking the database for messages nobody can read. */
+    try {
+      var C = window.VBP_CHAT;
+      if (C && typeof C.standDown === 'function') C.standDown();
+    } catch (e) {}
     return true;
   }
 
   // ------------------------------------------------------------------ data load
   function load() {
-    fetch('/api/products', { cache: 'no-store' })
+    fetch('/api/products' + (previewKey() ? '?preview=' + encodeURIComponent(previewKey()) : ''),
+          { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error('bad'); return r.json(); })
       .then(function (d) {
         PRODUCTS = (d && d.products) || [];
@@ -3209,6 +3259,12 @@
     };
   }
 
+  /* Where the site is mounted, for the files that cannot work it out.
+     chat.js builds product links from this; without it every card in a
+     conversation pointed at the domain root, which is wrong on the
+     subfolder install this very block exists to support. */
+  window.VBP_BASE = BASE;
+
   function currentRoute() {
     var h = location.hash;
     if (h && h.indexOf('#/') === 0) return h.slice(2);
@@ -3450,6 +3506,15 @@
   function bindWa() {
     $all('[data-wa]').forEach(function (a) { a.href = waGeneral(a.getAttribute('data-wa') || ''); });
     $all('[data-wa-enq]').forEach(function (a) { a.href = waEnquiry(a.getAttribute('data-wa-enq') || ''); });
+    /* The chat panel needs the same number, and it is a separate file
+       with no way to reach these settings. It has always looked for this
+       and nothing ever set it, so it fell back to reading a wa.me link
+       off whatever page happened to be showing one — and on a page
+       showing none, the handover to WhatsApp simply disappeared.
+
+       Refreshed here rather than set once, because this runs after the
+       contact settings land and again whenever they change. */
+    window.VBP_CHAT_CONTACT = { orderNumber: orderNumber(), whatsapp: orderNumber() };
   }
   function bindEmailIg() {
     $all('[data-email]').forEach(function (a) {

@@ -14,6 +14,20 @@ exports.handler = async function (event) {
   try {
     const seo = await settings('seo');
     if (!seo.canonicalBase) seo.canonicalBase = originFrom(event);
+
+    /* A shop that is shut should not be gathering search traffic to its
+       notice. The page says so too, but it says it in JavaScript, after
+       it has already been served — and a crawler that does not run
+       scripts never sees that. This is the half that does not depend on
+       the visitor running anything. */
+    const g = await settings('general');
+    const closed = g.maintenanceMode === true ||
+                   ['closed', 'coming-soon'].indexOf(g.websiteStatus || 'live') > -1;
+    if (closed) {
+      return { statusCode: 200, headers: Object.assign({}, headers, { 'Cache-Control': 'no-store' }),
+               body: 'User-agent: *\nDisallow: /\n' };
+    }
+
     return { statusCode: 200, headers, body: SEO.robotsTxt({ seo }) };
   } catch (e) {
     // A shop with no robots.txt is indexed normally, which is the right

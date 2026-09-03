@@ -342,6 +342,42 @@ $$;
 -- All three answer only to an admin and are granted to authenticated
 -- only. A customer's anon key cannot reach any of them.
 
+-- Marking a conversation read, counted rather than zeroed. See the
+-- note in supabase-fixes.sql: writing a zero threw away the trigger's
+-- increment for anything that landed while the operator was reading.
+create or replace function public.chat_mark_read(
+  p_conversation uuid,
+  p_upto         timestamptz default null
+)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_left int;
+begin
+  if not public.is_admin() then
+    raise exception 'not permitted';
+  end if;
+
+  select count(*) into v_left
+    from public.chat_messages m
+   where m.conversation_id = p_conversation
+     and m.sender = 'customer'
+     and (p_upto is null or m.created_at > p_upto);
+
+  update public.chat_conversations
+     set shop_unread = v_left
+   where id = p_conversation;
+
+  return v_left;
+end;
+$$;
+
+revoke all on function public.chat_mark_read(uuid, timestamptz) from public;
+grant execute on function public.chat_mark_read(uuid, timestamptz) to authenticated;
+
 revoke all on function public.chat_presence(text, text)   from public;
 revoke all on function public.chat_assign(uuid, uuid)     from public;
 revoke all on function public.chat_stats(int)             from public;

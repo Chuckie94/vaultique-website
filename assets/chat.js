@@ -33,7 +33,23 @@
   'use strict';
 
   /* ---------------------------------------------------------- settings */
-  var MEMO       = 'vbp_chat';     // { token, seenAt } for this browser
+  var MEMO       = 'vbp_chat';     // { token, at } for this browser
+
+  /* How long a browser goes on remembering a conversation.
+  
+     The token is what proves this browser owns a conversation, and it
+     has to outlive a page load or a customer loses their thread the
+     moment they click anything. But a browser is not a person: a shop
+     laptop, a tablet on the counter, a shared computer — the next person
+     to open the site would otherwise inherit the last one's
+     conversation, unread badge and all, and be able to read every word
+     of it.
+  
+     So it is remembered for a working stretch and no longer, and it is
+     forgotten outright once the conversation is closed. A customer
+     coming back the same afternoon still finds their thread; a stranger
+     the next morning gets a clean window. */
+  var REMEMBER_FOR = 4 * 60 * 60 * 1000;
   var OPEN_EVERY = 3000;           // asking, with the window open
   var IDLE_EVERY = 25000;          // asking, with it closed
   var MAX_LEN    = 2000;           // the database trims here too
@@ -47,6 +63,8 @@
   var msgs    = [];        // everything shown, oldest first
   var lastAt  = null;      // the newest timestamp we hold, for the next ask
   var unread  = 0;         // replies that arrived while the window was shut
+  var seen    = false;     // the shop has read what was said to it
+  var here    = false;     // somebody is at the desk to answer
   var status  = 'open';    // open | closed, as the shop left it
   var open    = false;
   var timer   = null;
@@ -73,8 +91,20 @@
     catch (e) { return mem[MEMO] || null; }
   }
   function memoSet(v) {
-    try { localStorage.setItem(MEMO, JSON.stringify(v)); }
-    catch (e) { mem[MEMO] = v; }
+    /* Stamped as it is written, so that reading it can tell a
+       conversation somebody is having from one somebody had. */
+    var withTime = v ? { token: v.token, at: Date.now() } : null;
+    try { localStorage.setItem(MEMO, JSON.stringify(withTime)); }
+    catch (e) { mem[MEMO] = withTime; }
+  }
+  /* The remembered conversation, or nothing if it has gone stale. An old
+     one is cleared rather than merely ignored, so it cannot come back. */
+  function memoFresh() {
+    var saved = memoGet();
+    if (!saved || !saved.token) return null;
+    var at = Number(saved.at) || 0;
+    if (!at || (Date.now() - at) > REMEMBER_FOR) { memoSet(null); return null; }
+    return saved;
   }
 
   /* The signed-in customer's own token where there is one, the anon key
@@ -143,7 +173,12 @@
     if (!btn || !panel) return false;
 
     btn.addEventListener('click', function () { open ? close() : show(); });
-    $('#chatClose', panel).addEventListener('click', close);
+    /* The cross ends the conversation and the dash puts it away. The
+       dash is what the cross used to do; keeping both means nobody
+       loses a conversation reaching for the corner of the screen. */
+    $('#chatClose', panel).addEventListener('click', endChat);
+    var mini = $('#chatMin', panel);
+    if (mini) mini.addEventListener('click', close);
 
     var form = $('#chatForm', panel);
     form.addEventListener('submit', function (e) { e.preventDefault(); send(); });
@@ -186,6 +221,19 @@
     }
   }
 
+  /* Whether there is anybody there to answer, said plainly. Before the
+     first ask there is nothing to say, so the invitation stays. */
+  function paintPresence() {
+    var dot = $('#chatDot'), sub = $('#chatSub');
+    if (!dot || !sub) return;
+    dot.hidden = false;
+    dot.className = 'chat-dot' + (here ? ' on' : '');
+    dot.setAttribute('title', here ? 'Someone is at the desk' : 'Nobody is at the desk right now');
+    sub.textContent = here
+      ? 'Someone is here now'
+      : 'Leave a message — we will reply as soon as we are back';
+  }
+
   function paint() {
     var log = $('#chatLog');
     if (!log) return;
@@ -217,9 +265,29 @@
       log.appendChild(row);
     });
 
+    /* Where their last message has got to. Only ever under their own,
+       because that is the only one whose progress they cannot see for
+       themselves, and only the last, because a column of the same word
+       tells nobody anything.
+
+       Three states, and they are the three a person actually wants:
+       still going, arrived but nobody has picked it up, and read. A
+       message still on its way carries an id this page made up. */
+    var last = msgs[msgs.length - 1];
+    if (last && last.sender !== 'shop') {
+      var state = String(last.id).charAt(0) === 'p' ? 'Sending…'
+                : seen ? 'Seen'
+                : 'Queued';
+      var line = el('div', 'chat-seen' + (state === 'Seen' ? ' is-seen' : ''), state);
+      line.setAttribute('title', state === 'Queued'
+        ? 'Delivered. Nobody has picked it up yet — we will reply here.'
+        : (state === 'Seen' ? 'Somebody at the shop has read this.' : 'Still sending.'));
+      log.appendChild(line);
+    }
+
     if (status === 'closed') {
       log.appendChild(el('div', 'chat-day',
-        'This conversation was closed by the shop. Write again to reopen it.'));
+        'This conversation was closed. Write again to start a new one.'));
     }
     log.scrollTop = log.scrollHeight;
     paintHandover();
@@ -429,6 +497,21 @@
     if (box) setTimeout(function () { box.focus(); }, 80);
   }
 
+  /* Minimising is what the cross used to do: the window goes away and
+     the conversation does not. Ending it is the new one, and it is a
+     different thing, so it asks first — a tap meant for the corner of
+     the screen should not throw away what somebody was saying. */
+  function endChat() {
+    if (!token) { close(); return; }
+    if (msgs.length && !window.confirm('End this chat? You can always start another.')) return;
+    var t = token;
+    rpc('chat_end', { p_token: t }).catch(function () {});
+    token = null; memoSet(null); msgs = []; lastAt = null;
+    unread = 0; started = false; seen = false; status = 'open';
+    paintBadge(); paint();
+    close();
+  }
+
   function close() {
     var panel = $('#chatPanel');
     if (!panel) return;
@@ -463,6 +546,10 @@
       .then(function () { return rpc('chat_send', { p_token: token, p_body: body }); })
       .then(function () {
         sending = false;
+        /* Stamped again by the act of saying something, so a
+           conversation somebody is actually having does not go stale
+           underneath them four hours in. */
+        if (token) memoSet({ token: token });
         followTheCustomer();
         /* The row the database actually stored replaces the stand-in on
            the next ask, timestamp and all. */
@@ -514,6 +601,12 @@
     } catch (e) {}
 
     who.p_started_on = whereTheyAre();
+    /* The database refuses a new conversation while the shop is shut.
+       The owner testing carries the key that gets past it. */
+    try {
+      if (typeof window.VBP_PREVIEW === 'function') who.p_preview = window.VBP_PREVIEW() || null;
+    } catch (e) {}
+
     return rpc('chat_start', who).then(function (t) {
       token = t;
       started = true;
@@ -540,9 +633,18 @@
           started = false; paintBadge(); paint();
           return;
         }
+        var wasSeen = seen;
         var was = status;
         status = r.status || 'open';
+        /* Closed is finished. The window still shows it for as long as
+           this page is open, so the customer sees what happened, but
+           nothing is carried into the next page load — and so nothing is
+           carried to whoever opens this browser next. */
+        if (status === 'closed') memoSet(null);
         named = r.named !== false;
+        seen = r.seen === true;
+        here = r.here === true;
+        paintPresence();
         var fresh = r.messages || [];
         if (fresh.length) {
           /* Anything still waiting on the network is dropped in favour
@@ -554,7 +656,7 @@
           msgs.sort(function (a, b) { return new Date(a.at) - new Date(b.at); });
           lastAt = msgs[msgs.length - 1].at;
           paint();
-        } else if (status !== was) {
+        } else if (status !== was || seen !== wasSeen) {
           /* The shop closing or reopening the thread changes what the
              window should say without adding a word to it. Drawing only
              on new messages would leave the customer reading a
@@ -622,7 +724,7 @@
     var fab = $('#chatFab');
     if (fab) fab.classList.remove('hide');
 
-    var saved = memoGet();
+    var saved = memoFresh();
     if (saved && saved.token) {
       token = saved.token;
       started = true;
@@ -645,6 +747,16 @@
       else if (token) { ask(); beat(); }
     });
   }
+
+  /* Said by the storefront when it puts up a closed or maintenance
+     notice. The panel is hidden by then; this is what stops it going on
+     asking the database for messages nobody can read. */
+  window.VBP_CHAT = window.VBP_CHAT || {};
+  window.VBP_CHAT.standDown = function () {
+    try { if (timer) clearInterval(timer); } catch (e) {}
+    timer = null;
+    try { close(); } catch (e) {}
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

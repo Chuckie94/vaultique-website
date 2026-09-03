@@ -149,10 +149,39 @@ begin
     'status',   v_conv.status,
     'unread',   v_conv.customer_unread,
     'named',    (v_conv.name is not null),
+    -- Nothing waiting on the shop's side means the shop has read it.
+    -- Only ever a count of this conversation's own messages, so it says
+    -- nothing about anybody else's.
+    'seen',     coalesce(v_conv.shop_unread, 0) = 0,
+    -- Whether there is somebody there to answer. Away is not answering:
+    -- an operator who says so should not leave a green light burning on
+    -- the customer's window, which is what "not offline" did.
+    'here',     exists (
+                  select 1 from public.chat_agents a
+                   where a.status = 'online'
+                     and a.last_seen_at > now() - interval '2 minutes'),
     'messages', v_msgs
   );
 end;
 $$;
+
+-- The customer saying they are done. The shop learns it the same way it
+-- learns anything else about this conversation: from the row.
+create or replace function public.chat_end(p_token text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.chat_conversations
+     set status = 'closed'
+   where token = p_token and status = 'open';
+end;
+$$;
+
+revoke all on function public.chat_end(text) from public;
+grant execute on function public.chat_end(text) to anon, authenticated;
 
 revoke all on function public.chat_poll(text, timestamptz, text) from public;
 grant execute on function public.chat_poll(text, timestamptz, text) to anon, authenticated;

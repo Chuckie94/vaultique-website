@@ -35,16 +35,61 @@
      without warning stops saying anything, and this is what makes that
      read as "gone" rather than as "online forever". */
   var HERE_WITHIN = 120000;
-  function agentHere(a) {
-    return a && a.status !== 'offline' && a.last_seen_at &&
-           (Date.now() - new Date(a.last_seen_at).getTime()) < HERE_WITHIN;
+  /* Said something recently, whatever they said. This is the difference
+     between somebody who is there and somebody whose browser was closed
+     without warning. */
+  function agentPresent(a) {
+    return !!(a && a.status !== 'offline' && a.last_seen_at &&
+              (Date.now() - new Date(a.last_seen_at).getTime()) < HERE_WITHIN);
   }
+  /* And actually at the desk. "Away" used to count the same as "online"
+     everywhere, which is why choosing it changed nothing anybody could
+     see — not the presence bar, and not the light the customer's window
+     shows. Away means present but not answering, and it should read
+     that way to both. */
+  function agentOnline(a) { return agentPresent(a) && a.status === 'online'; }
+  function agentHere(a) { return agentPresent(a); }   // kept: older callers
   /* A name to answer to. The shop never typed one, so it is taken from
      the address they sign in with rather than left as a bare uuid. */
   function nameFromEmail(email) {
     var local = String(email || '').split('@')[0].replace(/[._-]+/g, ' ').trim();
     if (!local) return 'Agent';
     return local.charAt(0).toUpperCase() + local.slice(1);
+  }
+
+  /* Money, in the shop's own currency.
+
+     Three figures are shown from here — an order in the customer's
+     history, a piece being offered, an order being quoted — and all three
+     used to be written with a hardcoded K and none of the shop's number
+     format. A shop trading in dollars was quoted kwacha by its own chat
+     window, which is the one place where the wrong symbol is said
+     directly to a customer.
+
+     Chats may be the first tab opened, so the two settings behind the
+     figure are fetched here rather than borrowed from a tab that may
+     never have run. The store caches them, so this is one read however
+     many conversations are opened. */
+  var moneyStyle = null;
+  function plainStyle() {
+    var F = window.VBP_FORMAT;
+    return (F && F.moneyStyle) ? F.moneyStyle({}, {}) : null;
+  }
+  function loadMoney() {
+    if (moneyStyle || !A.store) return Promise.resolve();
+    return Promise.all([
+      A.store.load('general').catch(function () { return {}; }),
+      A.store.load('pricing').catch(function () { return {}; })
+    ]).then(function (r) {
+      var F = window.VBP_FORMAT;
+      if (F && F.moneyStyle) moneyStyle = F.moneyStyle(r[0] || {}, r[1] || {});
+    }, function () {});
+  }
+  function money(n) {
+    if (n == null || n === '') return '';
+    var F = window.VBP_FORMAT;
+    if (!F || !F.money) return String(n);
+    return F.money(n, moneyStyle || plainStyle());
   }
 
   function el(tag, cls, text) {
@@ -105,6 +150,7 @@
       host.innerHTML = '';
       ctx = ctx || {};
       var sb = ctx.sb || A.sb;
+      loadMoney();            // so a figure sent to a customer is in the shop's money
 
       var convs = [];           // the left column
       var openId = null;        // the conversation being read
@@ -114,6 +160,7 @@
       var sending = false;
       var me = null;            // this operator's own agent row id
       var myName = '';
+      var fallbackName = '';    // made from the sign-in address, if nothing better
       var agents = [];          // everybody who has ever opened this page
       var notes = [];           // for the conversation being read
       var canned = [];          // answers the shop wrote once
@@ -142,6 +189,19 @@
       var whoBar = el('span', 'lc-presence');
       bar.appendChild(whoBar);
 
+      /* The name colleagues see beside a conversation. Made from the
+         sign-in address to begin with, because a shop should not have to
+         fill anything in before it can answer — but an address is not a
+         name, and "chimukachipini" is not how anybody writes theirs. */
+      var meName = document.createElement('input');
+      meName.type = 'text';
+      meName.className = 'al-pick lc-name';
+      meName.maxLength = 40;
+      meName.placeholder = 'Your name';
+      meName.setAttribute('aria-label', 'The name your colleagues see');
+      meName.title = 'The name your colleagues see beside a conversation.';
+      bar.appendChild(meName);
+
       var mePick = document.createElement('select');
       mePick.className = 'al-pick';
       mePick.appendChild(new Option('I am online', 'online'));
@@ -168,12 +228,27 @@
       /* ---- reading -------------------------------------------------- */
       function loadList() {
         var q = sb.from('chat_conversations')
-          .select('id,name,phone,email,customer_id,status,last_message_at,shop_unread,' +
+          .select('id,name,phone,email,customer_id,status,last_message_at,shop_unread,customer_unread,' +
                   'created_at,started_on,viewing,viewing_at,assigned_to,assigned_at')
           .order('last_message_at', { ascending: false })
           .limit(PAGE);
         if (filter !== 'all') q = q.eq('status', 'open');
-        if (filter === 'mine' && me) q = q.eq('assigned_to', me);
+        /* "Mine" with nobody to be means nobody's, not everybody's. The
+           filter used to be dropped when me was null — the session not
+           resolved yet, or this operator not in chat_agents — and the
+           list then showed every open conversation under a label saying
+           they were all this person's. Wrong rows under a confident
+           label are worse than an empty list. */
+        if (filter === 'mine') {
+          if (!me) {
+            convs = [];
+            paintList();
+            count.textContent = 'Not signed in as an agent yet, so nothing is yours. ' +
+                                'Give it a moment, or choose another view.';
+            return Promise.resolve();
+          }
+          q = q.eq('assigned_to', me);
+        }
         if (filter === 'free') q = q.is('assigned_to', null);
         return q.then(function (r) {
           if (r.error) { count.textContent = 'Could not read the conversations.'; return; }
@@ -207,24 +282,45 @@
             if (!logEl) { paintThread(); return; }
             paintWho();
             if (messageSig() !== painted) paintMessages();
+            /* Read, because somebody is looking at it. Not while the tab
+               is in the background: nobody is reading a conversation
+               they cannot see. */
+            if (!document.hidden) markRead(id);
           });
       }
 
       /* Enough to tell one state of the log from another without
          comparing every field: ids in order, plus how many there are. */
       function messageSig() {
-        return msgs.length + ':' + msgs.map(function (m) { return m.id; }).join(',');
+        var c = convs.filter(function (x) { return x.id === openId; })[0];
+        return msgs.length + ':' + msgs.map(function (m) { return m.id; }).join(',') +
+               ':' + (c ? (Number(c.customer_unread) ? 'waiting' : 'seen') : '');
       }
 
-      /* Opening a conversation is what marks it read. Doing it on reply
-         instead would leave a badge up on one the shop has plainly seen. */
+      /* Opening a conversation is what marks it read, and so is every
+         poll while it stays open — otherwise a message arriving under
+         the operator's eyes raises a badge on the row they are reading,
+         and it never comes down.
+
+         Counted rather than zeroed. Writing a zero threw away the
+         trigger's increment for anything that landed between the
+         reading and the writing, so a message the operator never saw
+         never raised a badge at all. chat_mark_read is told the moment
+         this window last drew, and counts what has arrived since: a
+         message that lands during the call is newer than that moment
+         and survives it. */
       function markRead(id) {
-        return sb.from('chat_conversations')
-          .update({ shop_unread: 0 }).eq('id', id)
-          .then(function () {
-            convs.forEach(function (c) { if (c.id === id) c.shop_unread = 0; });
+        var upto = null;
+        for (var i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i] && msgs[i].created_at) { upto = msgs[i].created_at; break; }
+        }
+        return Promise.resolve(sb.rpc('chat_mark_read', { p_conversation: id, p_upto: upto }))
+          .then(function (r) {
+            if (r && r.error) return;
+            var left = Number(r && r.data) || 0;
+            convs.forEach(function (c) { if (c.id === id) c.shop_unread = left; });
             paintList();
-          });
+          }, function () {});
       }
 
       function agentName(id) {
@@ -248,22 +344,37 @@
          deciding whether to hand a conversation over needs to know who
          is actually there to take it. */
       function paintPresence() {
-        var here = agents.filter(agentHere).map(function (a) {
-          return (a.display_name || 'Agent') + (a.id === me ? ' (you)' : '');
-        });
+        function named(a) { return (a.display_name || 'Agent') + (a.id === me ? ' (you)' : ''); }
+        var atDesk = agents.filter(agentOnline).map(named);
+        var away   = agents.filter(function (a) { return agentPresent(a) && !agentOnline(a); }).map(named);
+
         whoBar.innerHTML = '';
-        if (!here.length) { whoBar.textContent = ''; return; }
-        whoBar.appendChild(el('span', 'lc-live-dot'));
-        whoBar.appendChild(document.createTextNode(
-          here.length === 1 ? here[0] + ' at the desk' : here.join(', ')));
+        if (!atDesk.length && !away.length) { whoBar.textContent = ''; return; }
+
+        if (atDesk.length) {
+          whoBar.appendChild(el('span', 'lc-live-dot'));
+          whoBar.appendChild(document.createTextNode(
+            atDesk.length === 1 ? atDesk[0] + ' at the desk' : atDesk.join(', ') + ' at the desk'));
+        }
+        if (away.length) {
+          if (atDesk.length) whoBar.appendChild(document.createTextNode(' · '));
+          whoBar.appendChild(el('span', 'lc-live-dot off'));
+          whoBar.appendChild(document.createTextNode(
+            away.length === 1 ? away[0] + ' away' : away.join(', ') + ' away'));
+        }
       }
 
       /* Said on opening the page, then every so often, then once more on
          the way out. A browser that closes without warning simply stops
          saying it, which is what makes the absence read correctly. */
-      function sayHere(status) {
-        return sb.rpc('chat_presence', { p_status: status, p_name: myName })
-          .then(loadAgents, function () {});
+      /* A name given explicitly as null is a deliberate "say nothing":
+         chat_presence keeps whatever is already stored when it is handed
+         none, which is what lets a chosen name survive the next beat. */
+      function sayHere(status, name) {
+        return sb.rpc('chat_presence', {
+          p_status: status,
+          p_name: (name === null ? null : (name || myName || null))
+        }).then(loadAgents, function () {});
       }
 
       function loadCanned() {
@@ -422,13 +533,19 @@
         if (c.started_on) bits.push('from ' + c.started_on);
         whoEl.appendChild(el('div', 'lc-head-meta', bits.join(' · ')));
 
+        /* Whether the person is still on the other end. The same test
+           the customer's window applies to the shop, turned around: they
+           are here if their browser said so in the last two minutes.
+           A conversation they ended is not one they are in. */
+        var live = el('div', 'lc-viewing');
+        var fresh = c.status === 'open' && !!viewingNow(c);
+        live.appendChild(el('span', 'lc-live-dot' + (fresh ? '' : ' off')));
         var seeing = viewingNow(c);
-        if (seeing) {
-          var live = el('div', 'lc-viewing');
-          live.appendChild(el('span', 'lc-live-dot'));
-          live.appendChild(document.createTextNode('Looking at ' + seeing));
-          whoEl.appendChild(live);
-        }
+        live.appendChild(document.createTextNode(
+          c.status !== 'open' ? 'This conversation is closed'
+          : fresh ? ('Here now' + (seeing ? ' · looking at ' + seeing : ''))
+          : 'Not on the site right now'));
+        whoEl.appendChild(live);
       }
 
       /* The messages, into a log that is already on the page. Nothing
@@ -448,6 +565,16 @@
             logEl.appendChild(row);
           });
         }
+        /* Only under the shop's own last message: the one whose reading
+           the operator cannot see for themselves. customer_unread is
+           moved by the trigger when the shop writes and cleared when the
+           customer's window reads, so nothing waiting means it landed. */
+        var c = convs.filter(function (x) { return x.id === openId; })[0];
+        var last = msgs[msgs.length - 1];
+        if (c && last && last.sender === 'shop' && !Number(c.customer_unread)) {
+          logEl.appendChild(el('div', 'lc-seen', 'Seen'));
+        }
+
         logEl.scrollTop = logEl.scrollHeight;
         painted = messageSig();
       }
@@ -486,9 +613,21 @@
         owner.addEventListener('change', function () { assign(c, owner.value || null); });
         acts.appendChild(owner);
 
-        var closeBtn = el('button', 'btn btn-out btn-sm', c.status === 'open' ? 'Close conversation' : 'Reopen');
+        var closeBtn = el('button', 'btn btn-out btn-sm',
+                          c.status === 'open' ? 'End this chat' : 'Reopen this chat');
         closeBtn.type = 'button';
-        closeBtn.addEventListener('click', function () { setStatus(c, c.status === 'open' ? 'closed' : 'open'); });
+        closeBtn.addEventListener('click', function () {
+          if (c.status !== 'open') { setStatus(c, 'open'); return; }
+          /* Ending one is not undoable from the customer's side — they
+             would have to start again — so it is asked rather than done
+             on a single tap. */
+          var ask = (ctx && ctx.ask) || (A && A.ask);
+          if (!ask) { setStatus(c, 'closed'); return; }
+          ask('End this chat with ' + who(c) + '?',
+              { danger: true, okText: 'End it',
+                note: 'They can start a new one whenever they like, and you can reopen this.' })
+            .then(function (yes) { if (yes) setStatus(c, 'closed'); });
+        });
         acts.appendChild(closeBtn);
         head.appendChild(acts);
         threadCol.appendChild(head);
@@ -618,7 +757,36 @@
       function loadHistory(c, host) {
         host.innerHTML = '';
         var byAccount = !!c.customer_id;
-        if (!byAccount && !c.phone) return;
+
+        /* An account is proof; a phone number typed into a chat box is
+           not. chat_identify writes whatever it is handed to anybody
+           holding a conversation token, so a stranger could type a real
+           customer's number and have that customer's last five orders —
+           reference, total, item names — drawn into this panel as though
+           they were theirs. The operator would then discuss them.
+
+           This file already refused to match on a name, for exactly this
+           reason. A number nobody checked is the same kind of guess, so
+           it is not followed on its own either: it is offered, with what
+           it is worth said plainly, and the operator decides. */
+        if (!byAccount) {
+          if (!c.phone) return;
+          var offer = el('div', 'lc-hist-ask');
+          offer.appendChild(el('div', 'lc-hist-mid',
+            'This number was typed into the chat and has not been checked against ' +
+            'anything. Look it up only if you are sure who you are speaking to.'));
+          var go = el('button', 'btn btn-out btn-sm', 'Look up ' + c.phone);
+          go.type = 'button';
+          go.addEventListener('click', function () { fetchHistory(c, host, false); });
+          offer.appendChild(go);
+          host.appendChild(offer);
+          return;
+        }
+        fetchHistory(c, host, true);
+      }
+
+      function fetchHistory(c, host, byAccount) {
+        host.innerHTML = '';
 
         var orders = sb.from('orders')
           .select('ref,status,total,currency,created_at,order_items(name,qty)')
@@ -634,7 +802,14 @@
         Promise.all([orders, past]).then(function (r) {
           var os = (r[0] && r[0].data) || [];
           var cs = (r[1] && r[1].data) || [];
-          if (!os.length && !cs.length) return;
+          if (!os.length && !cs.length) {
+            host.appendChild(el('div', 'lc-hist-mid', 'Nothing found for that number.'));
+            return;
+          }
+          if (!byAccount) {
+            host.appendChild(el('div', 'lc-hist-mid',
+              'Found by an unverified phone number — not by an account.'));
+          }
 
           var box = el('details', 'lc-hist');
           var sum = el('summary', null,
@@ -649,9 +824,7 @@
               return (i.qty > 1 ? i.qty + ' × ' : '') + i.name; }).join(', ');
             line.appendChild(el('span', 'lc-hist-ref', o.ref || '—'));
             line.appendChild(el('span', 'lc-hist-mid', items || 'No items recorded'));
-            var F = window.VBP_FORMAT;
-            var amount = (o.total == null) ? ''
-              : (F && F.money ? F.money(o.total, { symbol: 'K' }) : 'K' + o.total);
+            var amount = money(o.total);
             line.appendChild(el('span', 'lc-hist-end',
               [amount, o.status].filter(Boolean).join(' · ')));
             box.appendChild(line);
@@ -767,9 +940,7 @@
             pick = hit[(parseInt(which, 10) || 1) - 1] || hit[0];
           }
           tell(msgHost, '');
-          var F = window.VBP_FORMAT;
-          var price = pick.priceOnRequest ? '' :
-            (F && F.money ? F.money(pick.price, { symbol: 'K' }) : 'K' + pick.price);
+          var price = pick.priceOnRequest ? '' : money(pick.price);
           return sendWith('This is the one:', {
             kind: 'product', sku: pick.sku, name: pick.name, price: price
           });
@@ -810,9 +981,7 @@
           pick = list[(parseInt(which, 10) || 1) - 1] || list[0];
         }
         tell(msgHost, '');
-        var F = window.VBP_FORMAT;
-        var total = pick.total == null ? '' :
-          (F && F.money ? F.money(pick.total, { symbol: 'K' }) : 'K' + pick.total);
+        var total = money(pick.total);
         return sendWith('Here is where your order has got to:', {
           kind: 'order', ref: pick.ref, status: pick.status, total: total
         });
@@ -915,6 +1084,12 @@
         loadList();
       });
       mePick.addEventListener('change', function () { sayHere(mePick.value); });
+      meName.addEventListener('change', function () {
+        var typed = (meName.value || '').trim();
+        myName = typed || fallbackName;
+        meName.value = myName;
+        sayHere(mePick.value);
+      });
       statsBtn.addEventListener('click', showStats);
 
       /* Who this operator is. Everything that attributes a reply, a note
@@ -924,8 +1099,19 @@
         return Promise.resolve(sb.auth.getSession()).then(function (r) {
           var u = r && r.data && r.data.session && r.data.session.user;
           me = (u && u.id) || null;
-          myName = nameFromEmail(u && u.email);
-          return me ? sayHere('online') : loadAgents();
+          fallbackName = nameFromEmail(u && u.email);
+          if (!me) return loadAgents();
+          /* Announced without a name the first time, so that a name this
+             operator chose is not written over by one invented from
+             their email address before it has even been read. */
+          return sayHere('online', null).then(function () {
+            var mine = agents.filter(function (a) { return a.id === me; })[0];
+            myName = (mine && mine.display_name) || fallbackName;
+            meName.value = myName;
+            /* Nothing stored yet: put the made-up one in, so a colleague
+               sees a name rather than a blank. */
+            if (!(mine && mine.display_name)) return sayHere('online');
+          });
         }, function () { return loadAgents(); });
       }
       function beatPresence() {

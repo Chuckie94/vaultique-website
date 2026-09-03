@@ -40,11 +40,51 @@ alter table public.chat_conversations
 
 drop function if exists public.chat_start(text, text, text);
 
+-- chat_start below asks whether the shop is shut before it opens a
+-- conversation, and these are what answer it. They are defined in
+-- supabase-setup.sql as well; repeated here, identically and harmlessly,
+-- so that this file can be run before that one has caught up without
+-- chat_start failing to compile.
+create or replace function public.shop_is_closed()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select coalesce((data->>'maintenanceMode')::boolean, false)
+         or coalesce(data->>'websiteStatus', 'live') in ('closed', 'coming-soon')
+       from public.site_settings where key = 'general'),
+    false);
+$$;
+
+create or replace function public.preview_ok(p_key text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select nullif(btrim(coalesce(data->>'previewKey', '')), '') is not null
+        and nullif(btrim(coalesce(data->>'previewKey', '')), '') = btrim(coalesce(p_key, ''))
+       from public.site_settings where key = 'general'),
+    false);
+$$;
+
+revoke all on function public.shop_is_closed()   from public;
+revoke all on function public.preview_ok(text)   from public;
+grant execute on function public.shop_is_closed() to anon, authenticated;
+grant execute on function public.preview_ok(text) to anon, authenticated;
+
+drop function if exists public.chat_start(text, text, text, text);
 create or replace function public.chat_start(
   p_name       text default null,
   p_phone      text default null,
   p_email      text default null,
-  p_started_on text default null
+  p_started_on text default null,
+  p_preview    text default null
 )
 returns text
 language plpgsql
@@ -59,6 +99,12 @@ declare
   v_token    text;
   v_customer uuid;
 begin
+  -- Nobody should be starting a conversation with a shop that is shut.
+  -- The preview key lets the owner test the widget while it is.
+  if public.shop_is_closed() and not public.preview_ok(p_preview) then
+    raise exception 'the shop is not open for chat at the moment';
+  end if;
+
   v_token := encode(gen_random_bytes(24), 'hex');
 
   select c.id into v_customer from public.customers c where c.id = auth.uid();
@@ -67,9 +113,9 @@ begin
          (token, name, phone, email, customer_id, started_on, viewing, viewing_at)
   values (
     v_token,
-    nullif(btrim(coalesce(p_name,  '')), ''),
-    nullif(btrim(coalesce(p_phone, '')), ''),
-    nullif(btrim(coalesce(p_email, '')), ''),
+    left(nullif(btrim(coalesce(p_name,  '')), ''), 120),
+    left(nullif(btrim(coalesce(p_phone, '')), ''), 120),
+    left(nullif(btrim(coalesce(p_email, '')), ''), 120),
     v_customer,
     left(nullif(btrim(coalesce(p_started_on, '')), ''), 300),
     left(nullif(btrim(coalesce(p_started_on, '')), ''), 300),
@@ -83,8 +129,14 @@ $$;
 
 -- 3) A guest putting a name to themselves -----------------------------
 -- Offered, never demanded: a customer who would rather just ask their
--- question still gets an answer. Only ever fills in a blank — a name
--- the shop already has is not overwritten by a later empty box.
+-- question still gets an answer.
+--
+-- An empty box changes nothing: a name the shop already has survives
+-- somebody opening the form and closing it again. A name they actually
+-- type does replace the old one, because a customer correcting their own
+-- name is the one person entitled to. The comment here used to say it
+-- "only ever fills in a blank", which was true of the empty box and not
+-- of anything else.
 
 create or replace function public.chat_identify(
   p_token text,
@@ -99,9 +151,9 @@ set search_path = public
 as $$
 begin
   update public.chat_conversations
-     set name  = coalesce(nullif(btrim(coalesce(p_name,  '')), ''), name),
-         phone = coalesce(nullif(btrim(coalesce(p_phone, '')), ''), phone),
-         email = coalesce(nullif(btrim(coalesce(p_email, '')), ''), email)
+     set name  = coalesce(left(nullif(btrim(coalesce(p_name,  '')), ''), 120), name),
+         phone = coalesce(left(nullif(btrim(coalesce(p_phone, '')), ''), 120), phone),
+         email = coalesce(left(nullif(btrim(coalesce(p_email, '')), ''), 120), email)
    where token = p_token;
 end;
 $$;
@@ -235,13 +287,13 @@ $$;
 
 -- 7) Who may call them ------------------------------------------------
 
-revoke all on function public.chat_start(text, text, text, text)     from public;
+revoke all on function public.chat_start(text, text, text, text, text) from public;
 revoke all on function public.chat_identify(text, text, text, text)  from public;
 revoke all on function public.chat_claim(text)                       from public;
 revoke all on function public.chat_resume()                          from public;
 revoke all on function public.chat_poll(text, timestamptz, text)     from public;
 
-grant execute on function public.chat_start(text, text, text, text)    to anon, authenticated;
+grant execute on function public.chat_start(text, text, text, text, text) to anon, authenticated;
 grant execute on function public.chat_identify(text, text, text, text) to anon, authenticated;
 grant execute on function public.chat_poll(text, timestamptz, text)    to anon, authenticated;
 -- These two answer only to somebody signed in, and return nothing at

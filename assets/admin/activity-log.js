@@ -59,9 +59,10 @@
     render: function (host, ctx) {
       host.innerHTML = '';
 
-      var rows = [];          // everything fetched so far
+      var rows = [];          // everything fetched so far, for the filters in force
       var reachedEnd = false;
       var loading = false;
+      var searchTimer = null;
 
       /* ---- the controls -------------------------------------------- */
       var bar = el('div', 'toolbar');
@@ -78,6 +79,13 @@
       var modulePick = document.createElement('select');
       modulePick.className = 'al-pick';
       modulePick.appendChild(new Option('Everywhere', ''));
+      /* Every section that writes to the log, named up front rather than
+         discovered. A list built from the entries paged in so far can
+         only offer the sections that have been busy lately, so the one
+         you want to look up is exactly the one missing. */
+      ((A.audit && A.audit.moduleNames) ? A.audit.moduleNames() : []).forEach(function (m) {
+        modulePick.appendChild(new Option(m, m));
+      });
       bar.appendChild(modulePick);
 
       var actionPick = document.createElement('select');
@@ -102,17 +110,69 @@
       host.appendChild(moreRow);
 
       /* ---- reading -------------------------------------------------- */
+      /* The filters run in the database, not over the page in front of
+         you. They used to run over `rows` — which is only what had been
+         paged in — so searching a log of five thousand entries searched
+         the newest fifty, and "Nothing matches those filters" meant
+         "nothing in the first page matches", which reads exactly like an
+         answer and is not one. */
+
+      /* PostgREST reads commas and brackets as structure inside an `or`,
+         and there is no way to escape them, so a search containing one is
+         searched without it rather than sent as a filter that would
+         either error or quietly mean something else. */
+      function searchTerm() {
+        return (search.value || '').trim().replace(/[,()*%\\]/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+
+      function filtered(q) {
+        if (modulePick.value) q = q.eq('module', modulePick.value);
+        if (actionPick.value) {
+          /* Rows written before `action` was always set read as
+             "changed", which is what the list has always shown them as. */
+          q = actionPick.value === 'changed'
+            ? q.or('action.eq.changed,action.is.null')
+            : q.eq('action', actionPick.value);
+        }
+        var term = searchTerm();
+        if (term) {
+          var like = '*' + term + '*';
+          q = q.or(['actor_email.ilike.' + like, 'module.ilike.' + like,
+                    'record.ilike.' + like, 'action.ilike.' + like].join(','));
+        }
+        return q;
+      }
+
+      /* A filter changed: the page in front of you is about a different
+         question now, so it is asked again from the top. */
+      /* Which question is being asked. A read still in flight when the
+         filters change belongs to the previous one, and its rows must not
+         be poured into the answer to this one. */
+      var asking = 0;
+
+      function restart() {
+        asking++;
+        rows = [];
+        reachedEnd = false;
+        loading = false;
+        body.innerHTML = '';
+        body.appendChild(el('p', 'count', 'Reading…'));
+        count.textContent = 'Reading…';
+        fetchMore();
+      }
+
       function fetchMore() {
         if (loading || reachedEnd) return Promise.resolve();
         loading = true;
         moreBtn.disabled = true;
         var from = rows.length;
+        var mine = asking;
 
-        return ctx.sb.from('activity_log')
-          .select('*')
+        return filtered(ctx.sb.from('activity_log').select('*'))
           .order('at', { ascending: false })
           .range(from, from + PAGE - 1)
           .then(function (r) {
+            if (mine !== asking) return;          // answering a question nobody is asking now
             loading = false;
             moreBtn.disabled = false;
             if (r.error) throw r.error;
@@ -123,6 +183,7 @@
             draw();
           })
           .catch(function (e) {
+            if (mine !== asking) return;
             loading = false;
             moreBtn.disabled = false;
             body.innerHTML = '';
@@ -139,22 +200,16 @@
           });
       }
 
+      /* The list is named up front, but a log written by an older build
+         may hold a section name this one no longer uses. Anything seen
+         and not offered is added, so an old entry can still be filtered
+         to rather than being unreachable. */
       function refreshModules() {
         var have = {}, i;
         for (i = 1; i < modulePick.options.length; i++) have[modulePick.options[i].value] = true;
         var found = [];
         rows.forEach(function (r) { if (r.module && !have[r.module]) { have[r.module] = true; found.push(r.module); } });
         found.sort().forEach(function (m) { modulePick.appendChild(new Option(m, m)); });
-      }
-
-      /* ---- drawing --------------------------------------------------- */
-      function matches(r) {
-        if (modulePick.value && r.module !== modulePick.value) return false;
-        if (actionPick.value && (r.action || 'changed') !== actionPick.value) return false;
-        var q = (search.value || '').trim().toLowerCase();
-        if (!q) return true;
-        return [r.actor_email, r.module, r.record, r.action]
-          .some(function (v) { return String(v || '').toLowerCase().indexOf(q) > -1; });
       }
 
       function changeLines(r) {
@@ -200,33 +255,36 @@
         return item;
       }
 
+      function anyFilter() {
+        return !!(modulePick.value || actionPick.value || (search.value || '').trim());
+      }
+
       function draw() {
-        var shown = rows.filter(matches);
         body.innerHTML = '';
 
         count.textContent = rows.length
-          ? shown.length + (shown.length === 1 ? ' entry' : ' entries') +
-            (shown.length !== rows.length ? ' of ' + rows.length : '') +
+          ? rows.length + (rows.length === 1 ? ' entry' : ' entries') +
             (reachedEnd ? '' : ' so far')
           : '';
 
         if (!rows.length) {
-          body.appendChild(el('p', 'count',
-            'Nothing recorded yet. Every change made in this admin from now on appears here.'));
+          body.appendChild(el('p', 'count', anyFilter()
+            ? 'Nothing in the whole log matches those filters.'
+            : 'Nothing recorded yet. Every change made in this admin from now on appears here.'));
           moreRow.classList.add('hide');
           return;
         }
-        if (!shown.length) {
-          body.appendChild(el('p', 'count', 'Nothing matches those filters.'));
-        } else {
-          shown.forEach(function (r) { body.appendChild(entry(r)); });
-        }
+        rows.forEach(function (r) { body.appendChild(entry(r)); });
         moreRow.classList[reachedEnd ? 'add' : 'remove']('hide');
       }
 
-      search.addEventListener('input', draw);
-      modulePick.addEventListener('change', draw);
-      actionPick.addEventListener('change', draw);
+      /* Typing is not a query per keystroke. */
+      search.addEventListener('input', function () {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(restart, 250);
+      });
+      modulePick.addEventListener('change', restart);
+      actionPick.addEventListener('change', restart);
       moreBtn.addEventListener('click', function () { fetchMore(); });
 
       fetchMore();

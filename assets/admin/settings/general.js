@@ -133,6 +133,7 @@
     },
     websiteStatus: 'live',
     maintenanceMode: false,
+    previewKey: '',
     maintenanceMessage: 'We are making a few improvements and will be back shortly. ' +
                         'For anything urgent, please message us on WhatsApp.'
   };
@@ -213,7 +214,17 @@
               { type: 'textarea', name: 'maintenanceMessage', label: 'Maintenance message',
                 rows: 3, maxLength: 300, required: true,
                 showIf: function (v) { return !!v.maintenanceMode; },
-                hint: 'What customers see while maintenance mode is on.' }
+                hint: 'What customers see while maintenance mode is on.' },
+              { type: 'text', name: 'previewKey', label: 'Preview key', maxLength: 60,
+                hint: 'A word of your choosing. While the shop is shut, open it as ' +
+                      'yourshop.com/?preview=THATWORD and you will see the real site ' +
+                      'while everybody else still sees the notice. Leave it empty and ' +
+                      'nobody gets past, yourself included.' },
+              { type: 'note', name: 'previewNote', label: 'About the preview key',
+                text: 'It keeps a customer from wandering in while you work; it is not ' +
+                      'a password, and it is not meant to be. Orders, chats and the ' +
+                      'product feed are all refused while the shop is shut, and this ' +
+                      'key is what lets you test them anyway.' }
             ]
           }
         ]

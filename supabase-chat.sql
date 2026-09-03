@@ -148,9 +148,9 @@ begin
   insert into public.chat_conversations (token, name, phone, email, customer_id)
   values (
     v_token,
-    nullif(btrim(coalesce(p_name,  '')), ''),
-    nullif(btrim(coalesce(p_phone, '')), ''),
-    nullif(btrim(coalesce(p_email, '')), ''),
+    left(nullif(btrim(coalesce(p_name,  '')), ''), 120),
+    left(nullif(btrim(coalesce(p_phone, '')), ''), 120),
+    left(nullif(btrim(coalesce(p_email, '')), ''), 120),
     v_customer
   );
 

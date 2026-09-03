@@ -84,7 +84,11 @@
       symbol: String(pricing.currencySymbol || '').trim() || symbol(code),
       position: pricing.currencyPosition || 'before',
       decimals: pricing.decimalPlaces || 'auto',
-      numberFormat: general.numberFormat || '1,234.56'
+      numberFormat: general.numberFormat || '1,234.56',
+      /* Carried with the money because it travels with it: a promotion's
+         dates are the shop's dates, and this is the only thing handed to
+         priceView that has ever been told where the shop is. */
+      timezone: general.timezone || ''
     };
   }
 
@@ -162,7 +166,7 @@
     /* A shop-wide promotion applies only where the till has not already
        brought the price down. A piece is never reduced twice. */
     if (!was && !out.overridden) {
-      var promo = promoCut(p, pricing, opts.now);
+      var promo = promoCut(p, pricing, opts.now, style && style.timezone);
       if (promo > 0 && promo < base) { was = base; base = promo; }
     }
 
@@ -195,11 +199,11 @@
 
   /* What a shop-wide promotion brings one piece down to, or 0 when it does
      not apply to it, is switched off, or is outside its dates. */
-  function promoCut(p, pricing, nowDate) {
+  function promoCut(p, pricing, nowDate, timezone) {
     p = p || {}; pricing = pricing || {};
     if (!pricing.promoEnabled) return 0;
 
-    var today = dayStamp(nowDate || new Date());
+    var today = dayStampInZone(timezone, nowDate || new Date());
     if (pricing.promoFrom && today < pricing.promoFrom) return 0;
     if (pricing.promoTo && today > pricing.promoTo) return 0;
 
@@ -236,6 +240,32 @@
   function trimLower(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
   function dayStamp(d) {
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  /* Today's date as the shop counts it, rather than as the visitor's
+     computer does. A sale set to end on the 31st has to end at one
+     moment for everybody, and that moment is the shop's midnight — not
+     a different one for every customer, and not one the admin's own
+     preview disagrees with. Trading hours already worked this way; the
+     promotion dates did not.
+
+     No timezone, or a name this browser has never heard of, falls back
+     to the old behaviour rather than to nothing: a shop that has not
+     filled the setting in still sells. */
+  function dayStampInZone(timezone, d) {
+    var when = d || new Date();
+    if (!timezone) return dayStamp(when);
+    try {
+      var parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit'
+      }).formatToParts(when);
+      var got = {};
+      parts.forEach(function (p) { got[p.type] = p.value; });
+      if (!got.year || !got.month || !got.day) return dayStamp(when);
+      return got.year + '-' + got.month + '-' + got.day;
+    } catch (e) {
+      return dayStamp(when);
+    }
   }
 
   /* ---- dates -------------------------------------------------------- */
@@ -327,14 +357,35 @@
     var now = nowInZone(timezone);
     if (!now) return { known: false, open: false, text: '' };
 
+    /* A window that ends before it starts is one that crosses midnight —
+       20:00 to 02:00 is a shop open late, not a shop shut. It used to
+       read as closed all evening while the page beside it printed
+       "Mon 8pm-2am", so the site disagreed with itself.
+
+       An overnight window belongs to the day it began on: at one in the
+       morning the shop is inside Monday's 20:00-02:00, not Tuesday's, so
+       yesterday is asked first. */
+    var yest = hours[DAYS[(now.dayIndex + 6) % 7].key];
+    if (yest && yest.open) {
+      var yFrom = minutes(yest.from), yTo = minutes(yest.to);
+      if (yFrom >= 0 && yTo >= 0 && yTo <= yFrom && now.minutes < yTo) {
+        return { known: true, open: true, text: 'Open now · until ' + prettyTime(yest.to) };
+      }
+    }
+
     var today = hours[DAYS[now.dayIndex].key];
     if (today && today.open) {
       var from = minutes(today.from), to = minutes(today.to);
-      if (from >= 0 && to > from && now.minutes >= from && now.minutes < to) {
-        return { known: true, open: true, text: 'Open now · until ' + prettyTime(today.to) };
-      }
-      if (from >= 0 && now.minutes < from) {
-        return { known: true, open: false, text: 'Closed · opens ' + prettyTime(today.from) };
+      if (from >= 0 && to >= 0) {
+        var overnight = to <= from;
+        var inside = overnight ? (now.minutes >= from || now.minutes < to)
+                               : (now.minutes >= from && now.minutes < to);
+        if (inside) {
+          return { known: true, open: true, text: 'Open now · until ' + prettyTime(today.to) };
+        }
+        if (now.minutes < from) {
+          return { known: true, open: false, text: 'Closed · opens ' + prettyTime(today.from) };
+        }
       }
     }
 
@@ -359,6 +410,7 @@
     priceView: priceView,
     taxLine: taxLine,
     promoCut: promoCut,
+    dayStampInZone: dayStampInZone,
     isRealReduction: isRealReduction,
     date: date,
     minutes: minutes,

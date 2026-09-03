@@ -427,6 +427,14 @@
   .lc-viewing{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--navy);margin-top:5px}
   .lc-live-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:0 0 auto;
     animation:lc-pulse 1.8s ease-in-out infinite}
+  /* Away, rather than here: red, and still, because a pulsing light
+     reads as something happening. */
+  .lc-live-dot.off{background:#c0392b;animation:none;opacity:.85}
+  .lc-seen{font-size:11px;color:#6b7480;text-align:right;margin:-2px 4px 6px 0}
+  .lc-name{min-width:150px}
+  .lc-hist-ask{border:1px solid var(--line,#e6e0d4);border-radius:8px;padding:10px;margin-top:10px;
+    display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+
   @keyframes lc-pulse{0%,100%{opacity:1}50%{opacity:.35}}
   .lc-meta.live{color:var(--navy)}
   .lc-side{border-top:1px solid var(--line);padding:0 14px 12px}
@@ -576,6 +584,9 @@
         you agreed. Confirm or cancel each one as the conversation settles it — a customer
         sees this status on their account page.</p>
       <div id="ordList"><p class="count">Loading…</p></div>
+      <div class="row hide" id="ordMoreRow">
+        <button type="button" class="btn btn-out btn-sm" id="ordMore">Show older</button>
+      </div>
     </div>
 
     <!-- LIVE CHATS -->
@@ -689,6 +700,12 @@
   window.VBP_ADMIN = window.VBP_ADMIN || {};
   window.VBP_ADMIN.sb = sb;
   var metaMap = {};       // sku -> meta row
+  /* The same rows as they last stood in the database. Every control on a
+     product card edits metaMap in place and then saves, so by the time
+     the save runs there is nothing left to compare against — which is why
+     the log used to record "presentation: updated" and no more. This is
+     the copy that makes a real before-and-after possible. */
+  var metaSaved = {};     // sku -> meta row, as last written
   var pricing = {};       // Settings > Pricing, for the price watch and the boxes below
   var generalSettings = {};  // Settings > General, for the currency behind them
   var products = [];      // POS products
@@ -1139,16 +1156,54 @@
      file yet must still be able to work. */
   var AUDIT = function () { return (window.VBP_ADMIN || {}).audit; };
 
+  /* What each column is called where a person reads it. The settings log
+     shows form field names because that is what the owner sees on the
+     form; these are database columns, which nobody sees anywhere. */
+  var META_LABELS = {
+    image_url: 'main photo', gallery: 'photos', videos: 'videos',
+    featured: 'featured', is_new: 'new', best_seller: 'best seller',
+    hidden: 'hidden from the site', description: 'description',
+    price_override: 'website price', on_request: 'price on request'
+  };
+  /* Bookkeeping the price watch does on its own. It is the machine
+     remembering a till price, not a person changing anything, and a log
+     full of it would bury the lines that matter. */
+  var META_QUIET = { sku: true, updated_at: true, ref_price: true, ref_price_at: true };
+
+  function copyMeta(m) { try { return JSON.parse(JSON.stringify(m || {})); } catch (e) { return {}; } }
+  function snapshotMeta() {
+    metaSaved = {};
+    for (var k in metaMap) {
+      if (Object.prototype.hasOwnProperty.call(metaMap, k)) metaSaved[k] = copyMeta(metaMap[k]);
+    }
+  }
+  /* Named, and in the shop's words. "Hiding a product, featuring it and
+     overriding its price" used to be one indistinguishable line. */
+  function metaChanges(before, after) {
+    var a = AUDIT();
+    if (!a || !a.diff) return null;
+    var lines = a.diff(before || {}, after || {}, 'product')
+      .filter(function (c) { return !META_QUIET[c.field]; });
+    if (!lines.length) return null;
+    lines.forEach(function (c) { c.field = META_LABELS[c.field] || c.field; });
+    return lines;
+  }
+
   function saveMeta(sku) {
     var m = metaMap[sku] || { sku: sku };
     m.sku = sku; m.updated_at = new Date().toISOString();
     metaMap[sku] = m;
+    var changes = metaChanges(metaSaved[sku], m);
     var known = !!(products || []).length;
     return sb.from('product_meta').upsert(m, { onConflict: 'sku' }).then(function (r) {
       if (r.error) throw r.error;
+      metaSaved[sku] = copyMeta(m);
       var a = AUDIT();
-      if (a) a.record({ action: 'changed', module: 'Products & Photos', record: sku,
-                        changes: [{ field: 'presentation', from: '', to: 'updated' }] });
+      /* No line at all when nothing moved. A save that changed nothing is
+         not a change, and recording it as one makes the log harder to
+         read for no gain. */
+      if (a && changes) a.record({ action: 'changed', module: 'Products & Photos',
+                                   record: sku, changes: changes });
       return r;
     });
   }
@@ -1168,7 +1223,13 @@
       pricing = res[2] || {};
       generalSettings = res[3] || {};
       return watchPrices();
-    }).then(renderProducts);
+    }).then(function () {
+      /* After the watch, not before: the remembered till price it writes
+         is the machine's own bookkeeping, and taking the snapshot first
+         would put it in the log under the next thing a person changed. */
+      snapshotMeta();
+      renderProducts();
+    });
   }
 
   /* ---------- the price watch ------------------------------------------
@@ -1589,29 +1650,64 @@
       drawOrders();
     });
   }
-  function drawOrders() {
+  /* Orders are read a page at a time, newest first, with a button for the
+     rest. It used to be one read of 200 with nothing after it: a shop
+     that took its two hundred and first order could not open it, could
+     not confirm it, and was given no sign that it existed. Which is worse
+     than it sounds, because the count underneath said "200 orders" as
+     though that were all of them. */
+  var ORD_PAGE = 50;
+  var ordRows = [];         // everything fetched so far, for the filter in force
+  var ordEnd = false;
+  var ordBusy = false;
+
+  function ordCountText(want) {
+    var n = ordRows.length;
+    if (!n) return '';
+    return n + (want ? ' ' + want : '') + ' order' + (n === 1 ? '' : 's') +
+           (ordEnd ? '' : ' so far');
+  }
+
+  function drawOrders(more) {
     var host = $('ordList');
     var want = $('ordFilter').value;
+    if (!more) { ordRows = []; ordEnd = false; host.innerHTML = '<p class="count">Loading…</p>'; }
+    if (ordBusy || (more && ordEnd)) return;
+    ordBusy = true;
+    $('ordMore').disabled = true;
+
+    var from = ordRows.length;
     var q = sb.from('orders')
       .select('*, order_items(sku, name, price, qty)')
       .order('created_at', { ascending: false })
-      .limit(200);
+      .range(from, from + ORD_PAGE - 1);
     if (want) q = q.eq('status', want);
 
     q.then(function (r) {
+      ordBusy = false;
+      $('ordMore').disabled = false;
       if (r.error) { host.innerHTML = '<p class="count">Error: ' + escapeHtml(r.error.message) + '</p>'; return; }
-      var rows = r.data || [];
-      $('ordCount').textContent = rows.length + (want ? ' ' + want : '') + ' order' + (rows.length === 1 ? '' : 's');
-      if (!rows.length) {
+      var batch = r.data || [];
+      if (batch.length < ORD_PAGE) ordEnd = true;
+      ordRows = ordRows.concat(batch);
+      $('ordCount').textContent = ordCountText(want);
+      if (!ordRows.length) {
         host.innerHTML = '<p class="count">Nothing here. Orders appear once customers ' +
           'start checking out, and only while Order history is on in Settings &gt; Customer Accounts.</p>';
+        $('ordMoreRow').classList.add('hide');
         return;
       }
-      host.innerHTML = '';
-      rows.forEach(function (o) { host.appendChild(orderRow(o)); });
+      if (!more) host.innerHTML = '';
+      batch.forEach(function (o) { host.appendChild(orderRow(o)); });
+      $('ordMoreRow').classList[ordEnd ? 'add' : 'remove']('hide');
+    }, function (e) {
+      ordBusy = false;
+      $('ordMore').disabled = false;
+      host.innerHTML = '<p class="count">Error: ' + escapeHtml((e && e.message) || String(e)) + '</p>';
     });
   }
-  $('ordFilter').addEventListener('change', drawOrders);
+  $('ordFilter').addEventListener('change', function () { drawOrders(false); });
+  $('ordMore').addEventListener('click', function () { drawOrders(true); });
 
   function orderRow(o) {
     var d = document.createElement('div');

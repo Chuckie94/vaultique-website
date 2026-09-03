@@ -15,7 +15,65 @@
 --   H-4  a review could arrive already wearing the "Verified" badge
 --   C-1  no customer could start a live chat at all
 --   M-1  the newsletter said yes to everything, and nobody could rejoin
+--   C-2  live chat: seen marks, who is at the desk, and ending a chat
+--   M-4  a chat row would take megabytes of anything
+--   M-8  an unread badge that lies is worse than none
 -- =====================================================================
+
+
+-- ---------------------------------------------------------------------
+-- M-10 · A closure that is only a stylesheet is not a closure
+--
+-- Maintenance mode, "closed" and "coming soon" all worked by adding a
+-- class to the page, which is right for a browser and is not
+-- enforcement. The product feed kept serving the whole catalogue, and
+-- an order or a chat sent straight at the database was accepted as
+-- though the shop were open.
+--
+-- The database is the one place that can answer this for everybody, so
+-- it answers it here, and place_order and chat_start ask before they
+-- write.
+--
+-- The preview key is how the owner gets in to test while the shop is
+-- shut to everyone else. It is a door key and not a lock: it lives in
+-- the settings the storefront already reads, so it is not a secret, and
+-- it is not meant to be. What it stops is a customer wandering in during
+-- an hour's work, which is the thing that actually happens. Leave it
+-- empty and nobody can walk past the notice at all.
+-- ---------------------------------------------------------------------
+
+create or replace function public.shop_is_closed()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select coalesce((data->>'maintenanceMode')::boolean, false)
+         or coalesce(data->>'websiteStatus', 'live') in ('closed', 'coming-soon')
+       from public.site_settings where key = 'general'),
+    false);
+$$;
+
+create or replace function public.preview_ok(p_key text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select nullif(btrim(coalesce(data->>'previewKey', '')), '') is not null
+        and nullif(btrim(coalesce(data->>'previewKey', '')), '') = btrim(coalesce(p_key, ''))
+       from public.site_settings where key = 'general'),
+    false);
+$$;
+
+revoke all on function public.shop_is_closed()   from public;
+revoke all on function public.preview_ok(text)   from public;
+grant execute on function public.shop_is_closed() to anon, authenticated;
+grant execute on function public.preview_ok(text) to anon, authenticated;
 
 
 -- ---------------------------------------------------------------------
@@ -37,9 +95,11 @@
 -- under anybody else's name, and cannot exceed any of the same bounds.
 -- ---------------------------------------------------------------------
 
+drop function if exists public.place_order(jsonb, jsonb);
 create or replace function public.place_order(
-  p_order jsonb,
-  p_items jsonb default '[]'::jsonb
+  p_order   jsonb,
+  p_items   jsonb default '[]'::jsonb,
+  p_preview text  default null
 )
 returns jsonb
 language plpgsql
@@ -64,6 +124,11 @@ declare
   v_total    numeric := nullif(p_order->>'total', '')::numeric;
   v_currency text := nullif(p_order->>'currency', '');
 begin
+  -- A shop that has told its customers it is shut must not quietly take
+  -- their order anyway. The preview key is the owner's way past it.
+  if public.shop_is_closed() and not public.preview_ok(p_preview) then
+    raise exception 'the shop is not taking orders at the moment';
+  end if;
   -- The same sanity limits or_insert states. An open door with no bounds
   -- is an invitation to fill the table from a browser console.
   if v_name    is not null and char_length(v_name)    > 120 then raise exception 'name is too long'; end if;
@@ -134,8 +199,8 @@ begin
 end;
 $$;
 
-revoke all on function public.place_order(jsonb, jsonb) from public;
-grant execute on function public.place_order(jsonb, jsonb) to anon, authenticated;
+revoke all on function public.place_order(jsonb, jsonb, text) from public;
+grant execute on function public.place_order(jsonb, jsonb, text) to anon, authenticated;
 
 
 -- ---------------------------------------------------------------------
@@ -187,11 +252,13 @@ create policy rv_insert on public.reviews for insert with check (
 
 create extension if not exists pgcrypto;
 
+drop function if exists public.chat_start(text, text, text, text);
 create or replace function public.chat_start(
   p_name       text default null,
   p_phone      text default null,
   p_email      text default null,
-  p_started_on text default null
+  p_started_on text default null,
+  p_preview    text default null
 )
 returns text
 language plpgsql
@@ -202,6 +269,12 @@ declare
   v_token    text;
   v_customer uuid;
 begin
+  -- Nobody should be starting a conversation with a shop that is shut.
+  -- The preview key lets the owner test the widget while it is.
+  if public.shop_is_closed() and not public.preview_ok(p_preview) then
+    raise exception 'the shop is not open for chat at the moment';
+  end if;
+
   v_token := encode(gen_random_bytes(24), 'hex');
 
   select c.id into v_customer from public.customers c where c.id = auth.uid();
@@ -210,9 +283,9 @@ begin
          (token, name, phone, email, customer_id, started_on, viewing, viewing_at)
   values (
     v_token,
-    nullif(btrim(coalesce(p_name,  '')), ''),
-    nullif(btrim(coalesce(p_phone, '')), ''),
-    nullif(btrim(coalesce(p_email, '')), ''),
+    left(nullif(btrim(coalesce(p_name,  '')), ''), 120),
+    left(nullif(btrim(coalesce(p_phone, '')), ''), 120),
+    left(nullif(btrim(coalesce(p_email, '')), ''), 120),
     v_customer,
     left(nullif(btrim(coalesce(p_started_on, '')), ''), 300),
     left(nullif(btrim(coalesce(p_started_on, '')), ''), 300),
@@ -223,8 +296,8 @@ begin
 end;
 $$;
 
-revoke all on function public.chat_start(text, text, text, text) from public;
-grant execute on function public.chat_start(text, text, text, text) to anon, authenticated;
+revoke all on function public.chat_start(text, text, text, text, text) from public;
+grant execute on function public.chat_start(text, text, text, text, text) to anon, authenticated;
 
 
 -- ---------------------------------------------------------------------
@@ -288,3 +361,179 @@ $$;
 
 revoke all on function public.subscribe_email(text, boolean) from public;
 grant execute on function public.subscribe_email(text, boolean) to anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- Live chat: seen marks, who is at the desk, and ending a conversation
+--
+-- Three things the customer's side could not know and one it could not
+-- do. chat_poll already carried the conversation's state; it now also
+-- carries whether the shop has read what was said to it, and whether
+-- anybody is actually at the desk — so the widget can show a green light
+-- rather than an empty promise. chat_end lets the customer finish a
+-- conversation, which is what tells the shop the person has gone.
+-- ---------------------------------------------------------------------
+
+create or replace function public.chat_poll(
+  p_token   text,
+  p_after   timestamptz default null,
+  p_viewing text default null
+)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_conv public.chat_conversations%rowtype;
+  v_msgs json;
+begin
+  select * into v_conv
+    from public.chat_conversations
+   where token = p_token;
+
+  if v_conv.id is null then
+    return null;
+  end if;
+
+  if p_viewing is not null and btrim(p_viewing) <> '' then
+    update public.chat_conversations
+       set viewing = left(btrim(p_viewing), 300), viewing_at = now()
+     where id = v_conv.id;
+  end if;
+
+  select coalesce(
+           json_agg(json_build_object(
+             'id',     m.id,
+             'sender', m.sender,
+             'body',   m.body,
+             'at',     m.created_at,
+             -- Null for almost every row, and never set by anything a
+             -- customer can call. See the note at the top.
+             'meta',   m.meta
+           ) order by m.created_at),
+           '[]'::json)
+    into v_msgs
+    from public.chat_messages m
+   where m.conversation_id = v_conv.id
+     and (p_after is null or m.created_at > p_after);
+
+  return json_build_object(
+    'status',   v_conv.status,
+    'unread',   v_conv.customer_unread,
+    'named',    (v_conv.name is not null),
+    -- Nothing waiting on the shop's side means the shop has read it.
+    -- Only ever a count of this conversation's own messages, so it says
+    -- nothing about anybody else's.
+    'seen',     coalesce(v_conv.shop_unread, 0) = 0,
+    -- Whether there is somebody there to answer. Away is not answering:
+    -- an operator who says so should not leave a green light burning on
+    -- the customer's window, which is what "not offline" did.
+    'here',     exists (
+                  select 1 from public.chat_agents a
+                   where a.status = 'online'
+                     and a.last_seen_at > now() - interval '2 minutes'),
+    'messages', v_msgs
+  );
+end;
+$$;
+
+-- The customer saying they are done. The shop learns it the same way it
+-- learns anything else about this conversation: from the row.
+create or replace function public.chat_end(p_token text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.chat_conversations
+     set status = 'closed'
+   where token = p_token and status = 'open';
+end;
+$$;
+
+revoke all on function public.chat_poll(text, timestamptz, text) from public;
+revoke all on function public.chat_end(text)                     from public;
+grant execute on function public.chat_poll(text, timestamptz, text) to anon, authenticated;
+grant execute on function public.chat_end(text)                     to anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- M-4 · A conversation row is not a place to put a novel
+--
+-- chat_start capped where the customer came from at 300 characters and
+-- capped nothing else. Neither it nor chat_identify bounded the name,
+-- the phone or the email, so anybody holding a token could write
+-- megabytes into a row the operator's list then renders.
+-- ---------------------------------------------------------------------
+
+create or replace function public.chat_identify(
+  p_token text,
+  p_name  text default null,
+  p_phone text default null,
+  p_email text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.chat_conversations
+     set name  = coalesce(left(nullif(btrim(coalesce(p_name,  '')), ''), 120), name),
+         phone = coalesce(left(nullif(btrim(coalesce(p_phone, '')), ''), 120), phone),
+         email = coalesce(left(nullif(btrim(coalesce(p_email, '')), ''), 120), email)
+   where token = p_token;
+end;
+$$;
+
+revoke all on function public.chat_identify(text, text, text, text) from public;
+grant execute on function public.chat_identify(text, text, text, text) to anon, authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- M-8 · An unread badge that lies is worse than none
+--
+-- The admin cleared shop_unread by writing a zero. A customer message
+-- landing between the reading and the writing had its increment wiped,
+-- so a badge the operator never saw simply never appeared — the one
+-- drift supabase-chat.sql set out to make impossible, arrived back on
+-- the client.
+--
+-- Counted rather than zeroed: what is unread is however many the
+-- customer has sent since the moment the operator's window last drew.
+-- A message that arrives during the call is newer than that moment and
+-- survives it.
+-- ---------------------------------------------------------------------
+
+create or replace function public.chat_mark_read(
+  p_conversation uuid,
+  p_upto         timestamptz default null
+)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_left int;
+begin
+  if not public.is_admin() then
+    raise exception 'not permitted';
+  end if;
+
+  select count(*) into v_left
+    from public.chat_messages m
+   where m.conversation_id = p_conversation
+     and m.sender = 'customer'
+     and (p_upto is null or m.created_at > p_upto);
+
+  update public.chat_conversations
+     set shop_unread = v_left
+   where id = p_conversation;
+
+  return v_left;
+end;
+$$;
+
+revoke all on function public.chat_mark_read(uuid, timestamptz) from public;
+grant execute on function public.chat_mark_read(uuid, timestamptz) to authenticated;

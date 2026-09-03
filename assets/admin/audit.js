@@ -55,6 +55,27 @@
 
   function moduleFor(key) { return MODULES[key] || ('Settings · ' + key); }
 
+  /* Everywhere else in the admin that writes a line. The settings names
+     above are generated from their own keys; these are written by hand
+     where the change happens, and the log's filter needs the whole
+     vocabulary — a list built from whatever has been paged in can only
+     offer the sections that happen to have been busy lately. */
+  var OTHER_MODULES = ['Products & Photos', 'Orders', 'Reviews', 'Subscribers', 'Policies'];
+
+  function moduleNames() {
+    var out = [], seen = {}, k, i;
+    for (k in MODULES) {
+      if (!Object.prototype.hasOwnProperty.call(MODULES, k)) continue;
+      if (seen[MODULES[k]]) continue;
+      seen[MODULES[k]] = true; out.push(MODULES[k]);
+    }
+    for (i = 0; i < OTHER_MODULES.length; i++) {
+      if (seen[OTHER_MODULES[i]]) continue;
+      seen[OTHER_MODULES[i]] = true; out.push(OTHER_MODULES[i]);
+    }
+    return out.sort();
+  }
+
   function isPrivateKey(key) {
     for (var i = 0; i < PRIVATE_KEYS.length; i++) if (PRIVATE_KEYS[i] === key) return true;
     return false;
@@ -179,6 +200,8 @@
     diff: diff,
     settingsSaved: settingsSaved,
     moduleFor: moduleFor,
+    moduleNames: moduleNames,
+    OTHER_MODULES: OTHER_MODULES,
     isPrivateKey: isPrivateKey,
     isSecretField: isSecretField,
     brief: brief,

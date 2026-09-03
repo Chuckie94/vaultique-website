@@ -1175,6 +1175,13 @@
          the way past would leave a shop whose logo is gone if the owner
          wandered off without saving. */
       var superseded = [];
+      /* Two tables, one button, and no transaction between them. If the
+         private half lands and the public half does not, the shop has
+         written its bank details and been told the save failed — which
+         is true and not the whole truth. Recorded so the message can say
+         which half is where, and the form stays dirty so pressing Save
+         again re-sends both. */
+      var privateLanded = false;
 
       Promise.resolve(typeof spec.beforeSave === 'function' ? spec.beforeSave(values) : values)
         .then(function (final) {
@@ -1196,7 +1203,7 @@
             if (defs[n] && defs[n].private) shut[n] = all[n]; else open[n] = all[n];
           }
           return api.store.savePrivate(spec.privateKey, shut)
-            .then(function () { return api.store.save(key, open); });
+            .then(function () { privateLanded = true; return api.store.save(key, open); });
         })
         .then(function (saved) {
           loaded = current();
@@ -1209,7 +1216,11 @@
         .catch(function (e) {
           saving = false;
           refreshBar();
-          say('Could not save: ' + (e && e.message ? e.message : e), 'err');
+          var why = (e && e.message ? e.message : e);
+          say(privateLanded
+                ? 'Half of this saved. The private details went in; the rest did not (' +
+                  why + '). Press Save again — sending both a second time is harmless.'
+                : 'Could not save: ' + why, 'err');
         });
     }
 

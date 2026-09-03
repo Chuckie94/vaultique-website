@@ -503,6 +503,61 @@ create policy oi_own    on public.order_items for select
 create policy oi_admin  on public.order_items for all
   using (public.is_admin()) with check (public.is_admin());
 
+-- ---------------------------------------------------------------------
+-- M-10 · A closure that is only a stylesheet is not a closure
+--
+-- Maintenance mode, "closed" and "coming soon" all worked by adding a
+-- class to the page, which is right for a browser and is not
+-- enforcement. The product feed kept serving the whole catalogue, and
+-- an order or a chat sent straight at the database was accepted as
+-- though the shop were open.
+--
+-- The database is the one place that can answer this for everybody, so
+-- it answers it here, and place_order and chat_start ask before they
+-- write.
+--
+-- The preview key is how the owner gets in to test while the shop is
+-- shut to everyone else. It is a door key and not a lock: it lives in
+-- the settings the storefront already reads, so it is not a secret, and
+-- it is not meant to be. What it stops is a customer wandering in during
+-- an hour's work, which is the thing that actually happens. Leave it
+-- empty and nobody can walk past the notice at all.
+-- ---------------------------------------------------------------------
+
+create or replace function public.shop_is_closed()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select coalesce((data->>'maintenanceMode')::boolean, false)
+         or coalesce(data->>'websiteStatus', 'live') in ('closed', 'coming-soon')
+       from public.site_settings where key = 'general'),
+    false);
+$$;
+
+create or replace function public.preview_ok(p_key text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select nullif(btrim(coalesce(data->>'previewKey', '')), '') is not null
+        and nullif(btrim(coalesce(data->>'previewKey', '')), '') = btrim(coalesce(p_key, ''))
+       from public.site_settings where key = 'general'),
+    false);
+$$;
+
+revoke all on function public.shop_is_closed()   from public;
+revoke all on function public.preview_ok(text)   from public;
+grant execute on function public.shop_is_closed() to anon, authenticated;
+grant execute on function public.preview_ok(text) to anon, authenticated;
+
+
 -- Writing an order, for everybody.
 --
 -- A guest must be able to place one and, from their side of the fence,
@@ -520,9 +575,11 @@ create policy oi_admin  on public.order_items for all
 -- anybody else's name, and cannot exceed any of the same bounds. The
 -- policies stay exactly as they are, and still govern every other way
 -- in.
+drop function if exists public.place_order(jsonb, jsonb);
 create or replace function public.place_order(
-  p_order jsonb,
-  p_items jsonb default '[]'::jsonb
+  p_order   jsonb,
+  p_items   jsonb default '[]'::jsonb,
+  p_preview text  default null
 )
 returns jsonb
 language plpgsql
@@ -547,6 +604,11 @@ declare
   v_total    numeric := nullif(p_order->>'total', '')::numeric;
   v_currency text := nullif(p_order->>'currency', '');
 begin
+  -- A shop that has told its customers it is shut must not quietly take
+  -- their order anyway. The preview key is the owner's way past it.
+  if public.shop_is_closed() and not public.preview_ok(p_preview) then
+    raise exception 'the shop is not taking orders at the moment';
+  end if;
   -- The same sanity limits or_insert states. An open door with no bounds
   -- is an invitation to fill the table from a browser console.
   if v_name    is not null and char_length(v_name)    > 120 then raise exception 'name is too long'; end if;
@@ -617,8 +679,8 @@ begin
 end;
 $$;
 
-revoke all on function public.place_order(jsonb, jsonb) from public;
-grant execute on function public.place_order(jsonb, jsonb) to anon, authenticated;
+revoke all on function public.place_order(jsonb, jsonb, text) from public;
+grant execute on function public.place_order(jsonb, jsonb, text) to anon, authenticated;
 
 -- 12) Activity log ------------------------------------------------------
 -- What changed in the admin, when, and who changed it.

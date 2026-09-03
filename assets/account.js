@@ -400,7 +400,11 @@
         return { sku: it.sku || null, name: it.name || null,
                  price: (it.price === undefined ? null : Number(it.price)),
                  qty: it.qty || 1 };
-      })
+      }),
+      /* Nothing while the shop is open. While it is shut the database
+         refuses an order, and this is the owner's way to test one. */
+      p_preview: (typeof renderHooks.previewKey === 'function'
+                    ? (renderHooks.previewKey() || null) : null)
     };
 
     function answer(d) {
