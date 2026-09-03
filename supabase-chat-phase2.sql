@@ -49,7 +49,11 @@ create or replace function public.chat_start(
 returns text
 language plpgsql
 security definer
-set search_path = public
+-- extensions as well as public: gen_random_bytes lives in pgcrypto, and
+-- Supabase keeps pgcrypto out of public, so a function pinned to public
+-- alone cannot find it. A schema that is not there is ignored rather
+-- than being an error, so this is safe on any project.
+set search_path = public, extensions
 as $$
 declare
   v_token    text;

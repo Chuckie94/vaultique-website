@@ -520,6 +520,8 @@ header.site.solid .brand .v{color:var(--navy)}
 .nl-note{font-size:12px;color:var(--muted);margin-top:12px}
 .nl-success{color:var(--gold-deep);font-family:var(--font-head);font-size:22px;margin-top:20px;display:none}
 .nl-success.show{display:block}
+.nl-error{color:var(--err);font-size:13px;margin-top:12px;display:none}
+.nl-error.show{display:block}
 .nl-form.hide{display:none}
 
 /* =====================================================================

@@ -49,6 +49,30 @@ You will do five short steps. It takes about 10 minutes.
 1. Open **Authentication** > **Users** > **Add user** > **Create new user**.
 2. Enter your email and a password. (Tick "Auto Confirm User" if shown.)
 3. This email and password is how you log in to the website admin.
+4. Run **supabase-setup.sql** once more. That is what puts you in the
+   `admins` table, which is what every rule in the database asks about.
+
+> **Then check who is in there, before anything else:**
+>
+> ```sql
+> select email from public.admins;
+> ```
+>
+> It should list you and nobody else. If it is **empty**, the file was
+> being careful rather than failing: it only seeds itself when the project
+> has exactly one account, so that a project which already had customer
+> accounts cannot turn all of them into administrators. Name yourself
+> instead:
+>
+> ```sql
+> insert into public.admins (id, email)
+> select id, email from auth.users where email = 'you@example.com'
+> on conflict (id) do nothing;
+> ```
+>
+> If it lists **anybody else**, remove them — `delete from public.admins
+> where email = '...';` — and check again. Anyone on that list has the run
+> of the shop.
 
 ## 4. Put your keys into the website
 1. In Supabase, open **Project Settings** (gear icon) > **API**.
@@ -736,8 +760,12 @@ Notifications, then the footer. Any part you leave empty is simply left out.
 These are not the same thing and the difference matters.
 
 - **Unsubscribe** records that they left. The address stays in the list, greyed
-  out. **That record is what stops any form on your site signing them up again**
-  — and you are handed your unsubscribe wording, ready to send back to them.
+  out, and you are handed your unsubscribe wording, ready to send back to them.
+  **Nothing on your site puts them back by accident** — the tick-box beside a
+  new account will not, however many times they open one. The one thing that
+  will is the person typing their own address into the newsletter box
+  themselves, because that is them asking, and telling somebody they had
+  rejoined while quietly leaving them off would be worse than either.
 - **Delete** erases them completely. Use it when somebody asks to be forgotten
   entirely. Afterwards nothing stops the address being added again.
 

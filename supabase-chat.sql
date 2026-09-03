@@ -26,6 +26,14 @@
 -- guessing 192 bits.
 -- =====================================================================
 
+-- 0) What the token is made of ---------------------------------------
+-- gen_random_bytes() below belongs to pgcrypto rather than to
+-- PostgreSQL itself. Supabase keeps its extensions in a schema called
+-- "extensions", so every function that reaches for it has to name that
+-- schema as well as public — a function pinned to public alone cannot
+-- find it, raises, and the customer is told their message did not send.
+create extension if not exists pgcrypto;
+
 -- 1) The tables -------------------------------------------------------
 
 create table if not exists public.chat_conversations (
@@ -122,7 +130,10 @@ create or replace function public.chat_start(
 returns text
 language plpgsql
 security definer
-set search_path = public
+-- extensions as well as public: gen_random_bytes lives in pgcrypto, and
+-- Supabase keeps pgcrypto out of public. A schema that is not there is
+-- ignored rather than being an error, so this is safe either way.
+set search_path = public, extensions
 as $$
 declare
   v_token    text;

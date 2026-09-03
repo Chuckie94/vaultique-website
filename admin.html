@@ -752,14 +752,72 @@
      the whole feature would be decoration. This is that check, and it
      runs on a returning session as well as a fresh sign in, so closing
      the tab and coming back cannot walk around it. */
+  /* Whether this account belongs in here at all.
+
+     Signing in proves who somebody is. It does not say they are the
+     shop. A customer who registered on the storefront is a row in
+     auth.users like any other, and their email and password opened this
+     page. Every rule in the database still refused them everything, so
+     nothing of the shop's was ever readable — but they arrived in the
+     back office and watched it throw errors, which is a boundary that
+     was simply not there.
+
+     Asked of the admins table, because that table is the one every other
+     rule asks. Its own read rule is is_admin(), so the answer comes back
+     as a row for an administrator and no rows for anybody else, and no
+     separate permission is needed to ask the question. is_admin() itself
+     is tried second, in case a project's grants differ.
+
+     A question that could not be reached is not an answer. A network
+     that failed says nothing about who this is, and shutting an owner
+     out of their own shop over it would be the worse mistake by far, so
+     that case leaves the session alone and asks them to try again. */
+  function adminVerdict() {
+    return Promise.resolve(sb.from('admins').select('id').limit(1))
+      .then(function (r) {
+        if (r && !r.error && r.data) return r.data.length ? 'yes' : 'no';
+        return viaFunction();
+      }, viaFunction);
+  }
+  function viaFunction() {
+    return Promise.resolve(sb.rpc('is_admin'))
+      .then(function (r) {
+        if (r && !r.error && typeof r.data === 'boolean') return r.data ? 'yes' : 'no';
+        return 'unknown';
+      }, function () { return 'unknown'; });
+  }
+
+  function refuseAdmin(verdict) {
+    show('mfa', false); show('topbar', false); show('admin', false);
+    var msg = $('loginMsg');
+    function say(text) {
+      show('login', true);
+      if (msg) { msg.textContent = text; msg.className = 'msg err'; }
+    }
+    if (verdict !== 'no') {
+      /* Left signed in on purpose: nothing has been decided about this
+         account, and the session is not the thing at fault. */
+      say('Could not check whether this account may use the admin. ' +
+          'Check your connection and try again.');
+      return Promise.resolve();
+    }
+    return Promise.resolve(sb.auth.signOut()).catch(function () {}).then(function () {
+      say('This account is not an administrator. A customer account signs in ' +
+          'on the shop itself, not here.');
+    });
+  }
+
   function afterPassword() {
     show('login', false);
-    if (!SEC) { enterAdmin(); return Promise.resolve(); }
-    return SEC.codeOwed(sb).then(function (owed) {
-      if (!owed) { show('mfa', false); enterAdmin(); return; }
-      show('mfa', true);
-      var box = $('mfaCode');
-      if (box) { box.value = ''; box.focus(); }
+    return adminVerdict().then(function (verdict) {
+      if (verdict !== 'yes') return refuseAdmin(verdict);
+      if (!SEC) { enterAdmin(); return; }
+      return SEC.codeOwed(sb).then(function (owed) {
+        if (!owed) { show('mfa', false); enterAdmin(); return; }
+        show('mfa', true);
+        var box = $('mfaCode');
+        if (box) { box.value = ''; box.focus(); }
+      });
     });
   }
 
@@ -793,7 +851,7 @@
       return sb.auth.signInWithPassword({ email: email, password: $('password').value })
         .then(function (r) {
           if (r.error) {
-            if (SEC) SEC.noteFailure(email);
+            if (SEC) SEC.noteFailure(email, s);
             var again = SEC ? SEC.lockedFor(email, s) : 0;
             msg.textContent = again > 0
               ? 'Too many wrong passwords on this device. Try again in ' + waitWord(again) + '.'
@@ -1026,9 +1084,49 @@
         return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
       });
   }
+  /* The path inside the bucket, recovered from the public address the row
+     actually holds. Anything that is not ours — an address typed in from
+     somewhere else, or another bucket — comes back null, and null is
+     never deleted. */
+  function storagePathOf(url, bucket) {
+    var marker = '/storage/v1/object/public/' + (bucket || BUCKET) + '/';
+    var s = String(url || '');
+    var at = s.indexOf(marker);
+    if (at < 0) return null;
+    var path = s.slice(at + marker.length).split('?')[0].split('#')[0];
+    try { path = decodeURIComponent(path); } catch (e) {}
+    return path || null;
+  }
+
+  /* Taking the photo out of the bucket, not merely out of the row.
+     uploadImage writes a fresh path every time, so a photo replaced or
+     removed used to stay there being paid for, with nothing left
+     pointing at it.
+
+     Always AFTER the row has been saved, never before. If this fails the
+     shop has one file it is not using, which System & Maintenance lists;
+     if it ran first and the save then failed, the shop would have a
+     product showing a photo that is already gone. The first is an
+     expense and the second is a broken shop.
+
+     A failure is not put in front of the owner: there is nothing they
+     could do about it, and nothing of theirs has been lost. */
+  function dropFromStorage(urls, bucket) {
+    var paths = (Array.isArray(urls) ? urls : [urls])
+      .map(function (u) { return storagePathOf(u, bucket); })
+      .filter(function (x) { return !!x; });
+    if (!paths.length) return Promise.resolve();
+    return Promise.resolve(sb.storage.from(bucket || BUCKET).remove(paths))
+      .catch(function () {});
+  }
+
   // The settings form kit uses this for its image fields, so photos land in
-  // the same bucket, with the same naming, as everything else.
+  // the same bucket, with the same naming, as everything else. Its
+  // counterpart goes with it: a section that uploads through here should
+  // be able to clear up after itself through here too.
   window.VBP_ADMIN.uploadImage = uploadImage;
+  window.VBP_ADMIN.dropFromStorage = dropFromStorage;
+  window.VBP_ADMIN.storagePathOf = storagePathOf;
 
   /* Settings sections live in their own files and cannot reach in here, so
      the dialog is shared the same way the uploader is. One way of asking
@@ -1181,10 +1279,14 @@
     mainIn.addEventListener('change', function () {
       if (!mainIn.files[0]) return;
       mainStat.textContent = 'Uploading…'; mainStat.className = 'stat busy';
+      var replaced = m.image_url;          // the one about to stop being used
       uploadImage(mainIn.files[0], p.sku + '/main').then(function (url) {
         m.image_url = url; metaMap[p.sku] = m; img.src = url; mainDel.style.display = '';
         return saveMeta(p.sku);
-      }).then(function () { mainStat.textContent = 'Saved ✓'; mainStat.className = 'stat ok'; })
+      }).then(function () {
+        mainStat.textContent = 'Saved ✓'; mainStat.className = 'stat ok';
+        if (replaced && replaced !== m.image_url) dropFromStorage(replaced);
+      })
         .catch(function (e) { mainStat.textContent = 'Error: ' + (e.message || e); mainStat.className = 'stat err'; });
     });
     mainDel.addEventListener('click', function () {
@@ -1193,9 +1295,14 @@
             note: 'The other photos stay. You can upload a new one at any time.' })
       .then(function (yes) {
       if (!yes) return;
+      var removed = m.image_url;
       m.image_url = ''; metaMap[p.sku] = m; img.src = placeholder();
       mainStat.textContent = 'Removing…'; mainStat.className = 'stat busy';
-      saveMeta(p.sku).then(function () { mainStat.textContent = 'Removed'; mainStat.className = 'stat ok'; mainDel.style.display = 'none'; mainIn.value = ''; })
+      saveMeta(p.sku).then(function () {
+        mainStat.textContent = 'Removed'; mainStat.className = 'stat ok';
+        mainDel.style.display = 'none'; mainIn.value = '';
+        dropFromStorage(removed);
+      })
         .catch(function (e) { mainStat.textContent = 'Error: ' + (e.message || e); mainStat.className = 'stat err'; });
       });
     });
@@ -1212,8 +1319,12 @@
         g.innerHTML = '<img src="' + u + '" alt="">';
         var x = document.createElement('button'); x.textContent = '×'; x.title = 'Remove';
         x.addEventListener('click', function () {
-          var arr = gallery(p.sku); arr.splice(idx, 1); m.gallery = arr; metaMap[p.sku] = m;
-          saveMeta(p.sku).then(drawGallery);
+          var arr = gallery(p.sku); var removed = arr[idx];
+          arr.splice(idx, 1); m.gallery = arr; metaMap[p.sku] = m;
+          saveMeta(p.sku).then(function () {
+            drawGallery();
+            dropFromStorage(removed);
+          });
         });
         g.appendChild(x); galRow.appendChild(g);
       });
@@ -1258,8 +1369,12 @@
         g.innerHTML = '<video src="' + u + '" muted style="width:100%;height:100%;object-fit:cover"></video>';
         var x = document.createElement('button'); x.textContent = '×'; x.title = 'Remove';
         x.addEventListener('click', function () {
-          var arr = videosOf(p.sku); arr.splice(idx, 1); m.videos = arr; metaMap[p.sku] = m;
-          saveMeta(p.sku).then(drawVideos);
+          var arr = videosOf(p.sku); var removed = arr[idx];
+          arr.splice(idx, 1); m.videos = arr; metaMap[p.sku] = m;
+          saveMeta(p.sku).then(function () {
+            drawVideos();
+            dropFromStorage(removed);
+          });
         });
         g.appendChild(x); vidRow.appendChild(g);
       });

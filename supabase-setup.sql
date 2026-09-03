@@ -79,9 +79,28 @@ alter table public.admins enable row level security;
 -- every one of them to administrator — quietly, and with no sign that it
 -- had happened. After the first run the admins list is yours to manage in
 -- the Supabase dashboard, and this file stops touching it.
+--
+-- The `not exists` above guards a RE-RUN. It does not guard the FIRST
+-- one: on a project that already had customer accounts, every customer
+-- is a row in auth.users too, and the first run of this file would have
+-- made administrators of all of them — quietly. So this only seeds when
+-- there is exactly one account in the project to seed from, which is the
+-- case it was written for: the owner, just created, and nobody else.
+--
+-- If nothing is seeded, that is this guard doing its job rather than
+-- something going wrong. Name yourself explicitly instead:
+--
+--   insert into public.admins (id, email)
+--   select id, email from auth.users where email = 'you@example.com'
+--   on conflict (id) do nothing;
+--
+-- Either way, check who ended up in there before going any further:
+--
+--   select email from public.admins;
 insert into public.admins (id, email)
 select id, email from auth.users
 where not exists (select 1 from public.admins)
+  and (select count(*) from auth.users) = 1
 on conflict (id) do nothing;
 
 -- The test every other policy uses. SECURITY DEFINER so it can read the
@@ -192,6 +211,61 @@ create policy sub_insert on public.subscribers for insert
   with check (char_length(email) between 3 and 200);
 create policy sub_admin  on public.subscribers for all
   using (public.is_admin()) with check (public.is_admin());
+
+-- Joining the list, and the one way back onto it.
+--
+-- The form used to write straight at the table, which meant it could not
+-- tell a conflict from a failure: every visitor was told they were on
+-- the list, and somebody who had unsubscribed could never rejoin,
+-- because their row still holds the address and anon may only insert.
+--
+-- Deliberate about when it puts a name back. p_rejoin is set by the
+-- newsletter form, where a person typed their own address on purpose. It
+-- is NOT set by the tick-box beside a new account, so opening an account
+-- cannot quietly undo an unsubscribe — which is what the row above was
+-- kept for.
+
+create or replace function public.subscribe_email(
+  p_email  text,
+  p_rejoin boolean default false
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text := btrim(coalesce(p_email, ''));
+begin
+  if char_length(v_email) < 3 or char_length(v_email) > 200
+     or v_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then
+    raise exception 'that does not look like an email address';
+  end if;
+
+  -- Matched without regard to case, so that somebody who joined as
+  -- Bob@Example.com and comes back as bob@example.com is the same person
+  -- rather than a second row.
+  if exists (select 1 from public.subscribers s where lower(s.email) = lower(v_email)) then
+    -- Already known. Only a deliberate act puts a name back on a list it
+    -- asked to leave, which is what p_rejoin says: the newsletter form
+    -- sets it, and the tick-box beside a new account does not. Somebody
+    -- who unsubscribed does not get signed up again by opening an
+    -- account, and that is the whole reason the row was kept.
+    if p_rejoin then
+      update public.subscribers set unsubscribed_at = null
+       where lower(email) = lower(v_email);
+    end if;
+  else
+    insert into public.subscribers (email) values (v_email)
+    on conflict (email) do nothing;
+  end if;
+
+  return true;
+end;
+$$;
+
+revoke all on function public.subscribe_email(text, boolean) from public;
+grant execute on function public.subscribe_email(text, boolean) to anon, authenticated;
 
 -- 7) Website policies (editable by admin; shown on the Policies page) ---
 create table if not exists public.policies (

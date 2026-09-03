@@ -1165,9 +1165,26 @@
       refreshBar();
       say('Saving…', 'busy');
 
+      /* Photos this save is about to stop using: a logo swapped for
+         another, or one cleared away. uploadImage writes a fresh path
+         every time, so without this the old file stays in the bucket
+         being paid for with nothing pointing at it.
+
+         Worked out here and acted on only once the save has landed. A
+         section holds its changes until Save is pressed, so deleting on
+         the way past would leave a shop whose logo is gone if the owner
+         wandered off without saving. */
+      var superseded = [];
+
       Promise.resolve(typeof spec.beforeSave === 'function' ? spec.beforeSave(values) : values)
         .then(function (final) {
           var all = final || values;
+          if (loaded) {
+            order.forEach(function (n) {
+              if (!defs[n] || defs[n].type !== 'image') return;
+              if (loaded[n] && loaded[n] !== all[n]) superseded.push(loaded[n]);
+            });
+          }
           if (!spec.privateKey) return api.store.save(key, all);
 
           /* A field marked private is kept in a table the website cannot
@@ -1186,6 +1203,7 @@
           saving = false;
           refreshBar();
           say(spec.savedMessage || 'Saved ✓', 'ok');
+          if (superseded.length && api.dropFromStorage) api.dropFromStorage(superseded);
           if (typeof spec.afterSave === 'function') spec.afterSave(saved);
         })
         .catch(function (e) {

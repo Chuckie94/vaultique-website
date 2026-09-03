@@ -800,9 +800,13 @@
        rather than reached for, so account.js never has to know how this
        site talks to its database. */
     ACCT.hooks.newsletter = NEWSLETTER;
+    /* The tick-box beside a new account. p_rejoin is deliberately NOT
+       set: opening an account is not asking to undo an unsubscribe, and
+       the row that records that wish is there precisely so no form on
+       the site can quietly walk over it. */
     ACCT.hooks.subscribe = function (email) {
       if (!WEB || !email) return Promise.resolve();
-      return webPost('subscribers', { email: email }).catch(function () {});
+      return webRpc('subscribe_email', { p_email: email }).catch(function () {});
     };
     /* Recording an order needs the database, and a shop with accounts
        switched off never asks for the client. The Orders tab is the
@@ -3916,9 +3920,33 @@
       /* An address already on the list comes back as a conflict. That is
          still a success as far as the person is concerned, and saying so
          also avoids telling a stranger who is on the list. */
-      var done = function () { form.classList.add('hide'); $('#nlSuccess').classList.add('show'); };
-      if (WEB) { webPost('subscribers', { email: email }).then(done).catch(done); }
-      else { done(); }
+      var err = $('#nlError');
+      var done = function () {
+        if (err) { err.textContent = ''; err.classList.remove('show'); }
+        form.classList.add('hide');
+        $('#nlSuccess').classList.add('show');
+      };
+      /* Told the truth, both ways.
+      
+         This used to write straight at the table and count every answer
+         as a yes, so a visitor was thanked whether or not anything had
+         been written down — and somebody who had unsubscribed could
+         never get back on, because their row still holds the address and
+         the browser may only insert. The conflict read as success and
+         they stayed off the list.
+      
+         subscribe_email settles both. An address already on the list is
+         still a success, and still says nothing about who is on it; a
+         person typing their own address into this form is asking to
+         rejoin, so p_rejoin is set here and nowhere else; and a real
+         failure now reaches the person who can do something about it. */
+      var failed = function () {
+        if (!err) return;
+        err.textContent = 'That did not go through. Please check your connection and try again.';
+        err.classList.add('show');
+      };
+      if (!WEB) { done(); return; }
+      webRpc('subscribe_email', { p_email: email, p_rejoin: true }).then(done, failed);
     });
   }
 

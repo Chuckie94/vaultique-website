@@ -13,6 +13,8 @@
 -- What it fixes:
 --   H-1  a guest's order was never recorded, and neither were its lines
 --   H-4  a review could arrive already wearing the "Verified" badge
+--   C-1  no customer could start a live chat at all
+--   M-1  the newsletter said yes to everything, and nobody could rejoin
 -- =====================================================================
 
 
@@ -161,3 +163,128 @@ create policy rv_insert on public.reviews for insert with check (
   -- of a list ordered newest first for as long as that date is in front.
   and (created_at is null or created_at <= now())
 );
+
+
+-- ---------------------------------------------------------------------
+-- C-1 · No customer could start a live chat
+--
+-- chat_start() makes the customer's token with gen_random_bytes(), which
+-- belongs to the pgcrypto extension rather than to PostgreSQL itself.
+-- Supabase keeps its extensions in a schema called "extensions", and the
+-- chat functions were declared "set search_path = public", which pins
+-- the lookup to public alone. So the name could not be resolved, the
+-- function raised, and the widget said "That did not send." — every
+-- time, for everyone.
+--
+-- Naming both schemas fixes it, and keeps working whichever schema a
+-- project happens to keep pgcrypto in: a schema that is not there is
+-- ignored rather than being an error.
+--
+-- Only for a site that already ran supabase-chat.sql. The copies in this
+-- package carry the same change, so a chat set up from scratch after
+-- today does not need this.
+-- ---------------------------------------------------------------------
+
+create extension if not exists pgcrypto;
+
+create or replace function public.chat_start(
+  p_name       text default null,
+  p_phone      text default null,
+  p_email      text default null,
+  p_started_on text default null
+)
+returns text
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_token    text;
+  v_customer uuid;
+begin
+  v_token := encode(gen_random_bytes(24), 'hex');
+
+  select c.id into v_customer from public.customers c where c.id = auth.uid();
+
+  insert into public.chat_conversations
+         (token, name, phone, email, customer_id, started_on, viewing, viewing_at)
+  values (
+    v_token,
+    nullif(btrim(coalesce(p_name,  '')), ''),
+    nullif(btrim(coalesce(p_phone, '')), ''),
+    nullif(btrim(coalesce(p_email, '')), ''),
+    v_customer,
+    left(nullif(btrim(coalesce(p_started_on, '')), ''), 300),
+    left(nullif(btrim(coalesce(p_started_on, '')), ''), 300),
+    now()
+  );
+
+  return v_token;
+end;
+$$;
+
+revoke all on function public.chat_start(text, text, text, text) from public;
+grant execute on function public.chat_start(text, text, text, text) to anon, authenticated;
+
+
+-- ---------------------------------------------------------------------
+-- M-1 · The newsletter said yes to everything
+--
+-- The form wrote straight at the table and treated every answer as a
+-- success, so a visitor was told they were on the list whether they were
+-- or not — and somebody who had unsubscribed could never get back on.
+-- Their row is still there, the address is the primary key, and anon has
+-- no UPDATE policy, so a second attempt had nowhere to go: the browser
+-- read the conflict, said "Thank you. You are on the list", and left
+-- unsubscribed_at exactly where it was. Every list the admin exports
+-- leaves them out.
+--
+-- This is the one door that can put a name back, and it is deliberate
+-- about when: only when the person typed their address into the
+-- newsletter form themselves. The tick-box beside a new account does not
+-- resurrect somebody who asked to be left alone.
+--
+-- The table's own rules are untouched.
+-- ---------------------------------------------------------------------
+
+create or replace function public.subscribe_email(
+  p_email  text,
+  p_rejoin boolean default false
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text := btrim(coalesce(p_email, ''));
+begin
+  if char_length(v_email) < 3 or char_length(v_email) > 200
+     or v_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then
+    raise exception 'that does not look like an email address';
+  end if;
+
+  -- Matched without regard to case, so that somebody who joined as
+  -- Bob@Example.com and comes back as bob@example.com is the same person
+  -- rather than a second row.
+  if exists (select 1 from public.subscribers s where lower(s.email) = lower(v_email)) then
+    -- Already known. Only a deliberate act puts a name back on a list it
+    -- asked to leave, which is what p_rejoin says: the newsletter form
+    -- sets it, and the tick-box beside a new account does not. Somebody
+    -- who unsubscribed does not get signed up again by opening an
+    -- account, and that is the whole reason the row was kept.
+    if p_rejoin then
+      update public.subscribers set unsubscribed_at = null
+       where lower(email) = lower(v_email);
+    end if;
+  else
+    insert into public.subscribers (email) values (v_email)
+    on conflict (email) do nothing;
+  end if;
+
+  return true;
+end;
+$$;
+
+revoke all on function public.subscribe_email(text, boolean) from public;
+grant execute on function public.subscribe_email(text, boolean) to anon, authenticated;

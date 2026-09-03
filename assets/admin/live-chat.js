@@ -119,6 +119,9 @@
       var canned = [];          // answers the shop wrote once
       var catalogue = null;     // the product feed, fetched once if needed
       var noteListEl = null;    // where they are drawn, while a thread is open
+      var whoEl   = null;       // the identity block at the top of a thread
+      var logEl   = null;       // the messages, and only the messages
+      var painted = '';         // what the log is currently showing
 
       /* ---- the frame ------------------------------------------------ */
       var bar = el('div', 'toolbar');
@@ -176,6 +179,7 @@
           if (r.error) { count.textContent = 'Could not read the conversations.'; return; }
           convs = r.data || [];
           paintList();
+          paintWho();
         });
       }
 
@@ -187,9 +191,29 @@
           .order('created_at', { ascending: true })
           .then(function (r) {
             if (r.error) return;
+            /* They opened something else while this was in flight. Its
+               messages are not this conversation's and must not be
+               painted into it. */
+            if (id !== openId) return;
             msgs = r.data || [];
-            paintThread();
+            /* The whole panel is built once, when a conversation is
+               opened. After that a poll touches the messages and the
+               identity line and nothing else — because rebuilding the
+               panel takes the reply box with it, and on a phone that
+               takes the keyboard away too. A keyboard cannot be brought
+               back by script; only a tap does that, so an operator
+               typing a reply on a phone lost it every three seconds.
+               When nothing has been said, nothing moves at all. */
+            if (!logEl) { paintThread(); return; }
+            paintWho();
+            if (messageSig() !== painted) paintMessages();
           });
+      }
+
+      /* Enough to tell one state of the log from another without
+         comparing every field: ids in order, plus how many there are. */
+      function messageSig() {
+        return msgs.length + ':' + msgs.map(function (m) { return m.id; }).join(',');
       }
 
       /* Opening a conversation is what marks it read. Doing it on reply
@@ -375,8 +399,62 @@
       }
 
       /* ---- the conversation ----------------------------------------- */
+      /* Who the shop is speaking to, and where they are while they are
+         still there — the difference between "do you have it in a 42"
+         and knowing which piece they mean. Repainted on every poll,
+         because it is the part that goes stale, and it holds no control
+         anybody can be halfway through using. */
+      function paintWho() {
+        if (!whoEl) return;
+        var c = convs.filter(function (x) { return x.id === openId; })[0];
+        if (!c) return;
+        whoEl.innerHTML = '';
+
+        var nameRow = el('div', 'lc-head-who');
+        nameRow.appendChild(document.createTextNode(who(c)));
+        nameRow.appendChild(el('span', 'lc-tag' + (c.customer_id ? ' known' : ''), standing(c)));
+        whoEl.appendChild(nameRow);
+
+        var bits = [];
+        if (c.phone) bits.push(c.phone);
+        if (c.email) bits.push(c.email);
+        bits.push('Started ' + ago(c.created_at));
+        if (c.started_on) bits.push('from ' + c.started_on);
+        whoEl.appendChild(el('div', 'lc-head-meta', bits.join(' · ')));
+
+        var seeing = viewingNow(c);
+        if (seeing) {
+          var live = el('div', 'lc-viewing');
+          live.appendChild(el('span', 'lc-live-dot'));
+          live.appendChild(document.createTextNode('Looking at ' + seeing));
+          whoEl.appendChild(live);
+        }
+      }
+
+      /* The messages, into a log that is already on the page. Nothing
+         around it is touched, which is the whole point. */
+      function paintMessages() {
+        if (!logEl) return;
+        logEl.innerHTML = '';
+        if (!msgs.length) {
+          logEl.appendChild(el('div', 'lc-empty', 'Nothing said yet.'));
+        } else {
+          msgs.forEach(function (m) {
+            var row = el('div', 'lc-msg ' + (m.sender === 'shop' ? 'from-shop' : 'from-customer'));
+            if (m.body) row.appendChild(el('div', 'lc-bubble', m.body));
+            var card = adminCard(m.meta);
+            if (card) row.appendChild(card);
+            row.appendChild(el('div', 'lc-at', clock(m.created_at)));
+            logEl.appendChild(row);
+          });
+        }
+        logEl.scrollTop = logEl.scrollHeight;
+        painted = messageSig();
+      }
+
       function paintThread() {
         threadCol.innerHTML = '';
+        whoEl = null; logEl = null; painted = '';
         var c = convs.filter(function (x) { return x.id === openId; })[0];
         if (!c) {
           threadCol.appendChild(el('div', 'lc-empty',
@@ -386,30 +464,9 @@
 
         var head = el('div', 'lc-head');
         var idn = el('div');
-        var nameRow = el('div', 'lc-head-who');
-        nameRow.appendChild(document.createTextNode(who(c)));
-        var tag = el('span', 'lc-tag' + (c.customer_id ? ' known' : ''), standing(c));
-        nameRow.appendChild(tag);
-        idn.appendChild(nameRow);
-
-        var bits = [];
-        if (c.phone) bits.push(c.phone);
-        if (c.email) bits.push(c.email);
-        bits.push('Started ' + ago(c.created_at));
-        if (c.started_on) bits.push('from ' + c.started_on);
-        idn.appendChild(el('div', 'lc-head-meta', bits.join(' · ')));
-
-        /* Where they are right now, while they are still there. This is
-           the difference between "do you have it in a 42" and knowing
-           which piece they mean. */
-        var seeing = viewingNow(c);
-        if (seeing) {
-          var live = el('div', 'lc-viewing');
-          live.appendChild(el('span', 'lc-live-dot'));
-          live.appendChild(document.createTextNode('Looking at ' + seeing));
-          idn.appendChild(live);
-        }
         head.appendChild(idn);
+        whoEl = idn;
+        paintWho();
 
         var acts = el('div', 'lc-acts');
 
@@ -437,20 +494,9 @@
         threadCol.appendChild(head);
 
         var log = el('div', 'lc-log');
-        if (!msgs.length) {
-          log.appendChild(el('div', 'lc-empty', 'Nothing said yet.'));
-        } else {
-          msgs.forEach(function (m) {
-            var row = el('div', 'lc-msg ' + (m.sender === 'shop' ? 'from-shop' : 'from-customer'));
-            if (m.body) row.appendChild(el('div', 'lc-bubble', m.body));
-            var card = adminCard(m.meta);
-            if (card) row.appendChild(card);
-            row.appendChild(el('div', 'lc-at', clock(m.created_at)));
-            log.appendChild(row);
-          });
-        }
         threadCol.appendChild(log);
-        log.scrollTop = log.scrollHeight;
+        logEl = log;
+        paintMessages();
 
         var form = el('form', 'lc-form');
         var box = document.createElement('textarea');
@@ -680,7 +726,15 @@
             return sendWith('', { kind: 'image', path: path });
           })
           .then(function () { tell(msgHost, ''); },
-                function () { tell(msgHost, 'The photo did not send.'); });
+                function () {
+                  tell(msgHost, 'The photo did not send.');
+                  /* The upload may well have landed even though the
+                     message did not. Nothing points at it now and
+                     nothing ever will, so it goes back out of the bucket
+                     rather than being paid for for ever. */
+                  Promise.resolve(sb.storage.from('chat-uploads').remove([path]))
+                    .catch(function () {});
+                });
       }
       function tell(host, words) {
         if (!host) return;

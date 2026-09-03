@@ -139,11 +139,32 @@
     return left > 0 ? left : 0;
   }
 
-  function noteFailure(email, now) {
+  /* A window that has passed is a window that is over.
+
+     lockedFor() stops holding the door once the wait has run out, but the
+     count that closed it stayed exactly where it was, and clearFailures()
+     only runs on a sign-in that worked. So after one lockout every later
+     mistype re-locked for the full duration — an hour later, a week
+     later, on a laptop where nobody had been guessing at anything. An
+     owner who had genuinely forgotten their password was then shut out
+     for fifteen minutes for each attempt to remember it, which is the
+     opposite of what this is for.
+
+     Forgetting a stale count here is what makes "several wrong
+     passwords" mean several in a row rather than several ever. */
+  function noteFailure(email, settings, now) {
+    /* This is exported, and it used to take (email, now). A caller that
+       still does should not have its timestamp read as settings. */
+    if (typeof settings === 'number') { now = settings; settings = null; }
+    var s = settings || {};
+    var at = now || Date.now();
+    var forget = (Number(s.lockoutMinutes) || 15) * 60000;
+
     var t = tries(), k = key(email);
     var rec = t[k] || { n: 0, at: 0 };
+    if (rec.at && (at - rec.at) > forget) rec.n = 0;
     rec.n += 1;
-    rec.at = now || Date.now();
+    rec.at = at;
     t[k] = rec;
     saveTries(t);
     return rec.n;
