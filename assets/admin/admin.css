@@ -427,6 +427,8 @@
      wordless — the same dot the customer sees when the shop is. */
   .lc-typing{align-self:flex-start;padding:2px 2px;display:flex;align-items:center;gap:7px}
   .lc-typing-word{font-size:11.5px;color:var(--muted);letter-spacing:.04em}
+  .lc-whoami{font-size:11.5px;color:var(--muted);margin-left:10px}
+  .lc-whoami.is-bad{color:var(--err)}
   /* A line of SQL the shop is being asked to run, shown where the thing
      it fixes went wrong rather than in a document somewhere else. */
   .set-sql{margin:8px 0 10px;padding:10px 12px;background:var(--ivory);
