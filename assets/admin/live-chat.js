@@ -337,7 +337,22 @@
         }
         if (filter === 'free') q = q.is('assigned_to', null);
         return q.then(function (r) {
-          if (r.error) { count.textContent = 'Could not read the conversations.'; return; }
+          if (r.error) {
+            /* The message, not a summary of it. "Could not read the
+               conversations" is true of a network hiccup, of a migration
+               that has not been run, and of an account the rules refuse —
+               three different things to do about it, and no way to tell
+               which from that sentence. It cost days of guessing once. */
+            var why = (r.error && r.error.message) || String(r.error);
+            count.textContent = /permission|denied|policy|row-level/i.test(why)
+              ? 'This account is not allowed to read the conversations. ' +
+                'Ask the shop owner to check it is set up to answer chats.'
+              : /does not exist|schema cache|relation/i.test(why)
+                ? 'The chat tables are not set up in the database yet. ' +
+                  'Run the supabase-chat SQL files once.'
+                : 'Could not read the conversations: ' + why;
+            return;
+          }
           convs = r.data || [];
           paintList();
           refreshStats();      // the numbers move with the list, not with the panel opening
@@ -426,7 +441,12 @@
             if (r.error) return;
             agents = r.data || [];
             paintPresence();
-          });
+          /* Knowing who else is at the desk is a nicety. The
+             conversations are the page. Without this handler a rejection
+             here — one dropped request is enough — broke the chain
+             below and the list never loaded at all, silently, for the
+             rest of the session. */
+          }, function () {});
       }
 
       /* Asked once, on the way in. A shop that has not run the phase 5
@@ -1748,11 +1768,23 @@
 
       paintThread();
       paintBell();
-      findMe()
-        .then(loadAgents)
-        .then(loadOwner)
-        .then(loadCanned)
-        .then(beatPresence)
+      /* Everything before loadList is preparation — who I am, who else
+         is here, what the shop has saved. None of it is the point of the
+         page, and none of it may stop the point of the page. Each step
+         swallows its own failure so the conversations load regardless;
+         before this, one refused read anywhere in the chain left an
+         empty list and no explanation, which is exactly how it looks
+         when a shop has hired somebody and they cannot see the work. */
+      var settled = function (f) {
+        return function () {
+          return Promise.resolve().then(f).catch(function () {});
+        };
+      };
+      settled(findMe)()
+        .then(settled(loadAgents))
+        .then(settled(loadOwner))
+        .then(settled(loadCanned))
+        .then(settled(beatPresence))
         .then(loadList)
         .then(beatList)
         .then(tellSiteAddress)

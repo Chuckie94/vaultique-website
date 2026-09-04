@@ -348,6 +348,9 @@
       if (!rows.length) {
         listHost.appendChild(el('p', 'count',
           'Nobody yet. You answer chats yourself until you add somebody.'));
+        listHost.appendChild(el('p', 'hint',
+          'Whoever you add signs in at /agent.html — not at this address — and ' +
+          'is made to choose their own password the first time.'));
         return;
       }
       rows.forEach(function (s) {
@@ -385,6 +388,28 @@
       });
     }
 
+    /* Said in one place, because two different things reach it: being
+       told no by the list, and being told no before the list is asked. */
+    function refuseNotOwner() {
+      listHost.innerHTML = '';
+      bar.style.display = 'none';
+      listHost.appendChild(el('p', 'count',
+        'Only the shop owner can see and change who answers chats, and this ' +
+        'account is not marked as the owner. Every administrator can still ' +
+        'answer chats — it is adding people, and resetting their passwords, ' +
+        'that is the owner\'s alone.'));
+      listHost.appendChild(el('p', 'hint',
+        'To make this account the owner, run this once in Supabase > SQL Editor, ' +
+        'with your own sign-in address:'));
+      listHost.appendChild(el('pre', 'set-sql',
+        "update public.admins set role = 'owner'\n where email = 'you@example.com';"));
+      listHost.appendChild(el('p', 'hint',
+        'There can be more than one owner, and naming one takes nothing away ' +
+        'from anybody else. An agent\'s password can also be reset directly in ' +
+        'Supabase: Authentication > Users, find them, and use the menu beside ' +
+        'their row.'));
+    }
+
     function load() {
       return Promise.resolve(sb.rpc('chat_staff_list')).then(function (r) {
         if (r && r.error) throw r.error;
@@ -392,14 +417,29 @@
       }, function (e) {
         listHost.innerHTML = '';
         var why = (e && e.message) || String(e);
-        listHost.appendChild(el('p', 'count',
-          /owner/i.test(why)
-            ? 'Only the shop owner can see who answers chats.'
-            : /does not exist|schema cache/i.test(why)
-              ? 'This has not been set up in the database yet. Run ' +
-                'supabase-chat-phase6.sql once and reopen this page.'
-              : 'The list could not be read: ' + why));
         bar.style.display = 'none';
+
+        /* Three things go wrong here, and each has a different thing to
+           do about it. Saying only what happened leaves somebody stuck
+           in front of a sentence that is true and no help — which is
+           exactly where this panel left its owner once, with an agent
+           whose password nobody could reset. */
+        if (/owner/i.test(why)) { refuseNotOwner(); return; }
+
+        if (/does not exist|schema cache/i.test(why)) {
+          listHost.appendChild(el('p', 'count',
+            'This has not been set up in the database yet.'));
+          listHost.appendChild(el('p', 'hint',
+            'Run supabase-chat-phase6.sql once in Supabase > SQL Editor, then ' +
+            'reopen this page. If you have also been given phase 9, run that too.'));
+          return;
+        }
+
+        listHost.appendChild(el('p', 'count', 'The list could not be read: ' + why));
+        listHost.appendChild(el('p', 'hint',
+          'If this account cannot be put right, an agent\'s password can always ' +
+          'be reset directly in Supabase: Authentication > Users, find them, and ' +
+          'use the menu beside their row.'));
       });
     }
 
@@ -498,12 +538,41 @@
       }).catch(function (e) { say((e && e.message) || String(e), 'err'); });
     }
 
-    /* Only the owner is shown any of this. The database refuses the list
-       to anybody else anyway, but a panel that appears and then says you
-       may not use it is worse than one that was never there. */
+    /* This used to remove the whole card when the answer was anything
+       but a plain yes — including when the question could not be asked
+       at all, because the rejection path removed it too. The reasoning
+       was that a panel which appears and then says you may not use it is
+       worse than one that was never there.
+
+       That was wrong, and it cost the shop a working afternoon. The
+       owner went looking for the place to reset an agent's password,
+       found no such panel anywhere, and reasonably concluded the site
+       could not do it. A panel that says "not you, and here is how to
+       change that" is worth a great deal more than an absence: an
+       absence cannot be searched for, asked about, or fixed.
+
+       So the card stays, and says which of the two happened. */
     Promise.resolve(sb.rpc('is_shop_owner')).then(function (r) {
-      if (!r || r.error || r.data !== true) { card.remove(); return; }
+      if (r && r.error) throw r.error;
+      if (!r || r.data !== true) { refuseNotOwner(); return; }
       return load();
-    }, function () { card.remove(); });
+    }, function (e) {
+      listHost.innerHTML = '';
+      bar.style.display = 'none';
+      var why = (e && e.message) || String(e);
+      if (/does not exist|schema cache/i.test(why)) {
+        listHost.appendChild(el('p', 'count',
+          'This has not been set up in the database yet.'));
+        listHost.appendChild(el('p', 'hint',
+          'Run supabase-chat-phase5.sql and supabase-chat-phase6.sql once in ' +
+          'Supabase > SQL Editor, then reopen this page.'));
+        return;
+      }
+      /* The question could not be asked. That is not the same as being
+         told no, and it must not read like it. */
+      listHost.appendChild(el('p', 'count',
+        'Could not check whether this account may manage the people who answer ' +
+        'chats. Check your connection and reopen this page.'));
+    });
   }
 })();

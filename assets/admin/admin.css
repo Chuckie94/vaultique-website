@@ -427,6 +427,12 @@
      wordless — the same dot the customer sees when the shop is. */
   .lc-typing{align-self:flex-start;padding:2px 2px;display:flex;align-items:center;gap:7px}
   .lc-typing-word{font-size:11.5px;color:var(--muted);letter-spacing:.04em}
+  /* A line of SQL the shop is being asked to run, shown where the thing
+     it fixes went wrong rather than in a document somewhere else. */
+  .set-sql{margin:8px 0 10px;padding:10px 12px;background:var(--ivory);
+    border:1px solid var(--line);border-radius:8px;font-size:12px;line-height:1.55;
+    white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink);
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
   .lc-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);display:block;
     animation:lc-breathe 1.4s ease-in-out infinite}
   @keyframes lc-breathe{

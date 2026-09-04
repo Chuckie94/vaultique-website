@@ -124,9 +124,27 @@ notify pgrst, 'reload schema';
 -- ---------------------------------------------------------------------
 -- Checking it took
 --
---   select public.admins_list();
---   select public.chat_staff_me();
+-- NOT with chat_staff_me() or admins_list(). Both answer "who is making
+-- this request", and in the Supabase SQL Editor the honest answer is
+-- nobody: that window runs as the database's own superuser, where
+-- auth.uid() is null. chat_staff_me() comes back all false and
+-- admins_list() comes back empty, and both are correct — they only mean
+-- something when a signed-in person asks them, from the website.
 --
--- The second is what the sign-in page asks. is_admin true means the
--- admin; is_staff true with is_admin false means the chat desk.
+-- These say what actually happened here:
+--
+--   select column_name from information_schema.columns
+--    where table_name = 'admins' and column_name = 'must_change_password';
+--   -- one row = the column is in
+--
+--   select proname from pg_proc
+--    where proname in ('admins_list', 'admin_password_changed',
+--                      'chat_staff_me', 'chat_typing_peek')
+--    order by proname;
+--   -- four rows = this file and the phase 8 top-up are both in
+--
+-- And these are the two worth looking at, being the people themselves:
+--
+--   select email, role, must_change_password from public.admins order by added_at;
+--   select email, display_name, active, must_change_password from public.chat_staff;
 -- ---------------------------------------------------------------------
