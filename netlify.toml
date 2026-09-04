@@ -42,6 +42,14 @@
   to = "/admin.html"
   status = 200
 
+# The chat desk. A door of its own for the people who answer customers,
+# so nobody hired to do that is sent to a page called "admin" where every
+# other tab is one they are not allowed to open.
+[[redirects]]
+  from = "/agent.html"
+  to = "/agent.html"
+  status = 200
+
 [[redirects]]
   from = "/assets/*"
   to = "/assets/:splat"
@@ -152,6 +160,12 @@
 
 [[redirects]]
   from = "/supabase-chat-phase8.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-chat-phase9.sql"
   to = "/index.html"
   status = 404
   force = true

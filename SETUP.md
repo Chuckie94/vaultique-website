@@ -111,9 +111,44 @@ answer chats* panel where you add them: you give an email and a name, the site
 makes the login and shows you a temporary password once, and the first time
 they sign in they are made to choose their own before they can do anything.
 
-They sign in at the same address you do. They see Live Chats and nothing else —
-not because the tabs are hidden, but because the database refuses them
-everything else. Run **supabase-chat-phase6.sql** once to create that.
+**They sign in at `/agent.html`, not at `/admin.html`.** That is a page of its
+own with one thing on it: the conversations. Send them that address. They see
+Live Chats and nothing else — not because tabs are hidden, but because the
+database refuses them everything else. Run **supabase-chat-phase6.sql** once to
+create that, and **supabase-chat-phase9.sql** for the rest of this section.
+
+You can use `/agent.html` yourself when the desk is busy; an administrator is
+let in there too.
+
+### Two kinds of person, and which to make
+
+|  | Administrator | Chat agent |
+|---|---|---|
+| Signs in at | `/admin.html` | `/agent.html` |
+| Can see | everything | the conversations, and nothing else |
+| Added under | Settings > Security | Settings > Live Chat |
+| Can delete a conversation | only the owner | no |
+| Can add people | only the owner | no |
+
+**Adding another administrator.** Settings > Security > Administrators >
+*Add an administrator*. You give an email, the site makes the login and shows
+you a temporary password once, and they are made to choose their own the first
+time they sign in — the same as a chat agent.
+
+Only you, the owner, sees those buttons, and the server-side function checks it
+again rather than trusting the page. It cannot make another owner, cannot
+remove an owner, and cannot remove whoever is pressing the button — a page that
+can lock the shop out of its own admin is a page worth attacking, and a slip of
+the finger is likelier than an attack. Naming a new owner is still a line of
+SQL, typed on purpose:
+
+```sql
+update public.admins set role = 'owner' where email = 'someone@example.com';
+```
+
+**Removing an administrator** takes away their access and leaves their login
+alone. It may be a customer account as well, and deleting it would take their
+orders with it.
 
 **One thing to set up first, in Netlify.** Making a login is the one job that
 needs Supabase's *service role* key — the key that bypasses every rule in the

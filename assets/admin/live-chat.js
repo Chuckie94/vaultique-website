@@ -1450,11 +1450,18 @@
         if (!theyAreTyping) { if (dot) dot.parentNode.removeChild(dot); return; }
         if (!dot) {
           dot = el('div', 'lc-typing');
-          /* No words, by request. It is announced to a screen reader,
-             which cannot see a dot breathe. */
           dot.setAttribute('role', 'status');
           dot.setAttribute('aria-label', 'They are typing');
           dot.appendChild(el('span', 'lc-dot'));
+          /* The word as well as the dot, on this side only.
+
+             The customer's window has the dot alone, which is what was
+             asked for and what every messaging app does — a customer
+             knows what it means. The shop's side is a working screen
+             read in a hurry, often on a phone at arm's length, and a
+             single eight-pixel dot at the end of a conversation is easy
+             to miss entirely. So here it says so. */
+          dot.appendChild(el('span', 'lc-typing-word', 'Typing…'));
         }
         /* Always last: it stands where their message will land. */
         logEl.appendChild(dot);

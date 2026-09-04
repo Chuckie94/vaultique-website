@@ -267,13 +267,27 @@
 
     var card = el('div', 'card set-staff');
     card.style.marginTop = '18px';
-    card.appendChild(el('h3', null, 'People who answer chats'));
+    card.appendChild(el('h3', null, 'Chat agents'));
     var lead = el('p', 'hint',
-      'A chat login opens the same address you use, sees Live Chats and nothing ' +
-      'else, and cannot reach products, orders, payments or these settings. You ' +
-      'give them a temporary password; the site makes them choose their own before ' +
-      'they can answer anything.');
+      'Somebody hired to answer customers, and nothing else. They sign in at a page ' +
+      'of their own — /agent.html — which shows the conversations and has no other ' +
+      'tabs at all. They cannot reach products, orders, payments or these settings, ' +
+      'and that is refused by the database rather than merely hidden. You give them ' +
+      'a temporary password; the site makes them choose their own before they can ' +
+      'answer anything.');
     card.appendChild(lead);
+    var where = el('p', 'hint');
+    where.appendChild(document.createTextNode('Their sign-in page: '));
+    var link = document.createElement('a');
+    link.href = '/agent.html';
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = '/agent.html';
+    where.appendChild(link);
+    where.appendChild(document.createTextNode(
+      ' — send them that address, not this one. Somebody who should run the whole ' +
+      'shop is an administrator instead: Settings > Security.'));
+    card.appendChild(where);
 
     var msg = el('div', 'msg');
     var listHost = el('div', 'staff-list');
@@ -421,7 +435,7 @@
       ask('', {
         title: 'Add somebody who answers chats',
         okText: 'Create the login',
-        note: 'They sign in at this same address with the email you give here.',
+        note: 'They sign in at /agent.html with the email you give here.',
         fields: null,
         input: { label: 'Their email address', placeholder: 'name@example.com' }
       }).then(function (email) {

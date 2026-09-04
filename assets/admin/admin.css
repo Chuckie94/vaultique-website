@@ -1,0 +1,546 @@
+/* =====================================================================
+   Vaultique Boutique Point — the admin's own styles
+   ---------------------------------------------------------------------
+   Lifted out of admin.html unchanged so that agent.html can use exactly
+   the same ones. Two pages drawing the same conversation from two copies
+   of the same rules is two things to keep in step, and they would not
+   stay in step.
+
+   Nothing here was rewritten in the move: it is the same block, in the
+   same order, so anything that looked right before still does.
+   ===================================================================== */
+  :root{--navy:#0B1F3A;--navy2:#0e2545;--gold:#C8A24A;--gold-d:#a9842f;--cream:#F4EFE3;--ivory:#FBF8F0;--ink:#15202e;--muted:#6b7480;--line:rgba(11,31,58,.14);--ok:#1f9d57;--err:#c0392b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Jost',system-ui,sans-serif;background:var(--cream);color:var(--ink);line-height:1.5;font-weight:300}
+  .serif{font-family:'Cormorant Garamond',serif}
+  a{color:var(--gold-d)}
+  .wrap{max-width:860px;margin:0 auto;padding:18px}
+  .hide{display:none!important}
+  /* top bar */
+  .top{background:var(--navy);color:#fff;position:sticky;top:0;z-index:10}
+  .top .wrap{display:flex;align-items:center;gap:12px;padding:14px 18px}
+  .top .v{font-family:'Cormorant Garamond',serif;font-weight:600;font-size:20px;letter-spacing:.3em;padding-left:.3em}
+  .top .sp{margin-left:auto}
+  .btn{border:none;border-radius:4px;font-family:'Jost',sans-serif;font-weight:500;font-size:13px;letter-spacing:.04em;padding:11px 16px;cursor:pointer;transition:.2s}
+  .btn-gold{background:var(--gold);color:var(--navy)}
+  .btn-gold:hover{background:#d8bd7b}
+  .btn-ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
+  .btn-out{background:#fff;color:var(--navy);border:1px solid var(--line)}
+  .btn-sm{padding:8px 12px;font-size:12px}
+  .btn:disabled{opacity:.5;cursor:default}
+  /* login + config */
+  .panel{background:var(--ivory);border:1px solid var(--line);border-radius:10px;padding:26px;max-width:420px;margin:60px auto}
+  .panel h1{font-family:'Cormorant Garamond',serif;font-weight:600;font-size:30px;color:var(--navy);margin-bottom:6px}
+  .panel p{color:var(--muted);font-size:14px;margin-bottom:18px}
+  label{display:block;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 0 6px}
+  input[type=text],input[type=email],input[type=password],textarea,input:not([type]){width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:6px;background:#fff;font-family:'Jost',sans-serif;font-size:14px;color:var(--ink);outline:none}
+  input:focus,textarea:focus{border-color:var(--gold)}
+  textarea{resize:vertical;min-height:64px}
+  /* A password box with an eye in it. The wrapper takes the input's
+     place in the form, so every rule that sizes an input still lands on
+     the input; only the room for the button is new. */
+  .pw-box{position:relative;display:block;width:100%}
+  .pw-box input{width:100%;padding-right:44px}
+  .pw-eye{position:absolute;top:50%;right:6px;transform:translateY(-50%);
+    width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+    background:none;border:none;padding:0;cursor:pointer;color:var(--muted);border-radius:50%}
+  .pw-eye:hover{color:var(--navy)}
+  .pw-eye:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+  .pw-eye svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.6;
+    stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  .msg{font-size:13px;margin-top:12px}
+  .msg.err{color:var(--err)}
+  .msg.ok{color:var(--ok)}
+  /* tabs */
+  .tabs{display:flex;gap:8px;margin:18px 0}
+  .tab{flex:1;text-align:center;padding:12px;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--navy)}
+  .tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  .count{font-size:13px;color:var(--muted)}
+  /* product card */
+  .prod{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px;display:grid;grid-template-columns:96px 1fr;gap:14px}
+  .prod .thumb{width:96px;height:120px;border-radius:7px;overflow:hidden;background:var(--navy);border:1px solid var(--line)}
+  .prod .thumb img{width:100%;height:100%;object-fit:cover}
+  .prod .nm{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;color:var(--navy);line-height:1.15}
+  .prod .sku{font-size:11px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:8px 0}
+  .chk{display:flex;align-items:center;gap:6px;font-size:13px}
+  .chk input{width:18px;height:18px;accent-color:var(--gold-d)}
+  .gal{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .gal .g{position:relative;width:46px;height:58px;border-radius:5px;overflow:hidden;border:1px solid var(--line)}
+  .gal .g img{width:100%;height:100%;object-fit:cover}
+  .gal .g button{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;font-size:11px;line-height:1;cursor:pointer}
+  .file{font-size:12px}
+  .stat{font-size:12px;margin-left:6px}
+  .stat.ok{color:var(--ok)}.stat.err{color:var(--err)}.stat.busy{color:var(--muted)}
+  .field{margin-bottom:14px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+  .card h3{font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--navy);margin-bottom:10px}
+  .hint{font-size:12px;color:var(--muted);margin-top:4px}
+  .save-bar{position:sticky;bottom:0;background:var(--cream);padding:12px 0;border-top:1px solid var(--line);display:flex;gap:12px;align-items:center}
+  /* number fields: the symbol or the % sits against the box rather than
+     floating in the label, so the figure reads as the amount it is */
+  .num-line{display:flex;align-items:stretch}
+  .num-line input.num{flex:1;min-width:0;border-radius:0}
+  .num-line input.num:first-child{border-top-left-radius:6px;border-bottom-left-radius:6px}
+  .num-line input.num:last-child{border-top-right-radius:6px;border-bottom-right-radius:6px}
+  .num-fix{display:flex;align-items:center;padding:0 10px;background:var(--cream);border:1px solid var(--line);color:var(--muted);font-size:13px;white-space:nowrap}
+  .num-line .num-fix:first-child{border-right:none;border-radius:6px 0 0 6px}
+  .num-line .num-fix:last-child{border-left:none;border-radius:0 6px 6px 0}
+  /* a paragraph in the middle of a group, where a hint under a box would
+     be the wrong shape */
+  .note-field{background:var(--cream);border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:6px;padding:10px 12px}
+  .note-field .note-body strong{display:block;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--navy);margin-bottom:4px}
+  .note-field .note-body p{font-size:13px;color:var(--muted);line-height:1.55}
+  .note-field.warn{border-left-color:var(--err)}
+  /* the per-piece pricing block in Products */
+  .px-box{margin-top:10px;padding:10px 12px;background:var(--cream);border:1px solid var(--line);border-radius:8px}
+  .px-box .px-now{font-size:13px;color:var(--navy)}
+  .px-box .px-now b{font-family:'Cormorant Garamond',serif;font-size:18px}
+  .px-was{color:var(--muted);text-decoration:line-through;margin-left:6px}
+  .px-off{color:var(--err);margin-left:6px;font-size:12px;letter-spacing:.08em}
+  .px-box .row{margin-top:8px;align-items:center;gap:10px}
+  .px-box input.px-in{width:120px}
+  /* the delivery preview: what a customer will actually read */
+  /* SEO: the block to paste, and what a result and a shared card look
+     like — a length in characters says less than seeing it cut off */
+  /* the paste instructions: a numbered list beats a paragraph when
+     somebody is about to edit a file they have never opened */
+  .seo-how{background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:14px}
+  .seo-how p{font-size:13px;color:var(--ink);line-height:1.65}
+  .seo-how ol{margin:10px 0 0 18px;padding:0}
+  .seo-how li{font-size:13px;color:var(--ink);line-height:1.75;margin-bottom:5px}
+  .seo-how code{background:var(--navy);color:#dfe6f0;padding:1px 6px;border-radius:4px;font-size:11.5px;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .seo-how-note{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);color:var(--muted)!important;font-size:12.5px!important}
+  .seo-snip{background:var(--navy);color:#dfe6f0;border-radius:8px;padding:14px;font-size:11.5px;line-height:1.7;overflow-x:auto;white-space:pre;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .seo-drift{font-size:12.5px;line-height:1.6;margin-top:10px;padding:9px 12px;border-radius:6px}
+  .seo-drift:empty{display:none}
+  .seo-drift.is-ok{background:rgba(31,157,87,.1);color:#177544}
+  .seo-drift.is-stale{background:rgba(192,57,43,.09);color:#a3301f;border-left:3px solid var(--err)}
+  .seo-preview{display:grid;gap:16px;margin-top:16px}
+  .seo-serp{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px}
+  .seo-url{font-size:12px;color:#5f6368}
+  .seo-t{font-size:18px;color:#1a0dab;line-height:1.3;margin-top:2px}
+  .seo-d{font-size:13px;color:#4d5156;line-height:1.6;margin-top:3px}
+  .seo-card{background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;max-width:420px}
+  .seo-card-img{height:190px;background:var(--cream) center/cover no-repeat}
+  .seo-card-img.is-empty{display:flex;align-items:center;justify-content:center;height:90px;color:var(--muted);font-size:12px}
+  .seo-card-body{padding:11px 13px}
+  .seo-card-t{font-size:14px;color:var(--navy);font-weight:500;line-height:1.35}
+  .seo-card-d{font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:3px}
+  .seo-card-u{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:6px}
+  .dl-preview{display:grid;gap:8px}
+  .dl-line{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:start}
+  .dl-k{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-d);padding-top:2px}
+  .dl-v{font-size:14px;color:var(--navy);line-height:1.6;white-space:pre-line}
+  @media (max-width:560px){ .dl-line{grid-template-columns:1fr;gap:2px} }
+  /* Asking, in the shop's own voice. The browser's confirm() box carries
+     the site's domain and the browser's chrome, which is a jarring thing
+     to meet halfway through editing a policy. */
+  .ask-back{position:fixed;inset:0;background:rgba(11,31,58,.55);display:flex;align-items:center;justify-content:center;padding:20px;z-index:1000;opacity:0;transition:opacity .16s ease}
+  .ask-back.in{opacity:1}
+  .ask-card{background:var(--ivory);border:1px solid var(--line);border-radius:12px;box-shadow:0 24px 60px rgba(11,31,58,.28);max-width:420px;width:100%;padding:22px;transform:translateY(8px) scale(.985);transition:transform .16s ease}
+  .ask-back.in .ask-card{transform:none}
+  .ask-card h3{font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--navy);margin:0 0 8px}
+  .ask-card p{font-size:14px;color:var(--ink);line-height:1.6;margin:0}
+  .ask-card .ask-note{font-size:12.5px;color:var(--muted);margin-top:8px}
+  .ask-row{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+  .ask-row .btn{min-width:96px;justify-content:center}
+  .btn-danger{background:var(--err);color:#fff;border:1px solid var(--err)}
+  .btn-danger:hover{background:#a33224;border-color:#a33224}
+  @media (max-width:420px){ .ask-row{flex-direction:column-reverse} .ask-row .btn{width:100%} }
+  @media (prefers-reduced-motion:reduce){ .ask-back,.ask-card{transition:none} }
+  /* main admin nav — lets the tab row wrap instead of squashing */
+  .nav-main{flex-wrap:wrap}
+  .nav-main .tab{flex:1 1 132px}
+  /* page shell */
+  .page-head{margin:2px 0 16px}
+  .page-head h2{font-family:'Cormorant Garamond',serif;font-weight:600;font-size:26px;color:var(--navy);line-height:1.15}
+  .page-head p{font-size:13px;color:var(--muted);margin-top:4px}
+  .crumb{margin-bottom:12px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .crumb button{background:none;border:none;padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;color:var(--gold-d);cursor:pointer}
+  .crumb button:hover{text-decoration:underline}
+  .page-body{min-height:40px}
+  /* settings index */
+  .set-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
+  .set-item{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-family:'Jost',sans-serif;cursor:pointer;transition:.2s}
+  .set-item:hover{border-color:var(--gold);box-shadow:0 2px 10px rgba(11,31,58,.06)}
+  .set-item .t{font-family:'Cormorant Garamond',serif;font-size:19px;font-weight:600;color:var(--navy);line-height:1.2}
+  .set-item .d{font-size:12px;color:var(--muted);margin-top:4px;font-weight:300}
+  /* settings forms */
+  select{width:100%;padding:11px 34px 11px 13px;border:1px solid var(--line);border-radius:6px;background:#fff;font-family:'Jost',sans-serif;font-size:14px;font-weight:300;color:var(--ink);outline:none;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%236b7480' stroke-width='1.6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+  select:focus{border-color:var(--gold)}
+  .req{color:var(--err)}
+  .grp-note{font-size:13px;color:var(--muted);margin:-4px 0 14px}
+  .err-txt{font-size:12px;color:var(--err);margin-top:5px}
+  .err-txt:empty{display:none}
+  .cnt{font-size:11px;color:var(--muted);text-align:right;margin-top:3px}
+  .cnt.full{color:var(--err)}
+  .field.bad>input,.field.bad>textarea,.field.bad>select{border-color:var(--err)}
+  .field.bad .hrs{border-color:var(--err)}
+  /* on/off switch */
+  .sw-row{display:flex;align-items:center;gap:10px;cursor:pointer;margin:0}
+  .sw-row input{position:absolute;opacity:0;width:0;height:0}
+  .sw{flex:0 0 auto;width:40px;height:22px;border-radius:11px;background:#cfd5dd;position:relative;transition:.2s}
+  .sw::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+  input:checked+.sw{background:var(--gold-d)}
+  input:checked+.sw::after{transform:translateX(18px)}
+  input:focus-visible+.sw{outline:2px solid var(--gold);outline-offset:2px}
+  .sw-lab{font-size:14px;text-transform:none;letter-spacing:0;color:var(--ink)}
+  .sw-field.locked{opacity:.62}
+  .sw-field.locked .sw-row{cursor:not-allowed}
+  .sw-sm{width:34px;height:19px}
+  .sw-sm::after{width:13px;height:13px}
+  input:checked+.sw-sm::after{transform:translateX(15px)}
+  /* business hours grid */
+  .hrs{border:1px solid var(--line);border-radius:8px;background:#fff;overflow:hidden;margin-top:8px}
+  .hrs-row{display:flex;align-items:center;gap:12px;padding:9px 12px;flex-wrap:wrap}
+  .hrs-row+.hrs-row{border-top:1px solid var(--line)}
+  .hrs-day{display:flex;align-items:center;gap:9px;cursor:pointer;min-width:140px;font-size:14px;margin:0;text-transform:none;letter-spacing:0;color:var(--ink)}
+  .hrs-day input{position:absolute;opacity:0;width:0;height:0}
+  .hrs-times{display:flex;align-items:center;gap:8px;margin-left:auto}
+  .hrs-times input[type=time]{padding:7px 9px;border:1px solid var(--line);border-radius:6px;font-family:'Jost',sans-serif;font-size:13px;background:#fff;color:var(--ink);outline:none}
+  .hrs-times input[type=time]:focus{border-color:var(--gold)}
+  .hrs-dash{color:var(--muted)}
+  .hrs-shut{display:none;font-size:13px;color:var(--muted)}
+  .hrs-row.shut .hrs-times input,.hrs-row.shut .hrs-dash{display:none}
+  .hrs-row.shut .hrs-shut{display:inline}
+  .hrs-row.shut .hrs-day{color:var(--muted)}
+  .hrs-tools{margin-top:10px}
+  .hrs-sum{font-size:12px;color:var(--muted);margin-top:10px}
+  .hrs-sum:empty{display:none}
+  /* image field */
+  .img-row{display:flex;gap:14px;align-items:flex-start;margin-top:8px;flex-wrap:wrap}
+  .img-frame{flex:0 0 auto;width:120px;height:90px;border:1px solid var(--line);border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+  .img-frame.on-dark{background:var(--navy)}
+  .img-frame img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+  .img-frame.is-empty img{display:none}
+  .img-empty{display:none;font-size:11px;letter-spacing:.06em;color:var(--muted)}
+  .img-frame.is-empty .img-empty{display:block}
+  .img-frame.on-dark .img-empty{color:rgba(255,255,255,.5)}
+  .img-side{flex:1 1 180px;min-width:180px}
+  .img-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .img-side .stat{display:block;margin:8px 0 0}
+  .img-side .hint{margin-top:8px}
+  /* colour field */
+  .col-row{display:flex;gap:8px;align-items:center}
+  .col-swatch{flex:0 0 auto;width:46px;height:40px;padding:0;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
+  .col-swatch::-webkit-color-swatch-wrapper{padding:3px}
+  .col-swatch::-webkit-color-swatch{border:none;border-radius:4px}
+  .col-swatch::-moz-color-swatch{border:none;border-radius:4px}
+  .col-hex{flex:1 1 auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;text-transform:lowercase}
+  .col-reset{flex:0 0 auto;background:none;border:1px solid var(--line);border-radius:6px;padding:9px 12px;font:inherit;font-size:12px;color:var(--muted);cursor:pointer}
+  .col-reset:hover{border-color:var(--gold);color:var(--gold-d)}
+  /* visual choice */
+  .choice-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .choice{flex:0 0 auto;min-width:92px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 10px 10px;font-family:'Jost',sans-serif;cursor:pointer;text-align:center;transition:.2s}
+  .choice:hover{border-color:var(--gold)}
+  .choice.on{border-color:var(--gold-d);box-shadow:0 0 0 1px var(--gold-d) inset}
+  .choice-art{display:block;height:32px;margin-bottom:8px}
+  .choice-art svg{width:100%;height:100%;display:block}
+  .choice-lab{display:block;font-size:12px;color:var(--navy)}
+  .choice.on .choice-lab{font-weight:500}
+  /* code box */
+  .code-box{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.6;tab-size:2;white-space:pre;overflow-wrap:normal;overflow-x:auto}
+  /* read-only line borrowed from another section */
+  .ro-line{font-size:13.5px;color:var(--ink);background:var(--ivory);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:6px}
+  /* what WhatsApp will actually say */
+  .msg-prevs{margin-top:6px}
+  .msg-prev{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:10px}
+  .msg-cap{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);padding:8px 12px;background:var(--ivory);border-bottom:1px solid var(--line)}
+  .msg-body{padding:12px;font-size:13.5px;line-height:1.55;background:#e7f6e5;color:#0b2b12;white-space:pre-wrap}
+  .msg-foot{font-size:11.5px;color:var(--muted);padding:7px 12px;border-top:1px solid var(--line)}
+  .msg-foot.none{color:var(--err)}
+  /* handle field */
+  .handle-row{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:6px;background:#fff;overflow:hidden}
+  .handle-row:focus-within{border-color:var(--gold)}
+  .handle-pre{flex:0 0 auto;display:flex;align-items:center;padding:0 2px 0 12px;font-size:13px;color:var(--muted);white-space:nowrap;background:var(--ivory);border-right:1px solid var(--line)}
+  .handle-in{flex:1 1 auto;border:none!important;border-radius:0!important;background:transparent!important;padding-left:10px}
+  .handle-out{display:none;font-size:11.5px;color:var(--gold-d);margin-top:5px;word-break:break-all}
+  .handle-out.on{display:block}
+  @media(max-width:560px){.handle-pre{font-size:11.5px;padding-left:9px}}
+  /* repeating list */
+  .list-rows{margin-top:8px}
+  .list-row{border:1px solid var(--line);border-radius:8px;background:#fff;padding:12px 14px;margin-bottom:10px}
+  .list-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .list-cap{flex:1 1 auto;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .list-move{flex:0 0 auto;width:26px;height:26px;border:1px solid var(--line);border-radius:6px;background:#fff;font:inherit;font-size:13px;line-height:1;color:var(--navy);cursor:pointer}
+  .list-move:hover:not(:disabled){border-color:var(--gold);color:var(--gold-d)}
+  .list-move:disabled{opacity:.3;cursor:default}
+  .list-drop{background:none;border:none;padding:2px 0;font:inherit;font-size:12px;color:var(--err);cursor:pointer}
+  .list-drop:hover{text-decoration:underline}
+  .list-body .field:last-child{margin-bottom:0}
+  .list-add{margin-top:2px}
+  .list-rows:empty+.list-add{margin-top:8px}
+  /* a setting the website never sees */
+  .shut{border:1px solid var(--line);border-left:3px solid var(--navy);border-radius:8px;background:var(--ivory);padding:14px 16px;margin-bottom:14px}
+  .shut-head{display:flex;align-items:center;gap:8px;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--navy);margin-bottom:4px}
+  .shut-note{font-size:12.5px;color:var(--muted);line-height:1.55}
+  /* branding: form beside its preview */
+  .brand-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,340px);gap:18px;align-items:start}
+  .brand-form{min-width:0}
+  @media(max-width:900px){.brand-layout{grid-template-columns:1fr}.prev-wrap{position:static}}
+  /* live preview */
+  .prev-wrap{position:sticky;top:78px;z-index:5}
+  .prev-shell{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+  .prev-note{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line);background:var(--ivory)}
+  .warns{margin-top:10px}
+  .warn{display:flex;gap:8px;font-size:12.5px;line-height:1.5;color:var(--ink);background:#fff6e6;border:1px solid #f0d9a8;border-radius:8px;padding:9px 11px;margin-top:6px}
+  .warn.bad-contrast{background:#fdecea;border-color:#f3c2bd}
+  .warn b{font-weight:500}
+  .warns:empty{display:none}
+
+  /* System & Maintenance: status read-outs, health check, history.
+     A status row keeps its label and its live result on one line, and
+     wraps rather than truncating - a half shown error message is how a
+     real problem gets ignored. */
+  .sys-row{display:flex;gap:14px;justify-content:space-between;align-items:baseline;flex-wrap:wrap;
+           padding:9px 0;border-bottom:1px solid var(--line)}
+  .sys-row:last-child{border-bottom:none}
+  .sys-label{font-size:13px;color:var(--muted);flex:0 0 auto}
+  .sys-value{font-size:13px;color:var(--ink);text-align:right;flex:1 1 220px;word-break:break-word}
+  .sys-ok{color:#1c7a44}
+  .sys-warn{color:#8a6100}
+  .sys-bad{color:var(--err);font-weight:500}
+  .sys-sub{margin-top:22px}
+  .sys-health:empty{display:none}
+  .sys-health{margin-top:12px;border:1px solid var(--line);border-radius:8px;padding:4px 12px;background:var(--ivory)}
+  .sys-health .warn,.sys-health .count{margin:10px 0}
+  .sys-hist{margin-top:4px}
+  .sys-deploy{border-bottom:1px solid var(--line);padding:12px 0}
+  .sys-deploy:last-child{border-bottom:none}
+  .sys-deploy-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13.5px}
+  .sys-now{border-left:3px solid var(--gold);padding-left:12px;margin-left:-15px}
+  .sys-tag{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+           border:1px solid var(--line);border-radius:20px;padding:2px 9px;background:#fff}
+  .sys-now .sys-tag{color:var(--navy);border-color:var(--gold);background:var(--cream)}
+  .sys-notes{margin:5px 0 0;font-size:12.5px;line-height:1.6;color:var(--ink)}
+
+  /* Security: the sign-in extras, and the small forms that open in place
+     rather than in a dialog - a password change wants three boxes and a
+     rule to read, which a one-line dialog cannot hold. */
+  .sec-remember{display:flex;gap:9px;align-items:center;margin-top:14px;font-size:13px;cursor:pointer}
+  .sec-remember input{width:auto;margin:0}
+  .sec-form{margin-top:14px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--ivory)}
+  .sec-form h4{margin:0 0 10px;font-size:14px;font-weight:500}
+  .sec-form .field{margin-bottom:12px}
+  .sec-msg{margin:6px 0 0;font-size:12.5px;min-height:1em;color:var(--muted)}
+  .sec-msg.err{color:var(--err)}
+  .sec-msg.ok{color:var(--ok)}
+  .sec-qr{display:block;width:184px;height:184px;margin:10px 0;background:#fff;
+          border:1px solid var(--line);border-radius:8px;padding:8px}
+  .sec-secret{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;
+              letter-spacing:.08em;word-break:break-all;background:#fff;border:1px solid var(--line);
+              border-radius:6px;padding:9px 11px;margin:4px 0 12px}
+  .sec-admins .sys-row:last-child{border-bottom:none}
+
+  /* Notifications: the message preview, drawn as the customer will see
+     it rather than as a form field, so wording that runs long or reads
+     coldly is obvious before it is sent to anybody. */
+  .note-pick{max-width:340px;margin-bottom:12px}
+  .wa-preview{margin:0;padding:13px 15px;background:#e7ffdb;border:1px solid #cdebbd;
+              border-radius:10px 10px 10px 2px;max-width:460px;white-space:pre-wrap;
+              word-break:break-word;font-family:inherit;font-size:13.5px;line-height:1.65;color:#111b21}
+  .btn.is-off{opacity:.55;cursor:not-allowed}
+
+  /* Subscribers. An address somebody has left is dimmed rather than
+     hidden: the record is the point, and an owner should be able to see
+     that it is there. */
+  .sub-search{max-width:240px;padding:8px 11px;border:1px solid var(--line);border-radius:6px;
+              font-family:'Jost',sans-serif;font-size:13px;background:#fff}
+  .sub-row{display:flex;gap:14px;justify-content:space-between;align-items:center;flex-wrap:wrap;
+           padding:10px 0;border-bottom:1px solid var(--line)}
+  .sub-row:last-child{border-bottom:none}
+  .sub-who{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;min-width:0}
+  .sub-addr{font-size:13.5px;word-break:break-all}
+  .sub-acts{display:flex;gap:8px;flex-wrap:wrap;flex:none}
+  .sub-row.is-off .sub-addr{color:var(--muted);text-decoration:line-through}
+
+  /* Activity log. Each entry reads as a sentence first - what happened,
+     where, to what - with the detail under it and the when, who and
+     which device quietly at the foot. */
+  .al-pick{max-width:220px;padding:8px 30px 8px 11px;font-size:13px}
+  .al-list{margin-top:6px}
+  .al-item{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:9px;background:#fff}
+  .al-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .al-action{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;padding:2px 9px;
+             border-radius:20px;background:var(--cream);color:var(--navy);flex:none}
+  .al-action.is-added{background:rgba(31,157,87,.14);color:#1a7a45}
+  .al-action.is-deleted{background:#fdecea;color:var(--err)}
+  .al-module{font-size:13.5px;color:var(--navy);font-weight:500}
+  .al-record{font-size:13px;color:var(--muted)}
+  .al-changes{margin:9px 0 2px;padding-left:2px}
+  .al-change{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:12.5px;padding:3px 0}
+  .al-field{color:var(--muted);min-width:130px}
+  .al-from{color:var(--muted);text-decoration:line-through;word-break:break-word}
+  .al-arrow{color:var(--gold-d)}
+  .al-to{color:var(--ink);word-break:break-word}
+  .al-hidden{color:var(--muted);font-style:italic}
+  .al-foot{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px;padding-top:8px;
+           border-top:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+  /* the sharing-image snippet */
+  .snip{margin-top:10px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .snip pre{margin:0;padding:11px 12px;background:var(--navy);color:#e8eef6;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.7;overflow-x:auto;white-space:pre}
+  .snip-bar{display:flex;gap:10px;align-items:center;padding:8px 10px;background:var(--ivory);border-top:1px solid var(--line)}
+  .moved{font-size:13px;color:var(--muted);background:var(--ivory);border:1px dashed var(--line);border-radius:8px;padding:11px 13px}
+  .moved button{background:none;border:none;padding:0;font:inherit;color:var(--gold-d);cursor:pointer;text-decoration:underline}
+  @media(max-width:560px){.grid2{grid-template-columns:1fr}.hrs-times{margin-left:0;width:100%}.prod{grid-template-columns:72px 1fr}.prod .thumb{width:72px;height:92px}}
+  /* ---- Live Chats ------------------------------------------------
+     The inbox on the left, the conversation on the right. On a narrow
+     screen they stack, because an operator answering from a phone
+     needs the whole width for the words. */
+  .lc-wrap{display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start}
+  .lc-list{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    max-height:70vh;overflow-y:auto}
+  .lc-row{display:block;width:100%;text-align:left;background:#fff;border:none;
+    border-bottom:1px solid var(--line);padding:12px 14px;cursor:pointer;position:relative;
+    font-family:'Jost',sans-serif;transition:background .15s}
+  .lc-row:hover{background:var(--ivory)}
+  .lc-row.active{background:var(--ivory);box-shadow:inset 3px 0 0 var(--gold)}
+  .lc-row.unread .lc-who{font-weight:600}
+  .lc-row-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .lc-who{font-size:13.5px;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lc-when{font-size:11px;color:var(--muted);white-space:nowrap}
+  .lc-meta{font-size:11.5px;color:var(--muted);margin-top:2px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .lc-dot{position:absolute;right:12px;bottom:11px;background:var(--gold);color:var(--navy);
+    font-size:10px;font-weight:600;min-width:18px;height:18px;border-radius:9px;display:flex;
+    align-items:center;justify-content:center;padding:0 5px}
+  .lc-empty{padding:22px 16px;font-size:13px;color:var(--muted);line-height:1.6;text-align:center}
+
+  .lc-thread{background:#fff;border:1px solid var(--line);border-radius:10px;display:flex;
+    flex-direction:column;min-height:340px;max-height:70vh}
+  .lc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+    padding:14px 16px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  .lc-head-who{font-size:15px;color:var(--navy);font-weight:500}
+  .lc-head-meta{font-size:11.5px;color:var(--muted);margin-top:2px}
+  /* Somebody else is in the middle of this one. Warm rather than red:
+     it is not an error, it is a colleague working. */
+  .lc-lock{flex:0 0 auto;display:flex;flex-direction:column;gap:2px;
+    padding:9px 16px;background:var(--cream);border-bottom:1px solid var(--line)}
+  .lc-lock-who{font-size:13px;color:var(--navy);font-weight:500}
+  .lc-lock-why{font-size:11.5px;color:var(--muted);line-height:1.5}
+  /* Notifications on: the button says which way it is pointing. */
+  .lc-bell.is-on{background:var(--navy);color:#fff;border-color:var(--navy)}
+  /* The customer is writing. Left, where their message will land, and
+     wordless — the same dot the customer sees when the shop is. */
+  .lc-typing{align-self:flex-start;padding:2px 2px;display:flex;align-items:center;gap:7px}
+  .lc-typing-word{font-size:11.5px;color:var(--muted);letter-spacing:.04em}
+  .lc-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);display:block;
+    animation:lc-breathe 1.4s ease-in-out infinite}
+  @keyframes lc-breathe{
+    0%,100%{opacity:.28;transform:scale(.78)}
+    50%    {opacity:1;transform:scale(1.12)}
+  }
+  @media (prefers-reduced-motion: reduce){ .lc-dot{animation:none;opacity:.95} }
+  .lc-log{flex:1 1 auto;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:9px}
+  .lc-msg{max-width:76%;display:flex;flex-direction:column}
+  .lc-msg.from-shop{align-self:flex-end;align-items:flex-end}
+  .lc-msg.from-customer{align-self:flex-start;align-items:flex-start}
+  .lc-bubble{padding:9px 13px;border-radius:12px;font-size:13.5px;line-height:1.5;
+    white-space:pre-wrap;overflow-wrap:anywhere}
+  .from-shop .lc-bubble{background:var(--navy);color:#fff;border-bottom-right-radius:3px}
+  .from-customer .lc-bubble{background:var(--cream);color:var(--ink);border-bottom-left-radius:3px}
+  .lc-at{font-size:10px;color:var(--muted);margin-top:2px;padding:0 3px}
+  .lc-form{flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;padding:12px 14px;
+    border-top:1px solid var(--line)}
+  .lc-form textarea{flex:1 1 auto;resize:none;max-height:110px;border-radius:8px}
+  @media(max-width:820px){
+    .lc-wrap{grid-template-columns:1fr}
+    .lc-list{max-height:260px}
+    /* The messages are the point of this screen, and on a phone they
+       were the only thing that could give — so they gave.
+
+       .lc-thread is a column capped at 70vh. Everything in it except the
+       log is fixed height, and on a narrow screen every one of those
+       gets taller: the customer's name, the account tag, the number and
+       where they came from all wrap; the four sending buttons wrap onto
+       three rows; the notes box and the reply box follow. Added up they
+       exceeded the cap on their own, so the log — the one thing set to
+       take what is left — was left with a sliver, showing one clipped
+       line of a conversation.
+
+       So on a phone the thread is not capped at all, and the log is
+       given a floor and its own scroll. The page scrolls; the
+       conversation does not get squeezed out of it. */
+    .lc-thread{max-height:none}
+    .lc-log{min-height:240px;max-height:50vh}
+  }
+  /* Live Chats · who is writing */
+  .lc-tag{display:inline-block;margin-left:8px;font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;padding:2px 7px;border-radius:10px;background:var(--cream);
+    color:var(--muted);vertical-align:middle;font-weight:500}
+  .lc-tag.known{background:var(--gold);color:var(--navy)}
+  .lc-viewing{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--navy);margin-top:5px}
+  .lc-live-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:0 0 auto;
+    animation:lc-pulse 1.8s ease-in-out infinite}
+  /* Away, rather than here: red, and still, because a pulsing light
+     reads as something happening. */
+  .lc-live-dot.off{background:#c0392b;animation:none;opacity:.85}
+  .lc-seen{font-size:11px;color:#6b7480;text-align:right;margin:-2px 4px 6px 0}
+  .lc-name{min-width:150px}
+  .lc-hist-ask{border:1px solid var(--line,#e6e0d4);border-radius:8px;padding:10px;margin-top:10px;
+    display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+
+  @keyframes lc-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .lc-meta.live{color:var(--navy)}
+  .lc-side{border-top:1px solid var(--line);padding:0 14px 12px}
+  .lc-hist{margin-top:10px;font-size:12.5px}
+  .lc-hist summary{cursor:pointer;color:var(--navy);padding:6px 0;font-size:12px;
+    letter-spacing:.04em;list-style:revert}
+  .lc-hist-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;padding:5px 0;
+    border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+  .lc-hist-ref{color:var(--navy);font-weight:500;white-space:nowrap}
+  .lc-hist-mid{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lc-hist-end{white-space:nowrap}
+  @media (prefers-reduced-motion:reduce){ .lc-live-dot{animation:none} }
+  /* Live Chats · more than one of you */
+  .lc-presence{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .lc-row.theirs{opacity:.72}
+  .lc-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .lc-acts .al-pick{max-width:190px}
+  /* Deleting is the one thing here that cannot be undone, so it does not
+     look like the buttons beside it until you are pointing at it. */
+  .lc-del{color:var(--err);border-color:var(--err)}
+  .lc-del:hover{background:var(--err);color:#fff}
+
+  /* Notes. Deliberately not the colour of anything a customer sees:
+     the one mistake that matters here is typing into the wrong box. */
+  .lc-notes{border-top:1px solid var(--line);background:#fffdf5;padding:10px 14px 12px}
+  .lc-notes-head{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--gold-d);margin-bottom:8px;font-weight:500}
+  .lc-note-list{max-height:130px;overflow-y:auto;margin-bottom:8px}
+  .lc-note{display:flex;justify-content:space-between;gap:12px;padding:5px 0;
+    border-bottom:1px dashed var(--line);font-size:12.5px;color:var(--ink)}
+  .lc-note:last-child{border-bottom:none}
+  .lc-note.is-event .lc-note-body{color:var(--muted);font-style:italic}
+  .lc-note-body{flex:1 1 auto;overflow-wrap:anywhere}
+  .lc-note-by{flex:0 0 auto;font-size:11px;color:var(--muted);white-space:nowrap}
+  .lc-note-empty{font-size:12px;color:var(--muted);padding:4px 0}
+  .lc-note-form{display:flex;gap:8px}
+  .lc-note-form input{flex:1 1 auto;padding:8px 11px;font-size:13px}
+
+  /* The numbers */
+  .lc-stats{background:#fff;border:1px solid var(--line);border-radius:10px;
+    padding:16px;margin-bottom:14px}
+  .lc-stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px}
+  .lc-stat{text-align:center}
+  .lc-stat-n{font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:600;color:var(--navy);line-height:1}
+  .lc-stat-l{font-size:11px;letter-spacing:.06em;color:var(--muted);margin-top:3px}
+  .lc-stat-note{font-size:11px;color:var(--muted);text-align:center;margin:12px 0 4px}
+  /* Live Chats · what a reply can carry */
+  .lc-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px 0}
+  .lc-tools .al-pick{max-width:170px}
+  .lc-file{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  .lc-file-label{cursor:pointer;display:inline-flex;align-items:center}
+  .lc-tool-msg{font-size:12px;color:var(--muted);display:none}
+  .lc-card{margin-top:6px;border:1px solid var(--line);border-radius:10px;
+    background:#fff;overflow:hidden;max-width:260px}
+  .lc-photo{display:block}
+  .lc-photo img{display:block;width:100%;max-height:180px;object-fit:cover}
+  .lc-card-prod,.lc-card-order{display:flex;flex-direction:column;gap:2px;padding:9px 11px}
+  .lc-card-n{font-size:13.5px;font-weight:500;color:var(--navy)}
+  .lc-card-p{font-size:13px;color:var(--navy)}
+  .lc-card-s{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .from-shop .lc-card{background:#fff}

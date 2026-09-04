@@ -511,39 +511,217 @@
           .then(function (yes) { if (yes) return signOutOthers(); });
       });
 
-      /* ============== administrators =============================== */
+      /* ============== administrators ===============================
+         Two kinds of person sign in to this shop, and this is the first:
+         somebody who runs the whole thing. The other — somebody who only
+         answers customers — is added in Settings > Live Chat and signs
+         in at a page of their own.
+
+         This card used to be a list and a note saying that adding one
+         was done in Supabase, on the grounds that a page which can
+         promote an account is a page worth attacking. That is still
+         true, and it is why every button here is the owner's alone and
+         why the work is done by a server-side function that cannot make
+         an owner, cannot remove one, and cannot remove whoever is
+         pressing the button. What changed is that the shop should not
+         have to open a database console to hire somebody. */
       var admCard = el('div', 'card');
       admCard.appendChild(el('h3', null, 'Administrators'));
       admCard.appendChild(el('p', 'grp-note',
-        'Everyone who can sign in to this admin. Adding and removing is done in ' +
-        'Supabase rather than here, on purpose: a page that could promote an account ' +
-        'is a page worth attacking.'));
+        'Everyone who can sign in here and run the whole shop — products, orders, ' +
+        'settings and chats. Somebody who should only answer customers is not an ' +
+        'administrator: add them under Settings > Live Chat instead, and they sign ' +
+        'in at /agent.html.'));
       var admList = el('div', 'sec-admins');
       admList.appendChild(el('p', 'count', 'Reading…'));
       admCard.appendChild(admList);
+      var admBar = el('div', 'staff-bar');
+      var admAdd = el('button', 'btn btn-out btn-sm', 'Add an administrator');
+      admAdd.type = 'button';
+      admBar.appendChild(admAdd);
+      var admMsg = el('span', 'staff-msg');
+      admBar.appendChild(admMsg);
+      admBar.style.display = 'none';
+      admCard.appendChild(admBar);
       host.appendChild(admCard);
 
-      sb.from('admins').select('id, email, added_at').then(function (r) {
+      var iAmOwner = false;
+
+      function admSay(text, kind) {
+        admMsg.textContent = text || '';
+        admMsg.className = 'staff-msg' + (kind ? ' is-' + kind : '');
+      }
+
+      function admCall(payload) {
+        return Promise.resolve(sb.auth.getSession()).then(function (r) {
+          return (r && r.data && r.data.session && r.data.session.access_token) || '';
+        }, function () { return ''; }).then(function (t) {
+          return fetch('/.netlify/functions/admin-users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+            body: JSON.stringify(payload)
+          });
+        }).then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (body) {
+            if (!res.ok) {
+              var e = new Error(body.error || ('That did not work (' + res.status + ').'));
+              /* 404 means the function is not deployed, which reads to a
+                 browser exactly like a page that does not exist. */
+              if (res.status === 404) {
+                e.message = 'This site does not have the administrators function deployed ' +
+                            'yet. Upload the latest files, including ' +
+                            'netlify/functions/admin-users.js, and let Netlify finish building.';
+              }
+              throw e;
+            }
+            return body;
+          });
+        });
+      }
+
+      /* Shown once, and only once: the site never stores it and cannot
+         show it again. */
+      function admShowPassword(who, password, isNew) {
+        return ask('', {
+          title: isNew ? 'Administrator added' : 'New password set',
+          okText: 'Done', cancelText: 'Close',
+          note: 'Give ' + who + ' this password. They will be asked to choose their own ' +
+                'the first time they sign in. It is not stored anywhere and cannot be ' +
+                'shown again — if it is lost, set another one.',
+          copyText: password
+        });
+      }
+
+      function admDraw(rows) {
         admList.innerHTML = '';
-        if (r.error) {
-          admList.appendChild(el('p', 'err-txt', 'The list could not be read: ' + errText(r.error)));
-          return;
-        }
-        var rows = r.data || [];
         if (!rows.length) {
           admList.appendChild(el('p', 'count', 'No administrators are listed.'));
           return;
         }
         rows.forEach(function (row) {
-          var line = el('div', 'sys-row');
-          line.appendChild(el('span', 'sys-label', row.email || '(no email recorded)'));
-          var right = el('span', 'sys-value');
-          right.textContent = (me && row.id === me.id ? 'You' : 'Administrator') +
-            (row.added_at ? ' · added ' + when(row.added_at) : '');
-          line.appendChild(right);
+          var line = el('div', 'staff-row');
+          var who = el('div', 'staff-who');
+          who.appendChild(el('div', 'staff-name', row.email || '(no email recorded)'));
+          var bits = [];
+          bits.push(row.role === 'owner' ? 'Owner' : 'Administrator');
+          if (me && row.id === me.id) bits.push('you');
+          if (row.must_change_password) bits.push('has not chosen a password yet');
+          if (row.added_at) bits.push('added ' + when(row.added_at));
+          who.appendChild(el('div', 'hint', bits.join(' · ')));
+          line.appendChild(who);
+
+          /* Only the owner is offered the buttons, and never against
+             their own row or another owner's — the function refuses both
+             as well, so a button conjured up in a console gets an error
+             rather than a locked-out shop. */
+          var mine = !!(me && row.id === me.id);
+          if (iAmOwner && row.role !== 'owner' && !mine) {
+            var acts = el('div', 'staff-acts');
+            var reset = el('button', 'btn btn-out btn-sm', 'New password');
+            reset.type = 'button';
+            reset.addEventListener('click', function () { admReset(row); });
+            acts.appendChild(reset);
+            var del = el('button', 'btn btn-out btn-sm lc-del', 'Remove');
+            del.type = 'button';
+            del.addEventListener('click', function () { admRemove(row); });
+            acts.appendChild(del);
+            line.appendChild(acts);
+          }
           admList.appendChild(line);
         });
-      });
+      }
+
+      function admLoad() {
+        /* The function first, because it says who is the owner. A shop
+           that has not run phase 9 has no such function, and the plain
+           read of the table is the right answer there — the list still
+           shows, without the buttons. */
+        return Promise.resolve(sb.rpc('admins_list')).then(function (r) {
+          if (r && r.error) throw r.error;
+          admDraw((r && r.data) || []);
+        }, function () {
+          return sb.from('admins').select('id, email, added_at').then(function (r) {
+            admList.innerHTML = '';
+            if (r.error) {
+              admList.appendChild(el('p', 'err-txt',
+                'The list could not be read: ' + errText(r.error)));
+              return;
+            }
+            admDraw((r.data || []).map(function (x) {
+              return { id: x.id, email: x.email, added_at: x.added_at, role: 'agent' };
+            }));
+          });
+        });
+      }
+
+      function admAddOne() {
+        var wrap = el('div');
+        admSay('');
+        return ask('', {
+          title: 'Add an administrator',
+          okText: 'Make the account',
+          note: 'They will be able to do everything you can except delete a conversation ' +
+                'and name another owner. If they should only answer customers, add them ' +
+                'under Settings > Live Chat instead.',
+          input: { label: 'Their email address', placeholder: 'name@example.com' }
+        }).then(function (email) {
+          if (!email) return;
+          admSay('Making the account…', 'busy');
+          return admCall({ action: 'create', email: String(email).trim() })
+            .then(function (body) {
+              admSay('');
+              return admShowPassword(body.email, body.password, true);
+            })
+            .then(function () { return admLoad(); })
+            .catch(function (e) { admSay((e && e.message) || String(e), 'err'); });
+        });
+      }
+
+      function admReset(row) {
+        admSay('');
+        return ask('Set a new password for ' + (row.email || 'this administrator') + '?', {
+          okText: 'Set a new one',
+          note: 'Their current password stops working straight away, and they will be ' +
+                'asked to choose their own the next time they sign in.'
+        }).then(function (yes) {
+          if (!yes) return;
+          admSay('Setting…', 'busy');
+          return admCall({ action: 'reset', id: row.id })
+            .then(function (body) {
+              admSay('');
+              return admShowPassword(body.email, body.password, false);
+            })
+            .then(function () { return admLoad(); })
+            .catch(function (e) { admSay((e && e.message) || String(e), 'err'); });
+        });
+      }
+
+      function admRemove(row) {
+        admSay('');
+        return ask('Remove ' + (row.email || 'this administrator') + '?', {
+          danger: true, okText: 'Remove them', title: 'They lose access to the admin',
+          note: 'Their login is left alone — it may be a customer account as well, and ' +
+                'deleting it would take their orders with it. They simply stop being an ' +
+                'administrator.'
+        }).then(function (yes) {
+          if (!yes) return;
+          admSay('Removing…', 'busy');
+          return admCall({ action: 'remove', id: row.id })
+            .then(function () { admSay('Removed.', 'ok'); return admLoad(); })
+            .catch(function (e) { admSay((e && e.message) || String(e), 'err'); });
+        });
+      }
+
+      admAdd.addEventListener('click', admAddOne);
+
+      /* Asked of the database, not assumed: false until it says
+         otherwise, so a slow or failed lookup shows a list without
+         buttons rather than buttons that error. */
+      Promise.resolve(sb.rpc('is_shop_owner')).then(function (r) {
+        iAmOwner = !!(r && !r.error && r.data === true);
+        admBar.style.display = iAmOwner ? '' : 'none';
+        return admLoad();
+      }, function () { return admLoad(); });
 
       /* ============== the saved settings =========================== */
       /* Everything above acts immediately. Only this last group is a form

@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex" />
+<title>Vaultique Chat Desk</title>
+<!-- Added to a home screen this becomes an app with its own icon. On an
+     iPhone that is not a nicety: Safari will not deliver a notification
+     to a page opened in a tab, only to one added to the home screen. -->
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta name="theme-color" content="#0B1F3A" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Vaultique Chat" />
+<link rel="apple-touch-icon" href="/images/icon-192.png" />
+<link rel="icon" href="/images/logo-sm.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/preview.css">
+<!-- The same stylesheet the admin uses, not a copy of it. Two pages
+     drawing the same conversation from two sets of rules is two things
+     to keep in step, and they would not stay in step. -->
+<link rel="stylesheet" href="assets/admin/admin.css">
+</head>
+<body>
+
+<div class="topbar hide" id="topbar">
+  <div class="brand"><span class="serif">VAULTIQUE</span> <span class="tag">CHAT DESK</span></div>
+  <div class="top-actions">
+    <a class="btn btn-ghost btn-sm" href="/" target="_blank" rel="noopener">View site</a>
+    <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="panel hide" id="needConfig">
+    <h1 class="serif">Almost there</h1>
+    <p>This website's database isn't connected yet. Open <b>config.js</b>, paste your
+       Supabase Project URL and anon key, then redeploy. See <b>SETUP.md</b>.</p>
+  </div>
+
+  <div class="panel hide" id="login">
+    <h1 class="serif">Vaultique Chat Desk</h1>
+    <p>Sign in to answer customers.</p>
+    <label for="email">Email</label>
+    <input type="email" id="email" autocomplete="username" />
+    <label for="password">Password</label>
+    <!-- The eye is added by script, so the one helper covers this field
+         and any other that hides what is typed. -->
+    <input type="password" id="password" autocomplete="current-password" />
+    <label class="sec-remember"><input type="checkbox" id="rememberMe" checked />
+      <span>Keep me signed in on this device</span></label>
+    <div style="margin-top:18px"><button class="btn btn-gold" id="loginBtn" style="width:100%">Sign in</button></div>
+    <div class="msg" id="loginMsg"></div>
+    <p class="hint" style="margin-top:16px">
+      This is the chat desk. If you look after the whole shop, sign in at
+      <a href="/admin.html">the admin</a> instead.</p>
+  </div>
+
+  <div class="panel hide" id="mfa">
+    <h1 class="serif">One more step</h1>
+    <p>Enter the six digit code from your authenticator app.</p>
+    <label for="mfaCode">Code</label>
+    <input type="text" id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="7" />
+    <div style="margin-top:18px"><button class="btn btn-gold" id="mfaBtn" style="width:100%">Continue</button></div>
+    <div class="msg" id="mfaMsg"></div>
+    <div style="margin-top:14px"><button class="btn btn-out btn-sm" id="mfaCancel">Sign out instead</button></div>
+  </div>
+
+  <!-- Somebody signing in on the password the owner read out to them.
+       They do not get past this: a password somebody else knows is
+       nobody's. -->
+  <div class="panel hide" id="newpw">
+    <h1 class="serif">Choose your own password</h1>
+    <p>You signed in with a password somebody gave you. Pick one only you know before
+       you start answering.</p>
+    <label for="pw1">New password</label>
+    <input type="password" id="pw1" autocomplete="new-password" />
+    <label for="pw2">Type it again</label>
+    <input type="password" id="pw2" autocomplete="new-password" />
+    <p class="hint" id="pwRule">At least eight characters.</p>
+    <div style="margin-top:18px"><button class="btn btn-gold" id="pwBtn" style="width:100%">Save it and carry on</button></div>
+    <div class="msg" id="pwMsg"></div>
+    <div style="margin-top:14px"><button class="btn btn-out btn-sm" id="pwCancel">Sign out instead</button></div>
+  </div>
+
+  <!-- The desk. One page, and it is the conversations. -->
+  <div class="hide" id="desk">
+    <div id="tab-chats"></div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="assets/version.js"></script>
+<script src="assets/formats.js"></script>
+<script src="assets/admin/dialogs.js"></script>
+<script src="assets/admin/registry.js"></script>
+<script src="assets/admin/settings-store.js"></script>
+<script src="assets/admin/security-core.js"></script>
+<script src="assets/admin/chat-alerts.js"></script>
+<script src="assets/admin/live-chat.js"></script>
+<script>
+/* =====================================================================
+   Vaultique Boutique Point — the chat desk
+   ---------------------------------------------------------------------
+   A door of its own for the people who answer customers, and nothing
+   else behind it.
+
+   WHY A SEPARATE PAGE AT ALL. The database already refuses a chat agent
+   the orders, the settings and the products, so the admin could safely
+   show them one tab and hide the rest — and it does, for anybody who
+   arrives there. But an address is a promise about what a person is
+   for. Sending somebody hired to answer chats to a page called "admin",
+   where every other tab is one they are not allowed to open, is a page
+   that spends its time saying no. This one only ever says yes.
+
+   WHAT IT WILL LET IN. Anybody the database says may answer chats: a
+   chat agent, and an administrator, who can step in when the desk is
+   busy. A customer account is turned away with a sentence saying where
+   its own sign-in is, because that is the mistake somebody will
+   actually make.
+
+   WHAT ENFORCES ANY OF IT. Not this file. The row rules in
+   supabase-chat-phase6.sql are what stop a chat agent reading an order,
+   and they would stop it if this page were rewritten by hand in the
+   browser. What is here is the courtesy of not offering.
+   ===================================================================== */
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  function show(id, on) { var e = $(id); if (e) e.classList[on ? 'remove' : 'add']('hide'); }
+
+  var cfg = window.VBP_CONFIG || {};
+  if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) { show('needConfig', true); return; }
+
+  var sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true }
+  });
+
+  var A = window.VBP_ADMIN || {};
+  A.sb = sb;
+  A.cfg = cfg;
+  if (window.VBP_DIALOGS) { A.ask = window.VBP_DIALOGS.ask; A.tell = window.VBP_DIALOGS.tell; }
+  window.VBP_ADMIN = A;
+  var SEC = A.security || null;
+
+  var mustChangePassword = false;
+
+  /* ---- the eye ---------------------------------------------------
+     A password nobody can see is a password typed twice as often and
+     wrong half the time, and the desk is answered from a phone. The
+     same markup and the same names as the admin's, so the one
+     stylesheet dresses both. */
+  var EYE_ON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12z"/>' +
+    '<circle cx="12" cy="12" r="3.2"/></svg>';
+  var EYE_OFF =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M1.5 12S5 5.5 12 5.5c1.6 0 3 .34 4.2.87M22.5 12s-3.5 6.5-10.5 6.5c-1.6 0-3-.34-4.2-.87"/>' +
+    '<path d="M9.9 9.9a3.2 3.2 0 004.2 4.2"/><path d="M3 3l18 18"/></svg>';
+
+  function revealPassword(input) {
+    if (!input || !input.parentNode || input.parentNode.classList.contains('pw-box')) return;
+    var box = document.createElement('div');
+    box.className = 'pw-box';
+    input.parentNode.insertBefore(box, input);
+    box.appendChild(input);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pw-eye';
+    btn.innerHTML = EYE_ON;
+    btn.setAttribute('aria-label', 'Show password');
+    btn.title = 'Show password';
+    btn.addEventListener('click', function () {
+      var showing = input.type === 'text';
+      /* The cursor is put back where it was. Pressing this mid-word
+         should not send somebody back to the start of their password. */
+      var at = input.selectionStart, to = input.selectionEnd;
+      input.type = showing ? 'password' : 'text';
+      btn.innerHTML = showing ? EYE_ON : EYE_OFF;
+      btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+      btn.title = btn.getAttribute('aria-label');
+      input.focus();
+      try { input.setSelectionRange(at, to); } catch (e) {}
+    });
+    box.appendChild(btn);
+  }
+  ['password', 'pw1', 'pw2'].forEach(function (id) { revealPassword($(id)); });
+
+  /* ---- the door ---------------------------------------------------- */
+
+  function say(id, text, kind) {
+    var m = $(id);
+    if (m) { m.textContent = text; m.className = 'msg' + (kind ? ' ' + kind : ''); }
+  }
+
+  function toLogin(text, kind) {
+    show('topbar', false); show('desk', false); show('mfa', false); show('newpw', false);
+    show('login', true);
+    if (text) say('loginMsg', text, kind || 'err');
+  }
+
+  /* Who is this? One question, answered by the database, and the only
+     thing this page decides anything on. */
+  function whoAmI() {
+    return Promise.resolve(sb.rpc('chat_staff_me')).then(function (r) {
+      if (!r || r.error || !r.data) return null;
+      return r.data;
+    }, function () { return null; });
+  }
+
+  function afterPassword() {
+    show('login', false);
+    return whoAmI().then(function (me) {
+      if (!me) {
+        /* The question could not be asked. Left signed in on purpose:
+           nothing has been decided about this account, and the session
+           is not the thing at fault. */
+        show('login', true);
+        say('loginMsg', 'Could not check this account. Check your connection and try again.', 'err');
+        return;
+      }
+
+      var mayAnswer = !!(me.is_staff || me.is_admin);
+      if (!mayAnswer) {
+        return Promise.resolve(sb.auth.signOut()).catch(function () {}).then(function () {
+          /* Three different people arrive here and get three different
+             sentences, because "no" on its own sends somebody back to
+             try the same thing again. */
+          if (me.known) {
+            toLogin('This account is no longer set to answer chats. ' +
+                    'Ask the shop owner to switch it back on.');
+          } else {
+            toLogin('This account cannot answer chats. If you shop here, sign in on ' +
+                    'the shop itself rather than at this address. If you should be ' +
+                    'answering chats, ask the shop owner to set you up.');
+          }
+        });
+      }
+
+      mustChangePassword = !!me.must_change_password;
+      return carryOn();
+    });
+  }
+
+  function carryOn() {
+    /* The password they were handed is known to whoever handed it over,
+       so it is good for exactly this one arrival. Asked before the desk
+       is drawn, not after: there is nothing to answer until it is done. */
+    if (mustChangePassword) {
+      show('mfa', false); show('topbar', false); show('desk', false);
+      show('newpw', true);
+      var a = $('pw1'), b = $('pw2');
+      if (a) { a.value = ''; a.focus(); }
+      if (b) b.value = '';
+      say('pwMsg', '');
+      return;
+    }
+    if (!SEC || !SEC.codeOwed) { openDesk(); return; }
+    return SEC.codeOwed(sb).then(function (owed) {
+      if (!owed) { show('mfa', false); openDesk(); return; }
+      show('mfa', true);
+      var box = $('mfaCode');
+      if (box) { box.value = ''; box.focus(); }
+    }, function () { openDesk(); });
+  }
+
+  function saveNewPassword() {
+    var a = $('pw1'), b = $('pw2'), btn = $('pwBtn');
+    var pw = a.value || '';
+    if (pw.length < 8) { say('pwMsg', 'At least eight characters, please.', 'err'); a.focus(); return; }
+    if (pw !== (b.value || '')) { say('pwMsg', 'Those two are not the same.', 'err'); b.focus(); return; }
+
+    btn.disabled = true;
+    say('pwMsg', 'Saving…', 'busy');
+    Promise.resolve(sb.auth.updateUser({ password: pw }))
+      .then(function (r) {
+        if (r && r.error) throw r.error;
+        /* Told afterwards, never before: the flag says "they have chosen
+           one", and saying so before they had would be a lie the next
+           sign-in would act on. Both are asked because somebody could be
+           either, and each clears only its own row. */
+        return Promise.all([
+          Promise.resolve(sb.rpc('chat_staff_password_changed')).catch(function () {}),
+          Promise.resolve(sb.rpc('admin_password_changed')).catch(function () {})
+        ]);
+      })
+      .then(function () {
+        mustChangePassword = false;
+        btn.disabled = false;
+        show('newpw', false);
+        return carryOn();
+      })
+      .catch(function (e) {
+        btn.disabled = false;
+        say('pwMsg', 'That could not be saved: ' + ((e && e.message) || e), 'err');
+      });
+  }
+
+  /* ---- the desk ---------------------------------------------------- */
+
+  var deskOpen = false;
+  function openDesk() {
+    show('login', false); show('mfa', false); show('newpw', false);
+    show('topbar', true); show('desk', true);
+    if (deskOpen) return;
+    deskOpen = true;
+
+    var page = A.pages && A.pages.chats;
+    var host = $('tab-chats');
+    if (!page || !host) {
+      if (host) host.innerHTML = '<p class="count">The chat page could not be loaded.</p>';
+      return;
+    }
+    host.innerHTML = '';
+    page.render(host, {
+      sb: sb, cfg: cfg, ui: A.ui, store: A.store,
+      ask: A.ask, tell: A.tell,
+      /* There is nowhere else to go from here, so going somewhere is
+         doing nothing. Present so that live-chat.js, which is written
+         for a page that has neighbours, does not have to know. */
+      navigate: function () {}
+    });
+  }
+
+  /* ---- signing in -------------------------------------------------- */
+
+  function signIn() {
+    var email = ($('email').value || '').trim();
+    var pw = $('password').value || '';
+    if (!email || !pw) { say('loginMsg', 'Both, please.', 'err'); return; }
+    var btn = $('loginBtn');
+    btn.disabled = true;
+    say('loginMsg', 'Signing in…', 'busy');
+    Promise.resolve(sb.auth.signInWithPassword({ email: email, password: pw }))
+      .then(function (r) {
+        btn.disabled = false;
+        if (r && r.error) throw r.error;
+        $('password').value = '';
+        say('loginMsg', '');
+        return afterPassword();
+      })
+      .catch(function (e) {
+        btn.disabled = false;
+        say('loginMsg', (e && e.message) || 'That did not work.', 'err');
+      });
+  }
+
+  $('loginBtn').addEventListener('click', signIn);
+  ['email', 'password'].forEach(function (id) {
+    $(id).addEventListener('keydown', function (e) { if (e.key === 'Enter') signIn(); });
+  });
+  $('pwBtn').addEventListener('click', saveNewPassword);
+  ['pw1', 'pw2'].forEach(function (id) {
+    $(id).addEventListener('keydown', function (e) { if (e.key === 'Enter') saveNewPassword(); });
+  });
+  $('pwCancel').addEventListener('click', function () {
+    sb.auth.signOut().then(function () { location.reload(); });
+  });
+  $('logoutBtn').addEventListener('click', function () {
+    sb.auth.signOut().then(function () { location.reload(); });
+  });
+  $('mfaCancel').addEventListener('click', function () {
+    sb.auth.signOut().then(function () { location.reload(); });
+  });
+  $('mfaBtn').addEventListener('click', function () {
+    var code = ($('mfaCode').value || '').replace(/\D/g, '');
+    if (code.length < 6) { say('mfaMsg', 'Six digits.', 'err'); return; }
+    if (!SEC || !SEC.submitCode) { say('mfaMsg', 'Two factor is not available here.', 'err'); return; }
+    say('mfaMsg', 'Checking…', 'busy');
+    SEC.submitCode(sb, code).then(function () {
+      say('mfaMsg', '');
+      show('mfa', false);
+      openDesk();
+    }, function (e) {
+      say('mfaMsg', (e && e.message) || 'That code was not accepted.', 'err');
+    });
+  });
+
+  /* Already signed in from last time. */
+  Promise.resolve(sb.auth.getSession()).then(function (r) {
+    var s = r && r.data && r.data.session;
+    if (s) return afterPassword();
+    toLogin('');
+  }, function () { toLogin(''); });
+})();
+</script>
+</body>
+</html>
