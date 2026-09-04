@@ -1399,20 +1399,29 @@
       }
 
       /* ---- somebody is writing --------------------------------------
-         Six seconds, the same window the database uses, worked out here
-         as well so the dot goes out on time even if a poll is missed.
-         The row is read on the message poll's beat: one indexed lookup
-         every three seconds while a conversation is open, and none at
-         all when none is. */
-      var TYPING_FOR = 6000;
+         Asked on the message poll's beat: once every three seconds while
+         a conversation is open, and not at all when none is. The six
+         seconds that decide whether it is recent enough are the
+         database's, and only the database's — one place to be right
+         about it rather than the same number written twice.
+
+         Through a function, not by naming the column.
+
+         Naming it is what made this dot invisible on the shop's side
+         while the customer's worked: customer_typing_at is new, and
+         PostgREST answers with an error for a column its cached copy of
+         the table does not know about yet. An error here means "nobody
+         is typing" — silently, because a dot is not worth an alarm —
+         so the failure looked like nothing happening at all.
+
+         The customer's half never had it, because chat_poll is a
+         function and carries no column names. Now both halves are the
+         same, and neither can be broken by a stale cache. */
       function readTyping(id) {
-        return sb.from('chat_conversations')
-          .select('customer_typing_at')
-          .eq('id', id)
+        return sb.rpc('chat_typing_peek', { p_conversation: id })
           .then(function (r) {
-            if (r.error || id !== openId) return;
-            var at = r.data && r.data[0] && r.data[0].customer_typing_at;
-            var on = !!at && (Date.now() - new Date(at).getTime()) < TYPING_FOR;
+            if ((r && r.error) || id !== openId) return;
+            var on = (r && r.data) === true;
             if (on === theyAreTyping) return;
             theyAreTyping = on;
             paintTyping();

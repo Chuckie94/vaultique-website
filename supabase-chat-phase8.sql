@@ -73,6 +73,43 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------
+-- And the shop asking whether the customer is.
+--
+-- Through a function, deliberately, even though the panel could select
+-- the column directly — it did, at first, and that is exactly why the
+-- dot appeared on the customer's side and not on the shop's.
+--
+-- PostgREST keeps a cache of the table layout. A column added by a
+-- migration is not in that cache until it reloads, so asking for
+-- customer_typing_at by name came back as an error until it did, and
+-- the panel treats an error here as "nobody is typing" — silently, as
+-- it should, because a dot is not worth an alarm. The customer's side
+-- never had the problem because it reads through chat_poll, which is a
+-- function and so has no column names in the request at all.
+--
+-- A function on this side too means both halves work the same way and
+-- neither can be broken by a cache. The reload below makes it moot in
+-- any case, and it is here as well because belt and braces cost nothing.
+-- ---------------------------------------------------------------------
+create or replace function public.chat_typing_peek(p_conversation uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.chat_conversations c
+     where c.id = p_conversation
+       and c.status = 'open'
+       and c.customer_typing_at is not null
+       and c.customer_typing_at > now() - interval '6 seconds'
+       -- Only somebody who is actually answering may ask.
+       and public.chat_may_answer()
+  );
+$$;
+
+-- ---------------------------------------------------------------------
 -- Sending clears your own.
 --
 -- Without this the dot hangs about for up to six seconds after the
@@ -184,9 +221,20 @@ $$;
 
 revoke all on function public.chat_typing(text)      from public;
 revoke all on function public.chat_typing_shop(uuid) from public;
+revoke all on function public.chat_typing_peek(uuid) from public;
 -- The customer's side is anon, like the other four it already calls.
 grant execute on function public.chat_typing(text)      to anon, authenticated;
 grant execute on function public.chat_typing_shop(uuid) to authenticated;
+grant execute on function public.chat_typing_peek(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- Tell PostgREST the shape of things has changed.
+--
+-- Two new columns and three new functions. Supabase usually notices on
+-- its own, but "usually" is what made the shop's own dot invisible while
+-- the customer's worked — so it is asked for here rather than waited on.
+-- ---------------------------------------------------------------------
+notify pgrst, 'reload schema';
 
 -- ---------------------------------------------------------------------
 -- Checking it took

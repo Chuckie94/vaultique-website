@@ -69,10 +69,16 @@
   to = "/sw.js"
   status = 200
 
+# Built when it is asked for, so the installed app's icon is whichever
+# logo the shop last uploaded in Settings > Branding rather than the file
+# the folder was built with. force = true because the static
+# manifest.webmanifest is still in the folder as the fallback, and
+# Netlify serves a file that exists before it reaches a redirect.
 [[redirects]]
   from = "/manifest.webmanifest"
-  to = "/manifest.webmanifest"
+  to = "/.netlify/functions/manifest"
   status = 200
+  force = true
 
 # ---------------------------------------------------------------------
 # Files that ship with the site but are nobody's business but the shop's.

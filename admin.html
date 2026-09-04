@@ -459,6 +459,23 @@
   @media(max-width:820px){
     .lc-wrap{grid-template-columns:1fr}
     .lc-list{max-height:260px}
+    /* The messages are the point of this screen, and on a phone they
+       were the only thing that could give — so they gave.
+
+       .lc-thread is a column capped at 70vh. Everything in it except the
+       log is fixed height, and on a narrow screen every one of those
+       gets taller: the customer's name, the account tag, the number and
+       where they came from all wrap; the four sending buttons wrap onto
+       three rows; the notes box and the reply box follow. Added up they
+       exceeded the cap on their own, so the log — the one thing set to
+       take what is left — was left with a sliver, showing one clipped
+       line of a conversation.
+
+       So on a phone the thread is not capped at all, and the log is
+       given a floor and its own scroll. The page scrolls; the
+       conversation does not get squeezed out of it. */
+    .lc-thread{max-height:none}
+    .lc-log{min-height:240px;max-height:50vh}
   }
   /* Live Chats · who is writing */
   .lc-tag{display:inline-block;margin-left:8px;font-size:10px;letter-spacing:.1em;
@@ -1137,9 +1154,34 @@
   }
 
   var adminReady = false;
+  /* The tab icon, and the one an iPhone puts on the home screen.
+
+     Both used to point at files that ship with the folder, which are the
+     logo the site was built with — so a shop that uploaded a new one in
+     Settings > Branding kept the old one on its phone, in the most
+     visible place there is and the last place anybody would think to
+     look for a stale file. The manifest is built to order for the same
+     reason; these two are links in a page, so they are swapped here.
+
+     Quiet throughout. An icon is not worth an error, and a shop that has
+     uploaded nothing keeps the tile that ships with the folder. */
+  function useTheShopsLogo() {
+    var store = window.VBP_ADMIN && window.VBP_ADMIN.store;
+    if (!store) return;
+    store.load('branding').then(function (b) {
+      var src = (b && (b.logoMobile || b.logoMain)) || '';
+      if (!src) return;
+      var apple = document.querySelector('link[rel="apple-touch-icon"]');
+      if (apple) apple.href = src;
+      var icon = document.querySelector('link[rel="icon"]');
+      if (icon) icon.href = src;
+    }, function () {});
+  }
+
   function enterAdmin() {
     show('topbar', true); show('admin', true);
     adminReady = true;
+    useTheShopsLogo();
     if (chatOnly) {
       narrowToChats();
       /* No product load: the rules refuse them product_meta, and asking
