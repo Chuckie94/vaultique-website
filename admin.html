@@ -79,7 +79,7 @@
        you start answering.</p>
     <label for="pw1">New password</label>
     <input type="password" id="pw1" autocomplete="new-password" />
-    <label for="pw2">Type it again</label>
+    <label for="pw2">Confirm password</label>
     <input type="password" id="pw2" autocomplete="new-password" />
     <p class="hint" id="pwRule">At least eight characters.</p>
     <div style="margin-top:18px"><button class="btn btn-gold" id="pwBtn" style="width:100%">Save it and carry on</button></div>
@@ -411,7 +411,19 @@
   function afterPassword() {
     show('login', false);
     return adminVerdict().then(function (verdict) {
-      if (verdict === 'yes') return continueAsAdmin();
+      if (verdict === 'yes') {
+        /* An administrator is asked the same question, because phase 9
+           lets the owner make one and hand them a password — and a
+           password somebody else knows is nobody's, whichever table
+           the person is listed in. This branch used to go straight
+           past it, so a new administrator was never asked at all and
+           the flag sat on their row for ever, asking every OTHER
+           device they signed in on. */
+        return chatStaffVerdict().then(function (me) {
+          mustChangePassword = !!(me && me.must_change_password);
+          return continueAsAdmin();
+        }, function () { return continueAsAdmin(); });
+      }
       /* Not an administrator. Before refusing them, ask whether they are
          somebody hired to answer chats — a real account with a smaller
          job, not a stranger. */
@@ -463,7 +475,38 @@
         /* Told afterwards, never before: the flag says "they have chosen
            one", and saying so before they had would be a lie the next
            sign-in would act on. */
-        return sb.rpc('chat_staff_password_changed');
+        /* Both, because this page lets in both kinds of person and the
+           flag lives on whichever table they are in. Clearing only the
+           chat_staff one left a new administrator changing their
+           password, being asked again, and again — a loop with no way
+           out of it, which is the worst thing a sign-in can do. Each
+           call clears the caller's own row and nothing else, so asking
+           for both is safe and asking for one was not. */
+        /* Both, because this page lets in both kinds of person and the
+           flag lives on whichever table they are in. Each call clears
+           the caller's own row and nothing else, so asking for both is
+           safe and asking for only one was not.
+
+           And the answers are looked at. This used to fire and move on
+           without reading them, so a clear that failed looked exactly
+           like one that worked — the password really had changed, the
+           flag really had not, and every other device the person owned
+           went on asking them to change it again. */
+        return Promise.all([
+          Promise.resolve(sb.rpc('chat_staff_password_changed'))
+            .then(function (r) { return !(r && r.error); }, function () { return false; }),
+          Promise.resolve(sb.rpc('admin_password_changed'))
+            .then(function (r) { return !(r && r.error); }, function () { return false; })
+        ]).then(function (done) {
+          /* The password is changed either way — that part is Supabase's
+             and it succeeded. Only the "stop asking me" flag is in
+             doubt, so they are let through and told, rather than held
+             at a door they have already opened. */
+          if (done.indexOf(true) === -1) {
+            say('Your password is changed. This device may still ask again — ' +
+                'tell the shop owner the flag could not be cleared.', 'err');
+          }
+        });
       })
       .then(function () {
         mustChangePassword = false;

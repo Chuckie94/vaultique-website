@@ -25,9 +25,15 @@
 </head>
 <body>
 
-<div class="topbar hide" id="topbar">
-  <div class="brand"><span class="serif">VAULTIQUE</span> <span class="tag">CHAT DESK</span></div>
-  <div class="top-actions">
+<!-- The admin's own top bar, class for class. The first version of this
+     invented topbar/brand/top-actions, none of which the stylesheet has,
+     so the bar had no navy behind it — and .btn-ghost is white text on
+     transparent, which on white is nothing at all. Both buttons were
+     there and invisible. -->
+<div class="top hide" id="topbar">
+  <div class="wrap">
+    <span class="v">VAULTIQUE</span><span style="font-size:11px;letter-spacing:.3em;color:var(--gold)">CHAT DESK</span>
+    <span class="sp"></span>
     <a class="btn btn-ghost btn-sm" href="/" target="_blank" rel="noopener">View site</a>
     <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
   </div>
@@ -78,7 +84,7 @@
        you start answering.</p>
     <label for="pw1">New password</label>
     <input type="password" id="pw1" autocomplete="new-password" />
-    <label for="pw2">Type it again</label>
+    <label for="pw2">Confirm password</label>
     <input type="password" id="pw2" autocomplete="new-password" />
     <p class="hint" id="pwRule">At least eight characters.</p>
     <div style="margin-top:18px"><button class="btn btn-gold" id="pwBtn" style="width:100%">Save it and carry on</button></div>
