@@ -496,9 +496,54 @@
     i.type = type; i.id = id;
     if (value) i.value = value;
     if (autocomplete) i.autocomplete = autocomplete;
-    wrap.appendChild(l); wrap.appendChild(i);
+    wrap.appendChild(l);
+    /* A password nobody can see is a password typed twice as often and
+       wrong half the time, especially on a phone keyboard. Every field
+       that hides what is typed gets a way to look at it. */
+    if (type === 'password') wrap.appendChild(reveal(i));
+    else wrap.appendChild(i);
     return i;
   }
+
+  /* The input, wrapped, with an eye beside it. Returns the wrapper; the
+     caller keeps the input it passed in, so nothing else has to change. */
+  function reveal(input) {
+    var box = el('div', 'pw-box');
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pw-eye';
+    box.appendChild(input);
+    box.appendChild(btn);
+
+    function paint() {
+      var shown = input.type === 'text';
+      btn.innerHTML = shown ? EYE_OFF : EYE_ON;
+      /* Named for what pressing it does, not for the state it is in:
+         a screen reader saying "Hide password" on a hidden password is
+         the kind of help that is worse than none. */
+      btn.setAttribute('aria-label', shown ? 'Hide password' : 'Show password');
+      btn.setAttribute('title', shown ? 'Hide password' : 'Show password');
+      btn.setAttribute('aria-pressed', shown ? 'true' : 'false');
+    }
+    btn.addEventListener('click', function () {
+      /* Where the cursor was, kept: turning the eye on mid-word should
+         not send you back to the start of what you were typing. */
+      var at = input.selectionStart, to = input.selectionEnd;
+      input.type = input.type === 'password' ? 'text' : 'password';
+      paint();
+      try { input.focus(); input.setSelectionRange(at, to); } catch (e) { input.focus(); }
+    });
+    paint();
+    return box;
+  }
+  var EYE_ON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12z"/>' +
+    '<circle cx="12" cy="12" r="3.2"/></svg>';
+  var EYE_OFF =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M1.5 12S5 5.5 12 5.5c1.6 0 3 .34 4.2.87M22.5 12s-3.5 6.5-10.5 6.5c-1.6 0-3-.34-4.2-.87"/>' +
+    '<path d="M9.9 9.9a3.2 3.2 0 004.2 4.2"/><path d="M3 3l18 18"/></svg>';
 
   function drawSignedOut(host) {
     var card = el('div', 'ac-card');

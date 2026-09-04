@@ -961,6 +961,19 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .ac-lead{font-size:14.5px;color:var(--ink);line-height:1.7;margin-top:6px}
 .ac-rule{font-size:12px;color:var(--muted);margin-top:6px}
 .ac-rule.bad{color:#c0392b}.ac-rule.ok{color:#1f9d57}
+
+/* A password box with an eye in it. The wrapper is what the form now
+   holds instead of the bare input, so every rule that sizes an input
+   still lands on the input; only the room for the button is new. */
+.pw-box{position:relative;display:block;width:100%}
+.pw-box input{width:100%;padding-right:44px}
+.pw-eye{position:absolute;top:50%;right:6px;transform:translateY(-50%);
+  width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+  background:none;border:none;padding:0;cursor:pointer;color:var(--muted);border-radius:50%}
+.pw-eye:hover{color:var(--navy)}
+.pw-eye:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.pw-eye svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
 .ac-warn{background:rgba(var(--accent-rgb),.12);border-left:3px solid var(--accent);border-radius:var(--radius-sm);padding:13px 15px;font-size:13.5px;color:var(--ink);line-height:1.65;margin-bottom:18px}
 .ac-inline{border:1px dashed var(--line);border-radius:var(--radius-sm);padding:16px;margin:14px 0}
 .ac-check{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink);margin:10px 0}
@@ -1165,6 +1178,26 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .from-shop .chat-bubble{background:var(--surface);color:var(--ink);border:1px solid var(--line);
   border-bottom-left-radius:4px}
 .chat-at{font-size:10px;color:var(--muted);margin-top:3px;padding:0 4px}
+/* Somebody at the shop is writing. It sits on the left, where their
+   message will land, and says nothing — a dot that breathes is read
+   faster than any three words could be.
+
+   chat-typing-dot, not chat-dot: .chat-dot was already taken by the
+   light in the header that says whether anybody is at the desk, and it
+   is defined further down this file — so a typing dot borrowing the name
+   came out in the away light's red. The tests caught it. */
+.chat-typing{align-self:flex-start;padding:2px 4px;display:flex;align-items:center}
+.chat-typing-dot{width:8px;height:8px;border-radius:50%;background:#1f9d57;display:block;
+  animation:chat-breathe 1.4s ease-in-out infinite}
+@keyframes chat-breathe{
+  0%,100%{opacity:.28;transform:scale(.78)}
+  50%    {opacity:1;transform:scale(1.12)}
+}
+/* Still shown, just still. Somebody who has asked their computer to stop
+   moving things has not asked to be kept in the dark. */
+@media (prefers-reduced-motion: reduce){
+  .chat-typing-dot{animation:none;opacity:.95}
+}
 
 .chat-note{font-size:11.5px;padding:0 16px 8px;color:var(--muted);line-height:1.5}
 .chat-note.err{color:var(--err)}
@@ -1174,6 +1207,22 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .chat-dot.on{background:var(--ok)}
 .chat-seen{font-size:11px;color:var(--muted);text-align:right;margin:-4px 2px 6px 0;letter-spacing:.02em}
 .chat-seen.is-seen{color:var(--ok)}
+
+/* Asking inside the panel. The browser's own confirm box carries the
+   site's domain name and, on a phone, the whole screen.
+
+   Named chat-confirm rather than chat-ask because chat-ask is already
+   taken, by the "Who are we speaking to?" box further up this file. */
+.chat-confirm{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;
+  padding:18px;background:rgba(11,31,58,.45);backdrop-filter:blur(2px)}
+.chat-confirm-card{background:var(--ivory);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);
+  padding:18px 18px 14px;max-width:280px;width:100%}
+.chat-confirm-q{margin:0 0 14px;font-size:14px;line-height:1.5;color:var(--ink)}
+.chat-confirm-row{display:flex;gap:8px;justify-content:flex-end}
+.chat-confirm-row button{font:inherit;font-size:13px;padding:9px 14px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--line);background:transparent;color:var(--ink)}
+.chat-confirm-row .chat-confirm-yes{background:var(--gold);border-color:var(--gold);color:#0B1F3A;font-weight:600}
+.chat-confirm-row button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 
 .chat-form{flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;padding:12px 14px;
   border-top:1px solid var(--line);background:var(--surface)}

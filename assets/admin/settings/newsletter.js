@@ -35,7 +35,7 @@
     enabled: true,
 
     eyebrow: 'Stay in the know',
-    heading: 'Join the Vaultique list',
+    heading: 'Join the list',
     blurb: 'New arrivals, private offers and styling notes, straight to your inbox.',
     placeholder: 'Your email address',
     buttonLabel: 'Subscribe',
@@ -45,7 +45,7 @@
     offerAtSignup: false,
     signupLabel: 'Email me new arrivals and private offers',
 
-    welcomeSubject: 'Welcome to the Vaultique list',
+    welcomeSubject: 'Welcome to the list',
     welcomeEmail: 'Thank you for joining us.\n\n' +
                   'You will hear from us when new pieces arrive and when we hold ' +
                   'something back for the list before it reaches the shop floor. ' +

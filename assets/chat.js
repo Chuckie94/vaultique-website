@@ -49,7 +49,7 @@
      forgotten outright once the conversation is closed. A customer
      coming back the same afternoon still finds their thread; a stranger
      the next morning gets a clean window. */
-  var REMEMBER_FOR = 4 * 60 * 60 * 1000;
+  var REMEMBER_FOR = 4 * 60 * 60 * 1000;   // Settings > Live Chat may change this
   var OPEN_EVERY = 3000;           // asking, with the window open
   var IDLE_EVERY = 25000;          // asking, with it closed
   var MAX_LEN    = 2000;           // the database trims here too
@@ -58,6 +58,78 @@
              window.VBP_CONFIG.SUPABASE_URL &&
              window.VBP_CONFIG.SUPABASE_ANON_KEY) ? window.VBP_CONFIG : null;
 
+  /* ------------------------------------------------- the shop's answers
+     Settings > Live Chat. Read here rather than handed over by app.js,
+     for the same reason everything else in this file is: the window is
+     self-contained and works on a page that never finished loading the
+     rest of the storefront.
+
+     Every one of these has a built-in value identical to the admin
+     section's default, so a shop that has never opened that page sees
+     exactly what it saw before. */
+  var SET = {
+    enabled: true,
+    title: 'Chat with us',
+    hereText: 'Someone is here now',
+    awayText: 'Leave a message — we will reply as soon as we are back',
+    intro: 'Ask us anything — sizes, fit, colours, delivery, or a piece you ' +
+           'cannot find. A member of the team will reply here.',
+    placeholder: 'Write a message',
+    askName: true,
+    askNameText: 'Who are we speaking to?',
+    useHours: false,
+    hours: null,
+    hideOutsideHours: false,
+    outsideHoursText: 'We are closed just now — leave a message and we will reply when we open',
+    waHandover: true,
+    rememberHours: 4
+  };
+
+  /* The shop's own clock, needed the moment chat hours are used. Without
+     it nowInZone falls back to UTC, which is two hours off in Lusaka —
+     a chat set to open at eight would have been answering at six. */
+  var TZ = '';
+
+  function settingsRow(key) {
+    return fetch(CFG.SUPABASE_URL + '/rest/v1/site_settings?key=eq.' + key + '&select=data', {
+      headers: { apikey: CFG.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + CFG.SUPABASE_ANON_KEY }
+    })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) { return (rows && rows[0] && rows[0].data) || null; })
+      .catch(function () { return null; });
+  }
+
+  function loadSettings() {
+    if (!CFG) return Promise.resolve();
+    return Promise.all([settingsRow('chat'), settingsRow('general')])
+      .then(function (both) {
+        var d = both[0];
+        if (d) {
+          for (var k in d) {
+            if (Object.prototype.hasOwnProperty.call(d, k) &&
+                d[k] !== null && d[k] !== undefined) SET[k] = d[k];
+          }
+          var hrs = Number(SET.rememberHours);
+          if (isFinite(hrs) && hrs > 0) REMEMBER_FOR = hrs * 60 * 60 * 1000;
+        }
+        TZ = (both[1] && both[1].timezone) || '';
+      })
+      /* Unreachable settings are not a reason to have no chat. The
+         built-in wording is the wording this file shipped with. */
+      .catch(function () {});
+  }
+
+  /* Whether chat is being offered at this moment, by the clock the shop
+     set. Worked out with the same function the storefront uses for
+     trading hours, so "open" means the same thing in both places. */
+  function withinHours() {
+    if (!SET.useHours || !SET.hours) return true;
+    var F = window.VBP_FORMAT;
+    if (!F || !F.openState) return true;      // cannot tell, so do not refuse
+    var st = F.openState(SET.hours, TZ);
+    return st && st.known ? !!st.open : true;
+  }
+
   /* ------------------------------------------------------------- state */
   var token   = null;      // this browser's proof it owns a conversation
   var msgs    = [];        // everything shown, oldest first
@@ -65,6 +137,8 @@
   var unread  = 0;         // replies that arrived while the window was shut
   var seen    = false;     // the shop has read what was said to it
   var here    = false;     // somebody is at the desk to answer
+  var typing  = false;     // somebody at the shop is writing, as of a moment ago
+  var saidTypingAt = 0;    // when we last told them we are
   var status  = 'open';    // open | closed, as the shop left it
   var open    = false;
   var timer   = null;
@@ -190,12 +264,27 @@
     box.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     });
-    box.addEventListener('input', grow);
+    box.addEventListener('input', function () { grow(); sayTyping(); });
 
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && open) close();
     });
     return true;
+  }
+
+  /* Telling the shop somebody is writing.
+
+     Once every two seconds at most. A person types many times faster
+     than that, and the shop's side only needs to know it happened
+     recently — not how many keys were pressed. Nothing is sent before a
+     conversation exists, so a visitor who types a word and thinks better
+     of it still costs the database nothing. */
+  function sayTyping() {
+    if (!token || status !== 'open') return;
+    var now = Date.now();
+    if (now - saidTypingAt < 2000) return;
+    saidTypingAt = now;
+    rpc('chat_typing', { p_token: token }).catch(function () {});
   }
 
   /* The box grows with what is being typed, up to a point, so a long
@@ -229,9 +318,9 @@
     dot.hidden = false;
     dot.className = 'chat-dot' + (here ? ' on' : '');
     dot.setAttribute('title', here ? 'Someone is at the desk' : 'Nobody is at the desk right now');
-    sub.textContent = here
-      ? 'Someone is here now'
-      : 'Leave a message — we will reply as soon as we are back';
+    sub.textContent = here ? SET.hereText
+                           : (SET.useHours && !withinHours() ? SET.outsideHoursText
+                                                             : SET.awayText);
   }
 
   function paint() {
@@ -241,9 +330,7 @@
     if (!msgs.length) {
       log.innerHTML = '';
       var intro = el('div', 'chat-intro');
-      intro.appendChild(el('p', null,
-        'Ask us anything — sizes, fit, colours, delivery, or a piece you ' +
-        'cannot find. A member of the team will reply here.'));
+      intro.appendChild(el('p', null, SET.intro));
       log.appendChild(intro);
       return;
     }
@@ -290,7 +377,37 @@
         'This conversation was closed. Write again to start a new one.'));
     }
     log.scrollTop = log.scrollHeight;
+    /* The log was just emptied and refilled, so the dot goes back if
+       somebody is still writing. Last, because it stands where their
+       message will land. */
+    paintTyping();
     paintHandover();
+  }
+
+  /* Somebody at the shop is writing. A dot and nothing else — no words,
+     because there is nothing to say that the dot does not. */
+  function paintTyping() {
+    var log = $('#chatLog');
+    if (!log) return;
+    var dot = log.querySelector('.chat-typing');
+    if (!typing || status === 'closed') {
+      if (dot) dot.parentNode.removeChild(dot);
+      return;
+    }
+    if (!dot) {
+      dot = el('div', 'chat-typing');
+      /* Announced to a screen reader, which cannot see it breathe. */
+      dot.setAttribute('role', 'status');
+      dot.setAttribute('aria-label', 'Someone at the shop is typing');
+      /* Not chat-dot — that is the header's at-the-desk light. */
+      dot.appendChild(el('span', 'chat-typing-dot'));
+    }
+    log.appendChild(dot);
+    /* Only follow it down if they were already at the bottom: somebody
+       reading back through the conversation should not be dragged
+       away from it by a dot. */
+    var near = log.scrollHeight - log.scrollTop - log.clientHeight;
+    if (near < 80) log.scrollTop = log.scrollHeight;
   }
 
   /* What the shop attached, if anything. Only the shop can attach: see
@@ -415,6 +532,7 @@
   function paintHandover() {
     var host = $('#chatWa');
     if (!host) return;
+    if (!SET.waHandover) { host.style.display = 'none'; return; }
     var url = waHandover();
     if (!url || !msgs.length) { host.style.display = 'none'; return; }
     host.style.display = 'block';
@@ -427,20 +545,25 @@
   function paintAsk() {
     var host = $('#chatAsk');
     if (!host) return;
-    var wanted = !named && msgs.length > 0 && !asked && status === 'open';
+    var wanted = SET.askName && !named && msgs.length > 0 && !asked && status === 'open';
     if (!wanted) { host.style.display = 'none'; host.innerHTML = ''; return; }
     if (host.dataset.built === '1') { host.style.display = 'block'; return; }
 
     host.dataset.built = '1';
     host.style.display = 'block';
     host.innerHTML =
-      '<span class="chat-ask-q">Who are we speaking to?</span>' +
+      '<span class="chat-ask-q"></span>' +
       '<span class="chat-ask-row">' +
         '<input id="chatWho" type="text" maxlength="60" placeholder="Your name" ' +
                'autocomplete="given-name" aria-label="Your name">' +
         '<button type="button" id="chatWhoOk" class="chat-ask-ok">Save</button>' +
         '<button type="button" id="chatWhoNo" class="chat-ask-no">Not now</button>' +
       '</span>';
+
+    /* Set as text rather than written into the markup: it is the shop's
+       wording, and the shop's wording is not this file's HTML. */
+    var q = host.querySelector('.chat-ask-q');
+    if (q) q.textContent = SET.askNameText;
 
     var box = $('#chatWho', host);
     function keep() {
@@ -501,9 +624,59 @@
      the conversation does not. Ending it is the new one, and it is a
      different thing, so it asks first — a tap meant for the corner of
      the screen should not throw away what somebody was saying. */
+  /* Asked inside the panel rather than through the browser's confirm
+     box. The rest of this window is the shop's; a grey system dialog
+     saying the site's domain name in the middle of it is not, and on a
+     phone it takes over the whole screen for a question about a chat.
+
+     Resolves false if anything is missing, which is the safe way round:
+     a question that cannot be asked has not been answered yes. */
+  function askInPanel(question, yesText) {
+    var panel = $('#chatPanel');
+    if (!panel) return Promise.resolve(false);
+    return new Promise(function (resolve) {
+      /* chat-confirm, not chat-ask: the panel already has a chat-ask —
+         the "Who are we speaking to?" box — and reusing the name would
+         have put this one's dark backdrop behind that one. */
+      var back = el('div', 'chat-confirm');
+      var card = el('div', 'chat-confirm-card');
+      card.appendChild(el('p', 'chat-confirm-q', question));
+      var row = el('div', 'chat-confirm-row');
+      var no = el('button', 'chat-confirm-no', 'Keep it open');
+      var yes = el('button', 'chat-confirm-yes', yesText || 'Yes');
+      no.type = 'button'; yes.type = 'button';
+      row.appendChild(no); row.appendChild(yes);
+      card.appendChild(row);
+      back.appendChild(card);
+      panel.appendChild(back);
+      no.focus();
+
+      function done(answer) {
+        document.removeEventListener('keydown', onKey, true);
+        if (back.parentNode) back.parentNode.removeChild(back);
+        resolve(answer);
+      }
+      function onKey(e) {
+        if (e.key === 'Escape') { e.preventDefault(); done(false); return; }
+        if (e.key !== 'Tab') return;
+        /* Two buttons and nothing else: the ring stays between them. */
+        if (e.shiftKey && document.activeElement === no) { e.preventDefault(); yes.focus(); }
+        else if (!e.shiftKey && document.activeElement === yes) { e.preventDefault(); no.focus(); }
+      }
+      document.addEventListener('keydown', onKey, true);
+      no.addEventListener('click', function () { done(false); });
+      yes.addEventListener('click', function () { done(true); });
+      back.addEventListener('click', function (e) { if (e.target === back) done(false); });
+    });
+  }
+
   function endChat() {
     if (!token) { close(); return; }
-    if (msgs.length && !window.confirm('End this chat? You can always start another.')) return;
+    if (!msgs.length) return finishChat();
+    askInPanel('End this chat? You can always start another.', 'End it')
+      .then(function (yes) { if (yes) finishChat(); });
+  }
+  function finishChat() {
     var t = token;
     rpc('chat_end', { p_token: t }).catch(function () {});
     token = null; memoSet(null); msgs = []; lastAt = null;
@@ -644,7 +817,12 @@
         named = r.named !== false;
         seen = r.seen === true;
         here = r.here === true;
+        var wasTyping = typing;
+        typing = r.typing === true;
         paintPresence();
+        /* On its own, so a dot appearing or going does not redraw the
+           conversation underneath it. */
+        if (typing !== wasTyping) paintTyping();
         var fresh = r.messages || [];
         if (fresh.length) {
           /* Anything still waiting on the network is dropped in favour
@@ -720,6 +898,24 @@
        message to go. The button is not drawn rather than drawn dead. */
     if (!CFG) return;
     if (!build()) return;
+    /* The window is built either way and shown afterwards, so the shop's
+       wording is in place before anybody can open it. A button that
+       appears and then changes what it says under the customer's hand is
+       worse than one that appears a moment later. */
+    loadSettings().then(start);
+  }
+
+  function start() {
+    if (!SET.enabled) return;                       // chat is switched off
+    if (SET.useHours && SET.hideOutsideHours && !withinHours()) return;
+
+    var titleEl = document.querySelector('#chatPanel .chat-title');
+    if (titleEl && SET.title) titleEl.textContent = SET.title;
+    var inputEl = $('#chatInput');
+    if (inputEl && SET.placeholder) inputEl.placeholder = SET.placeholder;
+    var sub = $('#chatSub');
+    if (sub && !started) sub.textContent = SET.useHours && !withinHours()
+      ? SET.outsideHoursText : sub.textContent;
 
     var fab = $('#chatFab');
     if (fab) fab.classList.remove('hide');

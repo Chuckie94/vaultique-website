@@ -35,9 +35,14 @@ vaultique-website/
 │       ├── dashboard.js       one file per top level admin page
 │       ├── activity-log.js
 │       └── settings/          one file per Settings category
-├── tests/                     browser tests for the admin (see README there)
 └── images/                    optional photos, named by SKU (see README there)
 ```
+
+There is no `tests/` folder in this package. This listing used to show one, and
+`.gitignore` and `send-email.js` still speak of tests, because they were written
+alongside a suite that is not shipped here. Nothing in this folder verifies
+itself; the checks that were run against this build live with the audit, not in
+the upload.
 
 Open `index.html` directly to preview the design. `products.js` is the secure
 server-side feed.
@@ -116,8 +121,13 @@ is anything you changed — including **Do not let search engines index my site*
 which is ignored entirely when the settings cannot be read.
 
 ### Newsletter
-The signup uses Netlify Forms (no backend). Submissions appear under **Forms**
-in your Netlify dashboard.
+The signup writes to the `subscribers` table in this website's own Supabase,
+through the `subscribe_email` function. Addresses appear in the admin under
+**Subscribers**, where you can export or remove them.
+
+Nothing goes to Netlify Forms. This paragraph used to say it did, which was
+true of an earlier build and would have sent anyone looking for a customer's
+address to a dashboard page that has never had one on it.
 
 ---
 

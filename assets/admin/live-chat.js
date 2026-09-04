@@ -49,6 +49,31 @@
      that way to both. */
   function agentOnline(a) { return agentPresent(a) && a.status === 'online'; }
   function agentHere(a) { return agentPresent(a); }   // kept: older callers
+
+  /* A conversation somebody has taken is theirs to answer, and phase 7
+     makes that a rule in the database rather than an understanding
+     between colleagues. The three ways out are written in
+     chat_may_speak_in(); what follows is the same rule in the browser,
+     so that the box goes grey with a reason on it instead of taking a
+     reply and having the database throw it away.
+
+     WHY IT IS SAID TWICE. It would be tidier to ask the database and
+     paint the answer. But the answer changes while the panel is open —
+     somebody goes away, five minutes pass — and asking on every keypress
+     is a request per keypress. The rule is small enough to hold in both
+     places; the database is the one that decides, and this one only
+     decides what to draw. Both are tested against the same cases.
+
+     FIVE MINUTES, AND ONLINE. Both match the SQL exactly. The presence
+     bar's two minutes is right for a green light and wrong for taking
+     work off somebody: a person reading a long message has not gone
+     home. "Away" counts as gone because away means present and not
+     answering, and a customer should not queue behind that. */
+  var HOLD_WITHIN = 300000;
+  function holderPresent(a) {
+    return !!(a && a.status === 'online' && a.last_seen_at &&
+              (Date.now() - new Date(a.last_seen_at).getTime()) < HOLD_WITHIN);
+  }
   /* A name to answer to. The shop never typed one, so it is taken from
      the address they sign in with rather than left as a bare uuid. */
   function nameFromEmail(email) {
@@ -159,6 +184,15 @@
       var listTimer = null, threadTimer = null, presenceTimer = null;
       var sending = false;
       var me = null;            // this operator's own agent row id
+      /* Whether this operator is the shop's owner, which is what decides
+         if a conversation can be deleted. Answered by the database, not
+         assumed: false until it says otherwise, so a failed or slow
+         lookup shows no delete button rather than one that errors. */
+      var isOwner = false;
+      /* Settings > Live Chat, for the three tools it can switch off. The
+         built-in answer is yes to all of them, so a shop that has never
+         opened that page sees the row it has always seen. */
+      var chatSet = { sendProducts: true, sendOrders: true, sendPhotos: true };
       var myName = '';
       var fallbackName = '';    // made from the sign-in address, if nothing better
       var agents = [];          // everybody who has ever opened this page
@@ -169,6 +203,28 @@
       var whoEl   = null;       // the identity block at the top of a thread
       var logEl   = null;       // the messages, and only the messages
       var painted = '';         // what the log is currently showing
+      /* A reply that was typed but not sent, held across a repaint.
+         Telling somebody their words are still in the box and then
+         rebuilding the box out from under them would be worse than
+         saying nothing. */
+      var draft = '';
+      /* Whether the customer is writing, and when we last said that we
+         are. Both live here rather than on the conversation row because
+         both are about this moment and this browser, and neither is
+         worth keeping when the panel is closed. */
+      var theyAreTyping = false;
+      var saidTypingAt = 0;
+
+      /* Whether somebody else is in the middle of this one. The same
+         three ways out as chat_may_speak_in(), in the same order. */
+      function heldByOther(c) {
+        if (!c || !c.assigned_to) return null;      // nobody has taken it
+        if (c.assigned_to === me) return null;      // it is yours
+        if (isOwner) return null;                   // the owner may always step in
+        var a = agents.filter(function (x) { return x.id === c.assigned_to; })[0];
+        if (!holderPresent(a)) return null;         // they are not at the desk
+        return a || { id: c.assigned_to };
+      }
 
       /* ---- the frame ------------------------------------------------ */
       var bar = el('div', 'toolbar');
@@ -202,16 +258,46 @@
       meName.title = 'The name your colleagues see beside a conversation.';
       bar.appendChild(meName);
 
+      /* Whether this operator has touched the box.
+
+         The page fills it in with a name made from the sign-in address,
+         and that happens a moment after the page opens — one round trip
+         to say they are at the desk, and another to read back who is.
+         Somebody who opens Live Chats and types their name straight away
+         had it wiped when those landed. A rare thing to hit and a
+         maddening one: the name goes back to "Chimukachipini" while you
+         are looking at it, and typing it again works, so it reads as the
+         page being broken rather than as a race.
+
+         Found by a test that had been flaking for days and was being
+         read as a slow machine. */
+      var nameTouched = false;
+      meName.addEventListener('input', function () { nameTouched = true; });
+
       var mePick = document.createElement('select');
       mePick.className = 'al-pick';
-      mePick.appendChild(new Option('I am online', 'online'));
-      mePick.appendChild(new Option('I am away', 'away'));
+      /* The words are the shop's; the values behind them are not. "away"
+         stays "away" in the database, because it is what the customer's
+         light reads and what decides when a held conversation comes free
+         — and there is already a third state, "offline", written when
+         somebody leaves the page. Renaming the stored value to match the
+         label would have collided with it. */
+      mePick.appendChild(new Option('Online', 'online'));
+      mePick.appendChild(new Option('Offline', 'away'));
       mePick.setAttribute('aria-label', 'Your status');
       bar.appendChild(mePick);
 
       var statsBtn = el('button', 'btn btn-out btn-sm', 'Numbers');
       statsBtn.type = 'button';
       bar.appendChild(statsBtn);
+
+      /* Notifications on this device. One button, and it says which of
+         the two things it will do — a switch that does not say which way
+         it is pointing is worse than no switch. */
+      var bellBtn = el('button', 'btn btn-out btn-sm lc-bell', 'Notify me here');
+      bellBtn.type = 'button';
+      bar.appendChild(bellBtn);
+
       host.appendChild(bar);
 
       var statsBox = el('div', 'lc-stats');
@@ -254,7 +340,9 @@
           if (r.error) { count.textContent = 'Could not read the conversations.'; return; }
           convs = r.data || [];
           paintList();
+          refreshStats();      // the numbers move with the list, not with the panel opening
           paintWho();
+          alertOnNew();        // the sound and the count in the tab title
         });
       }
 
@@ -282,6 +370,7 @@
             if (!logEl) { paintThread(); return; }
             paintWho();
             if (messageSig() !== painted) paintMessages();
+            readTyping(id);
             /* Read, because somebody is looking at it. Not while the tab
                is in the background: nobody is reading a conversation
                they cannot see. */
@@ -340,6 +429,47 @@
           });
       }
 
+      /* Asked once, on the way in. A shop that has not run the phase 5
+         migration has no such function, and the error that comes back is
+         the correct answer: no owner named, so no delete button, and the
+         page carries on exactly as it did before.
+
+         If a thread was already open when the answer lands, it is drawn
+         again — the button belongs in a header that was built before we
+         knew whether to build it. */
+      function loadOwner() {
+        return sb.rpc('is_shop_owner').then(function (r) {
+          var yes = !!(r && !r.error && r.data === true);
+          if (yes === isOwner) return;
+          isOwner = yes;
+          if (openId) { painted = ''; paintThread(); }
+        }, function () {});
+      }
+
+      /* Where this website actually answers, told to the database by the
+         browser looking at it.
+
+         The database has to post to an absolute address to make a phone
+         buzz, and it is the one thing the migration cannot know. Asking
+         the shop to type it is asking for the one mistake that fails
+         silently: the nudge is deliberately quiet when it fails, so a
+         wrong address means phones that never buzz and nothing anywhere
+         saying why. This way nobody types it, and it follows the shop to
+         a new domain on its own.
+
+         Owner only, in the database as well as here — the hook secret
+         travels to whatever address this sets. */
+      function tellSiteAddress() {
+        if (!isOwner || !alerts || !alerts.siteOrigin) return Promise.resolve();
+        var origin = alerts.siteOrigin(window.location);
+        if (!origin) return Promise.resolve();
+        /* Quiet either way. This is housekeeping the shop never asked
+           for, and a shop that has not run phase 7 has no such function
+           — the error that comes back is the correct answer. */
+        return sb.rpc('chat_push_site', { p_url: origin })
+          .then(function () {}, function () {});
+      }
+
       /* Everybody who is at the desk right now, named. An operator
          deciding whether to hand a conversation over needs to know who
          is actually there to take it. */
@@ -371,16 +501,50 @@
          chat_presence keeps whatever is already stored when it is handed
          none, which is what lets a chosen name survive the next beat. */
       function sayHere(status, name) {
-        return sb.rpc('chat_presence', {
-          p_status: status,
-          p_name: (name === null ? null : (name || myName || null))
-        }).then(loadAgents, function () {});
+        var say = (name === null ? null : (name || myName || null));
+        return sb.rpc('chat_presence', { p_status: status, p_name: say })
+          .then(function () {
+            /* A name typed here is the name the owner's staff list should
+               show as well. A no-op for an administrator, who has no
+               chat_staff row, and absent entirely before phase 6 — both
+               of which come back as an error and are ignored. */
+            if (!say) return;
+            return Promise.resolve(sb.rpc('chat_staff_rename', { p_name: say }))
+              .catch(function () {});
+          })
+          .then(loadAgents, function () {});
       }
 
+      /* Saved answers, and which tools this shop uses.
+
+         The answers are the shop's now: Settings > Live Chat writes them
+         and this reads them. chat_canned is still read for a shop that
+         has not opened that page yet — the five it was seeded with are
+         somebody's work and should not vanish the day this ships. Once
+         the section has been saved, the section is the only source. */
       function loadCanned() {
-        return sb.from('chat_canned').select('id,title,body,sort')
-          .order('sort', { ascending: true })
-          .then(function (r) { canned = (r && r.data) || []; }, function () {});
+        var fromSettings = A.store
+          ? A.store.load('chat').catch(function () { return {}; })
+          : Promise.resolve({});
+        return fromSettings.then(function (d) {
+          d = d || {};
+          chatSet.sendProducts = d.sendProducts !== false;
+          chatSet.sendOrders   = d.sendOrders   !== false;
+          chatSet.sendPhotos   = d.sendPhotos   !== false;
+
+          var written = Array.isArray(d.canned) ? d.canned.filter(function (q) {
+            return q && String(q.title || '').trim() && String(q.body || '').trim();
+          }) : [];
+          if (written.length) {
+            canned = written.map(function (q, i) {
+              return { id: 's' + i, title: q.title, body: q.body, sort: i };
+            });
+            return;
+          }
+          return sb.from('chat_canned').select('id,title,body,sort')
+            .order('sort', { ascending: true })
+            .then(function (r) { canned = (r && r.data) || []; }, function () {});
+        });
       }
 
       /* The same public feed the storefront reads. Fetched once, and
@@ -415,14 +579,55 @@
           }, function () {});
       }
 
+      /* The numbers used to be counted once, when the panel was opened,
+         and then left there while the list beside them went on moving.
+         Open it in the morning, answer a conversation at noon, and it
+         still said "Still open 0" over a list with an open conversation
+         at the top of it — the panel was not wrong when it was drawn,
+         and it had no way to stop being right.
+
+         So it counts again with the list. The list polls every six
+         seconds and this is an aggregate over a month, so it is held to
+         one count every fifteen; between those the panel says how long
+         ago it counted rather than implying it is this second's. */
+      var STATS_EVERY = 15000;
+      var statsAt = 0;
+      var statsBusy = false;
+
       function showStats() {
         var on = statsBox.style.display !== 'none';
         if (on) { statsBox.style.display = 'none'; return; }
         statsBox.style.display = 'block';
         statsBox.innerHTML = '<div class="lc-empty">Counting…</div>';
+        statsAt = 0;
+        paintStats();
+      }
+
+      /* Called by the poll. Does nothing unless the panel is showing. */
+      function refreshStats() {
+        if (statsBox.style.display === 'none') return;
+        if (Date.now() - statsAt < STATS_EVERY) { stampStats(); return; }
+        paintStats();
+      }
+
+      function stampStats() {
+        var s = statsBox.querySelector('.lc-stat-note');
+        if (!s || !statsAt) return;
+        var ago = Math.round((Date.now() - statsAt) / 1000);
+        s.textContent = 'The last 30 days · counted ' +
+          (ago < 10 ? 'just now' : ago < 60 ? ago + ' seconds ago'
+                                            : Math.round(ago / 60) + ' minutes ago');
+      }
+
+      function paintStats() {
+        if (statsBusy) return;
+        statsBusy = true;
         sb.rpc('chat_stats', { p_days: 30 }).then(function (r) {
+          statsBusy = false;
+          if (statsBox.style.display === 'none') return;
           if (r.error || !r.data) { statsBox.innerHTML =
             '<div class="lc-empty">Could not read the numbers.</div>'; return; }
+          statsAt = Date.now();
           var d = r.data, t = d.totals || {};
           statsBox.innerHTML = '';
           var grid = el('div', 'lc-stat-grid');
@@ -438,6 +643,7 @@
           });
           statsBox.appendChild(grid);
           statsBox.appendChild(el('div', 'lc-stat-note', 'The last 30 days.'));
+          stampStats();
 
           (d.agents || []).forEach(function (a) {
             var row = el('div', 'lc-hist-row');
@@ -451,6 +657,8 @@
             statsBox.appendChild(row);
           });
         }, function () {
+          statsBusy = false;
+          if (statsBox.style.display === 'none') return;
           statsBox.innerHTML = '<div class="lc-empty">Could not read the numbers.</div>';
         });
       }
@@ -577,6 +785,10 @@
 
         logEl.scrollTop = logEl.scrollHeight;
         painted = messageSig();
+        /* This just emptied the log, so the dot goes back if it is still
+           wanted. It has to come after the seen line, because it stands
+           where the next message will land and that is the bottom. */
+        paintTyping();
       }
 
       function paintThread() {
@@ -589,6 +801,10 @@
           return;
         }
 
+        /* Worked out before anything is built, because the header, the
+           reply box and the tools all read it. */
+        var held = heldByOther(c);
+
         var head = el('div', 'lc-head');
         var idn = el('div');
         head.appendChild(idn);
@@ -598,19 +814,50 @@
         var acts = el('div', 'lc-acts');
 
         /* Who is dealing with this. Taking it and handing it on are the
-           same control, because they are the same decision. */
+           same control, because they are the same decision.
+
+           The away marker uses the five-minute rule rather than the
+           presence bar's two, because this is the question the marker is
+           actually being read for: not "is their light green" but "will
+           this conversation be answered if I give it to them". */
         var owner = document.createElement('select');
         owner.className = 'al-pick';
         owner.setAttribute('aria-label', 'Who is dealing with this');
         owner.appendChild(new Option('Nobody has taken it', ''));
         agents.forEach(function (a) {
           var label = (a.display_name || 'Agent') + (a.id === me ? ' (me)' : '') +
-                      (agentHere(a) ? '' : ' — away');
+                      (holderPresent(a) ? '' : ' — away');
           var o = new Option(label, a.id);
           if (a.id === c.assigned_to) o.selected = true;
           owner.appendChild(o);
         });
-        owner.addEventListener('change', function () { assign(c, owner.value || null); });
+        /* Greyed for a colleague who may not take it, so the refusal is
+           seen before the attempt rather than after. The database
+           refuses either way; this only saves the round trip and the
+           moment of thinking it worked. */
+        owner.disabled = !!held;
+        if (held) owner.title = 'Only ' + (held.display_name || 'the person holding it') +
+                                ' can hand this on.';
+        owner.addEventListener('change', function () {
+          var to = owner.value || null;
+          /* Handing a live conversation to somebody is worth a question
+             when it leaves your hands — and worth none when you are
+             taking one on, which is a thing to get on with. */
+          var ask = (ctx && ctx.ask) || (A && A.ask);
+          var leaving = c.assigned_to === me && to && to !== me;
+          if (!leaving || !ask) { assign(c, to); return; }
+          var toName = (agents.filter(function (x) { return x.id === to; })[0] || {}).display_name ||
+                       agentName(to) || 'them';
+          var awayNote = holderPresent(agents.filter(function (x) { return x.id === to; })[0])
+            ? '' : toName + ' is not at the desk just now, so it may sit unanswered. ';
+          ask('Hand this conversation to ' + toName + '?', {
+            okText: 'Hand it over',
+            note: awayNote + 'They will be told, and it stops being yours to answer.'
+          }).then(function (yes) {
+            if (yes) assign(c, to);
+            else { owner.value = c.assigned_to || ''; }
+          });
+        });
         acts.appendChild(owner);
 
         var closeBtn = el('button', 'btn btn-out btn-sm',
@@ -629,8 +876,50 @@
             .then(function (yes) { if (yes) setStatus(c, 'closed'); });
         });
         acts.appendChild(closeBtn);
+
+        /* Deleting one, which only the shop's owner may do.
+
+           Ending a conversation is reversible and deleting it is not, so
+           it is not a power everybody who answers chats needs. The
+           button is only built for the owner, and the database asks
+           again: chat_delete refuses anybody else, so a button conjured
+           up in a console gets an error rather than a deletion. */
+        if (isOwner) {
+          var delBtn = el('button', 'btn btn-out btn-sm lc-del', 'Delete');
+          delBtn.type = 'button';
+          delBtn.addEventListener('click', function () {
+            var ask = (ctx && ctx.ask) || (A && A.ask);
+            if (!ask) return;
+            ask('Delete this conversation with ' + who(c) + '?', {
+              danger: true, okText: 'Delete it', title: 'This cannot be undone',
+              note: 'Every message and every internal note in it goes too. ' +
+                    'If you only want it out of the way, end it instead.'
+            }).then(function (yes) { if (yes) removeConversation(c); });
+          });
+          acts.appendChild(delBtn);
+        }
+
         head.appendChild(acts);
         threadCol.appendChild(head);
+
+        /* Somebody else is in the middle of this one.
+
+           Said plainly and above the messages, because the alternative —
+           a box that quietly refuses — is how two people end up
+           answering one customer over each other, or how somebody types
+           a careful paragraph and loses it. It can still be read: the
+           lock is on speaking, not on looking, so a colleague can catch
+           up before taking it on. */
+        if (held) {
+          var lock = el('div', 'lc-lock');
+          lock.appendChild(el('span', 'lc-lock-who',
+            (held.display_name || agentName(held.id) || 'A colleague') +
+            ' is answering this one.'));
+          lock.appendChild(el('span', 'lc-lock-why',
+            'You can read it. To reply, ask them to hand it over — or wait: ' +
+            'it comes free on its own if they go away.'));
+          threadCol.appendChild(lock);
+        }
 
         var log = el('div', 'lc-log');
         threadCol.appendChild(log);
@@ -640,13 +929,19 @@
         var form = el('form', 'lc-form');
         var box = document.createElement('textarea');
         box.rows = 1;
-        box.placeholder = c.status === 'open'
-          ? 'Reply to ' + who(c) : 'Reopen this conversation to reply';
+        box.placeholder = held
+          ? 'Held by ' + (held.display_name || agentName(held.id) || 'a colleague')
+          : (c.status === 'open'
+              ? 'Reply to ' + who(c) : 'Reopen this conversation to reply');
         box.setAttribute('aria-label', 'Your reply');
-        box.disabled = c.status !== 'open';
+        box.disabled = c.status !== 'open' || !!held;
         box.addEventListener('input', function () {
           box.style.height = 'auto';
           box.style.height = Math.min(box.scrollHeight, 110) + 'px';
+          /* Not from a box that cannot send: a rescued draft in somebody
+             else's conversation must not make a dot breathe at the
+             customer for a reply that is not coming. */
+          if (!box.readOnly && !box.disabled) sayTyping();
         });
         box.addEventListener('keydown', function (e) {
           if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); reply(box); }
@@ -655,7 +950,7 @@
 
         var send = el('button', 'btn btn-gold btn-sm', 'Send');
         send.type = 'submit';
-        send.disabled = c.status !== 'open';
+        send.disabled = c.status !== 'open' || !!held;
         form.appendChild(send);
         form.addEventListener('submit', function (e) { e.preventDefault(); reply(box); });
 
@@ -664,7 +959,7 @@
            conversation is closed: a shop cannot send a photo into a
            thread it cannot speak in. */
         var tools = el('div', 'lc-tools');
-        var off = c.status !== 'open';
+        var off = c.status !== 'open' || !!held;
 
         var cannedPick = document.createElement('select');
         cannedPick.className = 'al-pick';
@@ -684,29 +979,38 @@
         });
         tools.appendChild(cannedPick);
 
-        var photo = document.createElement('input');
-        photo.type = 'file';
-        photo.accept = 'image/*';
-        photo.className = 'lc-file';
-        photo.id = 'lcPhoto';
-        photo.disabled = off;
-        var photoLabel = el('label', 'btn btn-out btn-sm lc-file-label', 'Photo');
-        photoLabel.setAttribute('for', 'lcPhoto');
-        photo.addEventListener('change', function () { sendPhoto(photo, toolMsg); });
-        tools.appendChild(photo);
-        tools.appendChild(photoLabel);
+        /* A tool the shop has switched off is not built, rather than
+           built and disabled: a greyed button says "not now", and the
+           answer here is "not at all". */
+        if (chatSet.sendPhotos) {
+          var photo = document.createElement('input');
+          photo.type = 'file';
+          photo.accept = 'image/*';
+          photo.className = 'lc-file';
+          photo.id = 'lcPhoto';
+          photo.disabled = off;
+          var photoLabel = el('label', 'btn btn-out btn-sm lc-file-label', 'Photo');
+          photoLabel.setAttribute('for', 'lcPhoto');
+          photo.addEventListener('change', function () { sendPhoto(photo, toolMsg); });
+          tools.appendChild(photo);
+          tools.appendChild(photoLabel);
+        }
 
-        var prodBtn = el('button', 'btn btn-out btn-sm', 'Send a piece');
-        prodBtn.type = 'button';
-        prodBtn.disabled = off;
-        prodBtn.addEventListener('click', function () { pickProduct(toolMsg); });
-        tools.appendChild(prodBtn);
+        if (chatSet.sendProducts) {
+          var prodBtn = el('button', 'btn btn-out btn-sm', 'Send a piece');
+          prodBtn.type = 'button';
+          prodBtn.disabled = off;
+          prodBtn.addEventListener('click', function () { pickProduct(toolMsg); });
+          tools.appendChild(prodBtn);
+        }
 
-        var ordBtn = el('button', 'btn btn-out btn-sm', 'Send an order');
-        ordBtn.type = 'button';
-        ordBtn.disabled = off;
-        ordBtn.addEventListener('click', function () { pickOrder(c, toolMsg); });
-        tools.appendChild(ordBtn);
+        if (chatSet.sendOrders) {
+          var ordBtn = el('button', 'btn btn-out btn-sm', 'Send an order');
+          ordBtn.type = 'button';
+          ordBtn.disabled = off;
+          ordBtn.addEventListener('click', function () { pickOrder(c, toolMsg); });
+          tools.appendChild(ordBtn);
+        }
 
         var toolMsg = el('span', 'lc-tool-msg');
         tools.appendChild(toolMsg);
@@ -745,6 +1049,17 @@
         var side = el('div', 'lc-side');
         threadCol.appendChild(side);
         loadHistory(c, side);
+
+        /* An unsent reply put back where it was. It stays readable even
+           if the box has since been greyed, so the words can be copied
+           out and given to whoever now holds the conversation. */
+        if (draft) {
+          box.value = draft;
+          draft = '';
+          box.readOnly = box.disabled;
+          box.disabled = false;
+          box.dispatchEvent(new Event('input'));
+        }
 
         setTimeout(function () { if (!box.disabled) box.focus(); }, 40);
       }
@@ -915,43 +1230,69 @@
         host.style.display = words ? 'inline' : 'none';
       }
 
+      /* Asking, in the admin's own dialog rather than the browser's.
+
+         These four questions used to be window.prompt(), including a
+         numbered list pasted into a prompt box for the operator to
+         answer with "3". Some browsers refuse prompt() outright, in
+         which case the tool silently did nothing; the rest show a bare
+         system box in the middle of a page that has its own voice.
+
+         ask() now takes a typed answer or a list to pick from, so the
+         numbering is gone: the pieces are buttons with their SKU beside
+         them. */
+      var askHere = (ctx && ctx.ask) || (A && A.ask);
+      function askFor(question, opts) {
+        if (!askHere) return Promise.resolve(null);
+        return Promise.resolve(askHere(question, opts));
+      }
+
       /* A piece from the shop's own feed. Searched rather than listed:
          a boutique has more pieces than fit in a dropdown. */
       function pickProduct(msgHost) {
-        var term = window.prompt('Which piece? Type part of a name or a SKU.');
-        if (term === null) return;
-        term = String(term).trim().toLowerCase();
-        if (!term) return;
-        tell(msgHost, 'Looking…');
-        products().then(function (list) {
-          var hit = list.filter(function (p) {
-            return String(p.name || '').toLowerCase().indexOf(term) > -1 ||
-                   String(p.sku  || '').toLowerCase().indexOf(term) > -1;
-          }).slice(0, 8);
-          if (!hit.length) { tell(msgHost, 'Nothing matched "' + term + '".'); return; }
+        return askFor('Type part of a name or a SKU.', {
+          title: 'Which piece?',
+          okText: 'Search',
+          input: { label: 'Name or SKU', placeholder: 'e.g. Rose gold, or WF-12' }
+        }).then(function (typed) {
+          if (typed === null || typed === false) return;
+          var term = String(typed || '').trim().toLowerCase();
+          if (!term) return;
+          tell(msgHost, 'Looking…');
+          return products().then(function (list) {
+            var hit = list.filter(function (p) {
+              return String(p.name || '').toLowerCase().indexOf(term) > -1 ||
+                     String(p.sku  || '').toLowerCase().indexOf(term) > -1;
+            }).slice(0, 8);
+            if (!hit.length) { tell(msgHost, 'Nothing matched "' + term + '".'); return; }
+            if (hit.length === 1) return sendProduct(hit[0], msgHost);
 
-          var pick = hit[0];
-          if (hit.length > 1) {
-            var which = window.prompt(
-              'Which one?\n' + hit.map(function (p, i) {
-                return (i + 1) + '. ' + p.name + ' (' + p.sku + ')';
-              }).join('\n'), '1');
-            if (which === null) { tell(msgHost, ''); return; }
-            pick = hit[(parseInt(which, 10) || 1) - 1] || hit[0];
-          }
-          tell(msgHost, '');
-          var price = pick.priceOnRequest ? '' : money(pick.price);
-          return sendWith('This is the one:', {
-            kind: 'product', sku: pick.sku, name: pick.name, price: price
-          });
-        }, function () { tell(msgHost, 'Could not read the product list.'); });
+            tell(msgHost, '');
+            return askFor('', {
+              title: 'Which one?',
+              choices: hit.map(function (p, i) {
+                return { value: i, label: p.name || p.sku, hint: p.sku };
+              })
+            }).then(function (i) {
+              if (i === null || i === false) { tell(msgHost, ''); return; }
+              return sendProduct(hit[i] || hit[0], msgHost);
+            });
+          }, function () { tell(msgHost, 'Could not read the product list.'); });
+        });
+      }
+      function sendProduct(pick, msgHost) {
+        tell(msgHost, '');
+        var price = pick.priceOnRequest ? '' : money(pick.price);
+        return sendWith('This is the one:', {
+          kind: 'product', sku: pick.sku, name: pick.name, price: price
+        });
       }
 
       /* An order, looked up through the function rather than by reading
          the orders table into a chat window. */
       function pickOrder(c, msgHost) {
         tell(msgHost, 'Looking…');
-        sb.rpc('chat_find_orders', {
+        return sb.rpc('chat_find_orders', {
           p_customer: c.customer_id || null,
           p_phone: c.phone || null,
           p_ref: null
@@ -962,24 +1303,36 @@
             /* Nothing on file for this customer, so ask for the
                reference rather than saying "no orders" to somebody
                holding one. */
-            var ref = window.prompt('No orders found for them. Type an order reference:');
-            if (!ref) { tell(msgHost, ''); return; }
-            return sb.rpc('chat_find_orders', { p_customer: null, p_phone: null, p_ref: ref })
-              .then(function (r2) { return offerOrders((r2 && r2.data) || [], msgHost); });
+            tell(msgHost, '');
+            return askFor('Nothing on file for them. If they are holding a reference, type it.', {
+              title: 'Which order?',
+              okText: 'Look it up',
+              input: { label: 'Order reference', placeholder: 'e.g. VBP-1042' }
+            }).then(function (ref) {
+              if (!ref) { tell(msgHost, ''); return; }
+              tell(msgHost, 'Looking…');
+              return sb.rpc('chat_find_orders', { p_customer: null, p_phone: null, p_ref: ref })
+                .then(function (r2) { return offerOrders((r2 && r2.data) || [], msgHost); });
+            });
           }
           return offerOrders(list, msgHost);
         }, function () { tell(msgHost, 'Could not look that up.'); });
       }
       function offerOrders(list, msgHost) {
         if (!list.length) { tell(msgHost, 'No order with that reference.'); return; }
-        var pick = list[0];
-        if (list.length > 1) {
-          var which = window.prompt('Which order?\n' + list.map(function (o, i) {
-            return (i + 1) + '. ' + o.ref + ' — ' + o.status;
-          }).join('\n'), '1');
-          if (which === null) { tell(msgHost, ''); return; }
-          pick = list[(parseInt(which, 10) || 1) - 1] || list[0];
-        }
+        if (list.length === 1) return sendOrder(list[0], msgHost);
+        tell(msgHost, '');
+        return askFor('', {
+          title: 'Which order?',
+          choices: list.map(function (o, i) {
+            return { value: i, label: o.ref, hint: o.status };
+          })
+        }).then(function (i) {
+          if (i === null || i === false) { tell(msgHost, ''); return; }
+          return sendOrder(list[i] || list[0], msgHost);
+        });
+      }
+      function sendOrder(pick, msgHost) {
         tell(msgHost, '');
         var total = money(pick.total);
         return sendWith('Here is where your order has got to:', {
@@ -1020,17 +1373,92 @@
          history that says who did it, and refuses an agent who is not
          one. */
       function assign(c, agentId) {
+        var notice = (ctx && ctx.tell) || (A && A.tell);
         sb.rpc('chat_assign', { p_conversation: c.id, p_agent: agentId })
-          .then(function () {
+          .then(function (r) {
+            if (r && r.error) throw r.error;
             c.assigned_to = agentId;
             return Promise.all([loadNotes(c.id), loadList()]);
           })
-          .then(function () { paintThread(); }, function () { loadList(); });
+          .then(function () { paintThread(); }, function (e) {
+            /* Phase 7 made this refusable. Before, the only way it could
+               fail was a lost connection, and swallowing that was
+               reasonable. Now it fails when a colleague has it — which
+               is a thing the person tapping needs told, in the words the
+               database used, because those words say what to do about
+               it. Repainting afterwards puts the dropdown back to who
+               actually holds it rather than who was just chosen. */
+            var msg = (e && e.message) || '';
+            if (notice) {
+              notice(/hand it over|is with/i.test(msg)
+                       ? msg
+                       : 'That could not be changed' + (msg ? ': ' + msg : '.'));
+            }
+            return loadList().then(paintThread);
+          });
+      }
+
+      /* ---- somebody is writing --------------------------------------
+         Six seconds, the same window the database uses, worked out here
+         as well so the dot goes out on time even if a poll is missed.
+         The row is read on the message poll's beat: one indexed lookup
+         every three seconds while a conversation is open, and none at
+         all when none is. */
+      var TYPING_FOR = 6000;
+      function readTyping(id) {
+        return sb.from('chat_conversations')
+          .select('customer_typing_at')
+          .eq('id', id)
+          .then(function (r) {
+            if (r.error || id !== openId) return;
+            var at = r.data && r.data[0] && r.data[0].customer_typing_at;
+            var on = !!at && (Date.now() - new Date(at).getTime()) < TYPING_FOR;
+            if (on === theyAreTyping) return;
+            theyAreTyping = on;
+            paintTyping();
+          }, function () {});
+      }
+
+      /* Saying that we are. Throttled to one every two seconds: a person
+         types far faster than that, and the database only needs to know
+         it happened recently, not how many keys were pressed. */
+      function sayTyping() {
+        if (!openId) return;
+        var now = Date.now();
+        if (now - saidTypingAt < 2000) return;
+        saidTypingAt = now;
+        sb.rpc('chat_typing_shop', { p_conversation: openId })
+          .then(function () {}, function () {});
+      }
+
+      /* The dot itself, put in and taken out on its own rather than by
+         redrawing the log — rebuilding the messages every three seconds
+         would fight the scroll position, and on a phone it would take
+         the keyboard away. */
+      function paintTyping() {
+        if (!logEl) return;
+        var dot = logEl.querySelector('.lc-typing');
+        if (!theyAreTyping) { if (dot) dot.parentNode.removeChild(dot); return; }
+        if (!dot) {
+          dot = el('div', 'lc-typing');
+          /* No words, by request. It is announced to a screen reader,
+             which cannot see a dot breathe. */
+          dot.setAttribute('role', 'status');
+          dot.setAttribute('aria-label', 'They are typing');
+          dot.appendChild(el('span', 'lc-dot'));
+        }
+        /* Always last: it stands where their message will land. */
+        logEl.appendChild(dot);
+        var near = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight;
+        if (near < 80) logEl.scrollTop = logEl.scrollHeight;
       }
 
       function openConversation(id) {
         openId = id;
         msgs = [];
+        /* Whoever was writing, it was in the conversation just left. */
+        theyAreTyping = false;
+        saidTypingAt = 0;
         paintList();
         paintThread();
         loadThread(id).then(function () { return markRead(id); });
@@ -1039,7 +1467,11 @@
       }
 
       function reply(box) {
-        if (sending || !openId) return;
+        /* readOnly rather than disabled is how a rescued draft is shown
+           in a conversation somebody else has taken — readable and
+           copyable, but not sendable. Pressing Enter in it must not
+           start a round trip that can only be refused. */
+        if (sending || !openId || box.readOnly) return;
         var body = (box.value || '').replace(/\s+$/, '');
         if (!body.trim()) return;
         sending = true;
@@ -1054,15 +1486,62 @@
                     author_id: me })
           .then(function (r) {
             sending = false;
-            if (r.error) { box.value = body; return; }
+            if (r.error) {
+              /* The words go back in the box, always: whatever went
+                 wrong, a reply somebody typed is not something to lose.
+
+                 And it is said out loud. The box is greyed when a
+                 colleague holds the conversation, but the list only
+                 refreshes every few seconds — so somebody can take it
+                 between the last poll and this keystroke, and the
+                 refusal arrives at a person who was looking at an
+                 enabled box. Silence there reads as a broken panel. */
+              box.value = body;
+              box.dispatchEvent(new Event('input'));
+              var notice = (ctx && ctx.tell) || (A && A.tell);
+              var msg = (r.error && r.error.message) || '';
+              if (notice && /hand it over|is with/i.test(msg)) {
+                notice(msg + ' Your reply is still in the box.');
+                draft = body;                    // survives the repaint below
+                loadList().then(paintThread);
+              } else if (notice) {
+                notice('That did not send. Your reply is still in the box.');
+              }
+              return;
+            }
             return loadThread(openId).then(loadList);
           })
-          .catch(function () { sending = false; box.value = body; });
+          .catch(function () {
+            sending = false;
+            box.value = body;
+            box.dispatchEvent(new Event('input'));
+          });
       }
 
       function setStatus(c, status) {
         sb.from('chat_conversations').update({ status: status }).eq('id', c.id)
           .then(function () { c.status = status; paintThread(); return loadList(); });
+      }
+
+      /* Gone, with its messages and its notes. The thread column is
+         emptied first because the conversation it was showing no longer
+         exists, and a panel left standing over a deleted row is the next
+         poll's error. */
+      function removeConversation(c) {
+        /* The admin's own notice, not the tell(host, words) further down
+           this file that writes into a tool's message line. */
+        var notice = (ctx && ctx.tell) || (A && A.tell);
+        sb.rpc('chat_delete', { p_id: c.id }).then(function (r) {
+          if (r && r.error) throw r.error;
+          if (openId === c.id) { openId = null; msgs = []; notes = []; painted = ''; }
+          return loadList();
+        }).then(function () { paintThread(); }, function (e) {
+          var msg = (e && e.message) || String(e);
+          if (!notice) return;
+          notice(/permitted|owner/i.test(msg)
+                   ? 'Only the shop owner can delete a conversation.'
+                   : 'That could not be deleted: ' + msg);
+        });
       }
 
       /* ---- keeping up ------------------------------------------------ */
@@ -1092,6 +1571,107 @@
       });
       statsBtn.addEventListener('click', showStats);
 
+      /* ---- being told ------------------------------------------------
+         The phone, and the desk. chat-alerts.js does the work; this
+         decides when to ask it to. */
+      var alerts = window.VBP_CHAT_ALERTS || null;
+      var bellBusy = false;
+
+      function paintBell() {
+        if (!alerts) { bellBtn.style.display = 'none'; return; }
+        alerts.state().then(function (s) {
+          bellBtn.disabled = bellBusy;
+          if (!s.can) {
+            /* Still shown, and still pressable on an iPhone: pressing it
+               is how somebody finds out what to do about it. A hidden
+               button explains nothing. */
+            bellBtn.textContent = s.ios ? 'Notifications…' : 'Notifications off';
+            bellBtn.title = s.why || '';
+            bellBtn.classList.remove('is-on');
+            bellBtn.disabled = !s.ios;
+            return;
+          }
+          bellBtn.textContent = s.on ? 'Notifying this device' : 'Notify me here';
+          bellBtn.classList.toggle('is-on', !!s.on);
+          bellBtn.title = s.on
+            ? 'This device buzzes when a customer writes. Press to stop.'
+            : 'Buzz this device when a customer writes, even with the panel closed.';
+        }, function () {});
+      }
+
+      bellBtn.addEventListener('click', function () {
+        if (!alerts || bellBusy) return;
+        var notice = (ctx && ctx.tell) || (A && A.tell);
+        bellBusy = true;
+        bellBtn.disabled = true;
+        alerts.state().then(function (s) {
+          if (!s.can) throw new Error(s.why || 'Notifications are not available here.');
+          if (s.on) {
+            return alerts.disable(sb).then(function () {
+              if (notice) notice('This device will stop buzzing. Your others still will.');
+            });
+          }
+          return alerts.enable(sb).then(function () {
+            /* Proof, immediately. The whole feature is invisible until
+               something arrives, and somebody who presses a button and
+               sees nothing has no way of telling it worked. */
+            alerts.ding(0.3);
+            if (notice) {
+              notice('This device will now buzz when a customer writes — ' +
+                     'even with the panel closed.');
+            }
+          });
+        }).then(function () {
+          bellBusy = false; paintBell();
+        }, function (e) {
+          bellBusy = false;
+          if (notice) notice((e && e.message) || 'That did not work.');
+          paintBell();
+        });
+      });
+
+      /* Tapping a notification when the panel is already open. sw.js
+         sends this rather than reloading, which would throw away a
+         half-typed reply. */
+      function onWorkerMessage(e) {
+        var d = e && e.data;
+        if (!d) return;
+        if (d.type === 'chat-resubscribe' && alerts) { alerts.refresh(sb); return; }
+        if (d.type === 'chat-open') {
+          /* This handler only exists while the chats page is on screen,
+             so there is usually nowhere to go — the useful part is
+             fetching straight away rather than waiting out the poll, so
+             the message being pointed at is already there. */
+          if (ctx && ctx.navigate) { try { ctx.navigate('chats'); } catch (err) {} }
+          loadList();
+        }
+      }
+      if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
+        navigator.serviceWorker.addEventListener('message', onWorkerMessage);
+      }
+
+      /* The sound and the tab count, for somebody who has the panel open
+         in another tab. Only messages from customers count, and only
+         ones that arrived after this page loaded — a backlog from
+         yesterday is not something to be startled by. */
+      var seenTotal = null;
+      function alertOnNew() {
+        if (!alerts) return;
+        var waiting = convs.reduce(function (n, c) {
+          return n + (c.status === 'open' ? (Number(c.shop_unread) || 0) : 0);
+        }, 0);
+
+        if (seenTotal === null) { seenTotal = waiting; alerts.badge(waiting); return; }
+        if (waiting > seenTotal && document.hidden && chatSet.deskSound !== false) {
+          /* The setting is out of ten, because that is a number somebody
+             can pick; the sound wants nought to one. */
+          var v = Number(chatSet.deskVolume);
+          alerts.ding(isFinite(v) && v > 0 ? Math.min(10, v) / 10 : 0.4);
+        }
+        seenTotal = waiting;
+        alerts.badge(waiting);
+      }
+
       /* Who this operator is. Everything that attributes a reply, a note
          or a hand-over needs it, so the page waits for it before it
          announces itself at the desk. */
@@ -1107,7 +1687,8 @@
           return sayHere('online', null).then(function () {
             var mine = agents.filter(function (a) { return a.id === me; })[0];
             myName = (mine && mine.display_name) || fallbackName;
-            meName.value = myName;
+            /* Never over something they have already started typing. */
+            if (!nameTouched) meName.value = myName;
             /* Nothing stored yet: put the made-up one in, so a colleague
                sees a name rather than a blank. */
             if (!(mine && mine.display_name)) return sayHere('online');
@@ -1131,6 +1712,13 @@
         /* Leaving the page is leaving the desk. Said rather than left to
            time out, so a colleague sees it straight away. */
         if (me) sayHere('offline');
+        /* The shop's name back in the tab, and the number off the app
+           icon. Leaving "(3)" on a tab that is now showing Orders is a
+           count of something the person is no longer looking at. */
+        if (alerts) alerts.badge(0);
+        if (navigator.serviceWorker && navigator.serviceWorker.removeEventListener) {
+          navigator.serviceWorker.removeEventListener('message', onWorkerMessage);
+        }
       }
       if (typeof MutationObserver === 'function' && host.parentNode) {
         var obs = new MutationObserver(function () {
@@ -1143,12 +1731,23 @@
       });
 
       paintThread();
+      paintBell();
       findMe()
         .then(loadAgents)
+        .then(loadOwner)
         .then(loadCanned)
         .then(beatPresence)
         .then(loadList)
-        .then(beatList);
+        .then(beatList)
+        .then(tellSiteAddress)
+        .then(function () {
+          /* A browser can quietly replace a subscription, at which point
+             the row in the database points at an address that will
+             answer 410 for ever and this device stops buzzing without
+             anybody being told. Rewriting it on every visit is one
+             upsert and closes that off. */
+          if (alerts) return alerts.refresh(sb).then(paintBell, paintBell);
+        });
     }
   });
 })();

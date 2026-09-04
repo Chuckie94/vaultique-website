@@ -74,6 +74,184 @@ You will do five short steps. It takes about 10 minutes.
 > where email = '...';` — and check again. Anyone on that list has the run
 > of the shop.
 
+### Who is the owner, and what that means
+
+Everyone in `admins` can do everything in the admin, with one exception:
+**deleting a conversation in Live Chats**. Ending a chat can be undone and
+a deleted one cannot, so that one is the owner's.
+
+Running **supabase-chat-phase5.sql** adds a `role` to the `admins` table and
+makes the account that was added first the owner — the one that ran this
+setup. Everybody else is an `agent`, which is everything they could do
+before.
+
+To see where things stand:
+
+```sql
+select email, role, added_at from public.admins order by added_at;
+```
+
+To name somebody else, or a second person:
+
+```sql
+update public.admins set role = 'owner' where email = 'someone@example.com';
+```
+
+And to take it back: the same line with `'agent'`. There is no rule saying
+there must be exactly one owner — name as many as should be able to delete.
+
+An agent signed in to Live Chats simply does not see the Delete button, and
+the database refuses the request even if one is conjured up by hand.
+
+### Logins for people who only answer chats
+
+Somebody hired to answer customers does not need the products, the orders, the
+payment details or the settings. **Settings > Live Chat** has a *People who
+answer chats* panel where you add them: you give an email and a name, the site
+makes the login and shows you a temporary password once, and the first time
+they sign in they are made to choose their own before they can do anything.
+
+They sign in at the same address you do. They see Live Chats and nothing else —
+not because the tabs are hidden, but because the database refuses them
+everything else. Run **supabase-chat-phase6.sql** once to create that.
+
+**One thing to set up first, in Netlify.** Making a login is the one job that
+needs Supabase's *service role* key — the key that bypasses every rule in the
+database. That key must never reach a browser, so it lives in Netlify and only
+a server-side function ever holds it.
+
+1. Supabase > **Project Settings** > **API**. Under *Project API keys*, copy
+   the **`service_role`** key. (Not the `anon` one. The `anon` key is the one
+   already in `config.js` and is meant to be public; this one is not, ever.)
+2. Netlify > your site > **Site configuration** > **Environment variables** >
+   **Add a variable**.
+   - Key: `SUPABASE_SERVICE_ROLE_KEY`
+   - Value: the key you copied
+3. **Deploys** > **Trigger deploy** > *Deploy site*, so the functions pick it up.
+
+Until you do that, the panel still lists and switches people on and off — it
+only needs the key to *create* a login, and it tells you exactly this if you
+try without it.
+
+**If somebody leaves.** *Switch off* stops them answering immediately and keeps
+their replies readable in the conversations they handled. *Remove* deletes the
+login entirely; their replies stay, because a conversation with half its
+messages missing is not a record of anything.
+
+To see who exists at any time:
+
+```sql
+select email, display_name, active, must_change_password from public.chat_staff;
+```
+
+### A conversation belongs to one person
+
+Run **supabase-chat-phase7.sql** once. After it, a conversation somebody has
+taken cannot be answered by anybody else — the reply box goes grey for a
+colleague, with their name on it, rather than two people answering the same
+customer over each other.
+
+That would be a trap if there were no way out of it, so there are three, and
+none of them needs you:
+
+- Nobody has taken it. Anybody may.
+- **You** are the shop owner. You can always step in.
+- The person holding it is **not at the desk** — their browser has said
+  nothing for five minutes, or they have marked themselves *away*.
+
+That last one is what stops a customer waiting behind somebody who has gone
+home. Five minutes, not the two the little green light uses: somebody reading a
+long message has not left.
+
+**Handing one on.** The dropdown at the top of a conversation — the one that
+says who is dealing with it — is also how you pass it to somebody else. Choose
+their name and confirm. They are told straight away, on their phone if they
+have turned that on. If they are away, it says so before you hand it over.
+
+### Making a phone buzz
+
+Also in **supabase-chat-phase7.sql**. When a customer writes, the database
+tells the website, and the website sends a notification to every device that
+asked for one — the same kind of buzz a message from anybody else makes, with
+the panel closed and the phone in a pocket.
+
+**Each person turns on their own device.** Open **Live Chats** on the phone
+that should buzz and press **Notify me here**. That is it — there is nothing to
+copy, no key to paste, and no Netlify variable to add. The keys were generated
+for this shop and are already in the file.
+
+Do the same on every device that should buzz. A phone, a laptop and a tablet
+are three separate presses; turning one off leaves the others alone.
+
+**On an iPhone or iPad this only works from the Home Screen.** Safari will not
+send a notification to a page in a tab — it is Apple's rule, not the site's.
+Open the admin in Safari, press **Share**, then **Add to Home Screen**, and
+open it from the icon that appears. Then press *Notify me here*. On Android
+there is nothing extra to do.
+
+**Who gets told.** A conversation somebody has taken buzzes only them. One
+nobody has taken buzzes everybody, so it is not left sitting — that is the case
+where a customer actually waits. If you would rather only you were told about
+those, **Settings > Live Chat > Being told a customer is waiting** has a switch
+for it, along with whether the notification shows what the customer wrote.
+
+Turn that preview off if the shop phone is ever passed around or left face up
+on the counter: a notification shows on a locked screen.
+
+**There is nothing in the file to fill in or check.** It needs one thing it
+cannot know — the address your website answers at — and rather than ask you to
+type it, the admin panel tells the database the address it is being used at the
+first time you open **Live Chats** after running the file. It follows you if you
+move to another domain later, and it ignores Netlify preview builds, whose
+addresses stop answering at the next deploy.
+
+Only the shop owner's browser can set it, and that is a real boundary rather
+than tidiness: a secret travels to that address, so somebody who could point it
+elsewhere would be handed it.
+
+So the order is: run the file, upload the folder, **open Live Chats once**, then
+press *Notify me here*.
+
+**If the phones never buzz**, in this order:
+
+1. Was **Notify me here** actually pressed on that device? It says *Notifying
+   this device* when it is on.
+2. On an iPhone — was it opened from the Home Screen icon, or from a tab?
+3. Has the owner opened Live Chats at least once since running the file? That
+   is what fills the address in. Check with:
+   ```sql
+   select data->>'siteUrl' from public.site_settings_private where key = 'chat_push';
+   ```
+   Blank means nobody has, and blank means no notifications at all — on purpose,
+   because a wrong address would fail silently and a blank one is a state that
+   fixes itself.
+4. Supabase > **Database** > **Extensions**: `pg_net` should be enabled. The
+   file turns it on, but a project can refuse.
+
+A missed notification never costs a message. The nudge is wrapped so that if it
+fails for any reason at all, the customer's message is still saved and still
+appears in Live Chats — being told is a convenience, and the message is not.
+
+### A green dot while somebody is typing
+
+Run **supabase-chat-phase8.sql** once. After it, both sides show a small green
+dot that breathes while the other person is writing — in the customer's window
+when the shop is, and in Live Chats when the customer is. It sits where the
+message will land and says nothing, because a dot is read faster than words.
+
+It appears within about three seconds of somebody starting and goes within about
+six of them stopping — both sides ask every three seconds, the same as
+everything else in chat. Sending a message clears it at once, so a dot never
+lingers promising a message that has already arrived.
+
+Nothing to switch on and nothing to set. Two things worth knowing:
+
+- **A conversation a colleague is holding shows no dot from you.** The reply box
+  is closed there, and a dot would be promising the customer an answer you
+  cannot send.
+- **The dot beside the shop's name in the chat header is a different thing** —
+  that one says whether anybody is at the desk, and it has not changed.
+
 ## 4. Put your keys into the website
 1. In Supabase, open **Project Settings** (gear icon) > **API**.
 2. Copy two things:

@@ -52,6 +52,128 @@
   to = "/images/:splat"
   status = 200
 
+# The service worker and the home-screen details.
+#
+# These two are named explicitly for the same reason as the three above:
+# the catch-all at the bottom of this file would otherwise be the only
+# thing standing between them and a page of HTML. A service worker served
+# as HTML does not fail loudly — the browser refuses to register it and
+# says so only in a console nobody has open, and the shop simply never
+# gets a notification again.
+#
+# The worker must answer at the site root and nowhere else. Its authority
+# reaches only the folder it came from, so one served from /assets/ could
+# not watch over /admin.html.
+[[redirects]]
+  from = "/sw.js"
+  to = "/sw.js"
+  status = 200
+
+[[redirects]]
+  from = "/manifest.webmanifest"
+  to = "/manifest.webmanifest"
+  status = 200
+
+# ---------------------------------------------------------------------
+# Files that ship with the site but are nobody's business but the shop's.
+#
+# The publish directory is the whole folder, so the setup files and the
+# instructions sit at the site root and answer to anyone who asks for
+# them by name. There is nothing secret in them — no keys, no passwords —
+# but they are the full table layout and every access rule the database
+# has, handed over for the asking, and there is no reason to hand it over.
+#
+# force = true is the whole point of these rules: without it Netlify
+# serves a file that exists and never reaches the redirect. Each one is
+# named rather than matched by a pattern, because Netlify's "*" is a
+# trailing splat and does not mean "any name ending in .sql" — a rule
+# written that way would look right and do nothing.
+#
+# Anyone who needs these has the folder they uploaded, and the repository.
+[[redirects]]
+  from = "/supabase-setup.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-fixes.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-chat.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-chat-phase2.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-chat-phase3.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-chat-phase4.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-chat-phase5.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-chat-phase6.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-chat-phase7.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-chat-phase8.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/README.md"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/SETUP.md"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/LAUNCH.md"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/netlify.toml"
+  to = "/index.html"
+  status = 404
+  force = true
+
 # Crawlers only. Both are generated from Settings > SEO rather than kept
 # as files, so they follow the settings without anything to re-upload.
 [[redirects]]
@@ -69,3 +191,23 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# ---------------------------------------------------------------------
+# The service worker must never be cached.
+#
+# A browser checks for a new worker on its own schedule, and if a stale
+# copy is still inside the cache it may go on running for a day after a
+# new folder is uploaded. The file is two kilobytes and is fetched once
+# per visit; there is nothing to save by holding on to it, and a shop
+# running last week's notification code has no way of knowing it.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Content-Type = "text/javascript; charset=utf-8"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json; charset=utf-8"
+    Cache-Control = "public, max-age=3600"

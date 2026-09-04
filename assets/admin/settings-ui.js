@@ -1245,11 +1245,11 @@
         fields[name].mark('');
         changed();
       },
-      /* The shell calls this before it leaves the page. */
-      confirmLeave: function () {
-        if (!isDirty()) return true;
-        return window.confirm('You have unsaved changes on this page. Leave without saving?');
-      },
+      /* There used to be a confirmLeave() here that both tested and
+         prompted, which is why the prompt had to be one the browser
+         could answer on the spot. The shell asks in the shop's own
+         dialog now, and asks isDirty above — the same thing the
+         close-the-tab guard has always used. */
       release: function () { if (api.activeForm === controller) api.activeForm = null; }
     };
     api.activeForm = controller;

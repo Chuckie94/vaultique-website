@@ -112,7 +112,7 @@
   var NEWSLETTER = {
     enabled: true,
     eyebrow: 'Stay in the know',
-    heading: 'Join the Vaultique list',
+    heading: 'Join the list',
     blurb: 'New arrivals, private offers and styling notes, straight to your inbox.',
     placeholder: 'Your email address',
     buttonLabel: 'Subscribe',
@@ -1859,7 +1859,10 @@
 
     var acts = el('div', 'gate-actions');
     var wa = el('a', 'gate-btn');
-    wa.href = waGeneral('Hello ' + (SETTINGS.businessName || 'Vaultique Boutique') + ', I have a question.');
+    /* waSay() already opens with "Hello <shop>, " — see greet() in
+       contact.js. Writing it here as well is how the notice used to hand
+       a customer a message beginning "Hello Shop, Hello Shop, ". */
+    wa.href = waGeneral('I have a question.');
     wa.target = '_blank'; wa.rel = 'noopener';
     wa.textContent = 'Message us on WhatsApp';
     acts.appendChild(wa);
@@ -1893,11 +1896,15 @@
        name and the sharing picture off a page people still share. */
     if (SEO) {
       try {
-        var c = seoContext();
-        var view = SEO.forRoute(c, '');
+        /* Its own name: `c` up at the top of this function is the notice
+           the shop is showing, and a second `var c` was quietly the same
+           variable — harmless only because nothing used the first one
+           after this point, which is not a thing to leave standing. */
+        var seoCtx = seoContext();
+        var view = SEO.forRoute(seoCtx, '');
         view.robots = 'noindex, follow';
         view.title = document.title;      // the notice named itself just above
-        SEO.apply(SEO.tagsFor(view, c));
+        SEO.apply(SEO.tagsFor(view, seoCtx));
       } catch (e) {}
     }
   }
@@ -2870,7 +2877,7 @@
           empty.innerHTML = '<span class="serif">Coming soon</span>New pieces in ' + esc(filterCat) +
             ' are arriving shortly. Message us to be the first to know.' +
             '<div style="margin-top:18px"><a class="btn btn-wa" target="_blank" rel="noopener" href="' +
-            waGeneral('Hello Vaultique Boutique, please let me know when ' + filterCat + ' is available.') +
+            waGeneral('please let me know when ' + filterCat + ' is available.') +
             '">Notify me on WhatsApp</a></div>';
         } else if (!PRODUCTS.length) {
           /* Not a search that found nothing: there is nothing to search. */
@@ -3092,7 +3099,10 @@
     var close = how
       ? ' To purchase, arrange payment and ' + how + ' directly with us on WhatsApp.'
       : ' To purchase, message us on WhatsApp.';
-    return 'A considered piece from the Vaultique edit' + tail +
+    /* The shop's own name, not the one this file was written for. A
+       rebrand changes the setting and everything follows; it used to
+       leave the old name sitting in every product description. */
+    return 'A considered piece from the ' + shopName() + ' edit' + tail +
       ' Thoughtfully selected for quality and quiet sophistication.' + close;
   }
   function accordion(specs) {
@@ -3168,8 +3178,19 @@
      catch-all so it cannot swallow them. */
 
   var BASE = (function () {
-    /* Where the site is mounted — usually '/', but a subfolder install
-       still works.
+    /* Where the site is mounted. On this package that is always '/', and
+       this block is what would let it be something else.
+
+       It does not on its own: index.html asks for its stylesheet and its
+       twelve scripts by absolute path ("/assets/app.js"), so a copy of
+       this folder placed in /shop/ would load nothing at all and never
+       reach this code. Moving it takes rewriting those paths in
+       index.html and admin.html as well — the comment here used to say a
+       subfolder install "still works", which was true of this function
+       and of nothing else.
+
+       The reckoning below is right either way, and is what everything
+       that builds an address depends on, so it stays.
 
        It cannot be worked out from location.pathname. On /product/WF-1
        that would read as the folder /product/, and every address after
@@ -3261,8 +3282,9 @@
 
   /* Where the site is mounted, for the files that cannot work it out.
      chat.js builds product links from this; without it every card in a
-     conversation pointed at the domain root, which is wrong on the
-     subfolder install this very block exists to support. */
+     conversation pointed at the domain root, which is right on this
+     package and wrong the moment the folder is moved. See the note
+     above BASE for what moving it actually takes. */
   window.VBP_BASE = BASE;
 
   function currentRoute() {
@@ -3428,7 +3450,7 @@
     { name: 'Sussex Tailored Shirt', sku: 'MF-SUCO-BK-M', category: "Men's Fashion", price: 680, size: 'M', color: 'Black', material: 'Cotton', available: true },
     { name: 'Aurelia Silk Blouse', sku: 'WF-AUSI-CR-S', category: "Women's Fashion", price: 920, size: 'S', color: 'Cream', material: 'Silk', available: true },
     { name: 'Monaco Leather Loafers', sku: 'SH-MOLE-TN-42', category: 'Shoes', price: 1450, size: '42', color: 'Tan', material: 'Leather', available: true },
-    { name: 'Vaultique Structured Tote', sku: 'BG-VATO-NV-OS', category: 'Bags', price: 1180, size: 'One size', color: 'Navy', material: 'Leather', available: false },
+    { name: 'Structured Leather Tote', sku: 'BG-STTO-NV-OS', category: 'Bags', price: 1180, size: 'One size', color: 'Navy', material: 'Leather', available: false },
     { name: 'Gilt Chain Necklace', sku: 'AC-GICH-GD-OS', category: 'Accessories', price: 340, size: '', color: 'Gold', material: 'Brass', available: true },
     { name: 'Riviera Linen Trousers', sku: 'MF-RILI-BG-32', category: "Men's Fashion", price: 740, size: '32', color: 'Beige', material: 'Linen', available: true },
     { name: 'Celeste Wrap Dress', sku: 'WF-CEWR-EM-M', category: "Women's Fashion", price: 980, size: 'M', color: 'Emerald', material: 'Viscose', available: true },
@@ -3870,7 +3892,7 @@
     body.innerHTML =
       '<button class="qv-close" id="rvClose" aria-label="Close">&times;</button>' +
       '<div class="c">' + (sku ? 'Your feedback' : 'Tell others about us') + '</div>' +
-      '<h3 class="serif">' + (sku ? 'Write a review' : 'Review Vaultique') + '</h3>' +
+      '<h3 class="serif">' + (sku ? 'Write a review' : 'Review ' + shopName()) + '</h3>' +
       '<div class="rv-stars" id="rvStars">' + [1, 2, 3, 4, 5].map(function (i) { return '<span data-v="' + i + '">\u2605</span>'; }).join('') + '</div>' +
       '<label class="rv-lbl">Your name' +
         (REVIEWSET.anonymous ? '<span class="od-opt">optional</span>' : '') +
@@ -4043,7 +4065,8 @@
     var html = '<div class="wrap policies-wrap">' +
       '<div class="crumbs"><a data-home>Home</a> / Policies</div>' +
       '<div class="policies-head"><div class="eyebrow">Customer information</div><h1 class="serif">Policies &amp; Customer Information</h1>' +
-      '<p>Our terms, policies and customer information for shopping with Vaultique Boutique. If anything is unclear, message us and we will gladly help.</p></div>';
+      '<p>Our terms, policies and customer information for shopping with ' + esc(shopName()) +
+      '. If anything is unclear, message us and we will gladly help.</p></div>';
     if (!order.length) { html += '<p class="pr-none">Policies are being updated. Please check back soon.</p>'; }
     order.forEach(function (s) {
       html += '<section class="pol-section"><h2 class="serif pol-sec-title">' + esc(s) + '</h2><div class="pol-list">';
@@ -4053,7 +4076,7 @@
       });
       html += '</div></section>';
     });
-    html += '<div class="pol-help"><p class="serif">Still have a question?</p><a class="btn btn-wa" data-wa="Hello Vaultique Boutique, I have a question about your policies.">Ask on WhatsApp</a></div></div>';
+    html += '<div class="pol-help"><p class="serif">Still have a question?</p><a class="btn btn-wa" data-wa="I have a question about your policies.">Ask on WhatsApp</a></div></div>';
     host.innerHTML = html;
     var hb = host.querySelector('[data-home]'); if (hb) hb.addEventListener('click', goHome);
     bindWa();
