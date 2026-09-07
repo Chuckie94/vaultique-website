@@ -223,6 +223,7 @@
 <script src="assets/admin/settings/customer-care.js"></script>
 <script src="assets/admin/settings/chat.js"></script>
 <script src="assets/admin/settings/newsletter.js"></script>
+<script src="assets/admin/settings/users.js"></script>
 <script src="assets/admin/settings/security.js"></script>
 <script src="assets/admin/settings/system-maintenance.js"></script>
 
@@ -354,16 +355,16 @@
       }, function () { return 'unknown'; });
   }
 
-  /* Their account is real and was answering chats until somebody
-     switched it off. "You are not an administrator" is true and is not
-     the answer to what they are asking. */
+  /* Their account is real and was working here until somebody switched
+     it off. "You are not an administrator" is true and is not the answer
+     to what they are asking. */
   function refuseSwitchedOff() {
     show('mfa', false); show('newpw', false); show('topbar', false); show('admin', false);
     return Promise.resolve(sb.auth.signOut()).catch(function () {}).then(function () {
       show('login', true);
       var msg = $('loginMsg');
       if (msg) {
-        msg.textContent = 'This account is no longer set to answer chats. ' +
+        msg.textContent = 'This account has been switched off. ' +
                           'Ask the shop owner to switch it back on.';
         msg.className = 'msg err';
       }
@@ -390,19 +391,31 @@
     });
   }
 
-  /* Somebody who answers chats and is nothing else.
+  /* What this person may do.
      ---------------------------------------------------------------
-     Asked of the database, which is also the thing that enforces it:
-     this flag decides which tabs are built, and the row rules decide
-     what those tabs can actually read. The page hiding a tab is a
-     courtesy; the database refusing the table is the rule. */
-  var chatOnly = false;
+     Everybody who works here signs in on this page. What they get is
+     decided by their role, and a role is a set of ticks the owner keeps
+     in Settings > Users & Roles. One question answers all of it.
+
+     The page hiding a tab is a courtesy; the database refusing the
+     table is the rule. Answering chats and deleting a conversation are
+     asked of the database too, so those two cannot be got round by a
+     page rewritten in a browser. */
+  var perms = null;                  // null until my_access() has answered
+  var iAmOwner = false;
   var mustChangePassword = false;
 
-  /* A shop that has not run phase 6 has no such function, and the error
-     is the right answer: nobody is chat staff, so nothing changes. */
-  function chatStaffVerdict() {
-    return Promise.resolve(sb.rpc('chat_staff_me')).then(function (r) {
+  function may(what) {
+    if (iAmOwner) return true;
+    if (!perms) return true;         // question never answered: nothing is hidden
+    return perms[what] === true;
+  }
+
+  /* A shop that has not run phase 10 has no such function. That error is
+     not "you may do nothing" — it is "nobody has said" — so it leaves
+     perms null and the admin opens exactly as it did before. */
+  function loadAccess() {
+    return Promise.resolve(sb.rpc('my_access')).then(function (r) {
       if (!r || r.error || !r.data) return null;
       return r.data;
     }, function () { return null; });
@@ -411,27 +424,22 @@
   function afterPassword() {
     show('login', false);
     return adminVerdict().then(function (verdict) {
-      if (verdict === 'yes') {
-        /* An administrator is asked the same question, because phase 9
-           lets the owner make one and hand them a password — and a
-           password somebody else knows is nobody's, whichever table
-           the person is listed in. This branch used to go straight
-           past it, so a new administrator was never asked at all and
-           the flag sat on their row for ever, asking every OTHER
-           device they signed in on. */
-        return chatStaffVerdict().then(function (me) {
-          mustChangePassword = !!(me && me.must_change_password);
-          return continueAsAdmin();
-        }, function () { return continueAsAdmin(); });
-      }
-      /* Not an administrator. Before refusing them, ask whether they are
-         somebody hired to answer chats — a real account with a smaller
-         job, not a stranger. */
-      return chatStaffVerdict().then(function (me) {
-        if (me && !me.is_staff && me.known) return refuseSwitchedOff();
-        if (!me || !me.is_staff) return refuseAdmin(verdict);
-        chatOnly = !!me.chat_only;
-        mustChangePassword = !!me.must_change_password;
+      if (verdict !== 'yes') return refuseAdmin(verdict);
+      return loadAccess().then(function (me) {
+        /* Switched off is not the same as never allowed, and saying the
+           wrong one of those sends somebody to the wrong person for
+           help. */
+        if (me && me.is_admin && me.active === false) return refuseSwitchedOff();
+        if (me) {
+          iAmOwner = !!me.is_owner;
+          perms = me.permissions || null;
+        }
+        /* Asked of everybody, because the owner can make an account and
+           hand over a password — and a password somebody else knows is
+           nobody's. This branch used to go straight past it, so a new
+           administrator was never asked at all and the flag sat on their
+           row for ever, asking on every OTHER device they signed in on. */
+        mustChangePassword = !!(me && me.must_change_password);
         return continueAsAdmin();
       });
     });
@@ -475,38 +483,23 @@
         /* Told afterwards, never before: the flag says "they have chosen
            one", and saying so before they had would be a lie the next
            sign-in would act on. */
-        /* Both, because this page lets in both kinds of person and the
-           flag lives on whichever table they are in. Clearing only the
-           chat_staff one left a new administrator changing their
-           password, being asked again, and again — a loop with no way
-           out of it, which is the worst thing a sign-in can do. Each
-           call clears the caller's own row and nothing else, so asking
-           for both is safe and asking for one was not. */
-        /* Both, because this page lets in both kinds of person and the
-           flag lives on whichever table they are in. Each call clears
-           the caller's own row and nothing else, so asking for both is
-           safe and asking for only one was not.
-
-           And the answers are looked at. This used to fire and move on
-           without reading them, so a clear that failed looked exactly
-           like one that worked — the password really had changed, the
-           flag really had not, and every other device the person owned
-           went on asking them to change it again. */
-        return Promise.all([
-          Promise.resolve(sb.rpc('chat_staff_password_changed'))
-            .then(function (r) { return !(r && r.error); }, function () { return false; }),
-          Promise.resolve(sb.rpc('admin_password_changed'))
-            .then(function (r) { return !(r && r.error); }, function () { return false; })
-        ]).then(function (done) {
-          /* The password is changed either way — that part is Supabase's
-             and it succeeded. Only the "stop asking me" flag is in
-             doubt, so they are let through and told, rather than held
-             at a door they have already opened. */
-          if (done.indexOf(true) === -1) {
-            say('Your password is changed. This device may still ask again — ' +
-                'tell the shop owner the flag could not be cleared.', 'err');
-          }
-        });
+        /* And the answer is looked at. This used to fire and move on
+           without reading it, so a clear that failed looked exactly like
+           one that worked — the password really had changed, the flag
+           really had not, and every other device the person owned went
+           on asking them to change it again. */
+        return Promise.resolve(sb.rpc('admin_password_changed'))
+          .then(function (r) { return !(r && r.error); }, function () { return false; })
+          .then(function (done) {
+            /* The password is changed either way — that part is
+               Supabase's and it succeeded. Only the "stop asking me"
+               flag is in doubt, so they are let through and told, rather
+               than held at a door they have already opened. */
+            if (!done) {
+              say('Your password is changed. This device may still ask again — ' +
+                  'tell the shop owner the flag could not be cleared.', 'err');
+            }
+          });
       })
       .then(function () {
         mustChangePassword = false;
@@ -691,22 +684,17 @@
     show('topbar', true); show('admin', true);
     adminReady = true;
     useTheShopsLogo();
-    if (chatOnly) {
-      narrowToChats();
-      /* No product load: the rules refuse them product_meta, and asking
-         for it would spend a request to be told no. */
-      applyRoute();
-      startIdleTimer();
-      return;
-    }
-    loadProducts();
+    if (!narrowTabs()) { startIdleTimer(); return; }
+    /* Only if they can open it. The rules refuse product_meta to a role
+       without it, and asking would spend a request to be told no. */
+    if (may('products')) loadProducts();
     applyRoute();
     /* Note the build that is running, so System & Maintenance can say
        when it went live. Costs one read per new build and nothing after
        that, and a failure here is silent by design: the deployment
        history is never worth keeping an owner out of their shop for. */
     var sys = (window.VBP_ADMIN || {}).system;
-    if (sys && sys.record) { try { sys.record(); } catch (e) {} }
+    if (may('settings') && sys && sys.record) { try { sys.record(); } catch (e) {} }
     startIdleTimer();
   }
 
@@ -784,8 +772,8 @@
   });
 
   function openTab(which, sub) {
-    if (TABS.indexOf(which) < 0) { which = 'products'; sub = ''; }
-    if (chatOnly) { which = 'chats'; sub = ''; }
+    if (TABS.indexOf(which) < 0) { which = firstTab(); sub = ''; }
+    if (!may(which)) { which = firstTab(); sub = ''; }
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (x) {
       x.classList[x.getAttribute('data-tab') === which ? 'add' : 'remove']('active');
     });
@@ -817,12 +805,39 @@
      database refuses the tables underneath — three answers to the same
      question, because the first two are conveniences and only the last
      is a rule. */
-  function narrowToChats() {
+  /* Take away the tabs this role was not given. Removed rather than
+     hidden, so there is nothing to unhide and nothing to explain: an
+     agent sees the chats and that is the whole of the page to them.
+
+     The owner keeps everything, whatever the ticks say, so no edit in
+     Settings can lock the shop out of its own admin. */
+  function narrowTabs() {
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
-      if (t.getAttribute('data-tab') !== 'chats') t.remove();
+      if (!may(t.getAttribute('data-tab'))) t.remove();
     });
-    var tab = document.querySelector('.tab[data-tab=chats]');
-    if (tab) tab.classList.add('active');
+    /* A role with nothing ticked. Say so, rather than open a page they
+       will be refused by the database a moment later. */
+    if (!document.querySelector('.tab')) {
+      var host = $('tab-products');
+      if (host) {
+        host.innerHTML = '';
+        var p = document.createElement('p');
+        p.className = 'count';
+        p.textContent = 'This account has not been given anything to open yet. ' +
+                        'Ask the shop owner to tick something for your role.';
+        host.appendChild(p);
+        show('tab-products', true);
+      }
+      return false;
+    }
+    return true;
+  }
+
+  /* The first tab they actually have, so an address they cannot open
+     lands somewhere real instead of on an empty page. */
+  function firstTab() {
+    for (var i = 0; i < TABS.length; i++) if (may(TABS[i])) return TABS[i];
+    return 'products';
   }
 
   // ---------- page shell ----------
@@ -2068,9 +2083,9 @@
 
      Escape cancels, Enter confirms, and focus goes back to whatever
      opened it, so a keyboard never gets stranded. */
-  /* The two below live in assets/admin/dialogs.js so that the chat
-     desk at agent.html asks its questions in the same voice. Held
-     under the same names here, so every call site is unchanged. */
+  /* The two below live in assets/admin/dialogs.js, so any page in the
+     folder can ask a question in the same voice. Held under the same
+     names here, so every call site is unchanged. */
   var ask = window.VBP_DIALOGS.ask, tell = window.VBP_DIALOGS.tell;
 })();
 </script>

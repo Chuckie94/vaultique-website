@@ -466,6 +466,31 @@
         }, function () {});
       }
 
+      /* Who the database says this is, shown only when the list is empty
+         and only once. Not a debugging switch: the shop needed it on a
+         Tuesday afternoon with an agent sitting there seeing nothing,
+         and there was no way to tell an empty shop from a refused one. */
+      var saidWhoIAm = false;
+      function sayWhoIAm() {
+        if (saidWhoIAm || !whoBar) return;
+        saidWhoIAm = true;
+        Promise.resolve(sb.rpc('my_access')).then(function (r) {
+          var d = r && r.data;
+          if (!d) return;
+          var perms = d.permissions || {};
+          var can = d.is_owner || (d.is_admin && d.active !== false && perms.chats === true);
+          var line = el('span', 'lc-whoami',
+            (d.display_name ? d.display_name + ' · ' : '') +
+            (d.is_owner ? 'shop owner'
+                        : !d.is_admin ? 'no access'
+                        : d.active === false ? 'switched off'
+                        : (d.role || 'agent')) +
+            (can ? '' : ' — this account cannot see conversations'));
+          if (!can) line.className = 'lc-whoami is-bad';
+          whoBar.appendChild(line);
+        }, function () {});
+      }
+
       /* Where this website actually answers, told to the database by the
          browser looking at it.
 
@@ -524,12 +549,11 @@
         var say = (name === null ? null : (name || myName || null));
         return sb.rpc('chat_presence', { p_status: status, p_name: say })
           .then(function () {
-            /* A name typed here is the name the owner's staff list should
-               show as well. A no-op for an administrator, who has no
-               chat_staff row, and absent entirely before phase 6 — both
-               of which come back as an error and are ignored. */
+            /* A name typed here is the name the owner's user list should
+               show as well. Absent entirely before phase 10, which comes
+               back as an error and is ignored. */
             if (!say) return;
-            return Promise.resolve(sb.rpc('chat_staff_rename', { p_name: say }))
+            return Promise.resolve(sb.rpc('user_rename', { p_name: say }))
               .catch(function () {});
           })
           .then(loadAgents, function () {});
@@ -696,6 +720,12 @@
           ? convs.length + (convs.length === 1 ? ' conversation' : ' conversations') +
             (waiting ? ' · ' + waiting + ' unread' : '')
           : 'No conversations yet.';
+        /* An empty list is the one state that looks identical whether
+           there is nothing to show or this account is not allowed to see
+           it. The database is asked who it thinks this person is, once,
+           and the answer is put beside the count — which turns "it does
+           not work" into a sentence somebody can act on. */
+        if (!convs.length) sayWhoIAm();
 
         listCol.innerHTML = '';
         if (!convs.length) {

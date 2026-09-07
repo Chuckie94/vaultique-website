@@ -103,52 +103,62 @@ there must be exactly one owner — name as many as should be able to delete.
 An agent signed in to Live Chats simply does not see the Delete button, and
 the database refuses the request even if one is conjured up by hand.
 
-### Logins for people who only answer chats
+### Everybody who signs in, and what each of them may do
 
-Somebody hired to answer customers does not need the products, the orders, the
-payment details or the settings. **Settings > Live Chat** has a *People who
-answer chats* panel where you add them: you give an email and a name, the site
-makes the login and shows you a temporary password once, and the first time
-they sign in they are made to choose their own before they can do anything.
+Run **supabase-chat-phase10.sql** once. After it there is one kind of person:
+everybody signs in at `/admin.html`, and a **role** decides what they see.
 
-**They sign in at `/agent.html`, not at `/admin.html`.** That is a page of its
-own with one thing on it: the conversations. Send them that address. They see
-Live Chats and nothing else — not because tabs are hidden, but because the
-database refuses them everything else. Run **supabase-chat-phase6.sql** once to
-create that, and **supabase-chat-phase9.sql** for the rest of this section.
+**Settings > Users & Roles** is the whole of it.
 
-You can use `/agent.html` yourself when the desk is busy; an administrator is
-let in there too.
+**Creating somebody.** *Create user* asks for their email address, then which
+role. The site makes the login and shows you a temporary password once — write
+it down or copy it, because it is not stored and cannot be shown again — and
+the first time they sign in they are made to choose their own before they can
+do anything.
 
-### Two kinds of person, and which to make
+**Roles.** Underneath is a card for each role, with a tick against every tab.
+Two are there to start with, and both can be renamed, changed or deleted:
 
-|  | Administrator | Chat agent |
+| | Administrator | Agent |
 |---|---|---|
-| Signs in at | `/admin.html` | `/agent.html` |
-| Can see | everything | the conversations, and nothing else |
-| Added under | Settings > Security | Settings > Live Chat |
-| Can delete a conversation | only the owner | no |
-| Can add people | only the owner | no |
+| Ticked | everything except deleting a conversation | Live Chats |
 
-**Adding another administrator.** Settings > Security > Administrators >
-*Add an administrator*. You give an email, the site makes the login and shows
-you a temporary password once, and they are made to choose their own the first
-time they sign in — the same as a chat agent.
+Add as many as the shop needs — *Stock*, *Orders desk*, whatever fits. Tick
+what it may open, press **Save roles**, and everybody with that role picks the
+change up the next time they load a page. Nobody has to be touched.
 
-Only you, the owner, sees those buttons, and the server-side function checks it
-again rather than trusting the page. It cannot make another owner, cannot
-remove an owner, and cannot remove whoever is pressing the button — a page that
-can lock the shop out of its own admin is a page worth attacking, and a slip of
-the finger is likelier than an attack. Naming a new owner is still a line of
-SQL, typed on purpose:
+A role somebody is using cannot be deleted until they are moved to another one.
+
+**What the ticks actually do.** Most of them decide which tabs the admin
+draws. Two are enforced by the database as well, and are marked *enforced*:
+answering chats, and deleting a conversation. Those two cannot be got round by
+a page rewritten in a browser.
+
+**The owner is never limited.** Whatever the roles say, the owner sees
+everything, so no edit here can lock the shop out of its own admin. Only the
+owner sees the Users and Roles cards at all, and the database checks it again
+rather than trusting the page.
+
+**Changing somebody's role** is the dropdown on their row. **New password**
+gives them a fresh temporary one and makes them choose their own again — that
+is what to press when somebody cannot get in. **Switch off** stops them
+signing in and keeps their replies readable in the conversations they handled.
+**Remove** takes away their access and leaves their login alone: it may be a
+customer account as well, and deleting it would take their orders with it.
+
+**Naming another owner** is still a line of SQL, typed on purpose. An owner can
+undo everything another owner decides, so it is not a button:
 
 ```sql
 update public.admins set role = 'owner' where email = 'someone@example.com';
 ```
 
-**Removing an administrator** takes away their access and leaves their login
-alone. It may be a customer account as well, and deleting it would take their
-orders with it.
+To see who exists at any time:
+
+```sql
+select email, display_name, role, active, must_change_password
+  from public.admins order by added_at;
+```
 
 **One thing to set up first, in Netlify.** Making a login is the one job that
 needs Supabase's *service role* key — the key that bypasses every rule in the
@@ -164,19 +174,18 @@ a server-side function ever holds it.
    - Value: the key you copied
 3. **Deploys** > **Trigger deploy** > *Deploy site*, so the functions pick it up.
 
-Until you do that, the panel still lists and switches people on and off — it
-only needs the key to *create* a login, and it tells you exactly this if you
-try without it.
+Until you do that, the page still lists people, changes their roles and
+switches them on and off — it only needs the key to *create* a login or set a
+new password, and it tells you exactly this if you try without it.
 
-**If somebody leaves.** *Switch off* stops them answering immediately and keeps
-their replies readable in the conversations they handled. *Remove* deletes the
-login entirely; their replies stay, because a conversation with half its
-messages missing is not a record of anything.
-
-To see who exists at any time:
+**If you ran an earlier version.** There used to be a second kind of login that
+signed in at `/agent.html`. That page is gone and so is the separate list. The
+old rows are left alone by the migration; these two lines clear them out when
+you are ready, and are printed at the bottom of phase 10 as well:
 
 ```sql
-select email, display_name, active, must_change_password from public.chat_staff;
+delete from auth.users where id in (select id from public.chat_staff);
+delete from public.chat_staff;
 ```
 
 ### A conversation belongs to one person

@@ -1,15 +1,14 @@
 /* =====================================================================
-   Vaultique Boutique Point — making another administrator
+   Vaultique Boutique Point — creating a user
    ---------------------------------------------------------------------
-   The owner adds somebody who runs the whole shop, hands them a
-   temporary password, and the admin makes them choose their own the
-   first time they arrive.
+   The owner creates somebody, picks their role, hands them a temporary
+   password, and the admin makes them choose their own the first time
+   they arrive.
 
-   WHY THIS IS NOT IN chat-staff.js. That file says, at the top, that it
-   cannot make an administrator and cannot touch one — and it is true of
-   it, which is worth keeping true. Adding this power there would have
-   made the sentence a lie and the file's own guarantee worthless. Two
-   files, two jobs, and each says plainly what it may do.
+   There used to be a second file beside this one that made chat-only
+   logins for a separate page. There is one kind of person now — a row
+   in admins, signing in at /admin.html, limited by their role — so
+   there is one file, and this is it.
 
    WHO MAY CALL IT. The owner, and nobody else. The caller's own token
    goes to the database to ask is_shop_owner(), so the answer is the
@@ -18,10 +17,10 @@
    shop is not the same as being able to hand that out.
 
    WHAT IT DELIBERATELY CANNOT DO.
-     * It cannot make an owner. Every account it makes is role 'agent',
-       which is a full administrator and not somebody who can delete a
-       conversation or promote anybody. Naming an owner stays a line of
-       SQL, typed on purpose.
+     * It cannot make an owner. The owner picks a role when they create
+       somebody, and any role the shop has defined is allowed — except
+       'owner', which is refused here whatever is asked for. Naming an
+       owner stays a line of SQL, typed on purpose.
      * It cannot remove an owner, and it cannot remove the caller. A
        page that can lock the shop out of its own admin is a page worth
        attacking, and a slip of the finger is likelier than an attack.
@@ -146,6 +145,20 @@ exports.handler = async function (event) {
       return json(400, { error: 'A temporary password needs at least eight characters.' });
     }
 
+    /* The role the owner picked. Any name the shop has invented is fine
+       — what a role may do lives in Settings, not here — with one
+       exception that is not the shop's to invent, whatever is asked
+       for. Anything unnamed falls back to the smallest role there is. */
+    const role = String(body.role || '').trim() || 'agent';
+    if (role.toLowerCase() === 'owner') {
+      return json(400, {
+        error: 'An owner is named in SQL, on purpose. Pick another role.'
+      });
+    }
+    if (role.length > 40 || !/^[a-z0-9][a-z0-9-]*$/i.test(role)) {
+      return json(400, { error: 'That is not a role this shop has.' });
+    }
+
     const made = await svc(site, serviceKey, '/auth/v1/admin/users', {
       method: 'POST',
       body: JSON.stringify({
@@ -169,8 +182,9 @@ exports.handler = async function (event) {
       });
     }
 
-    /* role 'agent' is a full administrator. Only an owner may delete a
-       conversation or name another owner, and this cannot make one. */
+    /* What the role means is Settings' business, not this file's. All
+       that matters here is that it is not 'owner', which was refused
+       above, so nothing this makes can promote anybody. */
     const put = await svc(site, serviceKey, '/rest/v1/admins', {
       method: 'POST',
       headers: {
@@ -180,7 +194,7 @@ exports.handler = async function (event) {
         Prefer: 'return=representation'
       },
       body: JSON.stringify({
-        id: user.id, email, role: 'agent', must_change_password: true
+        id: user.id, email, role, must_change_password: true
       })
     });
     if (!put.ok) {
@@ -194,7 +208,10 @@ exports.handler = async function (event) {
                'has been removed again. ' +
                (/must_change_password/.test(why)
                  ? 'Run supabase-chat-phase9.sql in Supabase first.'
-                 : (why ? '(' + why.slice(0, 200) + ')' : ''))
+                 : /admins_role_check/.test(why)
+                   ? 'Run supabase-chat-phase10.sql in Supabase first — the database ' +
+                     'still only allows the two roles it shipped with.'
+                   : (why ? '(' + why.slice(0, 200) + ')' : ''))
       });
     }
 

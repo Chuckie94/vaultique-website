@@ -50,6 +50,7 @@
     'customer-care': 'Settings · Customer Care',
     newsletter: 'Settings · Newsletter',
     security: 'Settings · Security',
+    roles: 'Settings · Users & Roles',
     system: 'Settings · System & Maintenance'
   };
 

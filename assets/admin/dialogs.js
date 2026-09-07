@@ -11,9 +11,9 @@
    Escape cancels, Enter confirms, and focus goes back to whatever opened
    it, so a keyboard never gets stranded.
 
-   Lifted out of admin.html unchanged so the chat desk at agent.html asks
-   in the same voice. It depends on nothing but the document — no client,
-   no settings, no admin — which is what made the move safe.
+   Lifted out of admin.html unchanged, and kept out of it: it depends on
+   nothing but the document — no client, no settings, no admin — so any
+   page in the folder can ask a question in the shop's voice.
    ===================================================================== */
 (function () {
   'use strict';
@@ -65,8 +65,23 @@
           field.value = opts.input.value || '';
           if (opts.input.maxLength) field.setAttribute('maxlength', String(opts.input.maxLength));
           field.setAttribute('aria-label', opts.input.label || question || 'Your answer');
-          field.style.cssText = 'width:100%;margin-top:10px;padding:10px 12px;font-size:14px';
-          card.insertBefore(field, card.querySelector('.ask-row'));
+          field.style.cssText = 'width:100%;margin-top:4px;padding:10px 12px;font-size:14px';
+          /* The label used to be given to the screen reader and to
+             nobody else, which left a box with a faint grey example in
+             it and no plain sentence saying what to type. Shown now,
+             above the box, where a label goes. */
+          if (opts.input.label) {
+            var lab = document.createElement('label');
+            lab.className = 'ask-label';
+            lab.textContent = opts.input.label;
+            lab.style.cssText = 'display:block;margin-top:12px;font-size:13px';
+            card.insertBefore(lab, card.querySelector('.ask-row'));
+            lab.appendChild(field);
+            field.style.marginTop = '4px';
+          } else {
+            field.style.marginTop = '10px';
+            card.insertBefore(field, card.querySelector('.ask-row'));
+          }
         }
 
         var picks = [];
