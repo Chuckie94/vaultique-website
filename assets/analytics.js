@@ -72,7 +72,25 @@
     } catch (e) { return false; }
   }
 
-  if (askedNotToBe() || isRobot()) return;
+  /* The shop looking at its own shop front.
+
+     Every visit from a phone or a computer that has opened the admin is
+     the shop checking its own work, and counting those makes every
+     number on this page a little bit of a lie -- worse than a lie,
+     because the shop is the one browsing most days and would be most of
+     its own traffic.
+
+     admin.html leaves this mark the moment somebody signs in, and it
+     stays: a device that has been used to run the shop is a shop
+     device. To count a device again -- a laptop sold on, a phone handed
+     to somebody else -- clear the site data for the website in that
+     browser and the mark goes with it. */
+  function isTheShop() {
+    try { return localStorage.getItem('vbp_staff') === '1'; }
+    catch (e) { return false; }
+  }
+
+  if (askedNotToBe() || isRobot() || isTheShop()) return;
 
   /* ---- who and when, as far as this browser is concerned ------------- */
 

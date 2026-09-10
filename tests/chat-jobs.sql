@@ -349,3 +349,67 @@ select E'\n' || case when count(*) filter (where ok is false) = 0
   from checks;
 
 select 1 / (count(*) filter (where ok is false) = 0)::int as all_passed from checks;
+
+
+-- =====================================================================
+-- THE ONES A REAL SHOP FOUND
+--
+-- "Hello, any employment" went through the filter on the live site and
+-- was handed to the shop as ordinary support. It named employment, it
+-- read as a job enquiry to anybody, and it matched not one pattern:
+-- "employment" was missing from the "any ..." list, and on its own it
+-- was one weak word against a threshold of three.
+--
+-- The cure was not another phrasing. It was a rule that catches by
+-- SHAPE -- short, names work, names nothing a customer would ask about
+-- -- so the next phrasing nobody thought of is caught too. These check
+-- both halves of that: that it catches, and that it has not started
+-- catching customers.
+-- =====================================================================
+do $$
+declare
+  bad text;
+begin
+  -- Job enquiries, however they are put.
+  select string_agg(m, ' | ') into bad from (values
+    ('Hello, any employment'),
+    ('any employment'),
+    ('employment?'),
+    ('Hi, jobs?'),
+    ('vacancies please'),
+    ('is there employment available'),
+    ('Good morning, any hiring going on'),
+    ('any openings for a sales assistant'),
+    ('internship available?'),
+    ('am looking for piece work'),
+    ('any piece work?'),
+    ('casual work available?')
+  ) v(m) where public.chat_job_intent(m) < 3;
+  if bad is not null then
+    raise exception 'these job enquiries were let through: %', bad;
+  end if;
+
+  -- Customers, who must never be answered with the recruitment notice.
+  select string_agg(m, ' | ') into bad from (values
+    ('Any openings today? I want to visit the shop'),
+    ('any openings today'),
+    ('are you open today'),
+    ('What are your opening hours?'),
+    ('I want a piece of the black dress'),
+    ('can I get a piece in size 10'),
+    ('Send me a piece'),
+    ('Do you have this piece in stock'),
+    ('Does this work with mobile money'),
+    ('Please resume my order'),
+    ('I want to buy a dress for work'),
+    ('Is this suitable for office work'),
+    ('Do you have staff who can help me choose'),
+    ('any bags available'),
+    ('Do you have any dresses in stock')
+  ) v(m) where public.chat_job_intent(m) >= 3;
+  if bad is not null then
+    raise exception 'these customers were treated as job enquiries: %', bad;
+  end if;
+
+  raise notice 'the ones a real shop found: all 27 pass';
+end $$;

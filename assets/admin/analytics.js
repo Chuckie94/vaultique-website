@@ -157,6 +157,24 @@
     return F && F.date ? F.date(new Date(Date.UTC(b.y, b.m - 1, b.d)), 'DD/MM/YYYY').slice(0, 5)
                        : b.d + '/' + b.m;
   }
+  /* The address as somebody would say it. Only the ones the storefront
+     draws itself are named; anything else is left exactly as recorded,
+     because a guess would be worse than the path. */
+  function prettyPath(path) {
+    var p = String(path || '').replace(/\/+$/, '') || '/';
+    var NAMED = {
+      '/': 'Home page',
+      '/shop': 'Shop',
+      '/policies': 'Policies',
+      '/account': 'Account',
+      '/cart': 'Cart',
+      '/wishlist': 'Wishlist'
+    };
+    if (NAMED[p]) return NAMED[p];
+    if (p.indexOf('/product/') === 0) return 'Piece \u2014 ' + p.slice(9);
+    return path;
+  }
+
   function bucketFull(stamp, grain) {
     var b = parts(stamp);
     var MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
@@ -430,7 +448,9 @@
           if (mine !== asking) return;
           if (r.error) throw r.error;
           paintRows(pagesRows, (r.data || []).map(function (x) {
-            return { label: x.path, sub: x.label, n: x.views, extra: x.visitors };
+            /* "/" is the shop front, and reads as a stray mark in a list
+               where everything else is a word. Named, like the rest. */
+            return { label: prettyPath(x.path), sub: x.label, n: x.views, extra: x.visitors };
           }), 'view', 'viewer');
         }).catch(function (e) { if (mine === asking && !trouble(e)) paintRows(pagesRows, [], 'view', 'viewer'); });
 

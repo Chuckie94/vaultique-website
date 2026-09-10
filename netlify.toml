@@ -237,6 +237,23 @@
   status = 404
   force = true
 
+# The notes that ship inside the delivered folder telling the shop how to
+# upload it. They are not part of the site and there is no reason to serve
+# them, but they sit at the root like everything else, so they are named
+# here in case they are uploaded along with the rest -- which is the
+# simplest thing for the shop to do and should not cost anything.
+[[redirects]]
+  from = "/START-HERE.txt"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/HOW-TO-UPLOAD.txt"
+  to = "/index.html"
+  status = 404
+  force = true
+
 # The working notes from the build-342 defect round, and the script that
 # was written to diagnose it. Same reasoning as the three above: nothing
 # secret, but they are an inventory of what was wrong with the shop and

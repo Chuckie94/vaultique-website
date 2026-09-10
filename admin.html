@@ -699,6 +699,12 @@
   function enterAdmin() {
     show('topbar', true); show('admin', true);
     adminReady = true;
+    /* This device belongs to the shop, so its trips through the shop
+       front are not customer visits and Website Analytics ignores them
+       from here on. See isTheShop() in assets/analytics.js. Left rather
+       than cleared on logout: a till that is signed out at closing time
+       is still the shop's till in the morning. */
+    try { localStorage.setItem('vbp_staff', '1'); } catch (e) {}
     useTheShopsLogo();
     if (!narrowTabs()) { startIdleTimer(); return; }
     /* Only if they can open it. The rules refuse product_meta to a role

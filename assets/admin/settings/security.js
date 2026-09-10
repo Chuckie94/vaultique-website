@@ -132,6 +132,11 @@
       });
   }
 
+  /* Shared, because a second page now needs to ask the same question and
+     two copies of a password check is one too many. Anything else that
+     has to be certain who is at the keyboard uses this one. */
+  A.passwordIsRight = passwordIsRight;
+
   /* ---- the page -------------------------------------------------------- */
 
   A.registerSetting({

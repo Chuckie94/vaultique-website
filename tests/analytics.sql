@@ -283,7 +283,23 @@ end $$;
 select hdr('Who is here right now');
 do $$
 begin
-  perform chk(public.site_live() = 1, 'one visit beating within the last five minutes');
+  perform chk(public.site_live() = 1, 'a tab beating right now is here now');
+
+  -- A tab beats once a minute while somebody is looking at it, so ninety
+  -- seconds is still comfortably inside the window and nobody reading is
+  -- ever dropped.
+  update public.site_presence set seen_at = now() - interval '90 seconds';
+  perform chk(public.site_live() = 1,
+              'and is still here a minute and a half later, between beats');
+
+  -- The one that pins the window itself. This used to be five minutes,
+  -- which meant somebody who had closed the tab lingered in "here now"
+  -- for five minutes after they had gone -- long enough for a shop
+  -- watching the number to be told something untrue about its own shop.
+  update public.site_presence set seen_at = now() - interval '3 minutes';
+  perform chk(public.site_live() = 0,
+              'but three minutes after the last beat they have gone, not five');
+
   update public.site_presence set seen_at = now() - interval '20 minutes';
   perform chk(public.site_live() = 0, 'a tab that stopped beating twenty minutes ago is not here now');
   perform chk((select count(*) from public.site_presence) = 1,
@@ -367,6 +383,66 @@ begin
 end $$;
 
 -- The report, in the order the checks were made.
+
+
+select hdr('Starting the count again — and what that must not touch');
+do $$
+declare
+  before_events int;
+  before_rows   int;
+  said          json;
+  was_role      text;
+begin
+  -- Something to clear, and something that must survive it.
+  perform public.site_beat('s-clear-1', 'mobile');
+  insert into public.site_events (kind, path, session, visitor, device)
+    values ('page_view', '/', 's-clear-1', 'v-clear-1', 'mobile'),
+           ('product_view', '/product/X', 's-clear-1', 'v-clear-1', 'mobile');
+  perform public.site_rollup(current_date - 1, 'UTC');
+
+  select count(*) into before_events from public.site_events;
+  select count(*) into before_rows   from public.site_settings;
+  perform chk(before_events > 0, 'there is traffic on file to clear');
+  perform chk(before_rows  > 0, 'and settings beside it that are not traffic');
+
+  -- An administrator who is not the owner is refused. Reading the
+  -- analytics is a right a role can be given; destroying them is not.
+  select role into was_role from public.admins where id = auth.uid();
+  update public.admins set role = 'full' where id = auth.uid();
+  begin
+    perform public.site_clear();
+    perform chk(false, 'an administrator who is not the owner is refused');
+  exception when others then
+    perform chk(sqlerrm like '%owner%', 'an administrator who is not the owner is refused');
+  end;
+  perform chk((select count(*) from public.site_events) = before_events,
+              'and nothing of theirs was removed on the way to being told no');
+
+  -- The owner may.
+  update public.admins set role = 'owner' where id = auth.uid();
+  said := public.site_clear();
+  perform chk((said->>'events')::int = before_events,
+              'the owner may, and is told how much went');
+  perform chk((select count(*) from public.site_events) = 0, 'the raw rows are gone');
+  perform chk((select count(*) from public.site_daily) = 0, 'so are the summaries');
+  perform chk((select count(*) from public.site_visitor_days) = 0, 'and who was seen when');
+  perform chk((select count(*) from public.site_presence) = 0, 'and who was here now');
+
+  -- THE ONE THAT MATTERS MOST. This clears traffic. A shop reaching for
+  -- it is tidying up its own test visits, and must not find it has
+  -- tidied away anything it actually sells or anybody it sold to.
+  perform chk((select count(*) from public.site_settings) = before_rows,
+              'while every setting the shop had saved is untouched');
+
+  -- Emptied, not dropped: recording carries on with nothing re-run.
+  insert into public.site_events (kind, path, session, visitor, device)
+    values ('page_view', '/', 's-clear-2', 'v-clear-2', 'desktop');
+  perform chk((select count(*) from public.site_events) = 1,
+              'and the very next visitor is counted, with nothing to set up again');
+
+  update public.admins set role = was_role where id = auth.uid();
+end $$;
+
 select case
          when ok is null then E'\n' || what
          when ok        then '  ✓ ' || what

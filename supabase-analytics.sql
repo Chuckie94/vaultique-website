@@ -787,8 +787,14 @@ $$;
 -- table small without a scheduler: the only thing that ever reads it is
 -- an administrator with the page open, and that is often enough.
 --
+-- TWO MINUTES, NOT FIVE. A tab beats once a minute while somebody is
+-- looking at it, so two minutes is comfortably longer than the gap
+-- between beats and nobody still reading is ever dropped -- while
+-- somebody who has closed the tab disappears within two minutes rather
+-- than lingering for five, which is what "who is here NOW" should mean.
+--
 -- HONEST ABOUT WHAT IT IS. A browser that is closed stops beating and
--- disappears within five minutes; one left open on a phone in a pocket
+-- disappears within two minutes; one left open on a phone in a pocket
 -- stops beating too, because the tab is not in front of anybody. It is
 -- "how many people are looking right now", not "how many tabs exist".
 -- ---------------------------------------------------------------------
@@ -810,7 +816,7 @@ begin
 
   select count(*) into v_count
     from public.site_presence
-   where seen_at > now() - interval '5 minutes';
+   where seen_at > now() - interval '2 minutes';
 
   return coalesce(v_count, 0);
 end;
@@ -898,6 +904,76 @@ grant execute on function public.site_prune(integer, text)                    to
 
 
 -- ---------------------------------------------------------------------
+-- STEP 13b. Starting the count again.
+--
+-- A shop's first days with this are spent testing it: the owner walks
+-- through their own shop front a dozen times to see the numbers move,
+-- and those trips sit in the history for ever afterwards. This throws
+-- the traffic away and starts clean.
+--
+-- THE OWNER, AND NOBODY ELSE. Not an administrator, not a role with the
+-- Analytics tick -- the owner. Every other function in this file asks
+-- may_see_analytics(), which is a reading right; this one destroys the
+-- shop's whole history of its own traffic and cannot be undone, and
+-- there is a difference between being trusted to read something and
+-- being trusted to burn it.
+--
+-- IT TOUCHES NOTHING BUT TRAFFIC. Four tables, all of them this file's
+-- own. Orders, customers, subscribers, reviews, conversations and every
+-- other real record the shop keeps are not analytics and are not
+-- cleared -- which is why the Dashboard's orders and customers still
+-- read what they read afterwards, and only its visit counts go to
+-- nought. Anybody expecting this to tidy up an order list is expecting
+-- the wrong thing, and would be very sorry if it did.
+--
+-- It reports what it removed rather than saying nothing, so the shop can
+-- see the size of what it just agreed to.
+-- ---------------------------------------------------------------------
+create or replace function public.site_clear()
+returns json
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  n_events integer;
+  n_daily  integer;
+  n_days   integer;
+  n_live   integer;
+begin
+  if not public.is_shop_owner() then
+    raise exception 'Only the shop owner can clear the website analytics.';
+  end if;
+
+  select count(*) into n_events from public.site_events;
+  select count(*) into n_daily  from public.site_daily;
+  select count(*) into n_days   from public.site_visitor_days;
+  select count(*) into n_live   from public.site_presence;
+
+  -- Emptied rather than dropped: the tables, their indexes and every
+  -- rule on them stay exactly as they are, so recording carries on the
+  -- moment the next visitor arrives and nothing needs running again.
+  delete from public.site_events;
+  delete from public.site_daily;
+  delete from public.site_visitor_days;
+  delete from public.site_presence;
+
+  return json_build_object(
+    'events',   n_events,
+    'days',     n_daily,
+    'visitors', n_days,
+    'here_now', n_live,
+    'cleared_at', now()
+  );
+end;
+$$;
+
+revoke all on function public.site_clear() from public, anon;
+grant execute on function public.site_clear() to authenticated;
+
+
+-- ---------------------------------------------------------------------
 -- STEP 14. The tick in Settings > Users & Roles.
 --
 -- Website Analytics is a new thing a role may be given, and phase 10
@@ -959,9 +1035,9 @@ select routine_name as installed
    and routine_name in ('may_see_analytics', 'site_beat', 'site_rollup',
                         'site_rollup_range', 'site_stats', 'site_series',
                         'site_top_pages', 'site_top_products', 'site_live',
-                        'site_prune')
+                        'site_prune', 'site_clear')
  order by routine_name;
--- Expect ten rows.
+-- Expect eleven rows.
 
 select role_key as role, role_def->'permissions'->>'analytics' as website_analytics
   from public.site_settings s, jsonb_each(s.data) as roles(role_key, role_def)
@@ -996,6 +1072,7 @@ select role_key as role, role_def->'permissions'->>'analytics' as website_analyt
 --   drop function if exists public.site_rollup(date, text);
 --   drop function if exists public.site_rollup_range(date, date, text);
 --   drop function if exists public.site_beat(text, text);
+--   drop function if exists public.site_clear();
 --   drop function if exists public.may_see_analytics();
 --
 -- Nothing else in the database refers to any of it, and the Analytics

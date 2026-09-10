@@ -1,0 +1,43 @@
+HOW TO UPLOAD
+==============
+Two ways. Pick one.
+
+
+A. GITHUB DESKTOP  (easiest, one commit)
+-----------------------------------------
+  1. Unzip this folder
+  2. Open it, select EVERYTHING inside  (Ctrl+A), Copy
+  3. Open your repository folder, Paste, choose
+     "Replace the files in the destination"
+  4. In GitHub Desktop: check "Current repository" says the website
+  5. Type a summary, Commit to main, then Push origin
+
+  There is no .gitignore in this folder any more, on purpose. Yours is
+  longer and better, and the one that used to be in here overwrote it
+  every time you pasted — which is why it kept turning up as a change
+  you had to untick. Nothing to do about it now; it simply will not
+  appear.
+
+
+B. THE BROWSER  (two drags, because GitHub takes 100 files at a time)
+----------------------------------------------------------------------
+  Drag 1 — the five FOLDERS together:
+             assets   images   netlify   tests   tools
+  Drag 2 — every loose file at the top level
+
+  DRAG FOLDERS, NOT WHAT IS INSIDE THEM. GitHub keeps a folder's
+  structure when you drag the folder itself; open it first and the files
+  land in the wrong place.
+
+
+YOUR config.js
+--------------
+Not in this folder, on purpose. It holds your Supabase address and key
+and yours is the only correct copy. Pasting over your folder, or
+uploading only what is here, leaves it exactly where it is.
+
+
+AFTER UPLOADING
+---------------
+Netlify rebuilds on its own, usually within a minute or two. Then run the
+two SQL files named in START-HERE.txt — uploading does not run them.

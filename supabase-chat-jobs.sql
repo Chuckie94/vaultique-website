@@ -150,6 +150,16 @@ begin
   -- vacancy question — the two are one letter apart.
   t := regexp_replace(t, '\yopening\s+(hours?|times?)\y', ' shophours ', 'g');
   t := regexp_replace(t, '\yopen\s+(hours?|times?)\y', ' shophours ', 'g');
+  -- "Any openings today?" in a boutique means "are you open today", not
+  -- "are you hiring" -- and the person asking is standing up to come in.
+  -- A job seeker asking about this month says more than three words.
+  t := regexp_replace(t, '\yopening\w*\s+(today|tomorrow|tonight|now|this\s+\w+|on\s+\w+)\y', ' shophours ', 'g');
+  t := regexp_replace(t, '\y(are|r)\s+(you|u)\s+open\w*\y', ' shophours ', 'g');
+
+  -- ---- trade: what an actual customer is asking about --------------
+  -- Worked out first now, because the catch-all at the end of the strong
+  -- block needs it. Nothing else about it changed.
+  trade := t ~ '\y(order|orders|ordered|ordering|delivery|deliver\w*|ship\w*|payment|pay|paid|paying|price|prices|pricing|cost|costs|refund|return|returns|exchange|size|sizes|colour\w*|color\w*|stock|available\s+in|dress|dresses|bag|bags|shoe\w*|jewel\w*|invoice|receipt|track\w*|discount|voucher|collect\w*|cart|checkout|deposit|visit|visiting|browse|browsing)\y';
 
   -- ---- strong: hard to say by accident -----------------------------
   if t ~ '\y(hiring|recruiting|recruitment|recruiter|recruit)\y' then strong := strong + 1; end if;
@@ -169,11 +179,35 @@ begin
   -- at the end of it has to be a job.
   if t ~ '\y(can|could|may|might|will)\s+(i|you)\s+(get|have|find|give|offer|apply\s+for|come\s+for|consider)\s+(me\s+)?(a\s+|an\s+|any\s+)?(job|jobs|work|employment|position\w*|vacanc\w*)\y' then strong := strong + 1; end if;
   if t ~ '\ygive\s+me\s+(a\s+)?(job|work)\y' then strong := strong + 1; end if;
+  -- How casual labour is asked for here. "Piece work" is not a thing a
+  -- boutique sells, and somebody asking for it is asking for work.
+  if t ~ '\y(piece\s*work|casual\s+(work|labour|labor|job|jobs))\y' then strong := strong + 1; end if;
   -- "Any positions available?" and "any openings?". Plural on purpose
   -- for the second: "any opening" is most often a question about hours.
   if t ~ '\y(position\w*|opening\w*|post|posts|slot|slots)\s+(available|open|vacant|going)\y' then strong := strong + 1; end if;
-  if t ~ '\y(any|got\s+any|have\s+any|are\s+there\s+any|is\s+there\s+any)\s+(vacanc\w*|job|jobs|openings|positions|work\s+going)\y' then strong := strong + 1; end if;
+  if t ~ '\y(any|got\s+any|have\s+any|are\s+there\s+any|is\s+there\s+any)\s+(vacanc\w*|job|jobs|openings|positions|employment|hiring|recruitment|work\s+going|work\s+available)\y' then strong := strong + 1; end if;
   if t ~ '\y(where|how)\s+(can|do|should|may|would)\s+i\s+(send|submit|drop|apply|deliver|bring)\y' and t ~ '\y(cv|resume|application|job)\y' then strong := strong + 1; end if;
+
+  -- ---- and anything short whose only subject is work -----------------
+  -- Every rule above is a phrasing somebody thought of. This one is not:
+  -- it catches by SHAPE. A brief message, a word in it that belongs to
+  -- employment and to nothing else a boutique sells, and nothing in it a
+  -- customer would be asking about.
+  --
+  -- "Hello, any employment" is what prompted it. Three words, obviously a
+  -- job enquiry to any reader, and it matched not one pattern above --
+  -- "employment" was missing from the list two lines up, and on its own
+  -- it was one weak word against a threshold of three.
+  --
+  -- WHY IT IS SAFE. `not trade` is doing the work: a customer asking
+  -- about an order, a delivery, a price, a size, a refund or a piece is
+  -- excluded before this is reached. And the nouns are ones nobody uses
+  -- to shop -- `work` and `resume` are deliberately NOT among them,
+  -- because "will it work" and "resume my order" are things people say.
+  if  not trade
+  and array_length(regexp_split_to_array(btrim(t), '\s+'), 1) <= 9
+  and t ~ '\y(job|jobs|employment|vacanc\w*|hiring|recruit\w*|internship|internships)\y'
+  then strong := strong + 1; end if;
 
   -- ---- weak: only ever in threes, and only when asking --------------
   asking := t ~ '\y(are|is|do|does|can|could|may|will|would|any|where|how|who|i|im|i''m|please|looking|want|need)\y';
@@ -185,9 +219,6 @@ begin
   if t ~ '\y(hire|hiring|hired)\y' then weak := weak + 1; end if;
   if t ~ '\y(openings|vacanc\w*)\y' then weak := weak + 1; end if;
   if t ~ '\y(experience|qualified|qualification\w*)\y' then weak := weak + 1; end if;
-
-  -- ---- trade: what an actual customer is asking about --------------
-  trade := t ~ '\y(order|orders|ordered|ordering|delivery|deliver\w*|ship\w*|payment|pay|paid|paying|price|prices|pricing|cost|costs|refund|return|returns|exchange|size|sizes|colour\w*|color\w*|stock|available\s+in|dress|dresses|bag|bags|shoe\w*|jewel\w*|invoice|receipt|track\w*|discount|voucher|collect\w*|cart|checkout|deposit)\y';
 
   if strong > 0 then
     score := 3 + least(strong - 1, 2);          -- 3, 4 or 5

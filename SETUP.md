@@ -1053,6 +1053,38 @@ moment on. There is no key to add, nothing to put in Netlify, and nothing to
 schedule — and until you run it, the Analytics tab says so plainly and the
 website behaves exactly as it does today.
 
+#### Starting the count again
+
+Your first days with Analytics are spent testing it — walking through your own
+shop front to watch the numbers move — and those trips sit in the history
+afterwards. **Settings > System & Maintenance > Start the traffic count again**
+throws them away and starts from nothing.
+
+Three things stand between you and an accident: only the **shop owner** is
+offered it, the database refuses anybody else even if the button were reached
+some other way, and you have to type your password.
+
+> **It clears traffic and nothing else.** Your orders, customers, subscribers,
+> reviews and conversations are not analytics and are not touched. Only the
+> visit counts go. It cannot be undone.
+
+Counting starts again with the next visitor — there is nothing to run or set up
+afterwards.
+
+#### Your own visits are not counted
+
+The moment anybody signs in to the admin on a device, that device stops being
+counted as a customer. The shop is the one browsing its own shop front most
+days, and counting those would make every number here a polite fiction.
+
+It is per device and per browser, and it stays — a phone that has been used to
+run the shop is a shop phone. If you ever need a device counted again (a laptop
+passed on to somebody else), clear that browser's site data for the website and
+the mark goes with it.
+
+Robots, crawlers and anybody whose browser asks not to be tracked are left out
+too.
+
 #### The six numbers
 
 | Card | What it counts |

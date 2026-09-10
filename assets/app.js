@@ -3175,6 +3175,10 @@
   // ------------------------------------------------------------------ quick view
   function openQuickView(sku) {
     var p = bySku(sku); if (!p) return;
+    /* Opening the quick view IS looking at the piece, and it was not
+       being counted -- which is how a piece came to show one add to
+       cart and no views at all. */
+    if (window.VBP_TRACK) window.VBP_TRACK.event('product_view', { sku: p.sku, label: p.name });
     var modal = $('#qv'); var body = $('#qvBody'); var imgWrap = $('#qvImg');
     resolvePrimary(p, function (src) { imgWrap.innerHTML = '<img alt="' + esc(p.name) + '" src="' + src + '">'; });
     var attrs = [

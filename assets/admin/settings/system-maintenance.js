@@ -577,6 +577,136 @@
       });
 
       /* ================= Backup ===================================== */
+      /* ---- starting the traffic count again ---------------------------
+         A shop's first days with Analytics are spent testing it: the
+         owner walks through their own shop front a dozen times to watch
+         the numbers move, and those trips sit in the history for ever.
+         This throws the traffic away.
+
+         THREE THINGS STAND BETWEEN A SHOP AND AN ACCIDENT. It is only
+         offered to the owner, the database refuses anybody else even if
+         the button were reached another way, and the owner has to type
+         their password to a throwaway client that verifies it without
+         disturbing the session they are in.
+
+         IT CLEARS TRAFFIC AND NOTHING ELSE, and the card says so twice,
+         because "clear the figures" is a sentence somebody could read as
+         "clear the orders". */
+      var clr = el('div', 'card hide');
+      clr.appendChild(el('h3', null, 'Start the traffic count again'));
+      clr.appendChild(el('p', 'grp-note',
+        'Throws away every visit, page view, product view and cart the website ' +
+        'has recorded, and starts from nothing. Useful once, after you have ' +
+        'finished testing and want the figures to be real customers only.'));
+
+      var clrWarn = el('div', 'warn');
+      clrWarn.textContent =
+        'Your orders, customers, subscribers, reviews and conversations are NOT ' +
+        'analytics and are NOT touched by this. Only the visit counts are cleared. ' +
+        'It cannot be undone.';
+      clr.appendChild(clrWarn);
+
+      var clrRow = el('div', 'row');
+      var clrBtn = el('button', 'btn btn-out btn-sm', 'Clear the traffic figures');
+      clrBtn.type = 'button';
+      clrRow.appendChild(clrBtn);
+      clr.appendChild(clrRow);
+      var clrSaid = el('div', 'count');
+      clr.appendChild(clrSaid);
+      host.appendChild(clr);
+
+      /* Offered to the owner alone. Asked of the database rather than
+         worked out here, and a failure leaves the card hidden -- the
+         safer way round. */
+      Promise.resolve(ctx.sb.rpc('is_shop_owner')).then(function (r) {
+        if (r && !r.error && r.data === true) clr.classList.remove('hide');
+      }, function () {});
+
+      clrBtn.addEventListener('click', function () {
+        ask('This throws away every visit the website has ever recorded and cannot ' +
+            'be undone. Your orders, customers and everything else the shop keeps ' +
+            'are not affected.',
+          { title: 'Clear the traffic figures?', danger: true,
+            okText: 'Yes, clear them' })
+          .then(function (yes) {
+            if (!yes) return;
+            return askForPassword();
+          })
+          .then(function (password) {
+            if (!password) return;
+            clrBtn.disabled = true;
+            clrSaid.textContent = 'Checking your password…';
+            return Promise.resolve(ctx.sb.auth.getUser()).then(function (u) {
+              var email = u && u.data && u.data.user && u.data.user.email;
+              if (!email || !A.passwordIsRight) {
+                throw new Error('Could not check your password here.');
+              }
+              return A.passwordIsRight(ctx, email, password);
+            }).then(function (right) {
+              if (!right) throw new Error('That password is not right.');
+              clrSaid.textContent = 'Clearing…';
+              return ctx.sb.rpc('site_clear');
+            }).then(function (r) {
+              if (r.error) throw r.error;
+              var d = r.data || {};
+              clrSaid.textContent = 'Cleared. ' + (d.events || 0) +
+                ' recorded visits and ' + (d.days || 0) +
+                ' summarised days removed. Counting starts again with the next visitor.';
+              tell('The traffic figures have been cleared. Analytics and the ' +
+                   'Dashboard will read nought until somebody visits the shop front.',
+                   { title: 'Cleared' });
+            });
+          })
+          .catch(function (e) {
+            clrSaid.textContent = '';
+            tell((e && e.message) || 'That did not work.',
+                 { title: 'Nothing was cleared' });
+          })
+          .then(function () { clrBtn.disabled = false; });
+      });
+
+      /* A small prompt of its own, because ask() answers yes or no and
+         this needs a word back. */
+      function askForPassword() {
+        return new Promise(function (resolve) {
+          var back = document.createElement('div');
+          back.className = 'ask-back';
+          back.setAttribute('role', 'dialog');
+          back.setAttribute('aria-modal', 'true');
+          var card = document.createElement('div');
+          card.className = 'ask-card';
+          card.appendChild(el('h3', null, 'Type your password'));
+          card.appendChild(el('p', null,
+            'To be certain it is you clearing the shop\u2019s figures.'));
+          var input = document.createElement('input');
+          input.type = 'password';
+          input.autocomplete = 'current-password';
+          input.setAttribute('aria-label', 'Your password');
+          card.appendChild(input);
+          var row = el('div', 'ask-row');
+          var no = el('button', 'btn btn-out', 'Cancel');
+          var go = el('button', 'btn btn-gold', 'Clear them');
+          no.type = 'button'; go.type = 'button';
+          row.appendChild(no); row.appendChild(go);
+          card.appendChild(row);
+          back.appendChild(card);
+          document.body.appendChild(back);
+          input.focus();
+
+          function done(v) {
+            try { document.body.removeChild(back); } catch (e) {}
+            resolve(v);
+          }
+          no.addEventListener('click', function () { done(''); });
+          go.addEventListener('click', function () { done(input.value || ''); });
+          input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') done(input.value || '');
+            if (e.key === 'Escape') done('');
+          });
+          back.addEventListener('click', function (e) { if (e.target === back) done(''); });
+        });
+      }
+
       var back = el('div', 'card');
       back.appendChild(el('h3', null, 'Backup'));
       back.appendChild(el('p', 'grp-note',
