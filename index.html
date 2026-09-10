@@ -617,5 +617,11 @@
 <script src="/assets/account.js"></script>
 <script src="/assets/chat.js"></script>
 <script src="/assets/app.js"></script>
+<!-- The traffic record. Last, and deferred, so that nothing a visitor is
+     waiting for is behind it: the storefront has finished drawing before
+     this file is executed, and a shop that has not created the analytics
+     tables loses nothing by having it here. It loads no library of its
+     own. See assets/analytics.js for what it does and does not record. -->
+<script defer src="/assets/analytics.js"></script>
 </body>
 </html>

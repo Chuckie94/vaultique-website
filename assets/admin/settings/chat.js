@@ -32,6 +32,7 @@
   var DEFAULTS = {
     enabled: true,
     title: 'Chat with us',
+    openingText: 'Tell us what you are looking for — we would love to help',
     hereText: 'Someone is here now',
     awayText: 'Leave a message — we will reply as soon as we are back',
     intro: 'Ask us anything — sizes, fit, colours, delivery, or a piece you ' +
@@ -40,6 +41,7 @@
 
     askName: true,
     askNameText: 'Who are we speaking to?',
+    jobReply: '',
 
     useHours: false,
     hours: null,
@@ -113,17 +115,42 @@
             ]
           },
           {
-            title: 'Whether anybody is there',
-            note: 'The line under the title changes on its own, depending on whether ' +
-                  'somebody has the Live Chats page open and is not marked away. ' +
-                  'These are the two things it says.',
+            title: 'The line under the title',
+            note: 'It says one of three things. Before anybody has written there is ' +
+                  'nothing known about the desk, so it shows the first. Once a ' +
+                  'conversation is going it changes on its own, depending on whether ' +
+                  'somebody has the Live Chats page open and is not marked away.',
             fields: [
+              { type: 'text', name: 'openingText', label: 'Before anybody has written',
+                maxLength: 120, showIf: on('enabled'),
+                hint: 'The first thing a customer reads. This is the greeting — make ' +
+                      'it sound like somebody who wants to hear from them.' },
               { type: 'text', name: 'hereText', label: 'When somebody is at the desk',
                 maxLength: 80, showIf: on('enabled') },
               { type: 'text', name: 'awayText', label: 'When nobody is',
                 maxLength: 120, showIf: on('enabled'),
                 hint: 'Say what happens next. A customer who knows their message will be ' +
                       'read later is far more likely to leave one.' }
+            ]
+          },
+          {
+            title: 'When somebody asks about a job',
+            note: 'People ask a boutique for work, and those are not questions ' +
+                  'the desk should have to answer one at a time. A message that ' +
+                  'clearly asks about a job is answered straight away, and the ' +
+                  'conversation is kept out of the queue — under "Job enquiries" ' +
+                  'in Live Chats, never deleted. The customer is never shown a ' +
+                  'label; they just get the answer below.',
+            fields: [
+              { type: 'textarea', name: 'jobReply', label: 'What to say', maxLength: 400,
+                showIf: on('enabled'),
+                placeholder: 'Thank you for your interest in working with Vaultique ' +
+                             'Boutique Point. Job applications and vacancy enquiries ' +
+                             'are not handled through Live Chat. Please use our ' +
+                             'official recruitment channels for any available ' +
+                             'opportunities.',
+                hint: 'Leave it empty to say exactly what is written above. Point ' +
+                      'people at wherever you actually want applications to go.' }
             ]
           },
           {

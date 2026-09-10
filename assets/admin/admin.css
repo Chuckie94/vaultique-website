@@ -591,3 +591,271 @@
     .role-name{max-width:none;flex:1 1 100%}
     .role-ticks{grid-template-columns:1fr}
   }
+
+  /* Website Analytics ---------------------------------------------------
+     The one page in the admin that draws rather than lists, so it brings
+     its own three colours. They are the shop's own — the blue is the
+     navy lifted far enough off white to be seen against it, the gold is
+     --gold-d unchanged — and the third is here because three devices
+     need three, not because a fourth colour was wanted.
+
+     They were checked rather than chosen: every adjacent pair separates
+     under protanopia, deuteranopia and tritanopia, and each reads at
+     3:1 or better against the white card behind it. Every bar carries
+     its own number as well, so nothing on this page is told by colour
+     alone. Change one of these and that stops being true. */
+  /* The Dashboard is named here too, and deliberately. It draws its
+     lists with the same .an-row family below rather than a second copy
+     of them under another prefix, so the two pages cannot drift apart.
+     Nothing about Analytics changes by sharing them. */
+  .an-wrap,.db-wrap{--an-1:#2F6DA8;--an-2:#A9842F;--an-3:#7E5AA2;--an-grid:rgba(11,31,58,.10)}
+
+  /* the range bar */
+  .an-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .an-presets{display:flex;gap:6px;flex-wrap:wrap}
+  .an-preset{border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:20px;
+             padding:7px 13px;font-family:'Jost',sans-serif;font-size:12.5px;cursor:pointer;transition:.15s}
+  .an-preset:hover{border-color:var(--gold)}
+  .an-preset.on{background:var(--navy);border-color:var(--navy);color:#fff}
+  .an-custom{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto}
+  .an-date{width:auto;padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;
+           font-family:'Jost',sans-serif;font-size:12.5px;color:var(--ink)}
+  .an-date:focus{border-color:var(--gold);outline:none}
+  .an-sep{font-size:12px;color:var(--muted)}
+
+  /* who is here now */
+  .an-live{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--navy);
+           background:#fff;border:1px solid var(--line);border-radius:20px;padding:6px 12px}
+  .an-live .an-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
+  .an-live.is-quiet .an-dot{background:var(--muted)}
+  .an-live.is-off{color:var(--muted)}
+  @media(prefers-reduced-motion:no-preference){
+    .an-live:not(.is-quiet):not(.is-off) .an-dot{animation:an-pulse 2.4s ease-in-out infinite}
+  }
+  @keyframes an-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  /* the six cards */
+  .an-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px}
+  .an-kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 15px}
+  .an-kpi-n{font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:600;color:var(--navy);line-height:1}
+  .an-kpi-l{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:5px}
+  .an-kpi-s{font-size:12px;color:var(--muted);margin-top:5px;min-height:1em}
+
+  /* the chart */
+  .an-chart-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:2px}
+  .an-chart-head h3{flex:1 1 auto}
+  .an-grains{display:flex;gap:5px;flex-wrap:wrap}
+  .an-grain{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:5px;
+            padding:5px 10px;font-family:'Jost',sans-serif;font-size:12px;cursor:pointer}
+  .an-grain.on{background:var(--navy);border-color:var(--navy);color:#fff}
+  .an-plot{position:relative;margin-top:10px}
+  .an-plot svg{display:block;width:100%;height:auto;touch-action:pan-y}
+  .an-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted)}
+  .an-key{display:inline-flex;align-items:center;gap:6px}
+  .an-key i{width:10px;height:10px;border-radius:2px;display:inline-block;flex:none}
+  /* Sits over the plot and must never swallow a pointer meant for it. */
+  .an-tip{position:absolute;pointer-events:none;background:var(--navy);color:#fff;border-radius:6px;
+          padding:7px 10px;font-size:12px;line-height:1.45;white-space:nowrap;opacity:0;
+          transition:opacity .12s;transform:translate(-50%,-100%);z-index:3}
+  .an-tip.on{opacity:1}
+  .an-tip b{font-weight:500;display:block;margin-bottom:2px;color:var(--gold)}
+
+  /* the lists and the splits */
+  .an-two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .an-rows{margin-top:10px}
+  .an-row{padding:8px 0;border-bottom:1px solid var(--line)}
+  .an-row:last-child{border-bottom:none}
+  .an-row-top{display:flex;gap:10px;align-items:baseline;justify-content:space-between}
+  .an-row-l{font-size:13px;color:var(--navy);min-width:0;overflow-wrap:anywhere}
+  .an-row-l small{display:block;color:var(--muted);font-size:11.5px;margin-top:1px}
+  .an-row-n{font-size:13px;color:var(--navy);flex:none;font-variant-numeric:tabular-nums}
+  .an-row-n small{color:var(--muted);font-size:11.5px;margin-left:5px}
+  .an-track{height:6px;border-radius:3px;background:var(--an-grid);margin-top:6px;overflow:hidden}
+  .an-fill{height:100%;border-radius:3px;background:var(--an-1);min-width:2px}
+  .an-row.is-2 .an-fill{background:var(--an-2)}
+  .an-row.is-3 .an-fill{background:var(--an-3)}
+
+  /* one bar cut in two, for new against returning */
+  .an-split{display:flex;gap:2px;height:14px;border-radius:7px;overflow:hidden;margin:12px 0 10px;background:var(--an-grid)}
+  .an-split span{display:block;min-width:2px}
+  .an-split .a{background:var(--an-2)}
+  .an-split .b{background:var(--an-1)}
+
+  .an-note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.55}
+  .an-note b{font-weight:500;color:var(--navy)}
+  .an-setup{background:var(--ivory);border:1px solid var(--line);border-radius:8px;padding:14px 15px;font-size:13px;line-height:1.6}
+  .an-setup code{background:#fff;border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-size:12.5px}
+
+  @media(max-width:640px){
+    .an-two{grid-template-columns:1fr}
+    .an-custom{margin-left:0;width:100%}
+    .an-date{flex:1 1 40%}
+  }
+
+  /* =================================================================
+     Admin > Dashboard
+     -----------------------------------------------------------------
+     One screen answering "what is happening on the website today".
+
+     It borrows rather than repeats: the KPI cards are Analytics'
+     .an-kpi, the lists are its .an-row, and the Quick Actions are the
+     .set-item buttons the Settings menu is built from. What is new
+     below is only what had nowhere to borrow from.
+     ================================================================= */
+
+  .db-wrap{display:block}
+
+  /* the greeting */
+  .db-hello{margin-bottom:16px}
+  .db-hello h2{font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:600;
+               color:var(--navy);line-height:1.15;text-wrap:balance}
+  .db-hello p{font-size:13px;color:var(--muted);margin-top:4px}
+
+  /* a section heading with an optional action on the right */
+  .db-head{display:flex;gap:10px;align-items:baseline;justify-content:space-between;
+           flex-wrap:wrap;margin-bottom:2px}
+  .db-head h3{flex:1 1 auto;min-width:0}
+  .db-link{background:none;border:none;padding:0;font-family:'Jost',sans-serif;font-size:12.5px;
+           color:var(--gold-d);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  .db-link:hover{color:var(--navy)}
+
+  /* loading, empty and gone-wrong, in the space the content will fill */
+  .db-state{font-size:13px;color:var(--muted);padding:10px 0;line-height:1.55}
+  .db-state.is-err{color:var(--err)}
+
+  /* A card mid-load shows the shape of what is coming rather than a
+     spinner: the page does not jump when the numbers land. */
+  .db-skel{display:block;height:11px;border-radius:5px;margin:9px 0;
+           background:linear-gradient(90deg,rgba(11,31,58,.07),rgba(11,31,58,.13),rgba(11,31,58,.07));
+           background-size:200% 100%}
+  .db-skel.w-40{width:40%}
+  .db-skel.w-60{width:60%}
+  .db-skel.w-80{width:80%}
+  @media(prefers-reduced-motion:no-preference){
+    .db-skel{animation:db-sheen 1.4s ease-in-out infinite}
+  }
+  @keyframes db-sheen{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+  /* quick actions — the Settings menu's own button, in a grid */
+  .db-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+
+  /* what the storefront took, over three windows */
+  .db-periods{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;
+              margin-top:12px}
+  .db-period{background:var(--ivory);border:1px solid var(--line);border-radius:8px;padding:11px 12px}
+  .db-period-l{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .db-period-n{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:600;
+               color:var(--navy);line-height:1.1;margin-top:4px;font-variant-numeric:tabular-nums}
+  .db-period-s{font-size:12.5px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+
+  /* the latest few changes, the Activity Log's own row worn small */
+  .db-log{margin-top:6px}
+  .db-log .al-item{padding:9px 11px;margin-bottom:7px}
+  .db-log .al-foot{margin-top:6px;padding-top:6px;font-size:11.5px}
+
+  /* the newest reviews */
+  .db-rev{padding:9px 0;border-bottom:1px solid var(--line)}
+  .db-rev:last-child{border-bottom:none}
+  .db-rev-top{display:flex;gap:9px;align-items:baseline;justify-content:space-between}
+  .db-stars{flex:none;color:var(--gold-d);font-size:13px;letter-spacing:.08em}
+  .db-rev-who{font-size:13px;color:var(--navy);min-width:0;overflow-wrap:anywhere}
+  .db-rev-what{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.5;
+               display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .db-rev-tag{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+              padding:2px 8px;border-radius:10px;background:rgba(169,132,47,.16);color:var(--gold-d)}
+
+  /* what is waiting to be dealt with
+     Each is a button, because each is a thing to go and do. A count with
+     nowhere to go is a nag. */
+  .db-attn{margin-top:6px}
+  .db-attn-item{display:flex;width:100%;gap:11px;align-items:center;text-align:left;
+                background:none;border:none;border-bottom:1px solid var(--line);
+                padding:11px 2px;font-family:'Jost',sans-serif;cursor:pointer;color:var(--ink)}
+  .db-attn-item:last-child{border-bottom:none}
+  .db-attn-item:hover .db-attn-t{color:var(--gold-d)}
+  .db-attn-item:focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:6px}
+  .db-chip{flex:none;min-width:30px;height:30px;border-radius:15px;padding:0 9px;
+           display:inline-flex;align-items:center;justify-content:center;
+           background:var(--navy);color:#fff;font-size:13px;font-variant-numeric:tabular-nums}
+  .db-chip.is-warn{background:var(--gold-d)}
+  .db-chip.is-stop{background:var(--err)}
+  .db-attn-t{font-size:13.5px;color:var(--navy);line-height:1.35}
+  .db-attn-t small{display:block;color:var(--muted);font-size:11.5px;margin-top:1px}
+  .db-clear{display:flex;gap:9px;align-items:center;font-size:13px;color:var(--muted);padding:10px 0}
+  .db-clear .db-tick{width:18px;height:18px;border-radius:50%;background:var(--ok);flex:none;
+                     display:inline-flex;align-items:center;justify-content:center;
+                     color:#fff;font-size:11px;line-height:1}
+
+  /* the seven days behind today */
+  .db-trend{margin-top:14px}
+  .db-trend svg{display:block;width:100%;height:auto}
+  .db-bar{fill:var(--an-1)}
+  .db-bar-hit{fill:transparent}
+  .db-axis{stroke:var(--an-grid);stroke-width:1}
+  .db-tick{font-size:10px;fill:var(--muted)}
+  .db-val{font-size:10.5px;fill:var(--navy);font-variant-numeric:tabular-nums}
+
+  @media(max-width:640px){
+    .db-hello h2{font-size:22px}
+  }
+
+  /* =================================================================
+     TAPPING SOMETHING SHOULD PRESS IT, NOT SELECT IT
+     -----------------------------------------------------------------
+     On a phone a tap is never as brief as a click. Hold a fraction too
+     long on text — and every control here is text — and the browser
+     decides you meant to select it: the tab lights up blue and a
+     "Copy / Look Up / Share" sheet slides in over the admin. The tap
+     is swallowed, the page does not change, and the only way out is to
+     tap somewhere empty. It is worst on the tabs, because they are
+     what a phone taps most and because they sit under the thumb while
+     the page is still settling.
+
+     Four properties, and each is doing a separate job:
+
+       user-select        the text inside a control is not text to take
+       touch-callout      and iOS is not to offer the sheet for it
+       tap-highlight      no grey box flashing over the shop's own colours
+       touch-action       "manipulation" tells the browser this element
+                          will never be double-tapped to zoom, so it can
+                          act on the first tap instead of waiting ~300ms
+                          to find out. Taps stop feeling laggy.
+
+     ONLY CONTROLS ARE LISTED. Nothing here is content. A customer's
+     message, an order reference, an email address and every input
+     stay selectable, because those are things somebody genuinely needs
+     to copy — which is the same reason the callout exists at all.
+
+     Last in the file on purpose: these selectors are single classes,
+     the same weight as the ones that define the controls above, so
+     coming last is what makes them win. .an-plot svg is deliberately
+     not here — that chart wants touch-action:pan-y so a finger can
+     still scroll the page from on top of it. */
+  .tab,
+  .btn,
+  .set-item,
+  .choice,
+  .crumb button,
+  .gal .g button,
+  .list-drop,
+  .list-move,
+  .moved button,
+  .role-tick,
+  .sw-row,
+  .hrs-day,
+  .col-swatch,
+  .col-reset,
+  .sec-remember,
+  .lc-file-label,
+  .lc-hist summary,
+  .an-preset,
+  .an-grain,
+  .db-link{
+    -webkit-user-select:none;
+    -moz-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
+    -webkit-tap-highlight-color:transparent;
+    touch-action:manipulation;
+  }
+

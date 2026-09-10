@@ -15,12 +15,16 @@ vaultique-website/
 ├── config.js                  this site's own Supabase keys
 ├── supabase-setup.sql         run once in Supabase to create the tables
 ├── supabase-fixes.sql         run once more if the site was set up before
+├── supabase-analytics.sql     run once to start counting the website's traffic
+├── supabase-chat-jobs.sql     run once to answer job enquiries automatically
+├── supabase-chat-realtime.sql run once so chat replies arrive without asking
 ├── netlify.toml               Netlify config + /api/products redirect
 ├── netlify/
 │   └── functions/
 │       └── products.js        server-side product feed (holds the read key)
 ├── assets/
 │   ├── app.js                 the storefront's script
+│   ├── analytics.js           the traffic record: what a visit is, and is not
 │   ├── styles.css             the storefront's styles
 │   ├── policies-data.js       the starter policies
 │   ├── formats.js             prices, dates and trading hours, shared by both
@@ -32,17 +36,34 @@ vaultique-website/
 │       ├── registry.js        which pages and settings categories exist
 │       ├── settings-store.js  reads and writes the site_settings table
 │       ├── settings-ui.js     the shared form kit every category draws with
-│       ├── dashboard.js       one file per top level admin page
+│       ├── dashboard.js       Dashboard: the day at a glance, from what is already there
+│       ├── analytics.js       Website Analytics: the cards, the chart, the lists
 │       ├── activity-log.js
 │       └── settings/          one file per Settings category
+├── tests/                     checks that can be re-run against a later build
 └── images/                    optional photos, named by SKU (see README there)
 ```
 
-There is no `tests/` folder in this package. This listing used to show one, and
-`.gitignore` and `send-email.js` still speak of tests, because they were written
-alongside a suite that is not shipped here. Nothing in this folder verifies
-itself; the checks that were run against this build live with the audit, not in
-the upload.
+`tests/` holds the checks that ship with the folder, so they can be re-run
+against any later change rather than being taken on trust. They are not served
+to anybody: `netlify.toml` answers 404 to the whole folder.
+
+```
+node tests/product-sync.test.cjs        the product feed and the pulse
+node tests/analytics.browser.cjs        what a visit records, in a real browser
+psql -d <scratch db> -f tests/analytics-fixture.sql \
+                     -f supabase-analytics.sql \
+                     -f tests/analytics.sql     the analytics database
+VBP_TEST_DB=<url> node tests/analytics.roundtrip.cjs   browser to database, end to end
+node tests/chat.browser.cjs             the chat window, in a real browser
+psql -d <scratch db> -f tests/chat-jobs-fixture.sql \
+                     -f supabase-chat-jobs.sql \
+                     -f tests/chat-jobs.sql     the job-enquiry filter
+```
+
+The two browser ones need Playwright (`npm install playwright`); the two SQL
+ones need any Postgres to point at, and the round trip skips itself politely
+when it is given none.
 
 Open `index.html` directly to preview the design. `products.js` is the secure
 server-side feed.

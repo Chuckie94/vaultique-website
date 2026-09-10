@@ -1,0 +1,207 @@
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD
+==================================================
+This is the whole site, cumulative. Everything from every round of work is
+in here, not just the latest change. Upload this one folder and you are up
+to date — there is no earlier build you still need to apply.
+
+102 files. Nothing here touches your POS / Business Platform or its
+database. The platform remains the shop's system of record; this folder is
+the storefront and the desk that runs it.
+
+
+================================================================
+READ THIS FIRST — config.js IS NOT IN THIS FOLDER
+================================================================
+config.js holds your Supabase address and public key. It is deliberately
+not included, because yours is the only correct copy and shipping a blank
+one would overwrite it.
+
+  * Updating an existing site: KEEP your current config.js. Upload this
+    folder over the old one so the existing file survives, or copy it in
+    before you upload.
+
+  * A fresh deploy: create config.js at the top level of this folder.
+    SETUP.md has the exact contents and where the two values come from.
+
+WITHOUT config.js THE SITE LOADS BUT NOTHING WORKS — no products, no chat,
+no admin login. If something looks broken after uploading, check this first.
+
+
+================================================================
+STEP 1 — RUN THE SQL
+================================================================
+All SQL goes in your WEBSITE's Supabase project (the one holding chat,
+reviews and settings) — never the POS project.
+
+Supabase > SQL Editor > New query, paste the file, Run.
+
+If your site is already live you have run everything except these three.
+In this order:
+
+  1. supabase-analytics.sql        the Website Analytics module
+  2. supabase-chat-realtime.sql    chat over a socket instead of a timer
+  3. supabase-chat-jobs.sql        the job-enquiry filter
+
+Safe to run again if you are unsure whether you already did. Every table
+and index is "if not exists", every function is "create or replace", every
+policy is dropped before it is created, and the column additions are "add
+column if not exists". Running one twice changes nothing.
+
+FRESH DATABASE? Run the others first, in this order:
+  supabase-setup.sql, supabase-fixes.sql, supabase-chat.sql,
+  supabase-chat-phase2.sql ... through ... supabase-chat-phase10.sql,
+  supabase-product-pulse.sql, then the three above.
+
+The Dashboard needs no SQL of its own. It reads what is already there.
+
+
+================================================================
+STEP 2 — UPLOAD THE FOLDER
+================================================================
+Drag it into Netlify, or push it, however you deploy. The whole folder is
+the site. Nothing to build, no npm install, no compile step — the Netlify
+functions use only what Node already has.
+
+
+================================================================
+WHAT IS NEW SINCE YOUR LAST UPLOAD
+================================================================
+
+1. THE ADMIN DASHBOARD  (new)
+   The first screen, and the one to read in the morning. Eight numbers
+   along the top — visits, product views, carts, checkouts, orders, order
+   value, customers, subscribers — each showing today with the last seven
+   days under it, so a quiet Tuesday reads as a quiet Tuesday.
+
+   Then: orders taken today, this week and this month with a seven-day
+   chart; what needs attention; what the shop front is showing; how pieces
+   are doing; the newest reviews; the last few changes anybody made; and
+   the tabs you use most.
+
+   Two things it is careful about, and says so on the page:
+
+     * ORDER VALUE IS NOT A SALES FIGURE. The website takes no payment —
+       every method under Settings > Payments is settled off the site. So
+       it is what customers asked the shop for, not money that arrived.
+       Your books are the platform's. Cancelled orders count nowhere.
+
+     * IT NEVER CLAIMS TO KNOW YOUR STOCK. The product feed carries only
+       "available" and "low stock" as yes-or-no answers; the count itself
+       never leaves the platform. The Dashboard can say a piece is out of
+       stock and can never say how nearly.
+
+   It also only shows what YOUR role can open. An agent without Live Chat
+   is not told somebody is waiting in it, and is offered no button that
+   would lead to a tab they do not have. Two people may see two different
+   lists of the same shop, and that is deliberate.
+
+   Nothing on the Dashboard changes anything. It is a reading screen.
+
+2. TAPPING IN THE ADMIN ON A PHONE
+   A tap held a fraction too long used to select the tab's text and raise
+   the "Copy / Look Up" sheet over the admin instead of opening anything.
+   Fixed for every control in the admin, not only the tabs. Taps are also
+   now immediate rather than waiting a third of a second to see whether
+   you meant to zoom.
+
+   Anything you might genuinely want to copy — a customer's message, an
+   order reference, an email address, any input — stays copyable.
+
+3. WEBSITE ANALYTICS
+   A full Analytics tab: visits, unique visitors, page views, product
+   views, carts and checkouts over any range you like, charts by day,
+   week, month or year, most-viewed pages and pieces, device split, new
+   against returning, and a live visitor count.
+
+   Runs on your existing Supabase. No second analytics service. The
+   tracker records no names, no emails and no IP addresses, and honours
+   Do Not Track and Global Privacy Control.
+
+4. LIVE CHAT — THREE CHANGES
+   * Messages arrive over a socket instead of the page asking every few
+     seconds. The timer is still underneath and takes over the moment the
+     socket drops, so nothing is lost if it fails.
+   * The line under "Chat with Vaultique" is yours to write. Settings >
+     Chat now has the opening line, the line when somebody is at the desk,
+     and the line when nobody is.
+   * Job and vacancy enquiries are recognised, answered once with the
+     official wording, and marked internally so they do not sit in the
+     queue as customer support. The customer never sees a label, and every
+     ordinary conversation behaves exactly as before.
+
+5. THE INSTALLED APP'S ICON AND SPLASH COLOUR
+   The admin app used your website logo as its home-screen icon — the
+   wrong file for the job, being wide, 95% transparent, and cropped to a
+   circle by the phone. It now uses the three square tiles drawn for it.
+   Your logo is unchanged everywhere it belongs.
+
+   The splash screen and title bar now use your primary colour; they were
+   reading a setting that is never written, so every shop got the shipped
+   navy however it had re-branded.
+
+   To change the app icon later: replace the three images/icon-*.png files
+   and redeploy. Anyone who already installed the app must remove it and
+   add it again — a phone reads the icon once, at install.
+
+6. THE LOGO THAT CHANGED A FEW SECONDS AFTER LOADING
+   Your uploaded logo replaced the shipped one only after the catalogue
+   had loaded AND a queue of seventeen settings requests behind it. Two
+   waits with the wrong logo on screen. The branding is now fetched
+   alongside the catalogue and applied the moment it arrives; your colours
+   land at the same time.
+
+7. FOUR WORKING DOCUMENTS STOPPED BEING PUBLIC
+   Internal notes and a diagnostic script were being served at guessable
+   addresses. Now blocked, as README and SETUP already were.
+
+
+================================================================
+CHECKING IT WORKED
+================================================================
+On the site:
+  * Open the shop. Your logo should be right immediately, not after a
+    pause.
+  * Open the admin. It should open on the Dashboard with figures on it.
+  * Visit the storefront in another tab; the Dashboard's visit count and
+    the Analytics tab should both move.
+  * Open the chat on the storefront and answer from the admin — the reply
+    should appear without a delay.
+  * Ask the chat "are you hiring?" — you should get the recruitment reply
+    once, and the conversation should appear under Job enquiries.
+  * On a phone, tap the admin tabs quickly several times. No Copy sheet
+    should appear.
+
+On a phone, for the app icon:
+  Remove the installed app, reload the admin in the browser, then Add to
+  Home Screen again. The icon is read at that moment and not before.
+
+The automated checks are in tests/ and need Playwright:
+      npm install playwright
+      node tests/dashboard.browser.cjs        152 checks
+      node tests/pwa-icons.cjs                 74 checks  (no browser)
+      node tests/analytics.browser.cjs         43 checks
+      node tests/product-sync.test.cjs         28 checks  (no browser)
+      node tests/logo-first-paint.browser.cjs  27 checks
+      node tests/live-update.browser.cjs       21 checks
+      node tests/chat.browser.cjs              18 checks
+
+  The .sql files in tests/ check the database side and need a Postgres to
+  run against; they are there for reference.
+
+
+================================================================
+WHAT IS IN THIS FOLDER
+================================================================
+  index.html            the storefront
+  admin.html            the admin
+  config.js             NOT INCLUDED — see the top of this file
+  assets/               all the site's code
+  images/               logos, the three app icons, any product photos
+  netlify/functions/    the product feed, manifest, robots, sitemap, push
+  netlify.toml          routing, and what is kept private
+  manifest.webmanifest  the installed app's details (fallback copy)
+  sw.js                 notifications when the admin is closed
+  supabase-*.sql        the database setup, in the order given above
+  tests/                the automated checks
+  SETUP.md              the full manual — start here for anything else
+  README.md, LAUNCH.md  background and the go-live checklist

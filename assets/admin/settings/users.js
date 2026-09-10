@@ -26,6 +26,7 @@
      that is not a tab. Adding a tab later means adding a line here. */
   var RIGHTS = [
     { key: 'dashboard',   label: 'Dashboard' },
+    { key: 'analytics',   label: 'Website Analytics' },
     { key: 'products',    label: 'Products & Photos' },
     { key: 'orders',      label: 'Orders' },
     { key: 'chats',       label: 'Live Chats' },

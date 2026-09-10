@@ -19,6 +19,24 @@
   # send email is refused as though the sender were not an administrator.
   included_files = ["config.js"]
 
+# ---------------------------------------------------------------------
+# The product pulse.
+#
+# It reads ONE COLUMN of ONE ROW from the business platform — a timestamp
+# — and writes a signal into this website's own Supabase only when that
+# timestamp has moved. Open browsers hear the signal through Realtime and
+# fetch the catalogue then, and only then. Nothing anywhere polls the
+# catalogue itself.
+#
+# FIVE MINUTES, not one, and the reason is cost: a scheduled function is
+# one invocation per run whether or not anything changed. Every minute is
+# about 43,000 a month; this is about 8,600. Widen it to spend less — the
+# storefront's own fallback refresh catches anything missed either way,
+# so the only thing at stake here is how quickly a change reaches a
+# browser that is already open.
+[functions."product-pulse"]
+  schedule = "*/5 * * * *"
+
 # Pretty path so the storefront calls /api/products
 [[redirects]]
   from = "/api/products"
@@ -169,6 +187,39 @@
   force = true
 
 [[redirects]]
+  from = "/supabase-product-pulse.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-analytics.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-chat-jobs.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-chat-realtime.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+# The checks that prove the product feed and the live update work. They
+# ship with the folder so they can be re-run against any future change,
+# and like the setup files above there is no reason to serve them.
+[[redirects]]
+  from = "/tests/*"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
   from = "/README.md"
   to = "/index.html"
   status = 404
@@ -182,6 +233,44 @@
 
 [[redirects]]
   from = "/LAUNCH.md"
+  to = "/index.html"
+  status = 404
+  force = true
+
+# The working notes from the build-342 defect round, and the script that
+# was written to diagnose it. Same reasoning as the three above: nothing
+# secret, but they are an inventory of what was wrong with the shop and
+# what was decided about it, published at a guessable address to anyone
+# who asks. They were missed when the rules above were written, which is
+# the only reason they were ever served.
+[[redirects]]
+  from = "/DEFECT-FIX-PLAN-342.md"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/DEFECTS-342-ADDENDUM.md"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/PHASE-0-DECISIONS-342.md"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/tools/*"
+  to = "/index.html"
+  status = 404
+  force = true
+
+# Not secret either, and not interesting — but it is a file the folder
+# carries rather than a page the shop serves, and the rule is cheap.
+[[redirects]]
+  from = "/.gitignore"
   to = "/index.html"
   status = 404
   force = true

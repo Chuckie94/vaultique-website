@@ -14,6 +14,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Vaultique" />
+<!-- These two look alike and are not. The first is the app's icon on an
+     iPhone home screen — Safari's half of what manifest.webmanifest does
+     for Android — so it points at the tile drawn for that purpose and is
+     left alone from then on. The second is the picture on the browser
+     tab, which is ordinary website furniture and does follow the shop's
+     own logo once Settings > Branding has been read. -->
 <link rel="apple-touch-icon" href="/images/icon-192.png" />
 <link rel="icon" href="/images/logo-sm.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -91,6 +97,7 @@
   <div class="hide" id="admin">
     <div class="tabs nav-main">
       <div class="tab" data-tab="dashboard">Dashboard</div>
+      <div class="tab" data-tab="analytics">Analytics</div>
       <div class="tab active" data-tab="products">Products &amp; Photos</div>
       <div class="tab" data-tab="orders">Orders</div>
       <div class="tab" data-tab="chats">Live Chats</div>
@@ -103,6 +110,7 @@
 
     <!-- DASHBOARD -->
     <div id="tab-dashboard" class="hide"></div>
+    <div id="tab-analytics" class="hide"></div>
 
     <!-- PRODUCTS -->
     <div id="tab-products">
@@ -203,6 +211,7 @@
 <script src="assets/admin/settings-ui.js"></script>
 <script src="assets/admin/security-core.js"></script>
 <script src="assets/admin/dashboard.js"></script>
+<script src="assets/admin/analytics.js"></script>
 <script src="assets/admin/activity-log.js"></script>
 <!-- Before live-chat.js: it reads VBP_CHAT_ALERTS when the page renders. -->
 <script src="assets/admin/chat-alerts.js"></script>
@@ -656,25 +665,32 @@
   }
 
   var adminReady = false;
-  /* The tab icon, and the one an iPhone puts on the home screen.
+  /* The picture on the browser tab, and only that.
 
-     Both used to point at files that ship with the folder, which are the
+     It used to point at a file that ships with the folder, which is the
      logo the site was built with — so a shop that uploaded a new one in
-     Settings > Branding kept the old one on its phone, in the most
-     visible place there is and the last place anybody would think to
-     look for a stale file. The manifest is built to order for the same
-     reason; these two are links in a page, so they are swapped here.
+     Settings > Branding was still looking at the old one across the top
+     of its own admin, in the last place anybody would think to look for
+     a stale file. So it is swapped here once the branding is known.
+
+     THE HOME SCREEN ICON IS NOT SWAPPED WITH IT, though it used to be.
+     apple-touch-icon is the installed app's icon on an iPhone — Safari's
+     half of the job manifest.webmanifest does on Android — and pointing
+     it at a website logo had the same three faults it had in the
+     manifest: the logo is a wide mark on a transparent background drawn
+     for a header rather than a square tile, iOS crops and mats it to
+     whatever it likes, and it is read once at install and never again,
+     so the swap was never reaching an installed app anyway. The website
+     logo is the website's; the app keeps the tile drawn for it.
 
      Quiet throughout. An icon is not worth an error, and a shop that has
-     uploaded nothing keeps the tile that ships with the folder. */
+     uploaded nothing keeps the mark that ships with the folder. */
   function useTheShopsLogo() {
     var store = window.VBP_ADMIN && window.VBP_ADMIN.store;
     if (!store) return;
     store.load('branding').then(function (b) {
       var src = (b && (b.logoMobile || b.logoMain)) || '';
       if (!src) return;
-      var apple = document.querySelector('link[rel="apple-touch-icon"]');
-      if (apple) apple.href = src;
       var icon = document.querySelector('link[rel="icon"]');
       if (icon) icon.href = src;
     }, function () {});
@@ -701,7 +717,7 @@
   // ---------- navigation ----------
   // Routes are hash based: #/policies, #/settings, #/settings/general.
   // With no hash the admin opens on Products & Photos, as it always has.
-  var TABS = ['dashboard', 'products', 'orders', 'chats', 'reviews', 'subscribers', 'policies', 'settings', 'activity'];
+  var TABS = ['dashboard', 'analytics', 'products', 'orders', 'chats', 'reviews', 'subscribers', 'policies', 'settings', 'activity'];
   var pageCtx = null;
   var setIndexBuilt = false;
 
@@ -789,6 +805,7 @@
     if (which === 'subscribers') loadSubscribers();
     if (which === 'policies') loadPolicies();
     if (which === 'dashboard') renderPage('dashboard', 'tab-dashboard');
+    if (which === 'analytics') renderPage('analytics', 'tab-analytics');
     if (which === 'activity') renderPage('activity', 'tab-activity');
     if (which === 'chats') renderPage('chats', 'tab-chats');
     if (which === 'settings') renderSettings(sub);

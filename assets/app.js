@@ -501,6 +501,65 @@
     try { store.set(THEME_MEMO, THEME.cssFor(BRANDING)); } catch (e) {}
   }
 
+  /* The shop's own logo and colours, asked for on their own and ahead of
+     everything else.
+
+     They used to arrive with the other sixteen settings in
+     loadWebsiteData, which gathers them all and applies them in one go
+     once the slowest has answered — and loadWebsiteData does not start
+     until /api/products has come back, because it is called from there.
+     So the logo was two waits deep: the catalogue first, and then the
+     slowest of seventeen settings requests after it.
+
+     For almost all of those that is right. A page drawn half from the
+     new settings and half from the old would be worse than one drawn a
+     moment later, and none of it is on screen before the products are
+     anyway. The logo is the exception, because while we wait it is not
+     missing — it is WRONG. index.html ships with the logo the site was
+     built with sitting in the header, so a shop that had uploaded its
+     own sat looking at the old one for as long as both waits took, and
+     then watched it change. Long enough to notice, and the obvious
+     reading of it is that the upload did not work.
+
+     The colours have had a cure for this all along: preApplyCachedTheme,
+     just above, replays the last visit's stylesheet before any of this
+     is asked for. But it keeps CSS, and a logo is not CSS.
+
+     So this one row is fetched at load, beside the catalogue instead of
+     behind it, and the theme is applied the moment it arrives. Nothing
+     in the theme reads anything but branding, so there is nothing for it
+     to wait for.
+
+     Asked for once, however many times this is called: loadWebsiteData
+     waits on this same promise rather than making the request again, so
+     the shop is never asked twice for one row. */
+  var brandingAsked = null;
+  function startBranding() {
+    if (brandingAsked) return brandingAsked;
+    if (!WEB) return (brandingAsked = Promise.resolve());
+
+    var base = WEB.SUPABASE_URL.replace(/\/+$/, '');
+    var h = { apikey: WEB.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + WEB.SUPABASE_ANON_KEY };
+
+    brandingAsked = fetch(base + '/rest/v1/site_settings?key=eq.branding&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) {
+        BRANDING = (rows && rows[0] && rows[0].data) || null;
+        /* An early logo is a nicety; the load is not. Nothing here is
+           allowed to cost the shop the rest of its settings.
+
+           applyTheme runs a second time in finishLoad, and has to: if
+           this request fails the line below never runs, and that one
+           still puts the shipped defaults up. Twice costs one stylesheet
+           write and is otherwise invisible — every piece of it sets a
+           value rather than adding one. */
+        try { applyTheme(); } catch (e) {}
+      })
+      .catch(function () {});
+
+    return brandingAsked;
+  }
+
 
 
   // Settings > Shopping on the page. The per-product pieces are handled
@@ -1640,6 +1699,9 @@
       openCheckoutBlock();
       return;
     }
+    /* Counted here and not a line earlier: above this point the shop has
+       refused checkout and nobody has started one. */
+    if (window.VBP_TRACK) window.VBP_TRACK.event('checkout_start', { sku: p && p.sku, label: p && p.name });
     if (!needsDetails()) return;          // let the anchor follow its href
     e.preventDefault();
     openOrderForm(orderOf(p));
@@ -1656,6 +1718,7 @@
        here another way. */
     if (!order.lines.length) return;
     if (!mayCheckout()) { closeCart(); openCheckoutBlock(); return; }
+    if (window.VBP_TRACK) window.VBP_TRACK.event('checkout_start', null);
     closeCart();
     if (needsDetails()) { openOrderForm(order); return; }
     /* Nothing to ask for: straight out, the way a buy button with no
@@ -1935,6 +1998,7 @@
       .then(function (r) { if (!r.ok) throw new Error('bad'); return r.json(); })
       .then(function (d) {
         PRODUCTS = (d && d.products) || [];
+        LIVE.version = (d && d.version) || '';
         /* A feed that answers with nothing is not a feed that failed. An
            empty POS is a real answer and the shop should show an empty
            shop, not twelve invented pieces. Only a request that could not
@@ -1950,6 +2014,211 @@
     var b = $('#previewBanner'); if (b) b.classList.add('show');
     PRODUCTS = SAMPLE.slice();
     finishLoad();
+  }
+
+  /* ==================================================================
+     LIVE PRODUCT UPDATES
+
+     The shop's catalogue lives in the business platform. Until now this
+     page read it once, at load, and never looked again: a piece added in
+     the shop did not appear until somebody refreshed, and one deleted
+     stayed on the website until they did.
+
+     HOW IT LEARNS THAT SOMETHING CHANGED. Not by asking. A scheduled
+     function reads one timestamp from the platform and, when it moves,
+     writes a row into this website's own database. Supabase Realtime
+     delivers that row to every browser with the shop open, and only then
+     is the catalogue fetched. Nothing here sits on a timer asking for
+     products that have not changed.
+
+     THE SIGNAL IS NOT THE DATA. The pulse says only "something changed".
+     What actually changed still comes from /api/products, which is the
+     one thing allowed to read the platform and the one thing that
+     decides which six fields a visitor may see. Moving that decision
+     into the browser would mean giving every visitor a key that can read
+     the whole business, so it stays exactly where it is.
+
+     AND IT IS NEVER THE ONLY WAY. A socket can fail to open, a library
+     can fail to load from its CDN, a laptop can sleep through the
+     signal. So a plain refresh runs behind all of it — rarely while the
+     socket is up, more often when it is not — and a tab brought back to
+     the front checks immediately. The socket makes this prompt. The
+     fallback is what makes it certain.
+     ================================================================== */
+  var LIVE = {
+    version: '',      // fingerprint of the catalogue currently on screen
+    started: false,
+    channel: null,
+    timer: null,
+    busy: false,
+    at: 0             // when the feed was last asked for
+  };
+  var FALLBACK_FAST = 180000;   // 3 minutes — nothing is listening for us
+  var FALLBACK_SLOW = 900000;   // 15 minutes — a safety net behind a live socket
+
+  /* Fetch the feed and redraw ONLY if it is genuinely different. A signal
+     that turns out to mean nothing costs one small request and no
+     repaint, which is what makes it safe to react to every one. */
+  function refreshProducts() {
+    /* Samples are on screen because the feed could not be read at all.
+       Redrawing from it would replace a working demonstration with an
+       empty shop, so that state is left exactly as it is. */
+    if (PREVIEW || LIVE.busy) return;
+    LIVE.busy = true;
+    LIVE.at = Date.now();
+
+    var u = '/api/products' + (previewKey() ? '?preview=' + encodeURIComponent(previewKey()) : '');
+    /* The feed is cached at the edge for a couple of minutes, which is
+       right for the first visit of the day and wrong here: a copy stored
+       before the change is exactly what must not come back. */
+    u += (u.indexOf('?') > -1 ? '&' : '?') + 'at=' + Date.now();
+
+    fetch(u, { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('bad'); return r.json(); })
+      .then(function (d) {
+        LIVE.busy = false;
+        var list = (d && d.products) || [];
+        var v = (d && d.version) || '';
+        /* No version means the feed could not fingerprint itself, and the
+           honest reading of that is "assume it changed". */
+        if (v && LIVE.version && v === LIVE.version) return;
+        LIVE.version = v;
+        PRODUCTS = list;
+        redrawProducts();
+      })
+      .catch(function () {
+        /* A failed refresh changes nothing. What is on screen was true
+           when it was drawn and stays until something better arrives. */
+        LIVE.busy = false;
+      });
+  }
+
+  /* Redraw everything the catalogue feeds, and nothing else.
+
+     This is the same sequence the first load runs once the products
+     land — the website's own content, theme, policies and settings are
+     NOT re-applied, because none of them came from the platform and none
+     of them changed. */
+  function redrawProducts() {
+    var y = 0;
+    try { y = window.scrollY || window.pageYOffset || 0; } catch (e) {}
+    mergeMeta();
+    boot();
+
+    /* boot() routes, and routing scrolls a fresh page to the top. A
+       visitor halfway down the shop did not ask to be sent back up.
+
+       ONLY A JUMP TO THE TOP IS UNDONE, and that is deliberate. Pinning
+       the exact pixel back would be worse than leaving it alone: when a
+       piece is added above where they are reading, the browser shifts
+       the view down by the height of the new card so the SAME THING
+       stays under their eyes. That adjustment is correct, and forcing
+       the old number back would drag them onto different products.
+
+       So the rule is the narrow one — if the redraw sent them to the top
+       and they were not at the top, put them back; otherwise let the
+       browser's own adjustment stand. */
+    if (y > 0) {
+      var restore = function () {
+        try {
+          var at = window.scrollY || window.pageYOffset || 0;
+          if (at < 2) window.scrollTo(0, y);
+        } catch (e) {}
+      };
+      /* Checked over a short window rather than once. The jump to the top
+         does not happen in the same breath as the redraw — images finish
+         arriving and the layout settles first — so a single check runs
+         before the thing it is there to undo and sees nothing wrong. A
+         few hundred milliseconds covers it and then stops: after that,
+         any scrolling is the visitor's own and must be left alone. */
+      restore();
+      if (window.requestAnimationFrame) window.requestAnimationFrame(restore);
+      setTimeout(restore, 60);
+      setTimeout(restore, 150);
+      setTimeout(restore, 320);
+    }
+  }
+
+  function setFallback(ms) {
+    if (LIVE.timer) clearInterval(LIVE.timer);
+    LIVE.timer = setInterval(function () {
+      /* A tab nobody is looking at costs the shop nothing. It catches up
+         the moment it is brought back to the front. */
+      if (document.hidden) return;
+      refreshProducts();
+    }, ms);
+  }
+
+  /* Its own client. The account layer builds one too, but only for a shop
+     with accounts switched on, and the catalogue has to stay live either
+     way. The library is fetched once and shared. */
+  var LIVE_CLIENT = null;
+  function liveClient() {
+    if (LIVE_CLIENT) return LIVE_CLIENT;
+    if (!WEB || !window.supabase || !window.supabase.createClient) return null;
+    try {
+      LIVE_CLIENT = window.supabase.createClient(WEB.SUPABASE_URL, WEB.SUPABASE_ANON_KEY);
+    } catch (e) { LIVE_CLIENT = null; }
+    return LIVE_CLIENT;
+  }
+  function withRealtime(then) {
+    if (!WEB) { then(null); return; }
+    if (window.supabase && window.supabase.createClient) { then(liveClient()); return; }
+    var tag = document.createElement('script');
+    tag.src = CLIENT_SRC;
+    tag.async = true;
+    tag.onload = function () { then(liveClient()); };
+    /* A visitor who cannot reach the CDN still sees a shop that updates,
+       just on the slower of the two routes. */
+    tag.onerror = function () { then(null); };
+    document.head.appendChild(tag);
+  }
+
+  function startLiveProducts() {
+    if (LIVE.started) return;
+    LIVE.started = true;
+
+    /* Started BEFORE the socket is attempted, not after it fails. If the
+       library never loads or the subscription never settles, the shop is
+       already covered rather than waiting to find out. */
+    setFallback(FALLBACK_FAST);
+
+    /* Every tab subscribes for itself, so every tab is told. Nothing is
+       shared between them and nothing needs to be. */
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) return;
+      if (Date.now() - LIVE.at < 30000) return;
+      refreshProducts();
+    });
+    window.addEventListener('online', function () { refreshProducts(); });
+
+    if (PREVIEW) return;   // no feed to be live about
+
+    withRealtime(function (c) {
+      if (!c || typeof c.channel !== 'function') return;   // fallback has it
+      try {
+        LIVE.channel = c
+          .channel('vbp-product-pulse')
+          .on('postgres_changes',
+              { event: '*', schema: 'public', table: 'product_pulse' },
+              function () { refreshProducts(); })
+          .subscribe(function (status) {
+            if (status === 'SUBSCRIBED') {
+              /* The catalogue may have changed while the socket was
+                 opening, and nobody would ever be told about that one. */
+              refreshProducts();
+              setFallback(FALLBACK_SLOW);
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+              /* Straight back to the plain refresh. Supabase reconnects
+                 on its own; if it succeeds this drops back to the slow
+                 net above, and if it never does the shop is still live. */
+              setFallback(FALLBACK_FAST);
+            }
+          });
+      } catch (e) {
+        setFallback(FALLBACK_FAST);
+      }
+    });
   }
   function finishLoad() {
     loadWebsiteData(function () {
@@ -2125,10 +2394,11 @@
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (rows) { CONTACT = (rows && rows[0] && rows[0].data) || null; })
       .catch(function () {}).then(done);
-    fetch(base + '/rest/v1/site_settings?key=eq.branding&select=data', { headers: h })
-      .then(function (r) { return r.ok ? r.json() : []; })
-      .then(function (rows) { BRANDING = (rows && rows[0] && rows[0].data) || null; })
-      .catch(function () {}).then(done);
+    /* Branding is not asked for here. It has been in flight since init
+       and was applied the moment it landed — see startBranding. It is
+       waited on so the count still comes to seventeen and the rest of
+       the load is exactly as it was. */
+    startBranding().then(done, done);
     fetch(base + '/rest/v1/site_settings?key=eq.general&select=data', { headers: h })
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (rows) {
@@ -2206,6 +2476,10 @@
     if (cartOpen()) renderCart();
     bindAccountButton();
     route();
+    /* Started here because this is the first moment the catalogue is on
+       screen, and guarded inside so that the redraws it later causes do
+       not start it again. */
+    startLiveProducts();
   }
   function catHasProducts(c) {
     var n = String(c || '').trim().toLowerCase();
@@ -2510,6 +2784,7 @@
     afterCartChange();
     flashCartBtn(btn, 'Added');
     bumpCartIcon();
+    if (window.VBP_TRACK) window.VBP_TRACK.event('add_to_cart', { sku: p.sku, label: p.name });
   }
   function setCartQty(sku, qty) {
     var line = cartLine(sku);
@@ -2953,6 +3228,9 @@
     var p = bySku(sku); var host = $('#view-detail');
     if (!p) { goShop('All'); return; }
     pushRecent(sku);
+    /* The traffic record cannot see which piece this is from the outside,
+       so it is told. Guarded and ignored if analytics.js is not loaded. */
+    if (window.VBP_TRACK) window.VBP_TRACK.event('product_view', { sku: p.sku, label: p.name });
 
     var specs = [
       SHOP.showCategory ? ['Category', p.category] : null,
@@ -4098,6 +4376,7 @@
   function init() {
     preHideIfLastGated();   // only hides when this browser was gated last time
     preApplyCachedTheme();  // the colours from last time, until the real ones land
+    startBranding();        // and the real ones now, rather than behind the catalogue
     bindStatic();
     /* The badge is drawn from the cart alone, so it is right before the
        feed answers. A returning customer sees what they left in it

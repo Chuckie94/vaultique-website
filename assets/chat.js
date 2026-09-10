@@ -50,8 +50,18 @@
      coming back the same afternoon still finds their thread; a stranger
      the next morning gets a clean window. */
   var REMEMBER_FOR = 4 * 60 * 60 * 1000;   // Settings > Live Chat may change this
+  /* THE TIMER IS NO LONGER HOW A REPLY ARRIVES. It is what catches one
+     if the socket is not there — a project without the realtime file run,
+     Realtime switched off, a browser with no crypto.subtle to work out
+     its own channel name, a network that will not hold a socket open.
+
+     The first pair is the rate with no socket, unchanged from what it has
+     always been. The second is the rate WITH one, where the ask is a
+     safety net rather than the mechanism and can be rare. */
   var OPEN_EVERY = 3000;           // asking, with the window open
   var IDLE_EVERY = 25000;          // asking, with it closed
+  var LIVE_OPEN_EVERY = 45000;     // ...and once the socket is carrying it
+  var LIVE_IDLE_EVERY = 180000;
   var MAX_LEN    = 2000;           // the database trims here too
 
   var CFG = (window.VBP_CONFIG &&
@@ -70,6 +80,12 @@
   var SET = {
     enabled: true,
     title: 'Chat with us',
+    /* The line under the title before anyone has asked anything, and the
+       one most shops want to change first. It used to be written into
+       index.html and nowhere else, which is why it could not be found in
+       Settings: the default here is that same sentence, word for word, so
+       a shop that never opens the page sees exactly what it saw before. */
+    openingText: 'Tell us what you are looking for — we would love to help',
     hereText: 'Someone is here now',
     awayText: 'Leave a message — we will reply as soon as we are back',
     intro: 'Ask us anything — sizes, fit, colours, delivery, or a piece you ' +
@@ -137,6 +153,7 @@
   var unread  = 0;         // replies that arrived while the window was shut
   var seen    = false;     // the shop has read what was said to it
   var here    = false;     // somebody is at the desk to answer
+  var presenceKnown = false;  // ...and whether we have actually asked yet
   var typing  = false;     // somebody at the shop is writing, as of a moment ago
   var saidTypingAt = 0;    // when we last told them we are
   var status  = 'open';    // open | closed, as the shop left it
@@ -310,17 +327,32 @@
     }
   }
 
-  /* Whether there is anybody there to answer, said plainly. Before the
-     first ask there is nothing to say, so the invitation stays. */
+  /* Whether there is anybody there to answer, said plainly.
+
+     FOUR LINES, ALL OF THEM THE SHOP'S. Before the first ask nothing is
+     known about who is at the desk, so the invitation stays — and that
+     invitation is now openingText rather than a sentence written into
+     index.html, which is the one line a shop could not change and the
+     one it most wanted to.
+
+     `known` is what separates "nobody is there" from "we have not asked
+     yet". Without it a window that had not asked anything looked exactly
+     like a shop with nobody in it. */
+  function subLine() {
+    if (SET.useHours && !withinHours()) return SET.outsideHoursText;
+    if (!presenceKnown) return SET.openingText;
+    return here ? SET.hereText : SET.awayText;
+  }
+
   function paintPresence() {
     var dot = $('#chatDot'), sub = $('#chatSub');
     if (!dot || !sub) return;
-    dot.hidden = false;
+    /* The dot says something about the desk, so it stays hidden until
+       there is something true to say. */
+    dot.hidden = !presenceKnown;
     dot.className = 'chat-dot' + (here ? ' on' : '');
     dot.setAttribute('title', here ? 'Someone is at the desk' : 'Nobody is at the desk right now');
-    sub.textContent = here ? SET.hereText
-                           : (SET.useHours && !withinHours() ? SET.outsideHoursText
-                                                             : SET.awayText);
+    sub.textContent = subLine();
   }
 
   function paint() {
@@ -344,7 +376,12 @@
         lastDay = day;
         log.appendChild(el('div', 'chat-day', dayLabel(d)));
       }
-      var row = el('div', 'chat-msg ' + (m.sender === 'shop' ? 'from-shop' : 'from-me'));
+      /* Asked the other way round so a message that is neither theirs nor
+         an operator's — the automatic notice about job enquiries — is drawn
+         on the shop's side and not in the customer's own words. For
+         'customer' and 'shop', which is every message that has ever been
+         sent, this is the same answer as before. */
+      var row = el('div', 'chat-msg ' + (m.sender === 'customer' ? 'from-me' : 'from-shop'));
       if (m.body) row.appendChild(el('div', 'chat-bubble', m.body));
       var card = cardFor(m.meta);
       if (card) row.appendChild(card);
@@ -361,7 +398,10 @@
        still going, arrived but nobody has picked it up, and read. A
        message still on its way carries an id this page made up. */
     var last = msgs[msgs.length - 1];
-    if (last && last.sender !== 'shop') {
+    /* Only under something they actually wrote. "Queued" beneath a notice
+       the shop never typed would be telling them their message had not
+       been picked up when what they are reading IS the answer. */
+    if (last && last.sender === 'customer') {
       var state = String(last.id).charAt(0) === 'p' ? 'Sending…'
                 : seen ? 'Seen'
                 : 'Queued';
@@ -804,6 +844,7 @@
         if (!r) {                       // the shop deleted it: start clean
           token = null; memoSet(null); msgs = []; lastAt = null; unread = 0;
           started = false; paintBadge(); paint();
+          dropChannel();
           return;
         }
         var wasSeen = seen;
@@ -817,6 +858,7 @@
         named = r.named !== false;
         seen = r.seen === true;
         here = r.here === true;
+        presenceKnown = true;
         var wasTyping = typing;
         typing = r.typing === true;
         paintPresence();
@@ -885,11 +927,107 @@
     }).catch(function () {});
   }
 
-  /* Fast while somebody is reading, slow while nobody is. */
+  /* ---------------------------------------------------------- the socket
+
+     WHY THIS IS A NUDGE AND NOT THE MESSAGE. A guest has no policy on
+     the chat tables — that is what keeps one customer out of another's
+     conversation — and Realtime obeys the same policies as everything
+     else. So nothing is subscribed to a table here. The database sends
+     an empty signal on a channel named after this conversation, and
+     that signal is answered by calling chat_poll: the same function,
+     past the same checks, that has always been the only way a customer
+     reads a word. Nothing about who may read what has changed.
+
+     THE CHANNEL IS NAMED BY A HASH OF THE TOKEN, not by the token. The
+     token is what proves this conversation is ours, so it does not go
+     anywhere a channel list would show it. sha256 is in the browser and
+     in Postgres, so both work out the same name without either sending
+     it. A browser too old to have crypto.subtle simply never subscribes
+     and goes on asking, which is what it did before. */
+  var CLIENT_SRC = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+  var LIVE = { client: null, channel: null, token: null, ok: false, tried: false };
+
+  function sha256Hex(text) {
+    try {
+      if (!window.crypto || !crypto.subtle || !window.TextEncoder) {
+        return Promise.resolve(null);
+      }
+      return crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+        .then(function (buf) {
+          var b = new Uint8Array(buf), out = '', i;
+          for (i = 0; i < b.length; i++) out += (b[i] + 256).toString(16).slice(1);
+          return out;
+        }, function () { return null; });
+    } catch (e) { return Promise.resolve(null); }
+  }
+
+  function liveClient() {
+    if (LIVE.client) return LIVE.client;
+    if (!CFG || !window.supabase || !window.supabase.createClient) return null;
+    try {
+      LIVE.client = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
+    } catch (e) { LIVE.client = null; }
+    return LIVE.client;
+  }
+
+  /* The library, if the page has it or the CDN will give it. Asked for
+     once: a visitor who cannot reach the CDN is not asked again on every
+     message, they simply keep the timer they already had. */
+  function withClient(then) {
+    if (window.supabase && window.supabase.createClient) { then(liveClient()); return; }
+    if (LIVE.tried) { then(null); return; }
+    LIVE.tried = true;
+    var tag = document.createElement('script');
+    tag.src = CLIENT_SRC;
+    tag.async = true;
+    tag.onload = function () { then(liveClient()); };
+    tag.onerror = function () { then(null); };
+    document.head.appendChild(tag);
+  }
+
+  function dropChannel() {
+    try {
+      if (LIVE.channel && LIVE.client) LIVE.client.removeChannel(LIVE.channel);
+    } catch (e) {}
+    LIVE.channel = null;
+    LIVE.token = null;
+    LIVE.ok = false;
+  }
+
+  function listen() {
+    if (!token) return;
+    if (LIVE.token === token && LIVE.channel) return;   // already on this one
+    dropChannel();
+    var mine = token;
+    sha256Hex(mine).then(function (hash) {
+      if (!hash || token !== mine) return;
+      withClient(function (client) {
+        if (!client || token !== mine) return;
+        try {
+          var ch = client.channel('vbp-chat-' + hash);
+          ch.on('broadcast', { event: 'nudge' }, function () { ask(); })
+            .subscribe(function (state) {
+              /* The timer follows the socket rather than being switched
+                 off by it. A socket that drops at four in the afternoon
+                 puts the old rate back by itself. */
+              LIVE.ok = (state === 'SUBSCRIBED');
+              beat();
+            });
+          LIVE.channel = ch;
+          LIVE.token = mine;
+        } catch (e) { LIVE.ok = false; }
+      });
+    });
+  }
+
+  /* Fast while somebody is reading, slow while nobody is — and slower
+     again once the socket is doing the telling. */
   function beat() {
     if (timer) clearInterval(timer);
-    if (!token) return;
-    timer = setInterval(ask, open ? OPEN_EVERY : IDLE_EVERY);
+    if (!token) { dropChannel(); return; }
+    listen();
+    timer = setInterval(ask, LIVE.ok ? (open ? LIVE_OPEN_EVERY : LIVE_IDLE_EVERY)
+                                     : (open ? OPEN_EVERY : IDLE_EVERY));
   }
 
   /* ------------------------------------------------------------ start up */
@@ -913,9 +1051,12 @@
     if (titleEl && SET.title) titleEl.textContent = SET.title;
     var inputEl = $('#chatInput');
     if (inputEl && SET.placeholder) inputEl.placeholder = SET.placeholder;
-    var sub = $('#chatSub');
-    if (sub && !started) sub.textContent = SET.useHours && !withinHours()
-      ? SET.outsideHoursText : sub.textContent;
+    /* Painted from the settings rather than left as whatever index.html
+       was built with. This is the line that could not be changed before:
+       the old version here assigned sub.textContent to itself unless the
+       shop used chat hours, so openingText and awayText never reached the
+       window until a conversation had already started. */
+    paintPresence();
 
     var fab = $('#chatFab');
     if (fab) fab.classList.remove('hide');
@@ -951,6 +1092,7 @@
   window.VBP_CHAT.standDown = function () {
     try { if (timer) clearInterval(timer); } catch (e) {}
     timer = null;
+    dropChannel();
     try { close(); } catch (e) {}
   };
 

@@ -348,11 +348,20 @@ before saving.
   Round things such as badges stay round whatever you choose.
 - **Custom CSS.** For small adjustments once everything else is set.
 
-Two things worth knowing:
+Three things worth knowing:
 
 - Branding applies to **the storefront only**. This admin keeps its own look on
   purpose, so a colour or a line of custom CSS that makes something unreadable
   can always be undone from here.
+- **Your logo is not the installed app's icon**, and is not meant to be. When
+  the admin is added to a phone's home screen it uses three square tiles that
+  ship with the site — `images/icon-192.png`, `images/icon-512.png` and
+  `images/icon-maskable-512.png` — because a home-screen icon is a square that
+  Android then crops to a circle, and a wide logo on a transparent background
+  does not survive that. Your logo still appears across the storefront, in the
+  footer, and on the browser tab. To change the app's icon, replace those three
+  files and redeploy; a phone reads the icon once when the app is installed, so
+  anyone who already installed it will need to remove it and add it again.
 - **The social sharing image needs one manual step.** Facebook and WhatsApp read
   your page's HTML and never run scripts, so an image chosen in the admin cannot
   reach them by itself. Choose the image, then copy the two lines the section
@@ -869,6 +878,263 @@ with no price shown has no figure to place and goes last.
 > **This needs the SQL run again.** `supabase-setup.sql` adds four columns to
 > `product_meta` for the remembered price, its date, an override and the
 > price-on-request tick. It is safe to run more than once.
+
+### Settings > Live Chat — the words in the window
+
+Every line a customer reads in the chat window comes from this page. Three of
+them are worth knowing about.
+
+#### The line under the title
+
+It says one of three things, and the shop writes all three:
+
+| When | Setting |
+| --- | --- |
+| Before anybody has written | **Before anybody has written** |
+| Somebody has Live Chats open and is not marked away | **When somebody is at the desk** |
+| Nobody is there | **When nobody is** |
+
+The first of those used to be written into the website itself and could not be
+reached from Settings at all, which is why looking for it here found nothing.
+It is a normal setting now. Leave it empty-handed and it says what it has
+always said, so a shop that never opens this page sees no change.
+
+If **Only offer chat at set times** is on, a fourth line — **What it says
+outside them** — replaces all three outside those hours.
+
+#### When somebody asks about a job
+
+People ask a boutique for work, often, and those are not questions the desk
+should answer one at a time. A message that clearly asks about a job is
+answered straight away with whatever you write in **What to say**, and the
+conversation is moved out of the queue.
+
+Leave the box empty and it says:
+
+> Thank you for your interest in working with Vaultique Boutique Point. Job
+> applications and vacancy enquiries are not handled through Live Chat. Please
+> use our official recruitment channels for any available opportunities.
+
+**Where those conversations go.** Live Chats > the view picker > **Job
+enquiries**. They are never deleted and every word is kept — they are simply
+not in the list an operator works through, because they have been answered.
+
+**If it gets one wrong**, open it and press **Not a job enquiry**. It goes
+straight back into the normal list.
+
+**What the customer sees** is the answer and nothing else. No label, no
+category, no mention that anything was decided about them.
+
+**What it will not do** is mistake a customer for a job seeker. "What is the
+position of my order", "can you post it to me", "what are your opening hours"
+and "where can I send my payment" all read as ordinary questions — those four
+are checked by name, along with twenty-one others, every time the filter is
+changed.
+
+This needs **supabase-chat-jobs.sql** run once in the SQL Editor. Without it
+nothing is detected and the chat behaves exactly as it does today.
+
+#### Replies that arrive without waiting
+
+Both sides of the chat used to ask the database every few seconds whether
+anything had changed. Running **supabase-chat-realtime.sql** once opens a
+socket instead: a message appears on the other side as it is sent, and the
+asking drops to a slow background check.
+
+**Nothing depends on it.** If the file is not run, if Realtime is switched off,
+or if a socket cannot be held open, both sides go on asking exactly as they
+always have. The timer is never turned off — it is slowed once the socket
+proves itself, and it comes straight back the moment the socket drops.
+
+**The customer is not subscribed to your chat tables**, and that is deliberate:
+a guest has no permission to read them, which is what keeps one customer out of
+another's conversation. What their browser receives is an empty nudge on a
+channel named after their own conversation; the words still come back through
+the same checked function as before.
+
+### The Dashboard tab
+
+The first screen, and the one to read in the morning. Everything on it comes
+from the website's own records — nothing here is a second copy of anything in
+the Business Platform, and nothing on it changes anything.
+
+**Nothing to set up.** It uses what is already there. Some of it needs
+`supabase-analytics.sql` to have been run (see the Analytics tab below); the
+rest works whether or not it has, and any card that cannot be filled says why
+rather than showing a nought.
+
+#### The eight numbers along the top
+
+The big figure is **today**; the small line under it is **the last seven days**,
+so a quiet Tuesday reads as a quiet Tuesday rather than as something broken.
+
+| Card | What it counts |
+| --- | --- |
+| Website visits | Trips through the shop today |
+| Product views | Pieces opened to read about |
+| Added to cart | Pieces gathered to buy |
+| Checkouts begun | People setting off to WhatsApp to order |
+| Orders | Orders the website took today |
+| Order value | What those orders came to |
+| Registered customers | Everybody with an account, and how many joined this month |
+| Newsletter subscribers | Everybody still subscribed, and how many joined this month |
+
+The first four need the analytics file. The rest do not.
+
+#### Orders taken
+
+Orders and what they came to, for **today**, **this week** (from Monday) and
+**this month**, with the last seven days drawn underneath. The chart shows one
+measure at a time — press **Orders** or **Order value** to change which.
+
+> **This is not a sales figure and is not meant to be.** The website takes no
+> payment: every method under Settings > Payments is settled off the site — cash
+> in person, a transfer, mobile money, on delivery. So this is *what customers
+> asked the shop for*, not money that has arrived. Your books are the Business
+> Platform's. A cancelled order is not counted here at all.
+
+#### Needs attention
+
+Only things somebody has to go and do, and only things **your role can open** —
+an agent without Live Chat is not told somebody is waiting in it. Press any line
+to go straight to the tab that clears it. A nought is never listed; when there
+is nothing at all it says so.
+
+If the website is closed, in maintenance mode or not yet open, that is shown
+first and in red, because nothing else on the page matters while it is true.
+
+#### On the storefront
+
+What a visitor would find: how many pieces are showing, how many are in stock,
+running low, or out of stock. Anything hidden from the website is counted
+separately rather than quietly left out.
+
+> **The website is never told how many of a piece are left.** The product feed
+> carries only *available* and *low stock* as yes-or-no answers; the stock count
+> itself never leaves the Business Platform. So this can tell you a piece is out
+> of stock and can never tell you how nearly. Restocking stays where it belongs.
+
+If this card says the feed could not be read, chase that before anything else on
+the page — it usually means the shop front is showing nothing.
+
+#### How pieces are doing
+
+Four lists over the **last seven days**, one at a time:
+
+- **Most viewed** — pieces opened to read about
+- **Added to cart** — pieces gathered to buy
+- **Best selling** — what actually left, counted in items rather than orders,
+  and never counting a cancelled one
+- **Out of stock** — what a visitor cannot buy right now, with no number beside
+  it, for the reason above
+
+The first two need the analytics file; the last two do not.
+
+#### Customer activity and Recent activity
+
+The newest reviews with their ratings, with **Waiting** on any still held back
+for approval, and a line saying how many people registered and subscribed this
+month. Beside it, the last six changes anybody made in the admin — what, where,
+who and how long ago — with a link through to the full Activity Log.
+
+#### Quick actions
+
+The tabs you use most, and **only the ones your role can open**. An action that
+led to a tab that is not there would be a dead end on the first screen.
+
+### The Analytics tab
+
+How many people came to the website, what they looked at, and on what.
+
+**Nothing here works until you run one file.** Open the **SQL Editor** for this
+website's Supabase project > **New query**, paste in the whole of
+**supabase-analytics.sql**, and click **Run**. Visits are counted from that
+moment on. There is no key to add, nothing to put in Netlify, and nothing to
+schedule — and until you run it, the Analytics tab says so plainly and the
+website behaves exactly as it does today.
+
+#### The six numbers
+
+| Card | What it counts |
+| --- | --- |
+| Total visits | Separate trips through the shop. A trip ends after half an hour of nothing happening |
+| Unique visitors | People, counted once each however many times they came |
+| Page views | Every page opened, including the same page twice |
+| Product views | A piece opened to read about |
+| Added to cart | A piece gathered to buy |
+| Checkouts begun | Somebody setting off to WhatsApp to order |
+
+Ten visits by the same person in a week is **ten visits and one visitor**. That
+is the difference between the first two cards and the reason both are there.
+
+#### Choosing what you are looking at
+
+Six buttons — Today, Yesterday, Last 7 days, This week, This month, This year —
+or the two date boxes on the right for any range you like. **Days are your
+shop's days**, out of Settings > General, not the days of whoever is reading the
+page. The chart underneath can be shown Daily, Weekly, Monthly or Yearly, and
+picks a sensible one for the range until you choose otherwise.
+
+**Here now** at the top is how many people have a page of the shop open and in
+front of them at this moment. A tab left open in a pocket is not counted, and
+neither is one in the background: it means people looking, not tabs existing.
+
+#### What is recorded about a visitor — and what is not
+
+**Nothing that identifies anybody.** No name, no email address, no account, no
+internet address, and not the browser string that would identify a phone almost
+as well as a name would. What is kept is a random token that means nothing
+anywhere but this shop, which page was opened, and when.
+
+The word **Mobile**, **Desktop** or **Tablet** is worked out in the visitor's
+own browser and only that word is sent; whatever it was worked out from is
+thrown away and never leaves the page.
+
+**A browser that asks not to be counted is not counted.** Some browsers send a
+"do not track me" signal, and this honours it — those visits are missing from
+every number on the page, deliberately. A crawler is not counted either, so
+Google looking at your shop is not a customer.
+
+**Somebody who clears their site data comes back as new.** That is not a
+shortcoming to be worked around; it is the honest answer, because after that
+there is genuinely no way to tell, and the only way to make it otherwise would
+be to keep something about them.
+
+#### Who can see it
+
+Nobody, until you say so. **Settings > Users & Roles** has a new tick,
+**Website Analytics**, on every role. When you run supabase-analytics.sql it is
+switched on for any role that already had Dashboard and left off for the rest —
+so an Administrator gets it and an Agent who only answers chats does not. Change
+it whenever you like; the change takes effect the next time that person loads a
+page.
+
+Unlike most of the ticks, **this one is enforced by the database and not merely
+by the page**. Somebody whose role does not have it is refused the numbers by
+Supabase itself, not just shown a page without the tab. You, as the owner, keep
+it whatever the roles say.
+
+#### It does not slow the shop down
+
+The tracker is one small file with no library behind it. It loads last, after
+the shop has finished drawing, so nothing a customer waits for is behind it, and
+several things that happen at once are sent as one request rather than one each.
+If the tables are not there, it asks once, is told no, and stays quiet for the
+rest of the visit.
+
+#### Keeping the table small
+
+Every visit is kept in full for 400 days, and the daily totals behind the
+charts are kept for ever. Nothing throws the old rows away on its own. If you
+ever want to, run this in the SQL Editor:
+
+```sql
+select public.site_prune(400, 'Africa/Lusaka');
+```
+
+It returns how many rows it removed, and it will not remove a day that has not
+been totalled up yet — so the history behind your charts cannot be lost by
+running it.
 
 ### The Activity / Audit Log
 

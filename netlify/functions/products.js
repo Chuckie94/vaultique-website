@@ -18,6 +18,25 @@ const POS_KEY =
   process.env.POS_SUPABASE_KEY ||
   'sb_publishable_wj1gGEwOnLu_HlBRkbeZvA_tCHEk1vR';
 
+// WHICH ROW THE SHOP'S LIVE DATA IS IN.
+//
+// This read `id=eq.1` until now, and that is why uploaded products never
+// appeared here and deleted ones never went away.
+//
+// Row 1 was the ORIGINAL point of sale. When the business platform was built,
+// its data was copied to row 100 and row 1 was deliberately left behind,
+// untouched, as a rollback target — the platform's own checks refuse to let
+// anything write to row 1 ever again.
+//
+// So row 1 has been frozen since the day of that migration. The website was not
+// reading a stale copy of the shop; it was reading a photograph of the shop
+// taken on the day it moved out. Every product added, edited, repriced or
+// deleted since then happened in row 100, where nothing was looking.
+//
+// Overridable, because a number this important should never be a number only
+// one file knows.
+const STATE_ROW = String(process.env.POS_STATE_ROW || '100').trim();
+
 // The ONLY fields permitted to reach the public. Everything else is dropped.
 function toSafeProduct(p) {
   if (!p || typeof p !== 'object') return null;
@@ -31,7 +50,11 @@ function toSafeProduct(p) {
     category: clean(p.category) || 'Other',
     price: toNumber(p.price),
     size: clean(p.size),
-    color: clean(p.color),
+    // The platform writes this field under either spelling depending on which
+    // screen created the piece — its own product screen reads `p.color ||
+    // p.colour` for exactly the same reason. Reading only one of them left the
+    // colour blank on the website for everything entered through procurement.
+    color: clean(p.color) || clean(p.colour),
     material: clean(p.material),
     // Availability is a boolean ONLY. The raw stock count never leaves here.
     available: toNumber(p.stock) > 0,
@@ -61,6 +84,10 @@ function toSafeProduct(p) {
 const FORMER_PRICE_KEYS = [
   'was_price', 'wasPrice',
   'old_price', 'oldPrice',
+  // What the business platform actually calls it when a piece is marked down.
+  // Without these two a reduction made in the shop reached the website as a
+  // plain lower price, with nothing to show it had been reduced.
+  'origPrice', 'orig_price',
   'original_price', 'originalPrice',
   'compare_at_price', 'compareAtPrice', 'compare_price',
   'list_price', 'listPrice',
@@ -82,6 +109,28 @@ function formerPrice(p) {
 // How few is "only a few left". Override with LOW_STOCK_AT in the Netlify
 // environment variables; the number itself is never sent to the browser.
 const LOW_STOCK_AT = toNumber(process.env.LOW_STOCK_AT) || 3;
+
+// A short, stable fingerprint of the whole public feed.
+//
+// It is taken from the SAFE products — the ones about to be sent — so it
+// changes when and only when something a visitor could see changes: a piece
+// added or removed, renamed, repriced, resized, restocked to zero or back. It
+// cannot leak anything, because it is derived from what is already on its way
+// out of here.
+const crypto = require('crypto');
+function fingerprint(products) {
+  try {
+    return crypto
+      .createHash('sha1')
+      .update(JSON.stringify(products))
+      .digest('hex')
+      .slice(0, 12);
+  } catch (e) {
+    // A fingerprint that cannot be taken must not stop the catalogue being
+    // served. The storefront treats an absent version as "assume it changed".
+    return '';
+  }
+}
 
 function clean(v) {
   if (v === null || v === undefined) return '';
@@ -178,7 +227,7 @@ exports.handler = async function (event) {
 
   try {
     const res = await fetch(
-      `${POS_URL}/rest/v1/app_state?id=eq.1&select=*`,
+      `${POS_URL}/rest/v1/app_state?id=eq.${STATE_ROW}&select=*`,
       {
         method: 'GET',
         headers: {
@@ -219,6 +268,14 @@ exports.handler = async function (event) {
         products,
         count: products.length,
         generatedAt: new Date().toISOString(),
+        // ADDED, never removed: the existing three fields are untouched and the
+        // storefront's reading of `products` is unchanged.
+        //
+        // A short fingerprint of exactly what is in this answer. The storefront
+        // compares it with the last one it drew and redraws only when it has
+        // actually changed, so a refresh triggered by a signal that turned out
+        // to mean nothing costs one small request and no repaint at all.
+        version: fingerprint(products),
       }),
     };
   } catch (err) {

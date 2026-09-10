@@ -236,6 +236,7 @@
       pick.appendChild(new Option('Open conversations', 'open'));
       pick.appendChild(new Option('Mine', 'mine'));
       pick.appendChild(new Option('Nobody has taken', 'free'));
+      pick.appendChild(new Option('Job enquiries', 'jobs'));
       pick.appendChild(new Option('Everything', 'all'));
       pick.setAttribute('aria-label', 'Which conversations to show');
       bar.appendChild(pick);
@@ -315,10 +316,16 @@
       function loadList() {
         var q = sb.from('chat_conversations')
           .select('id,name,phone,email,customer_id,status,last_message_at,shop_unread,customer_unread,' +
-                  'created_at,started_on,viewing,viewing_at,assigned_to,assigned_at')
+                  'created_at,started_on,viewing,viewing_at,assigned_to,assigned_at,kind')
           .order('last_message_at', { ascending: false })
           .limit(PAGE);
-        if (filter !== 'all') q = q.eq('status', 'open');
+        if (filter !== 'all' && filter !== 'jobs') q = q.eq('status', 'open');
+        /* A job enquiry has been answered already and is nobody's to work
+           through, so it is not in the queue somebody works through. It is
+           kept, not hidden: "Job enquiries" shows them and "Everything"
+           still means everything. */
+        if (filter === 'jobs') q = q.eq('kind', 'job');
+        else if (filter !== 'all') q = q.is('kind', null);
         /* "Mine" with nobody to be means nobody's, not everybody's. The
            filter used to be dropped when me was null — the session not
            resolved yet, or this operator not in chat_agents — and the
@@ -736,6 +743,8 @@
             filter === 'open' ? 'Nothing open. When a customer writes from the website, it appears here.'
           : filter === 'mine' ? 'Nothing is assigned to you.'
           : filter === 'free' ? 'Everything open has somebody dealing with it.'
+          : filter === 'jobs' ? 'Nobody has asked about work. Anyone who does is answered ' +
+                                'automatically and kept out of the list above.'
                               : 'No customer has written yet.'));
           return;
         }
@@ -756,6 +765,7 @@
           if (c.customer_id) meta.push('account');
           if (c.assigned_to) meta.push(c.assigned_to === me ? 'yours' : agentName(c.assigned_to));
           if (c.status === 'closed') meta.push('Closed');
+          if (c.kind === 'job') meta.push('Job enquiry');
           row.appendChild(el('div', 'lc-meta' + (seeing ? ' live' : ''),
                              meta.join(' · ') || 'No details given'));
 
@@ -791,6 +801,33 @@
         if (c.started_on) bits.push('from ' + c.started_on);
         whoEl.appendChild(el('div', 'lc-head-meta', bits.join(' · ')));
 
+        /* Said here and only here. The customer's window knows nothing
+           about this: chat_poll has never returned it and does not now. */
+        if (c.kind === 'job') {
+          var jobRow = el('div', 'lc-head-meta');
+          jobRow.appendChild(el('span', 'lc-tag', 'Job enquiry'));
+          jobRow.appendChild(document.createTextNode(
+            ' Answered automatically and kept out of the queue. '));
+          var undo = el('button', 'btn btn-out btn-sm', 'Not a job enquiry');
+          undo.type = 'button';
+          undo.addEventListener('click', function () {
+            undo.disabled = true;
+            Promise.resolve(sb.rpc('chat_job_clear', { p_id: c.id }))
+              .then(function (r) {
+                if (r && r.error) throw r.error;
+                c.kind = null;
+                paintThread();
+                return loadList();
+              })
+              .catch(function (e) {
+                undo.disabled = false;
+                if (notice) notice('That could not be changed: ' + ((e && e.message) || e));
+              });
+          });
+          jobRow.appendChild(undo);
+          whoEl.appendChild(jobRow);
+        }
+
         /* Whether the person is still on the other end. The same test
            the customer's window applies to the shop, turned around: they
            are here if their browser said so in the last two minutes.
@@ -815,7 +852,12 @@
           logEl.appendChild(el('div', 'lc-empty', 'Nothing said yet.'));
         } else {
           msgs.forEach(function (m) {
-            var row = el('div', 'lc-msg ' + (m.sender === 'shop' ? 'from-shop' : 'from-customer'));
+            /* Asked the other way round so that a message which is neither
+               the customer's nor an operator's — the automatic job notice —
+               is drawn on the shop's side rather than put in the customer's
+               mouth. For 'customer' and 'shop', which is every row that has
+               ever existed, this is the same answer as before. */
+            var row = el('div', 'lc-msg ' + (m.sender === 'customer' ? 'from-customer' : 'from-shop'));
             if (m.body) row.appendChild(el('div', 'lc-bubble', m.body));
             var card = adminCard(m.meta);
             if (card) row.appendChild(card);
@@ -1610,18 +1652,86 @@
         });
       }
 
-      /* ---- keeping up ------------------------------------------------ */
+      /* ---- keeping up ------------------------------------------------
+
+         THE OPERATOR IS SIGNED IN, so this side can do what the
+         customer's side cannot: listen to the tables themselves. The
+         policy on both is administrators and nobody else, and Realtime
+         obeys that policy, so a socket here reaches exactly the rows
+         this person could already read and not one more.
+
+         What comes down it is only ever a signal to go and look. The
+         rows are still fetched by the same two queries as before, so
+         everything about what is shown, and what this account is allowed
+         to be shown, is unchanged.
+
+         THE TIMERS ARE NOT SWITCHED OFF. They are slowed to a safety net
+         once the socket says it is subscribed, and they come straight
+         back to their old rate the moment it says it is not — a dropped
+         socket at four in the afternoon should not mean an operator
+         watching a screen that has quietly stopped moving. */
+      var LIVE_LIST_EVERY = 60000;
+      var LIVE_THREAD_EVERY = 60000;
+      var liveWire = { channel: null, ok: false, hit: null };
+
+      /* A burst — a message, its counters, the conversation's own row —
+         is one refresh and not four. */
+      function nudged(id) {
+        if (liveWire.hit) clearTimeout(liveWire.hit);
+        liveWire.hit = setTimeout(function () {
+          liveWire.hit = null;
+          if (document.hidden) return;
+          loadList();
+          if (openId && (!id || id === openId)) loadThread(openId);
+        }, 150);
+      }
+
+      function startLive() {
+        if (liveWire.channel) return;
+        try {
+          var ch = sb.channel('vbp-admin-chat')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'chat_messages' },
+                function (p) {
+                  nudged((p && p.new && p.new.conversation_id) ||
+                         (p && p.old && p.old.conversation_id) || null);
+                })
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'chat_conversations' },
+                function (p) {
+                  nudged((p && p.new && p.new.id) || (p && p.old && p.old.id) || null);
+                })
+            .subscribe(function (state) {
+              liveWire.ok = (state === 'SUBSCRIBED');
+              beatList();
+              beatThread();
+            });
+          liveWire.channel = ch;
+        } catch (e) {
+          /* No Realtime in this project, or the tables are not in its
+             publication. The timers below are already running. */
+          liveWire.ok = false;
+        }
+      }
+
+      function stopLive() {
+        if (liveWire.hit) { clearTimeout(liveWire.hit); liveWire.hit = null; }
+        try { if (liveWire.channel) sb.removeChannel(liveWire.channel); } catch (e) {}
+        liveWire.channel = null;
+        liveWire.ok = false;
+      }
+
       function beatList() {
         if (listTimer) clearInterval(listTimer);
         listTimer = setInterval(function () {
           if (!document.hidden) loadList();
-        }, LIST_EVERY);
+        }, liveWire.ok ? LIVE_LIST_EVERY : LIST_EVERY);
       }
       function beatThread() {
         if (threadTimer) clearInterval(threadTimer);
         threadTimer = setInterval(function () {
           if (!document.hidden && openId) loadThread(openId);
-        }, THREAD_EVERY);
+        }, liveWire.ok ? LIVE_THREAD_EVERY : THREAD_EVERY);
       }
 
       pick.addEventListener('change', function () {
@@ -1775,6 +1885,7 @@
         if (listTimer) clearInterval(listTimer);
         if (threadTimer) clearInterval(threadTimer);
         if (presenceTimer) clearInterval(presenceTimer);
+        stopLive();
         /* Leaving the page is leaving the desk. Said rather than left to
            time out, so a colleague sees it straight away. */
         if (me) sayHere('offline');
@@ -1816,7 +1927,11 @@
         .then(settled(loadCanned))
         .then(settled(beatPresence))
         .then(loadList)
+        /* The timers first and the socket after, deliberately. If the
+           socket never settles the desk is already covered rather than
+           waiting to find out that it is not. */
         .then(beatList)
+        .then(startLive)
         .then(tellSiteAddress)
         .then(function () {
           /* A browser can quietly replace a subscription, at which point
