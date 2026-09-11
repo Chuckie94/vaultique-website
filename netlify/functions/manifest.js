@@ -6,38 +6,35 @@
    Settings > General and the installed app is renamed with it, which is
    why this is built when it is asked for rather than kept as a file.
 
-   THE ICON DOES NOT FOLLOW THE SHOP, AND THAT IS DELIBERATE.
+   THE ICON FOLLOWS THE SHOP AGAIN — BUT NOT THE HEADER LOGO.
 
-   It used to. The shop's uploaded logo was offered first in this list,
-   on the reasoning that a shop which changes its logo should see the
-   change everywhere. It was the wrong reasoning, for three separate
-   reasons, and all three of them show up on the home screen where they
-   are hardest to explain and hardest to undo:
+   It used to be the header logo, and that was removed for three reasons,
+   all of them right:
 
-   1. IT WAS DECLARED "any" SIZE. A browser picks an icon by the sizes it
-      is given, and "any" means "this one is right at every size" — so a
-      logo drawn for a website header was chosen ahead of tiles drawn at
-      exactly 192 and 512 for this purpose. The tiles below were never
+   1. It was declared "any" size, which means "right at every size" — so
+      a logo drawn for a website header was chosen ahead of tiles drawn
+      at exactly 192 and 512 for this purpose, and they were never
       reached.
-
-   2. A WEBSITE LOGO IS THE WRONG SHAPE. Settings > Branding asks for a
+   2. A website logo is the wrong shape. Settings > Branding asks for a
       wide mark on a transparent background, because that is what sits in
-      a header. Android puts an app icon on a square and then crops that
-      square to whatever shape the phone uses. A wide transparent mark
-      comes back small, off-centre, and floating on whatever colour
-      happens to be behind it.
+      a header. A phone puts an app icon on a square and crops that
+      square, so a wide transparent mark comes back small, off-centre and
+      floating.
+   3. The home screen does not refresh. A phone reads the icon once, at
+      install, and keeps whatever it took.
 
-   3. THE HOME SCREEN DOES NOT REFRESH. A phone reads the icon once, at
-      install. Whatever it took at that moment it keeps, so "changing the
-      logo changes the icon" was never true after the first install
-      anyway — it only ever changed the icon for somebody installing the
-      app for the first time afterwards.
+   Removing it answered all three and left the shop unable to change its
+   app icon at all, which was not the point. So the icon is the shop's
+   again and the three are answered instead of avoided: Settings asks for
+   a SQUARE picture, for this and nothing else (2); it is declared at 192
+   and 512 rather than "any", so it competes rather than wins by default
+   (1); and (3) is said plainly under the upload, because it is true and
+   cannot be fixed from here.
 
-   So the two are kept apart. The website's logo is the website's, and
-   the installed app has three tiles drawn for it: 192 and 512 for
-   ordinary use, and a 512 with the mark held inside the middle 80% for
-   phones that crop. The shop still owns its colours here — the tile is
-   sat on the shop's navy — but not the artwork.
+   THE SHIPPED TILES ARE STILL HERE and still the fallback, in the same
+   order: 192 and 512 for ordinary use, and a 512 with the mark inside
+   the middle 80% for phones that crop. A shop that uploads nothing is
+   exactly where it was.
 
    These are the same three files, in the same order, as the static
    manifest.webmanifest that stands in when this function is not running.
@@ -70,6 +67,18 @@ const PWA_ICONS = [
    nonsense where a colour belongs is refused as a whole in some
    browsers — which would cost the shop the install prompt, not just the
    colour. */
+/* Only ever the shop's own storage or its own site. A settings value is
+   written by an administrator and not by a stranger, but it ends up in a
+   file a phone installs from, and "an administrator would not do that"
+   is not a reason to hand a browser an address from anywhere at all. */
+function safeIcon(url) {
+  const v = String(url || '').trim();
+  if (!v) return null;
+  if (v.charAt(0) === '/') return v;
+  if (/^https:\/\/[a-z0-9-]+\.supabase\.co\//i.test(v)) return v;
+  return null;
+}
+
 function safeColour(v) {
   const s = String(v || '').trim();
   return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s) ? s : null;
@@ -90,6 +99,38 @@ exports.handler = async function () {
      nothing else. */
   const colour = safeColour(brand.primaryColour) || '#0B1F3A';
 
+  /* THE SHOP'S OWN APP ICON, IF IT HAS UPLOADED ONE.
+     ------------------------------------------------------------------
+     This was taken away in an earlier round, and it was taken away for
+     three good reasons. Two of them are answered here and the third is
+     answered on the page that asks for the picture.
+
+     1. It used to be declared sizes:"any", which tells a browser "right
+        at every size" -- so a logo drawn for a website header beat the
+        tiles drawn at exactly 192 and 512 and they were never reached.
+        It is declared at the two real sizes now, and it competes on
+        equal terms instead of winning by default.
+
+     2. It used to be the header logo, which is a wide mark on a
+        transparent background, and a phone crops an app icon to a
+        circle or a squircle. Settings > Branding now asks for a SQUARE
+        picture for this and nothing else, so the thing being cropped is
+        the right shape to crop.
+
+     3. A phone reads the icon once, at install, and keeps it. That is
+        true and cannot be fixed from here, so it is said plainly under
+        the upload rather than left to be discovered.
+
+     THE SHIPPED TILES STAY, behind it, in the same order as before. A
+     shop that uploads nothing is exactly where it was, and a phone that
+     cannot fetch the uploaded one falls through to a tile that is always
+     there. */
+  const own = safeIcon(brand.appIcon);
+  const icons = own
+    ? [{ src: own, sizes: '192x192', type: 'image/png', purpose: 'any' },
+       { src: own, sizes: '512x512', type: 'image/png', purpose: 'any' }].concat(PWA_ICONS)
+    : PWA_ICONS;
+
   const body = {
     name: shop + ' — Shop Desk',
     short_name: shop.split(/\s+/)[0].slice(0, 12),
@@ -100,10 +141,10 @@ exports.handler = async function () {
     orientation: 'any',
     background_color: colour,
     theme_color: colour,
-    icons: PWA_ICONS,
+    icons: icons,
     shortcuts: [
-      { name: 'Live chats', url: '/admin.html#/chats', icons: [PWA_ICONS[0]] },
-      { name: 'Orders', url: '/admin.html#/orders', icons: [PWA_ICONS[0]] }
+      { name: 'Live chats', url: '/admin.html#/chats', icons: [icons[0]] },
+      { name: 'Orders', url: '/admin.html#/orders', icons: [icons[0]] }
     ]
   };
 

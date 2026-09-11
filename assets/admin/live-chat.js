@@ -889,7 +889,7 @@
         var c = convs.filter(function (x) { return x.id === openId; })[0];
         if (!c) {
           threadCol.appendChild(el('div', 'lc-empty',
-            'Choose a conversation on the left to read it and reply.'));
+            'Choose a conversation to read it and reply.'));
           return;
         }
 

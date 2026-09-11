@@ -30,7 +30,13 @@ const FN = path.resolve(__dirname, '..', 'netlify', 'functions');
 const product = over => Object.assign({
   id: 11, name: 'Silk Wrap Dress', sku: 'VB-DRS-001', category: 'Dresses',
   cost: 900, price: 1850, stock: 4, active: true, vatable: true,
-  size: 'M', colour: 'Emerald', material: 'Silk'
+  size: 'M', colour: 'Emerald', material: 'Silk',
+  /* What the platform holds beside a piece and a category, and what the
+     shop asked never to see on the website. Put here so the checks below
+     are driven by it rather than by a product that happens not to have
+     any. */
+  margin: 51.4, markup: 105.5, profit: 950, wholesale: 900,
+  supplier: 'Someone Ltd', reorderLevel: 2, internalNote: 'haggle harder'
 }, over || {});
 
 (async () => {
@@ -78,6 +84,23 @@ const product = over => Object.assign({
        'and a product still carries exactly the fields the storefront reads');
     is(p.cost === undefined && p.stock === undefined && p.id === undefined,
        'with cost, the stock count and the id still kept back');
+
+    /* NAMED FIELDS ARE NOT ENOUGH, and this is the check that matters.
+       Listing the ones to keep back only ever catches the ones somebody
+       thought of. The platform keeps a profit margin against a category
+       and against a piece, and the shop asked plainly that it never reach
+       the website — so what is asserted here is the whole shape: exactly
+       these keys, and nothing else, whatever the platform sends.
+
+       A field added to the platform tomorrow is dropped by construction,
+       because toSafeProduct builds a new object rather than editing the
+       one it was given. This is what makes that true rather than hoped. */
+    const ALLOWED = ['name', 'sku', 'category', 'price', 'size', 'color',
+                     'material', 'available', 'lowStock', 'wasPrice'].sort();
+    const got = Object.keys(p).sort();
+    is(JSON.stringify(got) === JSON.stringify(ALLOWED),
+       'and a product carries exactly these ten fields and no others',
+       'got: ' + JSON.stringify(got));
     is(typeof a.version === 'string' && a.version.length > 0,
        'and there is now a version, so a browser can tell a real change from a false alarm');
 

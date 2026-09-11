@@ -432,16 +432,10 @@
   var FEED_LOADED = false;
   var PREVIEW = false;
   var CATEGORIES = [];   // categories that currently have products
-  var ALLCATS = [];      // all categories to show (master list + product categories)
+  var ALLCATS = [];      // the categories the platform says the shop has
   // The full set of categories the boutique plans to carry. Any of these with no
   // products yet shows automatically as "Coming soon". Editable via site content
   // (set a "categories" array) or just edit this list.
-  var MASTER_CATEGORIES = [
-    "WOMEN'S APPAREL", "MEN'S FORMAL WEAR", "FOOTWEAR", "HANDBAGS & LEATHER GOODS",
-    "FASHION ACCESSORIES", "JEWELLERY", "BEAUTY & PERSONAL CARE",
-    "BRIDAL & WEDDING COLLECTION", "PREMIUM LUXURY COLLECTION",
-    "LOCAL & CULTURAL PRODUCTS", "GIFT & LIFESTYLE COLLECTION"
-  ];
   var filterCat = 'All';
   var filterColor = 'All';
   var filterSize = 'All';
@@ -2489,17 +2483,28 @@
     var fromProducts = [];
     PRODUCTS.forEach(function (p) { if (p.category && fromProducts.indexOf(p.category) === -1) fromProducts.push(p.category); });
     CATEGORIES = fromProducts;
-    // Start with the real categories from the POS (these have products), then add
-    // any planned categories that are not already present (case-insensitive), so a
-    // category that has products is never duplicated or shown as "coming soon".
-    var union = fromProducts.slice();
-    var base = (Array.isArray(CONTENT.categories) && CONTENT.categories.length) ? CONTENT.categories : MASTER_CATEGORIES;
-    base.forEach(function (c) {
-      if (!c) return;
-      var exists = union.some(function (u) { return String(u).trim().toLowerCase() === String(c).trim().toLowerCase(); });
-      if (!exists) union.push(c);
-    });
-    ALLCATS = union;
+    /* THE CATEGORIES ARE THE PLATFORM'S, exactly as the pieces are.
+       ------------------------------------------------------------------
+       This used to join two lists: the categories that really have pieces,
+       and eleven more written into this file -- WOMEN'S APPAREL, JEWELLERY,
+       BRIDAL & WEDDING COLLECTION and the rest -- which appeared on the
+       homepage, in both category menus and in the shop's filter chips,
+       marked "Coming soon".
+
+       Nobody had chosen them. They were a guess at what a boutique might
+       one day stock, made when this file was written, and they advertised
+       departments the shop did not have. A customer tapping one found an
+       empty shelf.
+
+       So the list is what the platform says it is. Add a category there
+       and it appears here; stop stocking it and it goes. The same rule
+       the pieces themselves follow, and for the same reason: this website
+       does not get to invent stock.
+
+       "Soon" HAS NOT GONE, and means something narrower now. A category
+       whose pieces are all sold out is still marked -- that is a real
+       category with nothing on the shelf today, which is worth saying. */
+    ALLCATS = fromProducts;
   }
 
   // ------------------------------------------------------------------ category menus
@@ -2537,8 +2542,19 @@
       card.setAttribute('role', 'button');
       card.setAttribute('aria-label', c + ' collection');
       var ph = el('div', 'ph fallback');
-      preload('/images/collection-' + slug(c) + '.jpg', function (ok) {
-        if (ok) { ph.classList.remove('fallback'); ph.style.cssText = bgStyle('/images/collection-' + slug(c) + '.jpg'); }
+      /* THE SHOP'S OWN PICTURE FIRST, if it has uploaded one in
+         Settings > Homepage > Collection pictures. Until that section
+         existed the only way to put a picture on one of these cards was
+         to commit a file called collection-<category>.jpg and redeploy
+         the whole site.
+
+         THE FILE STILL WORKS, and is tried when nothing has been
+         uploaded, so a shop that has been dropping files in the images
+         folder for months loses nothing by taking this build. */
+      var pic = (HOME && HOME['col_' + slug(c)]) || '';
+      if (!pic) pic = '/images/collection-' + slug(c) + '.jpg';
+      preload(pic, function (ok) {
+        if (ok) { ph.classList.remove('fallback'); ph.style.cssText = bgStyle(pic); }
       });
       var ov = el('div', 'ov');
       ov.innerHTML = '<div class="k">Collection</div><div class="n serif">' + esc(c) + '</div>' +

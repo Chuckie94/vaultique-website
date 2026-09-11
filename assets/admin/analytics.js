@@ -28,7 +28,15 @@
   if (!window.VBP_ADMIN) return;
 
   var A = window.VBP_ADMIN;
-  var LIVE_EVERY = 30000;         // how often "here now" is asked again
+  /* THE BACKSTOP, not the mechanism. Realtime carries arriving and
+     leaving; this catches the visitor whose browser went quiet without
+     saying anything, which no event can announce. Thirty seconds is
+     plenty for that, and it is what a project without Realtime falls
+     back to. Only while the Analytics page is open. */
+  /* USED ONLY WHEN REALTIME IS NOT AVAILABLE. With it -- the normal
+     case, on the same connection that already carries the chat --
+     nothing is asked of the database after the first call. */
+  var LIVE_EVERY = 30000;         // the fallback, when there is no Realtime
   var TOP = 8;                    // how many pages and pieces are listed
 
   function el(tag, cls, text) {
@@ -202,7 +210,10 @@
       var grain = 'day';
       var grainPicked = false;      // the shop chose, so stop choosing for them
       var asking = 0;               // which question is in flight
-      var liveTimer = null;
+      var liveTimer = null;     // only when Realtime is not carrying it
+      var liveChannel = null;   // Realtime, which is how this normally works
+      var liveTick = null;      // the local one-second count, no network
+      var liveWasOff = false;   // the connection dropped; take the set again
       var series = [];
       var missing = false;          // the tables are not there yet
 
@@ -253,7 +264,17 @@
         { key: 'page_views',      label: 'Page views',      note: 'Every page opened.' },
         { key: 'product_views',   label: 'Product views',   note: 'A piece opened to read about.' },
         { key: 'add_to_cart',     label: 'Added to cart',   note: 'A piece gathered to buy.' },
-        { key: 'checkout_starts', label: 'Checkouts begun', note: 'Set off to WhatsApp to order.' }
+        { key: 'checkout_starts', label: 'Checkouts begun', note: 'Set off to WhatsApp to order.' },
+        /* WHERE THE COUNT USED TO STOP. Everything above is what people
+           did on the way to buying; these two are whether any of them
+           did. They are counted from the orders table rather than
+           recorded in the browser, so no ad blocker can hide one and a
+           refreshed thank-you page cannot count one twice. Cancelled
+           orders are left out; an order still pending is counted,
+           because it was placed. */
+        { key: 'orders',          label: 'Orders',          note: 'Orders placed in this range.' },
+        { key: 'sales',           label: 'Sales',           note: 'What those orders came to.',
+          money: true }
       ];
       var kpiBox = el('div', 'an-kpis');
       var kpiNums = {};
@@ -474,8 +495,25 @@
                ' · ' + n + ' days';
       }
 
+      /* Money is written the way the rest of the admin writes it, and
+         falls back to the plain number rather than inventing a symbol
+         the shop does not use. */
+      function money(v, cur) {
+        var n = Number(v || 0);
+        var code = String(cur || '').trim();
+        try {
+          if (code) return new Intl.NumberFormat(undefined,
+            { style: 'currency', currency: code, maximumFractionDigits: 0 }).format(n);
+        } catch (e) {}
+        return (code ? code + ' ' : '') + num(Math.round(n));
+      }
+
       function paintKpis(d) {
-        KPIS.forEach(function (k) { kpiNums[k.key].textContent = num(d[k.key] || 0); });
+        KPIS.forEach(function (k) {
+          kpiNums[k.key].textContent = k.money
+            ? money(d[k.key], d.currency)
+            : num(d[k.key] || 0);
+        });
       }
 
       function paintPresets() {
@@ -786,33 +824,112 @@
         return document.body.contains(host) && host.offsetParent !== null;
       }
 
-      function askLive() {
+      /* WHO IS HERE, WITHOUT ASKING TWICE.
+         ----------------------------------------------------------------
+         This used to ask the database for a NUMBER every thirty seconds,
+         which is the wrong tool when the project already has Realtime
+         carrying the chat. A number is only true for the instant it is
+         asked, so keeping it right meant asking again for ever.
+
+         So the admin holds the SET instead of the number. It asks once,
+         when the page opens, for who is here. After that Realtime tells
+         it about every arrival, every beat and every departure, and the
+         count is worked out in the browser -- every second, from a map in
+         memory, with no request behind it. Nothing is polled.
+
+         AGED OUT BY OUR OWN CLOCK, on purpose. Somebody is here if this
+         page has heard from them in the last forty-five seconds, measured
+         from when it heard. Comparing the database's clock with the
+         browser's would mean a visitor whose laptop is set wrong counts
+         wrongly for ever, and it buys nothing.
+
+         WHICH IS ALSO WHAT MAKES A SILENT VISITOR WORK. A phone that
+         loses signal writes nothing and can announce nothing -- silence
+         is not an event. It does not need to be: we stop hearing from
+         them, and forty-five seconds later they fall out of the count on
+         their own, with nothing asked of anybody. */
+      var HERE_FOR = 45000;     // heard from within this, and you are here
+      var heard = {};           // session -> when this page last heard it
+
+      function paintHere() {
+        var now = Date.now(), n = 0, k;
+        for (k in heard) {
+          if (!Object.prototype.hasOwnProperty.call(heard, k)) continue;
+          if (now - heard[k] < HERE_FOR) n++; else delete heard[k];
+        }
+        live.classList.remove('is-off');
+        live.classList[n ? 'remove' : 'add']('is-quiet');
+        liveText.textContent = n
+          ? n + (n === 1 ? ' person here now' : ' people here now')
+          : 'Nobody on the site right now';
+      }
+
+      function heardFrom(p) {
+        var row = (p && (p.new || p.old)) || {};
+        var id = row.session;
+        if (!id) return;
+        if (p && p.eventType === 'DELETE') delete heard[id];
+        else heard[id] = Date.now();
+        paintHere();
+      }
+
+      /* Asked when the page opens, and again only if the connection drops
+         and comes back -- whatever happened while it was away was never
+         delivered, so the set has to be taken again. */
+      function askHere() {
         if (!onScreen()) return;
-        Promise.resolve(sb.rpc('site_live')).then(function (r) {
+        Promise.resolve(sb.rpc('site_here')).then(function (r) {
           if (r.error) throw r.error;
-          var n = Number(r.data || 0);
-          live.classList.remove('is-off');
-          live.classList[n ? 'remove' : 'add']('is-quiet');
-          liveText.textContent = n
-            ? n + (n === 1 ? ' person here now' : ' people here now')
-            : 'Nobody on the site right now';
+          var list = r.data || [], now = Date.now(), i;
+          heard = {};
+          for (i = 0; i < list.length; i++) heard[list[i]] = now;
+          paintHere();
         }).catch(function (e) {
           if (whenMissing(e) || refused(e)) { stopLive(); live.classList.add('hide'); return; }
           live.classList.add('is-off');
           liveText.textContent = 'Cannot tell just now';
         });
       }
+
       function startLive() {
-        if (liveTimer) return;
-        askLive();
-        liveTimer = setInterval(function () {
-          if (!document.hidden) askLive();
-        }, LIVE_EVERY);
+        if (liveChannel || liveTick) return;
+        askHere();
+        /* One second, and it costs nothing: it reads a map in memory and
+           writes a line of text. No network. This is what makes somebody
+           dropping out look immediate rather than stepped. */
+        liveTick = setInterval(function () { if (!document.hidden) paintHere(); }, 1000);
+
+        try {
+          liveChannel = sb.channel('vbp-admin-presence')
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'site_presence' }, heardFrom)
+            .subscribe(function (state) {
+              if (state === 'SUBSCRIBED') {
+                if (liveWasOff) { liveWasOff = false; askHere(); }
+                if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+              } else if (state === 'CLOSED' || state === 'CHANNEL_ERROR' || state === 'TIMED_OUT') {
+                liveWasOff = true;
+                /* Realtime is not carrying it after all. Ask slowly rather
+                   than show a count that has quietly stopped moving. This
+                   is the degraded path, not the design. */
+                if (!liveTimer) {
+                  liveTimer = setInterval(function () {
+                    if (!document.hidden) askHere();
+                  }, LIVE_EVERY);
+                }
+              }
+            });
+        } catch (e) {
+          liveChannel = null;
+          liveTimer = setInterval(function () { if (!document.hidden) askHere(); }, LIVE_EVERY);
+        }
       }
+
       function stopLive() {
-        if (!liveTimer) return;
-        clearInterval(liveTimer);
-        liveTimer = null;
+        if (liveTick) { clearInterval(liveTick); liveTick = null; }
+        try { if (liveChannel) sb.removeChannel(liveChannel); } catch (e) {}
+        liveChannel = null;
+        if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
       }
 
       /* ---- driving --------------------------------------------------------- */

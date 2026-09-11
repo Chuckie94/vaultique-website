@@ -78,6 +78,58 @@
     title: 'Homepage',
     summary: 'Which sections appear on the homepage and the order they run in.',
     render: function (host, ctx) {
+      /* THE COLLECTION PICTURES.
+         ------------------------------------------------------------------
+         The homepage shows a card per category, and until now the picture
+         on each one could only be changed by putting a file called
+         collection-<category>.jpg into the images folder and redeploying
+         the site. There was no way to do it from here at all, and nothing
+         in the admin said so.
+
+         THE CATEGORIES ARE THE PLATFORM'S, exactly as the pieces are, so
+         the fields are built from the catalogue when this page opens
+         rather than written out in advance. Add a category to the
+         platform and a slot for it appears here; stop stocking it and the
+         slot goes with it. Nothing here invents a category, and the
+         homepage no longer does either -- it used to show eleven written
+         into the code, marked "Coming soon", which advertised departments
+         the shop did not have.
+
+         WHAT WAS UPLOADED IS KEPT. A category that goes away takes its
+         slot off this page but leaves its picture in the settings row, so
+         a category stocked again in three months is still wearing the
+         picture it had.
+
+         IF THE CATALOGUE CANNOT BE READ this section is left out and the
+         rest of the page opens exactly as it did. A picture is not worth
+         a settings page that will not load. */
+
+      var placeholder = document.createElement('p');
+      placeholder.className = 'count';
+      placeholder.textContent = 'Reading your categories…';
+      host.appendChild(placeholder);
+
+      function slug(v) {
+        return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      }
+
+      fetch('/api/products', { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : { products: [] }; })
+        .catch(function () { return { products: [] }; })
+        .then(function (feed) {
+          var seen = {}, cats = [];
+          (feed && feed.products || []).forEach(function (pr) {
+            var c = pr && pr.category;
+            if (!c || seen[String(c).trim().toLowerCase()]) return;
+            seen[String(c).trim().toLowerCase()] = true;
+            cats.push(c);
+          });
+          cats.sort();
+          if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
+          build(cats.slice(0, 24));
+        });
+
+      function build(cats) {
       ctx.ui.form(host, {
         key: 'homepage',
         savedMessage: 'Saved ✓ — the site picks this up within about a minute',
@@ -229,7 +281,20 @@
                 ] }
             ]
           }
-        ],
+        ].concat(cats.length ? [{
+          title: 'Collection pictures',
+          collapsible: true,
+          note: 'One card per category on the homepage. These are your own categories, ' +
+                'read from the platform exactly as your pieces are — add one there and ' +
+                'a slot for it appears here. Portrait, about 800 by 1000, and a ' +
+                'category left empty keeps the navy and gold treatment the site came ' +
+                'with.',
+          fields: cats.map(function (c) {
+            return { type: 'image', name: 'col_' + slug(c), label: c, previewOn: 'dark',
+                     prefix: 'homepage/collection-' + slug(c), maxSize: 700 * 1024,
+                     hint: 'Shown on the ' + c + ' card.' };
+          })
+        }] : []),
 
         afterLoad: function (values, form) {
           /* The saved list is reconciled against the sections the site
@@ -249,6 +314,7 @@
           return values;
         }
       });
+      }
     }
   });
 

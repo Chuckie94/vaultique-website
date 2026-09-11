@@ -156,10 +156,22 @@ begin
   t := regexp_replace(t, '\yopening\w*\s+(today|tomorrow|tonight|now|this\s+\w+|on\s+\w+)\y', ' shophours ', 'g');
   t := regexp_replace(t, '\y(are|r)\s+(you|u)\s+open\w*\y', ' shophours ', 'g');
 
+  -- A JOB INTERVIEW IS SOMETHING A CUSTOMER DRESSES FOR.
+  -- "Do you have anything for a job interview?" is a sale, and it was
+  -- being answered "we are not hiring". The word `job` is in the
+  -- sentence and means nothing about employment, so it goes the same way
+  -- "opening today" does: rewritten before anything scores it.
+  t := regexp_replace(t, '\yjob\s+interview\w*\y', ' shopoccasion ', 'g');
+
+  -- HIRING OUT IS RENTING, HERE. A shop that hires pieces out for a
+  -- wedding had every such enquiry filed as a job application. "Are you
+  -- hiring" on its own is untouched and still caught.
+  t := regexp_replace(t, '\yhir(e|es|ing)\s+out\y', ' shoprental ', 'g');
+
   -- ---- trade: what an actual customer is asking about --------------
   -- Worked out first now, because the catch-all at the end of the strong
   -- block needs it. Nothing else about it changed.
-  trade := t ~ '\y(order|orders|ordered|ordering|delivery|deliver\w*|ship\w*|payment|pay|paid|paying|price|prices|pricing|cost|costs|refund|return|returns|exchange|size|sizes|colour\w*|color\w*|stock|available\s+in|dress|dresses|bag|bags|shoe\w*|jewel\w*|invoice|receipt|track\w*|discount|voucher|collect\w*|cart|checkout|deposit|visit|visiting|browse|browsing)\y';
+  trade := t ~ '\y(order|orders|ordered|ordering|delivery|deliver\w*|ship\w*|payment|pay|paid|paying|price|prices|pricing|cost|costs|refund|return|returns|exchange|size|sizes|colour\w*|color\w*|stock|available\s+in|dress|dresses|bag|bags|shoe\w*|jewel\w*|invoice|receipt|track\w*|discount|voucher|collect\w*|cart|checkout|deposit|visit|visiting|browse|browsing|wear|wearing|wears|worn|outfit|outfits|clothes|clothing|attire|wardrobe|suit|suits|smart|formal|trouser\w*|skirt\w*|shirt\w*|jacket\w*|coat\w*|heel\w*|top|tops)\y';
 
   -- ---- strong: hard to say by accident -----------------------------
   if t ~ '\y(hiring|recruiting|recruitment|recruiter|recruit)\y' then strong := strong + 1; end if;
@@ -170,7 +182,12 @@ begin
   if t ~ '\y(apply|applying|application)\w*\s+(for|to)\s+(a\s+|an\s+|the\s+|any\s+)?(job|jobs|work|position\w*|vacanc\w*|post|employment)\y' then strong := strong + 1; end if;
   if t ~ '\y(work|working|employed|employment)\s+(for|with|at)\s+(you|your|vaultique|the\s+shop|the\s+store|the\s+boutique)\y' then strong := strong + 1; end if;
   if t ~ '\yjoin\s+(your|the)\s+(team|shop|store|company|staff|business)\y' then strong := strong + 1; end if;
-  if t ~ '\y(want|wants|need|needs|looking|seeking|searching|require|after)\w*\s+(for\s+)?(a\s+|an\s+|any\s+|some\s+)?(job|jobs|work|employment|internship)\y' then strong := strong + 1; end if;
+  -- `not trade` guards this one, because it fires on "need WORK
+  -- clothes" and "looking for WORK shoes" -- which are somebody
+  -- shopping, not somebody applying.
+  if  not trade
+  and t ~ '\y(want|wants|need|needs|looking|seeking|searching|require|after)\w*\s+(for\s+)?(a\s+|an\s+|any\s+|some\s+)?(job|jobs|work|employment|internship)\y'
+  then strong := strong + 1; end if;
   if t ~ '\y(hiring|recruit\w*|looking|need|needs|want|wants|require|taking)\w*\s+(for\s+|on\s+)?(a\s+|an\s+|any\s+|new\s+|more\s+)?(sales\s+|shop\s+|store\s+|floor\s+|part\s+time\s+|full\s+time\s+)?(agent|agents|assistant|assistants|attendant|attendants|staff|worker|workers|employee|employees|marketer|marketers|model|models|intern|interns)\y' then strong := strong + 1; end if;
   if t ~ '\y(internship|internships|apprentice\w*|graduate\s+trainee)\y' then strong := strong + 1; end if;
   if t ~ '\y(employ|hire)\s+me\y' then strong := strong + 1; end if;

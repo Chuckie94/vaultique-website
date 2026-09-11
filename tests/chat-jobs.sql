@@ -157,6 +157,96 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+select hdr('Dressing FOR a job is shopping, not applying');
+-- ---------------------------------------------------------------------------
+-- Found by audit W-1. Every sentence below is somebody about to spend money,
+-- and every one of the first six was being answered "we are not hiring" and
+-- filed out of sight. Two of them are somebody who has just GOT a job and
+-- needs clothes for it, which is as ready to buy as a customer ever gets.
+--
+-- The giveaway was that "I need an outfit for an interview" was already fine
+-- and "Do you have anything for a job interview?" was not -- the same
+-- customer, told two different things, over one extra word.
+do $$
+declare r record; wrong int := 0; said text := '';
+begin
+  for r in select * from (values
+    -- the six the audit found
+    ('Do you have anything for a job interview?'),
+    ('What should I wear to a job interview'),
+    ('something smart for a job interview on Monday'),
+    ('I got a new job, need something to wear'),
+    ('starting a new job next week, need work clothes'),
+    ('is the shop hiring out dresses'),
+    -- and the near neighbours that were already right, kept so that a
+    -- later change cannot quietly break them instead
+    ('I need an outfit for an interview'),
+    ('dress for interview'),
+    ('Do you have interview shoes'),
+    ('Do you have work shoes?'),
+    ('Looking for something to wear to work'),
+    ('I want a piece for a work function'),
+    ('Can I get a suit for work tomorrow?'),
+    ('do you hire out pieces for a wedding'),
+    ('Do you deliver to my workplace?'),
+    ('I want to apply the discount code')
+  ) as v(s) loop
+    if public.chat_job_intent(r.s) >= 3 then
+      wrong := wrong + 1; said := said || ' | ' || r.s;
+    end if;
+  end loop;
+  perform chk(wrong = 0, 'a customer dressing for work reaches the desk' ||
+                         coalesce(nullif(said, ''), ''));
+end $$;
+
+-- ---------------------------------------------------------------------------
+select hdr('And the filter was not narrowed to do it');
+-- ---------------------------------------------------------------------------
+-- The failure mode to watch for. A fix that stops turning customers away by
+-- quietly catching fewer job seekers has made things worse, not better: a job
+-- seeker reaching the desk costs a minute of somebody's time, and a customer
+-- turned away costs a sale. So the same sentences are asked again from the
+-- other side, including four the audit had not tried before.
+do $$
+declare r record; missed int := 0; said text := '';
+begin
+  for r in select * from (values
+    ('Hello, any employment'),
+    ('am looking for a job'),
+    ('am looking for work'),
+    ('any job going?'),
+    ('can i drop my resume'),
+    ('do you have vacancies for a shop attendant'),
+    ('piece work available?'),
+    ('Do you have any openings for a sales assistant?'),
+    ('can i work for you'),
+    ('Good day, I am looking for employment opportunities'),
+    ('do you need a shop assistant'),
+    ('Are you hiring?')
+  ) as v(s) loop
+    if public.chat_job_intent(r.s) < 3 then
+      missed := missed + 1; said := said || ' | ' || r.s;
+    end if;
+  end loop;
+  perform chk(missed = 0, 'every job enquiry is still caught' ||
+                          coalesce(nullif(said, ''), ''));
+end $$;
+
+-- "Are you hiring" and "hiring out" are one word apart and mean opposite
+-- things, so both are pinned rather than left to a general rule.
+do $$
+begin
+  perform chk(public.chat_job_intent('are you hiring') >= 3,
+    'asking whether the shop is hiring is still a job enquiry');
+  perform chk(public.chat_job_intent('do you hire out dresses') = 0,
+    'asking whether it hires dresses out is not');
+  perform chk(public.chat_job_intent('I have a job interview and need a suit') = 0,
+    'a job interview names the occasion, not the vacancy');
+  perform chk(public.chat_job_intent('any vacancies for a job') >= 3,
+    'and a vacancy is still a vacancy');
+end $$;
+
+-- ---------------------------------------------------------------------------
 select hdr('What happens to the conversation');
 -- ---------------------------------------------------------------------------
 do $$

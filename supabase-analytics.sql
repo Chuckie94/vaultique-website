@@ -98,7 +98,7 @@ create index if not exists se_path_at   on public.site_events (path, at desc) wh
 -- gives a number that is always too big and never says by how much.
 -- ---------------------------------------------------------------------
 create table if not exists public.site_daily (
-  day                date        primary key,
+  day                date        not null,
   tz                 text        not null,   -- the shop's timezone when this was built
   visits             integer     not null default 0,
   page_views         integer     not null default 0,
@@ -112,6 +112,44 @@ create table if not exists public.site_daily (
   tablet             integer     not null default 0,
   built_at           timestamptz not null default now()
 );
+
+-- KEYED ON THE DAY *AND* THE TIMEZONE, and this is a correction.
+--
+-- It was keyed on the day alone while every read filtered on the
+-- timezone as well. So a read from a second timezone matched nothing,
+-- re-summed every day in the range and overwrote the lot -- and then the
+-- first timezone did exactly the same thing back. Two people looking at
+-- the same figures rewrote the whole table between them, on every load,
+-- for as long as the shop had been running. On a fortnight of test data
+-- all fourteen rows were rewritten on the third read.
+--
+-- The two rows are not a duplicate. A day starts at a different moment
+-- in each zone, so they are genuinely different numbers, and keeping
+-- both is what lets each reader see a consistent one.
+--
+-- The alter is here rather than in the create because a table that
+-- already exists is not touched by `create table if not exists`, and
+-- every shop that has run this file already has one.
+do $$
+begin
+  if exists (
+    select 1 from pg_index i
+      join pg_class c on c.oid = i.indexrelid
+     where i.indrelid = 'public.site_daily'::regclass
+       and i.indisprimary
+       and (select count(*) from unnest(i.indkey)) = 1
+  ) then
+    alter table public.site_daily drop constraint site_daily_pkey;
+  end if;
+exception when others then
+  raise notice 'site_daily primary key left as it was: %', sqlerrm;
+end $$;
+
+do $$
+begin
+  alter table public.site_daily add primary key (day, tz);
+exception when others then null;   -- already the composite key
+end $$;
 
 comment on column public.site_daily.tz is
   'The timezone the day was cut on. A shop that moves timezone leaves rows here cut on the old one, so every read checks this column and rebuilds the day rather than quietly answering in the wrong day.';
@@ -241,6 +279,56 @@ create policy sp_read
   to authenticated
   using (public.may_see_analytics());
 
+-- ---------------------------------------------------------------------
+-- A CEILING ON WHAT ONE BROWSER CAN RECORD
+--
+-- The rules above constrain the SHAPE of a visit: the kind, the lengths,
+-- the device vocabulary, the timestamp. They do not constrain how many,
+-- and the storefront records with the public key -- which is public by
+-- design and readable by anybody who views source. So anybody could post
+-- visits all day and make the shop's figures say whatever they liked.
+--
+-- Nothing is exposed by that and nothing can be altered: there is no
+-- update policy and no delete policy on this table, for anyone. It is
+-- the numbers being made to lie, and the table being made to grow.
+--
+-- THE CEILING IS DELIBERATELY FAR ABOVE A PERSON. Sixty events from one
+-- browser in one minute is roughly a page every second without pause.
+-- Somebody genuinely browsing hard will not come near it; a script does
+-- it in a breath. The point is to stop a script, not to police a
+-- customer, so it is set where no real visit can reach.
+--
+-- It costs one index lookup per row -- se_visitor, which is already
+-- there for "is this browser new" -- on a table the storefront writes a
+-- handful of rows to per visit.
+-- ---------------------------------------------------------------------
+create or replace function public.site_events_ceiling()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_recent integer;
+begin
+  select count(*) into v_recent
+    from public.site_events e
+   where e.visitor = new.visitor
+     and e.at > now() - interval '1 minute';
+
+  if v_recent >= 60 then
+    raise exception 'Too many events from one browser.'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists site_events_ceiling_t on public.site_events;
+create trigger site_events_ceiling_t
+  before insert on public.site_events
+  for each row execute function public.site_events_ceiling();
+
 -- The two summary tables are written by the rollup function below, which
 -- runs as its definer. Nobody reads them directly either: every number
 -- in the admin comes back through a function, so there is one place
@@ -293,6 +381,22 @@ begin
   if p_device is not null and p_device not in ('mobile', 'tablet', 'desktop') then
     p_device := null;
   end if;
+
+  /* A beat from a visit already here is always taken -- somebody
+     reading is somebody reading. A NEW visit is only taken while the
+     table is a plausible size, so a script inventing sessions cannot
+     grow it without limit or make "here now" say anything it likes.
+     Five thousand at once is far beyond any boutique and far below
+     anything worth worrying about. */
+  if exists (select 1 from public.site_presence where session = p_session) then
+    update public.site_presence
+       set seen_at = now(),
+           device  = coalesce(p_device, device)
+     where session = p_session;
+    return;
+  end if;
+
+  if (select count(*) from public.site_presence) >= 5000 then return; end if;
 
   insert into public.site_presence (session, seen_at, device)
   values (p_session, now(), p_device)
@@ -403,7 +507,7 @@ begin
     now()
     from public.site_events e
    where e.at >= v_start and e.at < v_end
-  on conflict (day) do update set
+  on conflict (day, tz) do update set
     tz              = excluded.tz,
     visits          = excluded.visits,
     page_views      = excluded.page_views,
@@ -492,6 +596,10 @@ declare
   r_now     record;
   v_people  integer := 0;
   v_new     integer := 0;
+  v_orders  integer := 0;
+  v_sales   numeric := 0;
+  v_cur     text;
+  v_oe      timestamptz;
 begin
   if not public.may_see_analytics() then
     raise exception 'You do not have permission to read the website analytics.';
@@ -557,6 +665,42 @@ begin
        group by u.visitor
     ) m;
 
+  -- ---------------------------------------------------------------
+  -- WHAT ALL OF IT WAS FOR.
+  --
+  -- Everything above counts what people did on the way to buying. It
+  -- stopped at "checkout begun", so the shop could see twelve people
+  -- start and never learn whether any of them finished. The orders were
+  -- in the same database the whole time, unjoined.
+  --
+  -- COUNTED HERE RATHER THAN RECORDED IN THE BROWSER, on purpose. An
+  -- order is a row in orders: it cannot be blocked by somebody's ad
+  -- blocker, cannot be double-counted by a refreshed thank-you page, and
+  -- cannot disagree with what the shop was actually paid. The four event
+  -- kinds stay exactly as they are and no new one is added.
+  --
+  -- CANCELLED ORDERS ARE LEFT OUT. Everything else is counted, including
+  -- an order still pending: it was placed, and whether it is later
+  -- collected is a different question from whether the website worked.
+  -- ---------------------------------------------------------------
+  -- AND IT CANNOT TAKE THE REST DOWN WITH IT. The orders table belongs
+  -- to the shop's setup, not to this file: a project where it has not
+  -- been created, or has been renamed, or refuses this read, must still
+  -- get its visits and its pages. Caught here so that the worst case is
+  -- two figures showing nought, never an Analytics page that says only
+  -- "these could not be read".
+  v_oe := ((v_to + 1)::timestamp) at time zone p_tz;
+  begin
+    select count(*), coalesce(sum(o.total), 0), max(o.currency)
+      into v_orders, v_sales, v_cur
+      from public.orders o
+     where o.created_at >= ((p_from::timestamp) at time zone p_tz)
+       and o.created_at <  v_oe
+       and coalesce(o.status, '') <> 'cancelled';
+  exception when others then
+    v_orders := 0; v_sales := 0; v_cur := null;
+  end;
+
   return json_build_object(
     'from',            p_from,
     'to',              v_to,
@@ -574,7 +718,10 @@ begin
     'returning_visitors', greatest(v_people - v_new, 0),
     'mobile',          r_sum.mobile  + coalesce(r_now.mobile, 0),
     'desktop',         r_sum.desktop + coalesce(r_now.desktop, 0),
-    'tablet',          r_sum.tablet  + coalesce(r_now.tablet, 0)
+    'tablet',          r_sum.tablet  + coalesce(r_now.tablet, 0),
+    'orders',          coalesce(v_orders, 0),
+    'sales',           coalesce(v_sales, 0),
+    'currency',        v_cur
   );
 end;
 $$;
@@ -798,6 +945,118 @@ $$;
 -- stops beating too, because the tab is not in front of anybody. It is
 -- "how many people are looking right now", not "how many tabs exist".
 -- ---------------------------------------------------------------------
+-- ---------------------------------------------------------------------
+-- LET REALTIME CARRY WHO IS HERE
+--
+-- The admin used to ask "how many are on the site" on a timer, which is
+-- the wrong tool when the project already has Realtime carrying the
+-- chat. Arriving and leaving are both changes to a row, and a change to
+-- a row is exactly what Realtime is for.
+--
+-- WHAT IT CANNOT DO, and why the timer below stays. A visitor whose
+-- browser simply goes quiet -- a phone that loses signal, a laptop shut
+-- mid-page -- writes nothing. Silence is not a change and generates no
+-- event, so ageing somebody out can only ever be noticed by looking.
+-- Realtime makes arriving and leaving instant; the timer is what catches
+-- the ones who said nothing, and it can be slow because it is no longer
+-- carrying the whole job.
+--
+-- NOTHING IS EXPOSED BY THIS. Realtime applies the same row rules as a
+-- read, and site_presence may only be read by a signed-in administrator
+-- whose role has the analytics permission. A visitor cannot subscribe to
+-- it any more than they could select from it. The row itself is a random
+-- session token, a time and one word for the kind of device.
+-- ---------------------------------------------------------------------
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime' and schemaname = 'public'
+       and tablename = 'site_presence'
+  ) then
+    alter publication supabase_realtime add table public.site_presence;
+  end if;
+exception when others then
+  raise notice 'site_presence not added to the realtime publication: %', sqlerrm;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- SAYING GOODBYE, RATHER THAN BEING TIMED OUT
+--
+-- "Here now" used to be worked out from silence: beat every minute, and
+-- anybody who had not beaten for two minutes was assumed gone. So a
+-- customer who closed the tab lingered on the shop's screen for up to
+-- two and a half minutes, and the owner could not tell somebody reading
+-- from somebody who had already left.
+--
+-- A browser knows exactly when it is leaving, and can say so. This is
+-- how it says so: one line, sent with sendBeacon on the way out, which
+-- is the one kind of request a browser will still deliver after the page
+-- has gone.
+--
+-- IT CAN ONLY REMOVE ITSELF. The session token is the browser's own and
+-- means nothing anywhere else, so the worst anybody can do by calling
+-- this is stop counting themselves -- which they could do by closing the
+-- tab in any case.
+-- ---------------------------------------------------------------------
+create or replace function public.site_gone(p_session text)
+returns void
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+begin
+  if p_session is null or length(p_session) not between 8 and 64 then return; end if;
+  delete from public.site_presence where session = p_session;
+end;
+$$;
+
+-- ---------------------------------------------------------------------
+-- WHO IS HERE, ONCE — and then Realtime keeps it current
+--
+-- site_live() answers with a NUMBER, which is only ever true for the
+-- instant it is asked. Keeping that number right meant asking again, and
+-- again, which is the polling this replaced.
+--
+-- This answers with WHO instead. The admin asks once when the page
+-- opens, and from then on Realtime tells it about every arrival, beat
+-- and departure, so it can keep the set itself and count it in the
+-- browser. Nobody asks the database anything again.
+--
+-- WHY THE SESSION TOKENS AND NOT THE TIMES. Once the admin is holding
+-- the set, ageing somebody out is "we have not heard from them in
+-- forty-five seconds" -- measured by the admin's own clock, from when it
+-- last heard. Sending server timestamps would mean comparing two clocks
+-- that need not agree, and a browser whose clock is wrong would count
+-- wrongly for ever.
+-- ---------------------------------------------------------------------
+create or replace function public.site_here()
+returns json
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+begin
+  if not public.may_see_analytics() then
+    raise exception 'You do not have permission to read the website analytics.';
+  end if;
+
+  /* The tidying site_live() used to do, moved here with the caller. Most
+     visits delete their own row on the way out; these are the ones whose
+     browser was closed without warning or lost signal, and they are of
+     no interest to anybody once they are half an hour old. */
+  delete from public.site_presence where seen_at < now() - interval '30 minutes';
+
+  return coalesce((
+    select json_agg(p.session)
+      from public.site_presence p
+     where p.seen_at > now() - interval '45 seconds'
+  ), '[]'::json);
+end;
+$$;
+
 create or replace function public.site_live()
 returns integer
 language plpgsql
@@ -816,7 +1075,7 @@ begin
 
   select count(*) into v_count
     from public.site_presence
-   where seen_at > now() - interval '2 minutes';
+   where seen_at > now() - interval '45 seconds';
 
   return coalesce(v_count, 0);
 end;
@@ -882,6 +1141,8 @@ $$;
 -- ---------------------------------------------------------------------
 revoke all on function public.may_see_analytics()                          from public;
 revoke all on function public.site_beat(text, text)                        from public;
+revoke all on function public.site_gone(text)                              from public;
+revoke all on function public.site_here()                                  from public;
 revoke all on function public.site_rollup(date, text)                      from public;
 revoke all on function public.site_rollup_range(date, date, text)          from public;
 revoke all on function public.site_stats(date, date, text)                 from public;
@@ -894,13 +1155,21 @@ revoke all on function public.site_prune(integer, text)                    from 
 -- The heartbeat is the one function a visitor may run. It writes one
 -- timestamp and returns nothing.
 grant execute on function public.site_beat(text, text)                        to anon, authenticated;
+grant execute on function public.site_gone(text)                              to anon, authenticated;
 grant execute on function public.may_see_analytics()                          to authenticated;
 grant execute on function public.site_stats(date, date, text)                 to authenticated;
 grant execute on function public.site_series(date, date, text, text)          to authenticated;
 grant execute on function public.site_top_pages(date, date, text, integer)    to authenticated;
 grant execute on function public.site_top_products(date, date, text, integer) to authenticated;
 grant execute on function public.site_live()                                  to authenticated;
+grant execute on function public.site_here()                                  to authenticated;
 grant execute on function public.site_prune(integer, text)                    to authenticated;
+-- And to the scheduled function that actually calls it. Nothing called
+-- site_prune before this round: it existed, and site_events grew for
+-- ever. netlify/functions/site-prune.js runs it once a day with the
+-- service key, which is a role rather than a person and so needs saying
+-- explicitly after the revoke above.
+grant execute on function public.site_prune(integer, text)                    to service_role;
 
 
 -- ---------------------------------------------------------------------
@@ -1035,9 +1304,9 @@ select routine_name as installed
    and routine_name in ('may_see_analytics', 'site_beat', 'site_rollup',
                         'site_rollup_range', 'site_stats', 'site_series',
                         'site_top_pages', 'site_top_products', 'site_live',
-                        'site_prune', 'site_clear')
+                        'site_prune', 'site_clear', 'site_gone', 'site_here')
  order by routine_name;
--- Expect eleven rows.
+-- Expect thirteen rows.
 
 select role_key as role, role_def->'permissions'->>'analytics' as website_analytics
   from public.site_settings s, jsonb_each(s.data) as roles(role_key, role_def)

@@ -85,6 +85,13 @@ begin
   ) then
     alter publication supabase_realtime add table public.product_pulse;
   end if;
+-- A project without that publication is not a broken project, and this
+-- is the last real statement in the file -- so stopping here told the
+-- shop the whole step had failed when the table above was created
+-- perfectly well. supabase-chat-realtime.sql already carried this guard
+-- around the identical statement; this file did not.
+exception when others then
+  raise notice 'product_pulse not added to the realtime publication: %', sqlerrm;
 end $$;
 
 

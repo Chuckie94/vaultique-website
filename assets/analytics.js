@@ -220,6 +220,7 @@
 
   var EVENTS_URL = URL_BASE + '/rest/v1/site_events';
   var BEAT_URL = URL_BASE + '/rest/v1/rpc/site_beat';
+  var GONE_URL = URL_BASE + '/rest/v1/rpc/site_gone';
   var queue = [];
   var timer = null;
   var stopped = false;          // the tables are not there; say no more about it
@@ -309,13 +310,25 @@
 
   /* ---- the heartbeat, for the live count ------------------------------ */
 
-  /* One small write a minute while somebody is actually looking at the
-     page. It stops the moment the tab goes into the background, which
-     is what makes "seven people on the site" mean seven people and not
-     seven forgotten tabs. */
-  var BEAT_EVERY = 60 * 1000;
+  /* One small write every twenty seconds while somebody is actually
+     looking at the page. It stops the moment the tab goes into the
+     background, which is what makes "seven people on the site" mean
+     seven people and not seven forgotten tabs.
+
+     TWENTY SECONDS, NOT SIXTY. The shop said the live count felt slow --
+     somebody arriving took a while to appear and somebody leaving
+     lingered. A minute between beats meant the database had to wait two
+     before it could safely call anybody gone, because one missed beat
+     must never drop somebody who is sitting there reading. Beating three
+     times as often lets that window come down to forty-five seconds and
+     still tolerate a missed beat.
+
+     It is one row upserted, not a row inserted: a visit is one row
+     however long it lasts, so beating oftener costs writes and not
+     storage. */
+  var BEAT_EVERY = 20 * 1000;
   var beatTimer = null;
-  var beatsLeft = 60;          // an hour of beating, then this visit is over
+  var beatsLeft = 180;         // an hour of beating, then this visit is over
 
   function beat() {
     if (stopped || beatsLeft <= 0) return;
@@ -331,6 +344,32 @@
       }).then(function (res) {
         if (res && (res.status === 404 || res.status === 401 || res.status === 403)) stopped = true;
       }, function () {});
+    } catch (e) {}
+  }
+
+  /* A browser knows exactly when it is leaving. Saying so is the
+     difference between the shop seeing somebody go and the shop working
+     it out from silence a minute later.
+
+     sendBeacon because this is sent as the page goes away, and it is the
+     one kind of request a browser will still deliver after that. fetch
+     is the fallback for the visibility case, where the page is still
+     there and there is something to fall back to.
+
+     Quiet either way. Failing to say goodbye costs forty-five seconds of
+     being counted, which is where this started. */
+  function sayGone() {
+    if (stopped || !session) return;
+    var body = JSON.stringify({ p_session: session });
+    try {
+      if (navigator.sendBeacon) {
+        var blob = new Blob([body], { type: 'application/json' });
+        if (navigator.sendBeacon(GONE_URL + '?apikey=' + encodeURIComponent(KEY), blob)) return;
+      }
+      fetch(GONE_URL, {
+        method: 'POST', headers: headers(), body: body,
+        mode: 'cors', credentials: 'omit', keepalive: true
+      }).catch(function () {});
     } catch (e) {}
   }
 
@@ -400,9 +439,9 @@
     /* Sent as the page goes away, when a browser will still finish a
        beacon. pagehide covers the back-forward cache, which is where
        unload is never fired at all on a phone. */
-    window.addEventListener('pagehide', function () { flush(true); });
+    window.addEventListener('pagehide', function () { flush(true); sayGone(); });
     document.addEventListener('visibilitychange', function () {
-      if (document.hidden) { flush(true); stopBeating(); }
+      if (document.hidden) { flush(true); stopBeating(); sayGone(); }
       else { touchSession(); startBeating(); }
     });
 

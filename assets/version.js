@@ -1,8 +1,16 @@
 /* =====================================================================
    Vaultique Boutique Point - build stamp
    ---------------------------------------------------------------------
-   THIS FILE IS WRITTEN WHEN THE BUILD IS PACKAGED. Do not edit it by
-   hand and do not delete it.
+   THIS FILE IS WRITTEN WHEN THE BUILD IS PACKAGED. Do not delete it.
+
+   AND IT IS WRITTEN BY HAND, because there is no packaging tool in this
+   folder that writes it. That is worth saying plainly: the 10 September
+   package shipped analytics, chat jobs, Realtime and product pulse while
+   this file still said build 31 and "Reviews", so the admin reported the
+   wrong build for a week and the deployment history recorded the wrong
+   thing going live. Whoever packages a build updates the four values
+   below in the same breath. It is the only way the admin can tell you
+   what is actually running.
 
    It is the only way the admin can tell you which build of the website
    is actually live. Without it, Settings > System & Maintenance would
@@ -19,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.18.0',
-  build: 31,
-  builtAt: '2026-08-28T15:17:02Z',
-  notes: 'Reviews: shown, written and approved in one place, with holding a review enforced by the database.'
+  version: '1.21.0',
+  build: 34,
+  builtAt: '2026-09-10T22:00:00Z',
+  notes: 'Orders and sales join the analytics, who is here is carried by Realtime, and collection pictures are uploaded rather than committed.'
 };

@@ -398,6 +398,25 @@
     for (var i = 0; i < nodes.length; i++) nodes[i].setAttribute('src', url);
   }
 
+  /* What index.html's pre-paint script reads. Only the storefront's own
+     document writes it -- the admin previews a theme in an iframe, and a
+     preview is not what the shop is actually using. */
+  function rememberMarks(doc, b) {
+    try {
+      if (doc !== document) return;
+      var marks = {
+        main:    b.logoMain   || '',
+        mobile:  b.logoMobile || b.logoMain || '',
+        footer:  b.logoFooter || b.logoMain || '',
+        favicon: b.favicon    || ''
+      };
+      var any = false, k;
+      for (k in marks) if (marks[k]) any = true;
+      if (!any) { localStorage.removeItem('vbp_marks'); return; }
+      localStorage.setItem('vbp_marks', JSON.stringify(marks));
+    } catch (e) {}
+  }
+
   function setLink(doc, rel, url, type) {
     if (!url) return;
     var link = doc.querySelector('link[rel="' + rel + '"]');
@@ -452,6 +471,17 @@
       setImage(doc, '.mm-logo', b.logoMobile || b.logoMain);
       setImage(doc, '.foot-logo', b.logoFooter || b.logoMain);
       setLink(doc, 'icon', b.favicon);
+      /* And remembered, so the NEXT visit does not have to wait for any
+         of this. index.html ships the four marks with no address and
+         fills them in from here before the body is parsed -- which is
+         what stopped the old one being painted first. This is the half
+         that keeps that cache current: whatever was just applied is what
+         the next first frame will use.
+
+         Quiet by design. A browser refusing storage is a browser that
+         gets the shipped mark on every visit, which is the behaviour
+         this replaced and is not worth an error. */
+      rememberMarks(doc, b);
       /* og:image used to be written here. It is Settings > SEO's now,
          along with every other tag in the head, so there is one writer
          rather than two taking turns. The picture itself is still

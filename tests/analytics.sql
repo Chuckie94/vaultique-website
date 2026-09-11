@@ -285,20 +285,37 @@ do $$
 begin
   perform chk(public.site_live() = 1, 'a tab beating right now is here now');
 
-  -- A tab beats once a minute while somebody is looking at it, so ninety
-  -- seconds is still comfortably inside the window and nobody reading is
-  -- ever dropped.
-  update public.site_presence set seen_at = now() - interval '90 seconds';
+  -- NOBODY READING IS EVER DROPPED, which is the point of this pair and
+  -- has not changed. What changed is the numbers: a tab beats every
+  -- twenty seconds now rather than every sixty, so surviving one missed
+  -- beat means surviving forty seconds rather than a hundred and twenty.
+  -- Forty is comfortably inside the window; the window is what came
+  -- down, not the tolerance.
+  update public.site_presence set seen_at = now() - interval '40 seconds';
   perform chk(public.site_live() = 1,
-              'and is still here a minute and a half later, between beats');
+              'and is still here forty seconds later, having missed a beat');
 
-  -- The one that pins the window itself. This used to be five minutes,
-  -- which meant somebody who had closed the tab lingered in "here now"
-  -- for five minutes after they had gone -- long enough for a shop
-  -- watching the number to be told something untrue about its own shop.
-  update public.site_presence set seen_at = now() - interval '3 minutes';
+  -- The one that pins the window itself. It was five minutes, then two,
+  -- and is forty-five seconds: the shop said somebody who had left
+  -- lingered on the screen, and every second of that was a shop being
+  -- told something untrue about its own shop.
+  update public.site_presence set seen_at = now() - interval '50 seconds';
   perform chk(public.site_live() = 0,
-              'but three minutes after the last beat they have gone, not five');
+              'but fifty seconds after the last beat they have gone');
+
+  -- And they do not have to be waited for at all. A browser says when it
+  -- is leaving, so the row goes at once rather than ageing out.
+  update public.site_presence set seen_at = now();
+  perform chk(public.site_live() = 1, 'a tab beating again is here again');
+  perform public.site_gone((select session from public.site_presence limit 1));
+  perform chk(public.site_live() = 0,
+              'and saying goodbye takes them off the count immediately');
+  perform chk((select count(*) from public.site_presence) = 0,
+              'with no row left behind to age out');
+
+  -- Put it back for the checks below, which are about ageing out.
+  insert into public.site_presence (session, seen_at, device)
+  values ('sess-here-again', now(), 'mobile');
 
   update public.site_presence set seen_at = now() - interval '20 minutes';
   perform chk(public.site_live() = 0, 'a tab that stopped beating twenty minutes ago is not here now');
@@ -380,6 +397,174 @@ begin
   perform chk((select count(*) from public.site_events
                 where at < now() - interval '12 hours') = 0,
               'even though there is not one raw row left from that day');
+end $$;
+
+select hdr('Two timezones do not rewrite the table between them');
+-- Audit W-4. site_daily was keyed on the day alone while every read filtered on
+-- the timezone as well, so a read from a second zone matched nothing, re-summed
+-- every day in the range and overwrote the lot -- and the first zone then did it
+-- back. On a fortnight of data all fourteen rows were rewritten on the third
+-- read. What is checked here is that a second read of a zone already summarised
+-- rewrites nothing at all.
+do $$
+declare
+  n_rewritten int;
+  n_rows      int;
+  lusaka      text;
+  london      text;
+begin
+  delete from public.site_events;
+  delete from public.site_daily;
+  delete from public.site_visitor_days;
+
+  insert into public.site_events (at, kind, path, visitor, session, device)
+  select now() - (d || ' days')::interval, 'page_view', '/shop', 'v' || (d % 5),
+         's' || d, 'mobile'
+    from generate_series(1, 14) d;
+
+  perform be('owner');
+  perform public.site_stats((current_date - 14), current_date, 'Africa/Lusaka');
+  perform public.site_stats((current_date - 14), current_date, 'Europe/London');
+
+  create temp table _snap on commit drop as
+    select day, tz, built_at from public.site_daily;
+
+  select count(*) into n_rows from public.site_daily;
+  perform chk(n_rows = 28,
+    'each timezone keeps its own summary of each day (' || n_rows || ' rows)');
+
+  perform pg_sleep(1.1);
+  perform public.site_stats((current_date - 14), current_date, 'Africa/Lusaka');
+
+  select count(*) filter (where a.built_at is distinct from b.built_at)
+    into n_rewritten
+    from public.site_daily a join _snap b using (day, tz);
+  perform chk(n_rewritten = 0,
+    'reading again from a timezone already summed rewrites nothing (' ||
+    n_rewritten || ' rewritten)');
+
+  perform public.site_stats((current_date - 14), current_date, 'Europe/London');
+  select count(*) filter (where a.built_at is distinct from b.built_at)
+    into n_rewritten
+    from public.site_daily a join _snap b using (day, tz);
+  perform chk(n_rewritten = 0,
+    'and neither does reading from the other one (' || n_rewritten || ' rewritten)');
+
+  select (public.site_stats((current_date - 14), current_date, 'Africa/Lusaka')::jsonb)->>'page_views',
+         (public.site_stats((current_date - 14), current_date, 'Europe/London')::jsonb)->>'page_views'
+    into lusaka, london;
+  perform chk(lusaka = '14' and london = '14',
+    'and both readers are told the same thing (' || lusaka || ' / ' || london || ')');
+end $$;
+
+
+select hdr('A ceiling on what one browser can record');
+-- Audit W-6. The storefront records with the public key, which is public by
+-- design, so the shape rules were the only thing standing between the figures
+-- and anybody who viewed source. The ceiling is set far above a person on
+-- purpose: the point is to stop a script, not to police a customer.
+do $$
+declare
+  i      int;
+  kept   int := 0;
+  before int;
+begin
+  delete from public.site_events;
+  delete from public.site_presence;
+
+  insert into public.site_events (kind, path, visitor, session, device)
+  select 'page_view', '/shop', 'real-person', 'sess-real', 'mobile'
+    from generate_series(1, 12);
+  select count(*) into before from public.site_events where visitor = 'real-person';
+  perform chk(before = 12, 'a dozen events in a burst is an ordinary visit and is kept');
+
+  for i in 1..200 loop
+    begin
+      insert into public.site_events (kind, path, visitor, session, device)
+      values ('page_view', '/shop', 'a-script', 'sess-script', 'mobile');
+      kept := kept + 1;
+    exception when others then exit;
+    end;
+  end loop;
+  perform chk(kept < 200 and kept >= 50,
+    'a script asking two hundred times in a minute is stopped (' || kept || ' got in)');
+
+  insert into public.site_events (kind, path, visitor, session, device)
+  values ('page_view', '/shop', 'real-person', 'sess-real', 'mobile');
+  select count(*) into before from public.site_events where visitor = 'real-person';
+  perform chk(before = 13,
+    'and the person browsing beside it is not affected at all');
+
+  perform public.site_beat('sess-aaaaaaa', 'mobile');
+  perform public.site_beat('sess-aaaaaaa', 'desktop');
+  perform chk((select count(*) from public.site_presence) = 1,
+    'a visit that beats twice is one row, not two');
+  perform chk((select device from public.site_presence where session = 'sess-aaaaaaa') = 'desktop',
+    'and the later beat is the one that counts');
+
+  delete from public.site_events;
+  delete from public.site_presence;
+end $$;
+
+
+select hdr('Orders and sales, which is what all the counting was for');
+-- E-1. The count stopped at "checkout begun", so the shop could see twelve
+-- people set off and never learn whether any of them finished. Counted from
+-- the orders table rather than recorded in the browser, so no ad blocker can
+-- hide one and a refreshed thank-you page cannot count one twice.
+--
+-- THE FIRST CHECK IS THE IMPORTANT ONE. This fixture has no orders table at
+-- all -- it is the analytics schema on its own -- and site_stats must still
+-- answer with every other figure intact. A shop whose orders table is absent,
+-- renamed or refused must not lose its visits over it.
+do $$
+declare d jsonb;
+begin
+  -- Earlier sections clear the events, so this one puts back something to
+  -- count -- otherwise "nothing else moved" would pass by being nought.
+  insert into public.site_events (at, kind, path, visitor, session, device)
+  select now() - interval '1 day', 'page_view', '/shop', 'ord-v1', 'ord-s1', 'mobile'
+    from generate_series(1, 3);
+
+  perform be('owner');
+  d := public.site_stats(current_date - 2, current_date, 'UTC')::jsonb;
+  perform chk(d is not null, 'with no orders table at all, the figures still come back');
+  perform chk((d->>'page_views')::int > 0,
+              'and the page views are still there, unaffected');
+  perform chk(coalesce(d->>'orders', 'missing') = '0',
+              'with orders shown as none rather than an error');
+  perform chk(coalesce(d->>'sales', 'missing') = '0', 'and sales as nothing');
+end $$;
+
+-- And now with one, which is the shop's real case.
+do $$
+declare d jsonb;
+begin
+  create table if not exists public.orders (
+    id uuid primary key default gen_random_uuid(),
+    total numeric, currency text, status text default 'pending',
+    created_at timestamptz default now());
+
+  insert into public.orders (total, currency, status, created_at) values
+    (1500, 'ZMW', 'confirmed', now() - interval '1 day'),
+    (2500, 'ZMW', 'pending',   now() - interval '1 day'),
+    ( 900, 'ZMW', 'cancelled', now() - interval '1 day'),
+    (7000, 'ZMW', 'confirmed', now() - interval '40 days');
+
+  perform be('owner');
+  d := public.site_stats(current_date - 2, current_date, 'UTC')::jsonb;
+  perform chk((d->>'orders')::int = 2,
+              'two orders in the range, the cancelled one left out (' || (d->>'orders') || ')');
+  perform chk((d->>'sales')::numeric = 4000,
+              'and their total is what they came to (' || (d->>'sales') || ')');
+  perform chk(d->>'currency' = 'ZMW', 'in the currency they were taken in');
+  perform chk((d->>'page_views')::int > 0, 'and nothing else moved');
+
+  d := public.site_stats(current_date - 60, current_date, 'UTC')::jsonb;
+  perform chk((d->>'orders')::int = 3,
+              'a wider range reaches the older one too (' || (d->>'orders') || ')');
+
+  drop table public.orders;
 end $$;
 
 -- The report, in the order the checks were made.

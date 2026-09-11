@@ -248,6 +248,10 @@
           },
           {
             title: 'Saved answers',
+            /* Folded away to begin with. Thirty answers is a long list to
+               scroll past every time the shop opens this page to change
+               something else. */
+            collapsible: true,
             note: 'The things you find yourself typing. They appear in a dropdown above ' +
                   'the reply box, and putting one in the box does not send it — it is a ' +
                   'starting point you can change first.',

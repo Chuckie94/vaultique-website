@@ -353,20 +353,41 @@ Three things worth knowing:
 - Branding applies to **the storefront only**. This admin keeps its own look on
   purpose, so a colour or a line of custom CSS that makes something unreadable
   can always be undone from here.
-- **Your logo is not the installed app's icon**, and is not meant to be. When
-  the admin is added to a phone's home screen it uses three square tiles that
-  ship with the site — `images/icon-192.png`, `images/icon-512.png` and
-  `images/icon-maskable-512.png` — because a home-screen icon is a square that
-  Android then crops to a circle, and a wide logo on a transparent background
-  does not survive that. Your logo still appears across the storefront, in the
-  footer, and on the browser tab. To change the app's icon, replace those three
-  files and redeploy; a phone reads the icon once when the app is installed, so
-  anyone who already installed it will need to remove it and add it again.
-- **The social sharing image needs one manual step.** Facebook and WhatsApp read
-  your page's HTML and never run scripts, so an image chosen in the admin cannot
-  reach them by itself. Choose the image, then copy the two lines the section
-  shows you into `index.html` below the other meta tags, and redeploy. You only
-  need to do that again if you change the image.
+- **The app icon is its own upload, and it is yours.** *App icon* under Logos
+  is the picture a phone puts on its home screen when somebody installs the
+  shop. It is asked for separately from your logo on purpose: a header wants a
+  wide mark on a transparent background, and a phone puts an app icon on a
+  square and then crops that square to a circle or a squircle. A wide
+  transparent mark sent through that comes back small, off-centre and floating.
+
+  So upload a **square** picture, 512 by 512, with the mark well inside the
+  edges. Leave it empty and the three tiles that ship with the site are used,
+  exactly as before.
+
+  One thing that cannot be fixed from here: **a phone reads the icon once, when
+  the app is installed, and keeps it.** Changing this changes it for the next
+  install. To see it on a phone that already has the shop, remove it from the
+  home screen and add it again.
+
+- **The social sharing image needs nothing but saving.** It used to need two
+  lines pasted into `index.html` by hand, every time the picture changed —
+  Facebook and WhatsApp read your page's HTML and never run scripts, so an
+  image chosen in the admin could not reach them by itself.
+
+  It reaches them now. `index.html` names one fixed address for the picture and
+  the site answers that address with whichever image is chosen here. Choose it,
+  save, and that is the whole of it.
+
+  They cache a preview hard, so to check it, share the address with something
+  after it — `yourshop.com/?x=1` — which makes them look again.
+
+- **The old icon is never shown first any more.** The site used to carry the
+  logo it was built with written into the page, so a browser painted that file
+  while parsing and your own logo replaced it a moment later. Now the page
+  ships with no picture at all in those four places and fills them in from what
+  your browser saw last time, before anything is drawn. Somebody visiting for
+  the very first time gets the shipped mark — they have never seen another one
+  — and their second visit is right from the first frame.
 
 ### Settings > Contact & Social
 

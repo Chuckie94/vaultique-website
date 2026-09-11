@@ -140,15 +140,17 @@ The automated checks, if you ever want them:
       node tests/dashboard.browser.cjs        152 checks
       node tests/pwa-icons.cjs                 74 checks  (no browser)
       node tests/analytics.browser.cjs         43 checks
-      node tests/product-sync.test.cjs         28 checks  (no browser)
+      node tests/product-sync.test.cjs         29 checks  (no browser)
       node tests/logo-first-paint.browser.cjs  27 checks
       node tests/live-update.browser.cjs       21 checks
       node tests/chat.browser.cjs              18 checks
+      node tests/no-old-icon.browser.cjs       38 checks
+      node tests/collection-pictures.cjs       16 checks  (no browser)
 
   The .sql files in tests/ check the database side and need a Postgres:
       psql -d scratch -f tests/analytics-fixture.sql \
                       -f supabase-analytics.sql \
-                      -f tests/analytics.sql            62 checks
+                      -f tests/analytics.sql            94 checks
       psql -d scratch -f tests/chat-jobs-fixture.sql \
                       -f supabase-chat-jobs.sql \
                       -f tests/chat-jobs.sql            31 checks

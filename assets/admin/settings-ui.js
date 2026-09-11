@@ -1103,12 +1103,70 @@
       }
     }
 
+    /* A group that can be folded away.
+       ------------------------------------------------------------------
+       Asked for by the shop about Saved answers, which is a long list
+       sitting between two short sections and pushing everything below it
+       off the screen. Written as a property of a group rather than
+       something Live Chat does for itself, so the next long section can
+       have it by adding one word.
+
+       THE FIELDS ARE STILL THERE when it is folded. Only the container is
+       hidden, so what is typed in it is still read on save, still
+       validated, and still marked if it is wrong -- and validate() opens
+       every folded group when something is wrong, because a complaint
+       about a box nobody can see is worse than no complaint at all.
+
+       Whether it is open is remembered per section, so the shop finds it
+       as it left it rather than folded shut every time. */
+    var folds = [];
+
+    function foldMemo(title, want) {
+      var key = 'vbp.fold.' + (spec.key || '') + '.' + title;
+      try {
+        if (want === undefined) return localStorage.getItem(key);
+        localStorage.setItem(key, want);
+      } catch (e) {}
+      return null;
+    }
+
     function draw() {
       (spec.groups || []).forEach(function (g) {
         var card = el('div', 'card');
-        if (g.title) card.appendChild(el('h3', null, g.title));
-        if (g.note) card.appendChild(el('p', 'grp-note', g.note));
-        drawFields(card, g.fields || []);
+        var host = card;
+
+        if (g.collapsible && g.title) {
+          var head = el('div', 'grp-fold-head');
+          head.appendChild(el('h3', null, g.title));
+          var btn = el('button', 'btn btn-out btn-sm grp-fold-btn');
+          btn.type = 'button';
+          head.appendChild(btn);
+          card.appendChild(head);
+          if (g.note) card.appendChild(el('p', 'grp-note', g.note));
+
+          var inner = el('div', 'grp-fold');
+          card.appendChild(inner);
+          host = inner;
+
+          /* Folded to begin with, because a section is made collapsible
+             precisely when it is long enough to be in the way. */
+          var open = foldMemo(g.title) === 'open';
+          function paint() {
+            inner.classList[open ? 'remove' : 'add']('hide');
+            btn.textContent = open ? 'Hide' : 'Show';
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          }
+          btn.addEventListener('click', function () {
+            open = !open; foldMemo(g.title, open ? 'open' : 'shut'); paint();
+          });
+          folds.push(function () { if (!open) { open = true; foldMemo(g.title, 'open'); paint(); } });
+          paint();
+        } else {
+          if (g.title) card.appendChild(el('h3', null, g.title));
+          if (g.note) card.appendChild(el('p', 'grp-note', g.note));
+        }
+
+        drawFields(host, g.fields || []);
         body.appendChild(card);
       });
       body.appendChild(bar);

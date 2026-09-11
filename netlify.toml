@@ -37,6 +37,13 @@
 [functions."product-pulse"]
   schedule = "*/5 * * * *"
 
+# Once a day, a few minutes past three in the morning UTC. Nothing called
+# site_prune() before this round -- it existed, was granted, was
+# documented, and site_events grew for ever. Thirty invocations a month,
+# and the day summaries it reads from are never touched.
+[functions."site-prune"]
+  schedule = "7 3 * * *"
+
 # Pretty path so the storefront calls /api/products
 [[redirects]]
   from = "/api/products"
@@ -97,6 +104,17 @@
   to = "/.netlify/functions/manifest"
   status = 200
   force = true
+
+# The picture on a shared link. og:image in index.html names this fixed
+# address and this sends whoever asks on to whatever the shop last
+# uploaded, because the things that build a link preview -- WhatsApp,
+# Facebook, Twitter -- do not run the JavaScript that would otherwise
+# put the tag right. Nothing on the page loads this, so a customer never
+# touches it: it is called when a link is shared and at no other time.
+[[redirects]]
+  from = "/social-image"
+  to = "/.netlify/functions/social-image"
+  status = 200
 
 # ---------------------------------------------------------------------
 # Files that ship with the site but are nobody's business but the shop's.
@@ -335,3 +353,44 @@
   [headers.values]
     Content-Type = "application/manifest+json; charset=utf-8"
     Cache-Control = "public, max-age=3600"
+
+# ---------------------------------------------------------------------
+# THE SCRIPTS, THE STYLESHEET AND THE PICTURES
+#
+# There was no rule for these at all, so Netlify's default made every
+# visitor ask again about every file on every page they opened. Not a
+# download each time -- the answer is usually "still the same" -- but a
+# question each time, and on a phone on a slow connection the questions
+# are most of the wait.
+#
+# AN HOUR, NOT A YEAR, AND THE REASON MATTERS. The usual advice is to
+# cache these for a year and put the build number in the address --
+# /assets/app.js?b=33 -- so a new build is a new address. That needs
+# something to write the build number into forty script tags at package
+# time, and this folder has no such step: it is uploaded as it stands.
+# A number nobody updates is worse than no number, which is exactly what
+# happened to assets/version.js.
+#
+# So: an hour. A customer reading five pages asks once instead of five
+# times, and a deploy reaches everybody within the hour without anybody
+# having to remember anything. stale-while-revalidate lets the next day's
+# first visit paint from the stored copy while the new one is fetched
+# behind it.
+#
+# THE PAGES THEMSELVES ARE NOT CACHED, deliberately, and are not listed
+# here. index.html and admin.html keep Netlify's revalidate-every-time
+# default so a deploy is visible immediately -- and because index.html is
+# where the shop's own logo is now filled in, a stale one would be the
+# very thing this build set out to stop.
+# ---------------------------------------------------------------------
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+# Pictures change far less often than code, and a product photo that is a
+# day old is a day-old photo of the same piece.
+[[headers]]
+  for = "/images/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, stale-while-revalidate=604800"

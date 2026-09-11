@@ -223,7 +223,6 @@
         }
 
         drawWarnings(values);
-        drawSnippet(values);
       }
 
       function drawWarnings(values) {
@@ -235,52 +234,6 @@
             w.floor + ':1 so it stays comfortable to read.</span>';
           warns.appendChild(d);
         });
-      }
-
-      /* ---- the sharing-image snippet ---- */
-      var snipBox = null;
-      function drawSnippet(values) {
-        if (!snipBox) return;
-        var url = values.socialImage;
-        snipBox.innerHTML = '';
-        if (!url) {
-          snipBox.appendChild(mk('div', 'hint',
-            'Choose an image above and the two lines to paste will appear here.'));
-          return;
-        }
-        var lines =
-          '<meta property="og:image" content="' + url + '" />\n' +
-          '<meta name="twitter:card" content="summary_large_image" />';
-        var box = mk('div', 'snip');
-        var pre = document.createElement('pre');
-        pre.textContent = lines;
-        box.appendChild(pre);
-
-        var bar = mk('div', 'snip-bar');
-        var copy = document.createElement('button');
-        copy.type = 'button';
-        copy.className = 'btn btn-out btn-sm';
-        copy.textContent = 'Copy both lines';
-        var said = mk('span', 'stat');
-        copy.addEventListener('click', function () {
-          function done() { said.textContent = 'Copied'; said.className = 'stat ok'; }
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(lines).then(done, fallback);
-          } else fallback();
-          function fallback() {
-            var t = document.createElement('textarea');
-            t.value = lines;
-            document.body.appendChild(t);
-            t.select();
-            try { document.execCommand('copy'); done(); }
-            catch (e) { said.textContent = 'Select the text above and copy it'; said.className = 'stat'; }
-            document.body.removeChild(t);
-          }
-        });
-        bar.appendChild(copy);
-        bar.appendChild(said);
-        box.appendChild(bar);
-        snipBox.appendChild(box);
       }
 
       /* ---- the form ---- */
@@ -311,7 +264,22 @@
                 hint: 'The small square icon on a browser tab. A square PNG, 64 by 64 or larger.' },
               { type: 'image', name: 'socialImage', label: 'Social sharing image', previewOn: 'light',
                 prefix: 'branding/social', maxSize: 1024 * 1024,
-                hint: 'The picture shown when your link is shared. Landscape, about 1200 by 630.' }
+                hint: 'The picture shown when your link is shared. Landscape, about 1200 by 630.' },
+              /* SEPARATE FROM THE MAIN LOGO, ON PURPOSE. The header wants a
+                 wide mark on a transparent background; a phone puts an app
+                 icon on a square and then crops that square to whatever shape
+                 it uses. A wide transparent mark sent through that comes back
+                 small, off-centre and floating. They are two different
+                 pictures and asking for them separately is the only way both
+                 can be right. */
+              { type: 'image', name: 'appIcon', label: 'App icon', previewOn: 'light',
+                prefix: 'branding/app-icon', maxSize: 512 * 1024,
+                hint: 'The icon on a phone\'s home screen when somebody installs the shop. ' +
+                      'A SQUARE picture, 512 by 512, with the mark well inside the edges — ' +
+                      'phones crop the corners off. Leave it empty to use the tile that ' +
+                      'ships with the site. A phone that has already installed the shop ' +
+                      'keeps the icon it took at the time: this changes it for the next ' +
+                      'install, not for a phone already on the home screen.' }
             ]
           },
           {
@@ -396,14 +364,25 @@
           if (tries++ < 60) setTimeout(attach, 50);
           return;
         }
+        /* THIS USED TO ASK THE SHOP TO EDIT index.html BY HAND, and the
+           instruction has to go with the thing that made it necessary.
+           Facebook and WhatsApp read the HTML as served and never run a
+           script, so a picture chosen here could not reach them -- and
+           the answer was two lines to paste in and redeploy, every time
+           the picture changed.
+
+           index.html now names one fixed address for the picture and the
+           site sends whoever asks on to whatever is chosen here. Saving
+           is the whole of it. Leaving the old snippet on the page would
+           be worse than untidy: pasting it back in would put a fixed
+           address in the HTML again and undo this. */
         target.appendChild(mk('p', 'hint',
-          'Facebook and WhatsApp read your page’s HTML and never run scripts, so a sharing ' +
-          'image chosen here cannot reach them on its own. Paste these two lines into index.html, ' +
-          'just below the other meta tags, and redeploy. You only need to do this again if you ' +
-          'change the image.'));
-        snipBox = mk('div');
-        target.appendChild(snipBox);
-        if (lastValues) drawSnippet(lastValues);
+          'Saving is all this needs. Facebook and WhatsApp read your page rather than ' +
+          'running it, so the site points them at a fixed address and answers it with ' +
+          'whichever picture is chosen here. Nothing to paste, and nothing to redeploy.'));
+        target.appendChild(mk('p', 'hint',
+          'They remember a preview hard. To see a change, share the address with ' +
+          'something after it — yourshop.com/?x=1 — which makes them look again.'));
       })();
     }
   });

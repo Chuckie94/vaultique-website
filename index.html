@@ -6,6 +6,69 @@
 <meta name="theme-color" content="#0B1F3A" />
 <link rel="icon" href="/images/logo-sm.png" />
 
+<!-- ==================== THE SHOP'S OWN MARK, BEFORE ANYTHING IS DRAWN ====
+     THE COMPLAINT THIS ANSWERS: "the website loads with the old icon first
+     before showing the uploaded one. I just don't want loading and displaying
+     old icons."
+
+     WHY IT DID THAT, EVEN AFTER THE FIRST FIX. Making the theme apply early
+     -- which it now does, before the catalogue arrives -- shortened the wait.
+     It could not remove it. The header logo was written into this file as
+     <img src="/images/logo.png">, so the browser fetched and painted that
+     file while parsing, before one line of script had run. However fast the
+     replacement came, something wrong had already been on screen.
+
+     SO THERE IS NOTHING TO REPLACE ANY MORE. The four places the mark appears
+     ship with no address at all, and this script -- which runs before the
+     body is parsed -- fills them in from what the shop last used, remembered
+     in this browser. A returning visitor, and the owner, never see anything
+     but the right one.
+
+     SOMEBODY HERE FOR THE FIRST TIME has nothing remembered, and gets the
+     mark this folder ships with. That is correct: they have never seen
+     another one, so there is no old icon for them to be shown. theme.js
+     replaces it a moment later if the shop has uploaded its own, and writes
+     what it used into this cache, so their second visit is right from the
+     first frame.
+
+     IT CANNOT BREAK THE PAGE. Everything is inside one try, storage that
+     refuses to answer is treated as an empty cache, and the shipped file is
+     the answer to every question this cannot resolve.
+     ===================================================================== -->
+<script>
+(function () {
+  'use strict';
+  var SHIPPED = { main: '/images/logo.png', mobile: '/images/logo.png',
+                  footer: '/images/logo.png', favicon: '/images/logo-sm.png' };
+  var seen = {};
+  try {
+    var raw = localStorage.getItem('vbp_marks');
+    if (raw) { var got = JSON.parse(raw); if (got && typeof got === 'object') seen = got; }
+  } catch (e) {}
+
+  function pick(which) {
+    var v = seen[which];
+    /* Only ever this site's own storage or this site itself. A cache is a
+       hint, not an instruction, and one that has been tampered with must not
+       be able to point the page at somebody else's server. */
+    if (typeof v === 'string' && v &&
+        ((v.charAt(0) === '/' && v.charAt(1) !== '/') ||
+        v.indexOf(location.origin + '/') === 0 ||
+        /^https:\/\/[a-z0-9-]+\.supabase\.co\//i.test(v))) return v;
+    return SHIPPED[which];
+  }
+
+  window.VBP_MARKS = { pick: pick, SHIPPED: SHIPPED };
+
+  /* The tab icon can be set now, because it lives up here. */
+  try {
+    var link = document.querySelector('link[rel="icon"]');
+    if (link) link.setAttribute('href', pick('favicon'));
+  } catch (e) {}
+}());
+</script>
+
+
 <!-- ==================== SEO BLOCK — START ====================
      These tags are what WhatsApp, Facebook and Google read when your
      link is shared or found. They are already filled in and correct —
@@ -26,9 +89,9 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://vaultiqueboutique.com/" />
 <meta property="og:site_name" content="Vaultique Boutique Point" />
-<meta property="og:image" content="https://vaultiqueboutique.com/images/logo.png" />
+<meta property="og:image" content="https://vaultiqueboutique.com/social-image" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:image" content="https://vaultiqueboutique.com/images/logo.png" />
+<meta name="twitter:image" content="https://vaultiqueboutique.com/social-image" />
 <meta name="twitter:title" content="Vaultique Boutique Point · Curated Elegance, Accessible Luxury · Zambia" />
 <meta name="twitter:description" content="Vaultique Boutique Point, a premium fashion boutique in Zambia. Curated women's and men's fashion, footwear, handbags and accessories. Shop and buy on WhatsApp, with nationwide delivery." />
 <!-- ===================== SEO BLOCK — END ===================== -->
@@ -49,7 +112,7 @@
 <header class="site transparent" id="header">
   <div class="nav">
     <div class="brand" data-go-home role="button" aria-label="Vaultique Boutique Point home">
-      <img class="brand-logo" src="/images/logo.png" alt="Vaultique Boutique Point" />
+      <img class="brand-logo" alt="Vaultique Boutique Point" /><script>(function(m){var n=document.currentScript.previousElementSibling;if(n&&m)n.src=m.pick("main");}(window.VBP_MARKS));</script>
     </div>
     <div class="nav-links">
       <a data-go-home>Home</a>
@@ -86,7 +149,7 @@
 <!-- ============================ MOBILE MENU ============================ -->
 <div class="mobile-menu" id="mobileMenu">
   <div class="mm-top">
-    <div class="brand"><img class="mm-logo" src="/images/logo.png" alt="Vaultique Boutique Point" /></div>
+    <div class="brand"><img class="mm-logo" alt="Vaultique Boutique Point" /><script>(function(m){var n=document.currentScript.previousElementSibling;if(n&&m)n.src=m.pick("mobile");}(window.VBP_MARKS));</script></div>
     <button class="mm-close" id="mmClose" aria-label="Close menu">&times;</button>
   </div>
   <nav id="mmCats">
@@ -485,7 +548,7 @@
   <div class="wrap">
     <div class="foot-top">
       <div class="foot-brand">
-        <img class="foot-logo" src="/images/logo.png" alt="Vaultique Boutique Point" />
+        <img class="foot-logo" alt="Vaultique Boutique Point" /><script>(function(m){var n=document.currentScript.previousElementSibling;if(n&&m)n.src=m.pick("footer");}(window.VBP_MARKS));</script>
         <p>Premium yet affordable fashion for the modern Zambian. Curated in Zambia, delivered nationwide.</p>
         <div class="foot-social" id="footSocial"></div>
       </div>
