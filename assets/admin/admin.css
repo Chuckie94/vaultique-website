@@ -875,3 +875,10 @@
   .grp-fold-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
   .grp-fold-head h3{margin:0}
   .grp-fold-btn{flex:0 0 auto}
+
+  /* What the platform sent with a piece: the fifteen product details from
+     Product Setup, shown here so the shop can see which of them arrived
+     without opening the website. Read-only — the platform is where a piece
+     is described. */
+  .plat-details{background:#fff;border:1px solid var(--line);border-radius:6px;padding:10px 12px;font-size:13px;line-height:1.7;color:var(--ink)}
+  .plat-details b{color:var(--navy);font-weight:600}

@@ -36,7 +36,22 @@ const product = over => Object.assign({
      are driven by it rather than by a product that happens not to have
      any. */
   margin: 51.4, markup: 105.5, profit: 950, wholesale: 900,
-  supplier: 'Someone Ltd', reorderLevel: 2, internalNote: 'haggle harder'
+  supplier: 'Someone Ltd', reorderLevel: 2, internalNote: 'haggle harder',
+  /* What the platform's own build stamps onto every piece it prices: the
+     profit margin of the category it was priced under. It has a name of its
+     own rather than "margin", which is exactly why the check below is on the
+     whole shape and not on a list of words to look out for. */
+  targetMargin: 51.4, supplierCost: 900, supplierCurrency: 'USD',
+  supplierCode: 'SC-77', poRef: 'PO-19', grnRef: 'GRN-42', branchId: 3,
+  /* And what build 379 added, which is the whole point of this round. */
+  brand: 'Vaultique Atelier',
+  description: 'Cut from a single length of silk and finished by hand.',
+  variantGroup: 'vg-silk-wrap',
+  attrs: {
+    liningMaterial: 'Polyester', style: 'Wrap', pattern: 'Plain',
+    closureType: 'Tie', gender: 'Women', season: 'All season',
+    packageSize: '30 x 24 x 6 cm'
+  }
 }, over || {});
 
 (async () => {
@@ -96,11 +111,20 @@ const product = over => Object.assign({
        because toSafeProduct builds a new object rather than editing the
        one it was given. This is what makes that true rather than hoped. */
     const ALLOWED = ['name', 'sku', 'category', 'price', 'size', 'color',
-                     'material', 'available', 'lowStock', 'wasPrice'].sort();
+                     'material', 'available', 'lowStock', 'wasPrice',
+                     /* Added this round. The list gets longer; what it is
+                        for does not change. */
+                     'brand', 'description', 'details', 'variantGroup'].sort();
     const got = Object.keys(p).sort();
     is(JSON.stringify(got) === JSON.stringify(ALLOWED),
-       'and a product carries exactly these ten fields and no others',
+       'and a product carries exactly these fourteen fields and no others',
        'got: ' + JSON.stringify(got));
+    is(p.targetMargin === undefined && !/51\.4/.test(JSON.stringify(p)),
+       'the category profit margin the platform stamps on every piece is not among them');
+    is(p.supplierCost === undefined && p.supplierCode === undefined &&
+       p.supplierCurrency === undefined && p.poRef === undefined &&
+       p.grnRef === undefined && p.branchId === undefined,
+       'nor what was paid, who it was bought from, or which shop it sits in');
     is(typeof a.version === 'string' && a.version.length > 0,
        'and there is now a version, so a browser can tell a real change from a false alarm');
 

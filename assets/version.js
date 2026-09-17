@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.21.0',
-  build: 34,
-  builtAt: '2026-09-10T22:00:00Z',
-  notes: 'Orders and sales join the analytics, who is here is carried by Realtime, and collection pictures are uploaded rather than committed.'
+  version: '1.23.0',
+  build: 36,
+  builtAt: '2026-09-16T20:00:00Z',
+  notes: 'The unit weight joins the product details, now that the platform carries it onto the product.'
 };

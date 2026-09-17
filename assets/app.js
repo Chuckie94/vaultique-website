@@ -3121,7 +3121,12 @@
         (p.sku && p.sku.toLowerCase().indexOf(term) > -1) ||
         (p.category && p.category.toLowerCase().indexOf(term) > -1) ||
         (p.color && p.color.toLowerCase().indexOf(term) > -1) ||
-        (p.material && p.material.toLowerCase().indexOf(term) > -1);
+        (p.material && p.material.toLowerCase().indexOf(term) > -1) ||
+        /* Somebody who types a maker's name is looking for that maker.
+           The fifteen details are deliberately NOT searched: "Gender:
+           Women" would put every women's piece behind a search for "men",
+           which is the sort of result that reads as a broken shop. */
+        (p.brand && p.brand.toLowerCase().indexOf(term) > -1);
       return catOk && s;
     });
     /* Sort by what a piece actually costs today, not what the till holds:
@@ -3197,8 +3202,12 @@
     if (window.VBP_TRACK) window.VBP_TRACK.event('product_view', { sku: p.sku, label: p.name });
     var modal = $('#qv'); var body = $('#qvBody'); var imgWrap = $('#qvImg');
     resolvePrimary(p, function (src) { imgWrap.innerHTML = '<img alt="' + esc(p.name) + '" src="' + src + '">'; });
+    /* The quick view is a glance before deciding whether to open the piece
+       properly, so it gains the maker and nothing else. The fifteen belong
+       on the full page, which is one button away. */
     var attrs = [
       SHOP.showCategory ? ['Category', p.category] : null,
+      ['Brand', p.brand],
       ['Size', p.size], ['Colour', p.color], ['Material', p.material]
     ].filter(function (r) { return r && r[1]; });
     body.innerHTML =
@@ -3255,11 +3264,22 @@
     var specs = [
       SHOP.showCategory ? ['Category', p.category] : null,
       SHOP.showSku ? ['SKU', p.sku] : null,
+      ['Brand', p.brand],
       ['Size', p.size], ['Colour', p.color], ['Material', p.material]
-    ].filter(function (r) { return r && r[1]; });
+    ]
+      /* Then the platform's own fifteen, in the order it sends them. The
+         boxes left empty on Product Setup are not in the feed at all, so a
+         piece with three of them filled in shows three rows. */
+      .concat(detailRows(p))
+      .filter(function (r) { return r && r[1]; });
     var related = PRODUCTS.filter(function (x) { return x.category === p.category && x.sku !== p.sku; }).slice(0, 4);
     var recentItems = recent.map(bySku).filter(function (x) { return x && x.sku !== p.sku; }).slice(0, 4);
-    var desc = p.customDesc || buildDescription(p);
+    /* Three descriptions in order of who knows best. What the website's own
+       admin wrote for this piece wins, because it was written for this page.
+       Then what the shop typed into the platform, which until now never
+       arrived and so was never used. Only with neither does this file make
+       a sentence up out of the colour and the material. */
+    var desc = p.customDesc || p.description || buildDescription(p);
     var prList = reviewsFor(p.sku);
 
     host.innerHTML =
@@ -3402,6 +3422,17 @@
        leave the old name sitting in every product description. */
     return 'A considered piece from the ' + shopName() + ' edit' + tail +
       ' Thoughtfully selected for quality and quiet sophistication.' + close;
+  }
+  /* The details the platform sent, as rows for the specification table.
+     Each one arrives with its wording already on it rather than as the
+     short name the platform stores it under, so this file never holds a
+     second copy of those fifteen names to fall out of step with the feed's.
+     Anything malformed is skipped rather than drawn as a blank row. */
+  function detailRows(p) {
+    if (!p || !Array.isArray(p.details)) return [];
+    return p.details.map(function (d) {
+      return (d && d.label && d.value) ? [d.label, d.value] : null;
+    }).filter(Boolean);
   }
   function accordion(specs) {
     return '<div class="accordion">' +

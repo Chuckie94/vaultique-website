@@ -37,6 +37,93 @@ const POS_KEY =
 // one file knows.
 const STATE_ROW = String(process.env.POS_STATE_ROW || '100').trim();
 
+// THE DETAILS A LISTING NEEDS.
+//
+// The platform's build 379 added fifteen attributes to Product Setup — taken
+// from the supplier sheets the goods are actually bought against — and writes
+// them onto the product as `attrs`. They were never arriving here, because
+// this function builds a new object from a named list and `attrs` was not on
+// it. Everything the shop typed into those boxes was being dropped one step
+// short of the website it was typed for.
+//
+// WHY THE LABELS ARE HERE AND NOT ON THE STOREFRONT. The platform stores
+// `liningMaterial`, not "Lining Material". Something has to hold the wording.
+// Putting it in the storefront would mean two files having to agree about
+// fifteen names for ever; putting it here means the feed sends label and
+// value together and the page just prints them.
+//
+// WHY THIS LIST IS CLOSED, and it must stay closed. `attrs` is an object the
+// platform is free to add keys to. Passing it through whole would mean the
+// next field somebody adds over there — a costing note, a supplier remark —
+// arriving on the public website the day it is invented, with nobody having
+// decided that. So only these fifteen keys are read, and anything else in
+// `attrs` is dropped exactly as though it had been sent at the top level.
+//
+// The order is the platform's own: what it is made of, then its shape, then
+// what it is for, then how it packs.
+const DETAIL_FIELDS = [
+  ['outsoleMaterial', 'Outsole Material'],
+  ['midsoleMaterial', 'Midsole Material'],
+  ['liningMaterial', 'Lining Material'],
+  ['style', 'Style'],
+  ['shape', 'Shape'],
+  ['toeStyle', 'Toe Style'],
+  ['pattern', 'Pattern'],
+  ['closureType', 'Closure Type'],
+  ['decoration', 'Decoration'],
+  ['feature', 'Feature'],
+  ['application', 'Application'],
+  ['gender', 'Gender'],
+  ['season', 'Season'],
+  ['handleStraps', 'Number of Handle/Straps'],
+  ['packageSize', 'Single Package Size'],
+];
+
+// These are typed by hand into free-text boxes, so the only sane assumption
+// is that one day somebody will paste a whole supplier paragraph into one.
+// A detail is a few words; this keeps a page from being made unreadable by
+// a stray paste without throwing the answer away.
+const DETAIL_MAX = 120;
+
+function toDetails(attrs) {
+  if (!attrs || typeof attrs !== 'object') return [];
+  const out = [];
+  for (const [key, label] of DETAIL_FIELDS) {
+    const value = clean(attrs[key]);
+    // The platform already drops blanks on save, so an empty one here means
+    // an older record. Either way an unanswered box is not a detail.
+    if (!value) continue;
+    out.push({ label, value: value.slice(0, DETAIL_MAX) });
+  }
+  return out;
+}
+
+// THE SIXTEENTH, which lives somewhere else.
+//
+// The weight is not in `attrs`. The platform's build 379 listed Single Gross
+// Weight among the details a listing needs and deliberately built no box for
+// it, because the form already had one — "Unit weight (kg)", used to share a
+// consignment's freight out by weight — and a second box for the same figure
+// was the thing its no-duplicates rule existed to prevent.
+//
+// So it is a field of its own on the product rather than one of the fifteen,
+// and it is appended here so that the page still has ONE list to draw and
+// needs to know nothing about where each row came from.
+//
+// It is labelled "Unit Weight" rather than "Single Gross Weight" because that
+// is what the box it was typed into is called. A gross weight is the PACKED
+// weight of one unit and this is the piece's own; they are close enough to
+// share a box and not close enough to relabel behind the shop's back.
+function weightDetail(p) {
+  const n = Number(p.weight !== undefined ? p.weight : p.unitWeight);
+  // Nought is not a weight, and neither is a negative one or something that
+  // came through as text. A shop that never fills the box in shows no row.
+  if (!Number.isFinite(n) || n <= 0 || n > 100000) return null;
+  // 0.80 reads as 0.8, and 1.000 as 1.
+  const shown = String(Math.round(n * 1000) / 1000);
+  return { label: 'Unit Weight', value: shown + ' kg' };
+}
+
 // The ONLY fields permitted to reach the public. Everything else is dropped.
 function toSafeProduct(p) {
   if (!p || typeof p !== 'object') return null;
@@ -73,9 +160,44 @@ function toSafeProduct(p) {
     // already public. It is not, and must never become, `cost`: what the
     // shop paid stays behind this line forever.
     wasPrice: formerPrice(p),
+
+    // The maker. Typed on Product Setup, and until now it went no further
+    // than the platform's own screens.
+    brand: clean(p.brand),
+
+    // The shop's own words for the piece. The website has always been able
+    // to write a description of its own in the admin, and that still wins —
+    // but with nothing arriving from the platform, a shop that had already
+    // described every piece over there was being shown a sentence this file
+    // made up out of the colour and the material.
+    //
+    // Capped because it is a free-text box and a pasted supplier page would
+    // otherwise be carried to every browser on every load.
+    description: clean(p.description).slice(0, 2000),
+
+    // The fifteen, plus the weight that sits beside them. Label and value
+    // together, in one fixed order, already filtered down to the boxes that
+    // were actually filled in.
+    details: toDetails(p.attrs).concat(weightDetail(p) || []),
+
+    // What the platform lists a piece under when it arrived in several
+    // colours or sizes (its builds 381 and 382). Carried so that the group
+    // is on the website the day it is wanted; nothing draws it yet, and a
+    // piece that is not part of a set carries an empty string, which is
+    // every piece the shop had before those builds.
+    variantGroup: clean(p.variantGroup),
   };
-  // Deliberately omitted forever: cost, stock (number), id, vatable,
+  // Deliberately omitted forever: cost, supplierCost, supplierCurrency,
+  // targetMargin, supplierCode, supplier name and id, the purchase order and
+  // goods-received references, the branch, stock (number), id, vatable,
   // and anything outside this object.
+  //
+  // targetMargin is the one to keep in mind. The platform sets a profit
+  // margin against a category and stamps it onto every piece priced under
+  // it. The shop asked plainly that the margin never reach the website, and
+  // the reason it cannot is structural: this returns a new object built from
+  // named fields, so a field nobody listed is gone whether or not anybody
+  // remembered it existed.
 }
 
 // The names a till might use for the price before the current one. Only

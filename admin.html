@@ -1323,10 +1323,41 @@
     // pricing
     body.appendChild(priceBox(p, m));
 
+    // what the platform sent with this piece
+    /* The shop types these on Product Setup and could not see, from here,
+       whether any of them had arrived. Read-only on purpose: the platform is
+       where a piece is described, and two places to edit the same sentence
+       is how they come to disagree. */
+    if (p.details && p.details.length) {
+      var xWrap = document.createElement('div'); xWrap.className = 'field';
+      var xLbl = document.createElement('label'); xLbl.textContent = 'Details from the platform';
+      var xList = document.createElement('div'); xList.className = 'plat-details';
+      p.details.forEach(function (d) {
+        var row = document.createElement('div');
+        var b = document.createElement('b'); b.textContent = d.label + ': ';
+        row.appendChild(b);
+        row.appendChild(document.createTextNode(d.value));
+        xList.appendChild(row);
+      });
+      var xHint = document.createElement('div'); xHint.className = 'hint';
+      xHint.textContent = 'Typed on Product Setup in the platform, and shown on the product page. To change one, change it there.';
+      xWrap.appendChild(xLbl); xWrap.appendChild(xList); xWrap.appendChild(xHint);
+      body.appendChild(xWrap);
+    }
+
     // description
     var dWrap = document.createElement('div'); dWrap.className = 'field';
     var dLbl = document.createElement('label'); dLbl.textContent = 'Custom description (optional)';
     var dTa = document.createElement('textarea'); dTa.value = m.description || '';
+    /* The platform has a description box of its own and what is typed there
+       now reaches the website. Putting it in as the placeholder means the
+       shop can read what this piece will say without typing anything, and
+       can see that typing here replaces it. */
+    if (p.description) {
+      dTa.placeholder = p.description;
+      var dHint = document.createElement('div'); dHint.className = 'hint';
+      dHint.textContent = 'Left empty, the product page uses the description from the platform — the grey text in the box.';
+    }
     var dStat = document.createElement('span'); dStat.className = 'stat';
     var dBtn = document.createElement('button'); dBtn.className = 'btn btn-out btn-sm'; dBtn.textContent = 'Save description'; dBtn.style.marginTop = '6px';
     dBtn.addEventListener('click', function () {
@@ -1334,7 +1365,9 @@
       saveMeta(p.sku).then(function () { dStat.textContent = 'Saved ✓'; dStat.className = 'stat ok'; })
         .catch(function (e) { dStat.textContent = 'Error'; dStat.className = 'stat err'; });
     });
-    dWrap.appendChild(dLbl); dWrap.appendChild(dTa); dWrap.appendChild(dBtn); dWrap.appendChild(dStat);
+    dWrap.appendChild(dLbl); dWrap.appendChild(dTa);
+    if (dHint) dWrap.appendChild(dHint);
+    dWrap.appendChild(dBtn); dWrap.appendChild(dStat);
     body.appendChild(dWrap);
 
     wrap.appendChild(body);
