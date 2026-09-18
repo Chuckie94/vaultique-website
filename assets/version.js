@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.23.0',
-  build: 36,
-  builtAt: '2026-09-16T20:00:00Z',
-  notes: 'The unit weight joins the product details, now that the platform carries it onto the product.'
+  version: '1.24.0',
+  build: 37,
+  builtAt: '2026-09-18T14:00:00Z',
+  notes: 'One piece, not three: a piece that arrived in several colours or sizes is one card on the shelf, with the variations chosen on its own page.'
 };

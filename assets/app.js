@@ -2592,6 +2592,10 @@
     fillRow('row-acc', 'sec-acc', acc, false);
   }
   function fillRow(trackId, secId, list, markNew) {
+    /* BUILD 409. The rows on the home page group the same way the shop does.
+       Collapsed here rather than at each caller, because a row that was missed
+       would be the one place a jacket still appeared three times. */
+    list = collapseVariants(list || []);
     var track = document.getElementById(trackId);
     var sec = document.getElementById(secId);
     if (!track || !sec) return;
@@ -3107,6 +3111,121 @@
   }
 
   // ------------------------------------------------------------------ shop grid
+  /* ------------------------------------------------------ ONE PIECE, NOT THREE
+
+     BUILD 409. The platform splits a piece that arrived in several colours or
+     sizes into a separate product for each combination, each with its own code
+     and its own stock. That is right, and it stays: a Black Large and a Red
+     Small are different things to count, and sometimes to price.
+
+     What was wrong is that the shop drew one card per COMBINATION, so a jacket
+     in three colours filled the grid three times with the same photograph.
+
+     Grouped by CATEGORY AND NAME, at the shop owner's choosing: "grouping by
+     category and name is better so that products are not scattered". The
+     platform also stamps a variantGroup onto pieces it split, and this feed has
+     carried it since build 382 — but only pieces that went through Product
+     Setup have one. Anything entered through Itemised or Consignment carries an
+     empty string, and those are exactly the pieces that would otherwise be left
+     scattered. Name and category catch both.
+
+     NOTHING ABOUT BUYING CHANGES. The basket, the checkout and the stock are
+     keyed on the individual code exactly as they were; only the shelf is drawn
+     differently. */
+  function groupKey(p) {
+    return String((p && p.category) || '').trim().toLowerCase()
+         + '\u0001' + String((p && p.name) || '').trim().toLowerCase();
+  }
+
+  /* Every variation of the piece, in the order the feed sent them. Read from
+     PRODUCTS rather than from whatever list is on screen, because the picker on
+     a product page must offer the sizes a filter is currently hiding. */
+  function variantsOf(p) {
+    if (!p) return [];
+    var k = groupKey(p);
+    return PRODUCTS.filter(function (x) { return groupKey(x) === k; });
+  }
+
+  /* One entry per group, keeping the order the list arrived in.
+
+     The one kept is the first that can actually be bought. A card that opens on
+     a sold-out Small while the Large is on the shelf reads as a shop with
+     nothing in it, which is the opposite of true. */
+  function collapseVariants(list) {
+    var seen = {}, out = [];
+    list.forEach(function (p) {
+      var k = groupKey(p);
+      if (seen[k]) return;
+      seen[k] = 1;
+      var kin = list.filter(function (x) { return groupKey(x) === k; });
+      var pick = null;
+      for (var i = 0; i < kin.length; i++) { if (kin[i].available) { pick = kin[i]; break; } }
+      out.push(pick || kin[0]);
+    });
+    return out;
+  }
+
+  /* The chips on a product page, which become a CHOICE the moment the piece has
+     more than one variation. A shop with one Black Large still shows a plain
+     chip, exactly as before — nothing gains a control it has no use for.
+
+     Size and colour are chosen independently, so picking a size keeps the
+     colour where it can and falls back to the first piece in that size when the
+     pairing does not exist. A shop does not stock every combination and a
+     picker that offers ones it has not got is worse than no picker. */
+  function pickSibling(kin, size, color) {
+    var exact = kin.filter(function (x) {
+      return (x.size || '') === (size || '') && (x.color || '') === (color || '');
+    })[0];
+    if (exact) return exact;
+    var bySize = kin.filter(function (x) { return (x.size || '') === (size || ''); });
+    if (bySize.length) {
+      for (var i = 0; i < bySize.length; i++) { if (bySize[i].available) return bySize[i]; }
+      return bySize[0];
+    }
+    var byColor = kin.filter(function (x) { return (x.color || '') === (color || ''); });
+    if (byColor.length) {
+      for (var j = 0; j < byColor.length; j++) { if (byColor[j].available) return byColor[j]; }
+      return byColor[0];
+    }
+    return null;
+  }
+
+  function optionBlock(label, values, current, build) {
+    if (!values.length) return '';
+    if (values.length === 1 && values[0] === current) {
+      return '<div class="opt-block"><div class="lbl">' + esc(label) + '</div>' +
+             '<span class="opt-chip">' + esc(current) + '</span></div>';
+    }
+    return '<div class="opt-block"><div class="lbl">' + esc(label) + '</div>' +
+      values.map(function (v) {
+        var target = build(v);
+        if (!target) return '';
+        var on = (v === current);
+        var out = !target.available;
+        return '<button type="button" class="opt-chip opt-pick' + (on ? ' on' : '') + (out ? ' gone' : '') +
+               '" data-vsku="' + esc(target.sku) + '"' + (on ? ' aria-current="true"' : '') + '>' +
+               esc(v) + '</button>';
+      }).join('') + '</div>';
+  }
+
+  function variantOptionsHtml(p) {
+    var kin = variantsOf(p);
+    if (kin.length < 2) {
+      return (p.size ? '<div class="opt-block"><div class="lbl">Size</div><span class="opt-chip">' + esc(p.size) + '</span></div>' : '') +
+             (p.color ? '<div class="opt-block"><div class="lbl">Colour</div><span class="opt-chip">' + esc(p.color) + '</span></div>' : '');
+    }
+    var uniq = function (arr) {
+      var seen = {}, out = [];
+      arr.forEach(function (v) { if (v && !seen[v]) { seen[v] = 1; out.push(v); } });
+      return out;
+    };
+    var sizes  = uniq(kin.map(function (x) { return x.size || ''; }));
+    var colors = uniq(kin.map(function (x) { return x.color || ''; }));
+    return optionBlock('Size', sizes, p.size || '', function (v) { return pickSibling(kin, v, p.color || ''); }) +
+           optionBlock('Colour', colors, p.color || '', function (v) { return pickSibling(kin, p.size || '', v); });
+  }
+
   function currentList() {
     var term = searchTerm.toLowerCase().trim();
     var list = PRODUCTS.filter(function (p) {
@@ -3139,7 +3258,9 @@
     }
     else if (sortBy === 'name') list.sort(function (a, b) { return a.name.localeCompare(b.name); });
     else if (sortBy === 'available') list.sort(function (a, b) { return (b.available ? 1 : 0) - (a.available ? 1 : 0); });
-    return list;
+    /* Collapsed AFTER filtering and sorting, so a search for "black" still finds
+       the piece and opens it on the black one. */
+    return collapseVariants(list);
   }
   function renderChips() {
     var host = $('#chips'); if (!host) return;
@@ -3272,7 +3393,13 @@
          piece with three of them filled in shows three rows. */
       .concat(detailRows(p))
       .filter(function (r) { return r && r[1]; });
-    var related = PRODUCTS.filter(function (x) { return x.category === p.category && x.sku !== p.sku; }).slice(0, 4);
+    /* BUILD 409. Its own siblings are not "related pieces" — they are this
+       piece, and they are on the picker above. Offering the Large here as
+       though it were something else to look at is how a shop of four jackets
+       reads as a shop of one. */
+    var related = collapseVariants(
+      PRODUCTS.filter(function (x) { return x.category === p.category && groupKey(x) !== groupKey(p); })
+    ).slice(0, 4);
     var recentItems = recent.map(bySku).filter(function (x) { return x && x.sku !== p.sku; }).slice(0, 4);
     /* Three descriptions in order of who knows best. What the website's own
        admin wrote for this piece wins, because it was written for this page.
@@ -3295,8 +3422,7 @@
       taxHtml() +
       ((ratingsShown() && prList.length) ? '<div class="detail-rating">' + starsHtml(avgRating(prList)) + ' <a class="rating-link" id="ratingLink">' + avgRating(prList).toFixed(1) + ' (' + prList.length + ' review' + (prList.length > 1 ? 's' : '') + ')</a></div>' : '') +
       '<p class="desc">' + esc(desc) + '</p>' +
-      (p.size ? '<div class="opt-block"><div class="lbl">Size</div><span class="opt-chip">' + esc(p.size) + '</span></div>' : '') +
-      (p.color ? '<div class="opt-block"><div class="lbl">Colour</div><span class="opt-chip">' + esc(p.color) + '</span></div>' : '') +
+      variantOptionsHtml(p) +
       '<div class="avail-line ' + (p.available ? '' : 'out') + '"><span class="dot"></span>' +
         (p.available
           ? ((SHOP.showLowStock && p.lowStock) ? 'In stock — only a few left' : 'In stock — ready to order')
@@ -3341,6 +3467,14 @@
     // crumbs + wishlist + related
     host.querySelector('[data-home]').addEventListener('click', goHome);
     host.querySelector('[data-shop]').addEventListener('click', function () { goShop('All'); });
+    /* Choosing a variation opens that piece. Its own page, its own code, its own
+       stock line — the basket and the checkout never learn that a picker exists. */
+    Array.prototype.forEach.call(host.querySelectorAll('.opt-pick'), function (b) {
+      b.addEventListener('click', function () {
+        var target = b.getAttribute('data-vsku');
+        if (target && target !== p.sku) openProduct(target);
+      });
+    });
     /* These two are only drawn when their setting is on, so neither is
        guaranteed to be here. */
     var wd = $('#wishDetail');

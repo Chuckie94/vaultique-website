@@ -403,6 +403,17 @@ header.site.solid .brand .v{color:var(--navy)}
 .opt-block{margin:18px 0}
 .opt-block .lbl{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
 .opt-chip{display:inline-flex;align-items:center;border:1px solid var(--navy);color:var(--navy);padding:9px 16px;border-radius:3px;font-size:13px;letter-spacing:.04em;margin-right:8px}
+/* BUILD 409. A chip becomes a button where the piece has more than one size or
+   colour. Same shape as the plain chip beside it, so a shop with one of each
+   looks exactly as it did; the only new thing is that these can be pressed.
+   The chosen one is filled, and one with nothing left is faded rather than
+   hidden, because knowing the Large is sold out is worth more than pretending
+   it was never made. */
+.opt-chip.opt-pick{background:none;cursor:pointer;font-family:inherit;margin-bottom:8px}
+.opt-chip.opt-pick:hover{background:rgba(0,0,0,.04)}
+.opt-chip.opt-pick.on{background:var(--navy);color:#fff}
+.opt-chip.opt-pick.gone{opacity:.45}
+.opt-chip.opt-pick:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
 .avail-line{display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;margin:6px 0 4px}
 .avail-line .dot{width:8px;height:8px;border-radius:50%;background:var(--gold)}
 .avail-line.out .dot{background:#bbb}.avail-line.out{color:var(--muted)}
