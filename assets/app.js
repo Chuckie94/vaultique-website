@@ -450,7 +450,14 @@
      reserves nothing, holds nothing and deducts no stock: the POS is not
      told, because until an order is sent there is no order. */
   var CART_MEMO = 'vbp_cart';
+  /* The most of one piece the cart holds when the feed says nothing
+     tighter. netlify/functions/products.js caps what it sends at the same
+     number, so a figure below it is the stock itself. */
   var CART_MAX = 99;
+  /* Lines this page has had to cut back because fewer are left than were
+     in the cart: sku -> how many there had been. The panel says so on that
+     line until the customer changes it. */
+  var CART_CUT = {};
   /* Photos already worked out for the cart, kept for as long as the page
      lives. The panel is redrawn whole on every change, and without this
      every thumbnail would blink each time somebody tapped plus. */
@@ -1391,7 +1398,7 @@
      sent, so the message and the total agree with the panel. */
   function orderOfCart() {
     var lines = cartRows().filter(function (r) { return r.priced; })
-      .map(function (r) { return { product: r.product, qty: r.line.qty }; });
+      .map(function (r) { return { product: r.product, qty: Math.min(r.line.qty, r.limit) }; });
     return { lines: lines, single: null };
   }
   function orderTotal(order) {
@@ -2075,7 +2082,7 @@
         var v = (d && d.version) || '';
         /* No version means the feed could not fingerprint itself, and the
            honest reading of that is "assume it changed". */
-        if (v && LIVE.version && v === LIVE.version) return;
+        if (v && LIVE.version && v === LIVE.version) { takeCartLimits(list); return; }
         LIVE.version = v;
         PRODUCTS = list;
         redrawProducts();
@@ -2085,6 +2092,27 @@
            when it was drawn and stays until something better arrives. */
         LIVE.busy = false;
       });
+  }
+
+  /* How many of each piece the cart may hold moves with every sale, and
+     is left out of the version so that a sale in the shop does not redraw
+     the page under a visitor. It is taken in here instead: the figures
+     copied across, the cart brought back within them, and the buttons and
+     any open cart told. */
+  function takeCartLimits(list) {
+    var fresh = {}, moved = false;
+    list.forEach(function (p) { if (p && p.sku) fresh[p.sku] = p.maxQty; });
+    PRODUCTS.forEach(function (p) {
+      if (Object.prototype.hasOwnProperty.call(fresh, p.sku) && p.maxQty !== fresh[p.sku]) {
+        p.maxQty = fresh[p.sku];
+        moved = true;
+      }
+    });
+    /* Most refreshes find nothing moved, and an open cart is not redrawn
+       under somebody's thumb for nothing. */
+    if (!moved) return;
+    fitCartToStock();
+    afterCartChange();
   }
 
   /* Redraw everything the catalogue feeds, and nothing else.
@@ -2464,6 +2492,7 @@
     buildFilters();
     if (reviewsShown()) renderSiteReviews();
     updateWishCount();
+    fitCartToStock();
     updateCartCount();
     /* Opened before the products landed, the cart said "one moment". They
        have landed, so it can now say what it holds. */
@@ -2759,6 +2788,44 @@
     if (!isFinite(n) || n < 1) return 1;
     return n > CART_MAX ? CART_MAX : n;
   }
+  /* THE OWNER: "in cart, product quantity shouldn't add more than what is
+     in stock."
+
+     How many of one piece the cart will hold: as many as the shop has,
+     which the feed sends as maxQty, and never more than CART_MAX. A feed
+     from before it carried the figure, and the samples shown when there
+     is no feed at all, carry none, and then the cart stops at CART_MAX
+     exactly as it always did. */
+  function cartLimit(p) {
+    var m = p ? Math.floor(Number(p.maxQty)) : NaN;
+    if (!isFinite(m) || m < 1) return CART_MAX;
+    return m < CART_MAX ? m : CART_MAX;
+  }
+  /* Whether the stock, rather than the cart's own ceiling, is what stops
+     this piece at the quantity already in the cart. */
+  function allInCart(p, n) {
+    var cap = cartLimit(p);
+    return !!p && !!p.available && n > 0 && n >= cap && cap < CART_MAX;
+  }
+  /* Brings the cart back within what the shop has. Stock moves while a
+     cart waits in a browser -- a piece sells in the shop, or to somebody
+     else -- so a line holding more than is left is cut back to what is,
+     and marked so the panel can say why. A piece sold out altogether is
+     left alone: the panel already says so and leaves it out of the order. */
+  function fitCartToStock() {
+    var changed = false;
+    cart.forEach(function (line) {
+      var p = bySku(line.sku);
+      if (!p || !p.available) return;
+      var cap = cartLimit(p);
+      if (line.qty > cap) {
+        if (!CART_CUT[line.sku]) CART_CUT[line.sku] = line.qty;
+        line.qty = cap;
+        changed = true;
+      }
+    });
+    if (changed) saveCart();
+  }
   function saveCart() { store.set(CART_MEMO, JSON.stringify(cart)); }
   function cartLine(sku) {
     for (var i = 0; i < cart.length; i++) if (cart[i].sku === sku) return cart[i];
@@ -2789,7 +2856,10 @@
         priced: priced,
         unit: priced ? view.now : 0,
         unitText: priced ? view.nowText : '',
-        sub: priced ? view.now * line.qty : 0
+        sub: priced ? view.now * line.qty : 0,
+        limit: (p && p.available) ? cartLimit(p) : CART_MAX,
+        full: allInCart(p, line.qty),
+        cutFrom: CART_CUT[line.sku] || 0
       };
     });
   }
@@ -2806,7 +2876,10 @@
     if (!p || !canBuy(p)) return;
     var line = cartLine(p.sku);
     if (line) {
-      if (line.qty >= CART_MAX) { flashCartBtn(btn, 'That is the most we can add'); return; }
+      if (line.qty >= cartLimit(p)) {
+        flashCartBtn(btn, allInCart(p, line.qty) ? 'That is all we have' : 'That is the most we can add');
+        return;
+      }
       line.qty = clampQty(line.qty + 1);
       line.name = p.name;
     } else {
@@ -2821,12 +2894,17 @@
   function setCartQty(sku, qty) {
     var line = cartLine(sku);
     if (!line) return;
-    line.qty = clampQty(qty);
+    var p = bySku(sku);
+    qty = clampQty(qty);
+    if (p && p.available && qty > cartLimit(p)) qty = cartLimit(p);
+    line.qty = qty;
+    delete CART_CUT[sku];
     saveCart();
     afterCartChange();
   }
   function removeFromCart(sku) {
     cart = cart.filter(function (l) { return l.sku !== sku; });
+    delete CART_CUT[sku];
     saveCart();
     afterCartChange();
   }
@@ -2907,10 +2985,24 @@
      holds, so it is written here rather than at each of the three places
      one is drawn. */
   function paintCartBtn(btn) {
-    var n = cartQty(btn.getAttribute('data-cart-sku'));
-    btn.innerHTML = bagIcon() + (n ? 'In cart · ' + n : 'Add to cart');
-    btn.setAttribute('aria-label', n ? 'In your cart, ' + n + '. Add another' : 'Add to cart');
+    var sku = btn.getAttribute('data-cart-sku');
+    var n = cartQty(sku);
+    /* Everything the shop has of this piece is already in the cart, so
+       the button says so and stops, rather than taking a tap it cannot
+       honour. */
+    var full = allInCart(bySku(sku), n);
+    /* The words sit in their own span so that a phone, short of room, can
+       show the bag alone beside the buy button; data-n carries the count
+       it shows instead. The label is what a screen reader says either way. */
+    btn.innerHTML = bagIcon() + '<span class="btn-cart-t">' +
+      (!n ? 'Add to cart' : full ? 'In cart · ' + n + ' · all we have' : 'In cart · ' + n) + '</span>';
+    btn.setAttribute('aria-label', !n ? 'Add to cart'
+      : full ? 'In your cart, ' + n + '. That is all we have in stock'
+      : 'In your cart, ' + n + '. Add another');
+    btn.setAttribute('data-n', n ? String(n) : '');
     btn.classList.toggle('in-cart', !!n);
+    btn.classList.toggle('at-max', full);
+    btn.disabled = full;
   }
   function cartButton(p) {
     var b = el('button', 'btn btn-outline btn-cart');
@@ -2930,7 +3022,7 @@
   function flashCartBtn(btn, word) {
     if (!btn) return;
     btn.classList.add('is-flash');
-    btn.innerHTML = tickIcon() + esc(word);
+    btn.innerHTML = tickIcon() + '<span class="btn-cart-t">' + esc(word) + '</span>';
     clearTimeout(btn._cartFlash);
     btn._cartFlash = setTimeout(function () {
       btn.classList.remove('is-flash');
@@ -3080,11 +3172,19 @@
             ' aria-label="One fewer ' + esc(r.name) + '">&minus;</button>' +
           '<span class="qty-n" aria-live="polite">' + r.line.qty + '</span>' +
           '<button type="button" class="qty-btn" data-inc="' + esc(sku) + '"' +
-            (r.line.qty >= CART_MAX ? ' disabled' : '') +
+            (r.line.qty >= r.limit ? ' disabled' : '') +
             ' aria-label="One more ' + esc(r.name) + '">+</button>' +
           '<button type="button" class="cart-rm" data-rm="' + esc(sku) + '"' +
             ' aria-label="Remove ' + esc(r.name) + ' from your cart">Remove</button>' +
         '</div>' +
+        /* Why plus has stopped working, and why a number changed that the
+           customer did not change. Only while the line is at the stock:
+           a piece restocked since is neither "all we have" nor "only". */
+        (r.priced && r.full
+          ? '<div class="cart-cap">' + (r.cutFrom > r.line.qty
+              ? 'Only ' + r.line.qty + ' left, so this has come down from ' + r.cutFrom + '.'
+              : 'That is all we have in stock.') + '</div>'
+          : '') +
       '</div>' +
       '<div class="cart-sub serif">' + (r.priced ? esc(formatPrice(r.sub)) : '&mdash;') + '</div>' +
     '</div>';
@@ -3613,12 +3713,21 @@
       h.addEventListener('click', function () {
         var item = h.parentElement; var body = h.nextElementSibling;
         var open = item.classList.toggle('open');
+        /* A height of "none" cannot be animated from, so a panel opened
+           that way is given its real height first and closed from there. */
+        if (!open && body.style.maxHeight === 'none') {
+          body.style.maxHeight = body.firstElementChild.scrollHeight + 30 + 'px';
+          void body.offsetHeight;
+        }
         body.style.maxHeight = open ? body.firstElementChild.scrollHeight + 30 + 'px' : '0px';
       });
     });
-    // open the first by default
+    /* The first is open by default, and opened WITHOUT measuring it. This
+       runs before the product page is shown, while it is still hidden,
+       and a hidden panel measures nothing -- so it used to open 30px tall
+       and cut the product details off after the first line. */
     var first = $('.acc-item', root);
-    if (first) { first.classList.add('open'); var b = $('.acc-body', first); b.style.maxHeight = b.firstElementChild.scrollHeight + 30 + 'px'; }
+    if (first) { first.classList.add('open'); $('.acc-body', first).style.maxHeight = 'none'; }
   }
 
   // ------------------------------------------------------------------ lightbox

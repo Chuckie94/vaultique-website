@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.24.0',
-  build: 37,
-  builtAt: '2026-09-18T14:00:00Z',
-  notes: 'One piece, not three: a piece that arrived in several colours or sizes is one card on the shelf, with the variations chosen on its own page.'
+  version: '1.25.0',
+  build: 38,
+  builtAt: '2026-09-25T12:00:00Z',
+  notes: 'A tighter fit on phones, with smaller cards, buttons and icons; the cart stops at the stock; category pictures uploaded in the admin now show on the homepage, and saving the Homepage settings no longer wipes them.'
 };

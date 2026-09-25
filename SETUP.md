@@ -432,12 +432,23 @@ Two of these look like duplicates and are not. **Show reviews** decides whether
 the reviews you already have appear; **Customer reviews** decides whether new
 ones can be written. Turning submissions off leaves what you have on show.
 
-**About the low stock warning.** Your POS feed sends whether a piece is in stock
-and whether only a few are left, and never the count itself — that comparison
-happens on the server and only its answer reaches the browser. "A few" means
-three or fewer; to change it, add `LOW_STOCK_AT` to your Netlify environment
-variables (Site settings → Environment variables). The number still never
-reaches the website.
+**About the low stock warning.** Whether only a few are left is worked out on
+the server, and only the answer is sent for the warning. "A few" means three or
+fewer; to change it, add `LOW_STOCK_AT` to your Netlify environment variables
+(Site settings → Environment variables).
+
+**The cart stops at your stock.** A customer cannot put more of a piece in their
+cart than you have: once they hold all of it, the button says *all we have* and
+plus stops working. To do that the website has to be told how many of each piece
+a cart may hold, so the product feed now sends the stock count **up to 99**.
+Plainly: for anything with fewer than 99 left, somebody pressing plus in the
+cart could work out how many you have. Above 99 it says 99 and nothing more.
+
+Stock moves while a cart waits. If a piece sells in the shop and leaves fewer
+than a customer has in their cart, the cart comes down to what is left and says
+so on that line, and the WhatsApp order never asks for more than you have.
+Nothing is reserved by a cart: two customers can both have the last one in
+theirs, exactly as before.
 
 - **Checkout.** Ordering happens on WhatsApp, and these decide what gets asked
   for first. Anything you mark is collected in a short form when a customer taps
@@ -1030,10 +1041,11 @@ What a visitor would find: how many pieces are showing, how many are in stock,
 running low, or out of stock. Anything hidden from the website is counted
 separately rather than quietly left out.
 
-> **The website is never told how many of a piece are left.** The product feed
-> carries only *available* and *low stock* as yes-or-no answers; the stock count
-> itself never leaves the Business Platform. So this can tell you a piece is out
-> of stock and can never tell you how nearly. Restocking stays where it belongs.
+> **This card does not show how many of a piece are left.** It reads *available*
+> and *low stock*, which are yes-or-no answers. The feed does also carry how many
+> of each piece a cart may hold (see *The cart stops at your stock* under
+> Settings > Shopping), but that figure is there for the cart, not for counting.
+> Stock is still counted and restocked in the Business Platform.
 
 If this card says the feed could not be read, chase that before anything else on
 the page — it usually means the shop front is showing nothing.

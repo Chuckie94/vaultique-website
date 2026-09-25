@@ -98,7 +98,7 @@ const product = over => Object.assign({
        && typeof p.available === 'boolean',
        'and a product still carries exactly the fields the storefront reads');
     is(p.cost === undefined && p.stock === undefined && p.id === undefined,
-       'with cost, the stock count and the id still kept back');
+       'with cost, the stock field and the id still kept back');
 
     /* NAMED FIELDS ARE NOT ENOUGH, and this is the check that matters.
        Listing the ones to keep back only ever catches the ones somebody
@@ -114,10 +114,12 @@ const product = over => Object.assign({
                      'material', 'available', 'lowStock', 'wasPrice',
                      /* Added this round. The list gets longer; what it is
                         for does not change. */
-                     'brand', 'description', 'details', 'variantGroup'].sort();
+                     'brand', 'description', 'details', 'variantGroup',
+                     /* How many the cart may hold: the stock, capped at 99. */
+                     'maxQty'].sort();
     const got = Object.keys(p).sort();
     is(JSON.stringify(got) === JSON.stringify(ALLOWED),
-       'and a product carries exactly these fourteen fields and no others',
+       'and a product carries exactly these fifteen fields and no others',
        'got: ' + JSON.stringify(got));
     is(p.targetMargin === undefined && !/51\.4/.test(JSON.stringify(p)),
        'the category profit margin the platform stamps on every piece is not among them');
@@ -161,6 +163,44 @@ const product = over => Object.assign({
       const v = await versionOf(list);
       is(v !== base, what + ' changes the version, so every open browser redraws');
     }
+  }
+
+  /* ====================================================================== */
+  console.log('\nThe cart is told how many it may hold, and no more than that');
+  {
+    const feedFor = async (products) => {
+      global.fetch = async (url) => {
+        if (/site_settings/.test(String(url))) return { ok: true, json: async () => [] };
+        return { ok: true, json: async () => [{ data: { products } }] };
+      };
+      delete require.cache[require.resolve(FN + '/products.js')];
+      const h = require(FN + '/products.js').handler;
+      return JSON.parse((await h({ queryStringParameters: {} })).body);
+    };
+    const maxOf = async (stock) => (await feedFor([product({ stock })])).products[0].maxQty;
+
+    is(await maxOf(4) === 4, 'four left: the cart may hold four');
+    is(await maxOf(1) === 1, 'the last one: the cart may hold one');
+    is(await maxOf(0) === 0, 'sold out: none');
+    is(await maxOf(-2) === 0, 'a till that has gone below zero is still none');
+    is(await maxOf(400) === 99,
+       'four hundred: 99, the most the cart has ever held, so the rest of the count stays private');
+    is(await maxOf(0.5) === 1, 'part of a unit left is still one piece that can be asked for');
+    is(await maxOf('7') === 7, 'a count stored as text is still a count');
+
+    /* A sale changes the ceiling and nothing a visitor can see, and the
+       storefront redraws everything on screen when the version moves. So
+       a sale must NOT move it, or every open carousel would jump back to
+       its first card each time a piece sold. */
+    const a = await feedFor([product({ stock: 12 })]);
+    const b = await feedFor([product({ stock: 11 })]);
+    is(a.products[0].maxQty === 12 && b.products[0].maxQty === 11,
+       'a sale lowers the ceiling');
+    is(a.version === b.version,
+       'but leaves the version alone, so no open page is redrawn for it');
+    const c = await feedFor([product({ stock: 2 })]);
+    is(c.version !== a.version,
+       'while running low, which a visitor can see, still moves it');
   }
 
   /* ====================================================================== */

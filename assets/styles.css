@@ -1061,6 +1061,10 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .btn-cart.in-cart:hover{background:var(--gold-deep);color:#fff;border-color:var(--gold-deep)}
 .btn-cart.is-flash{background:var(--navy);color:#fff;border-color:var(--navy)}
 .card-info .wa-line .btn-cart{width:100%;margin-top:8px;padding:11px;font-size:11px;letter-spacing:.12em}
+/* Everything the shop has of the piece is already in the cart: the button
+   says so and rests, rather than inviting a tap it cannot honour. */
+.btn-cart.at-max:not(.is-flash),.btn-cart.at-max:not(.is-flash):hover{background:transparent;
+  color:var(--gold-deep);border-color:var(--gold-deep);opacity:.6;cursor:default}
 
 /* The panel */
 #cartModal .modal-card{max-width:520px}
@@ -1096,6 +1100,8 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
   text-transform:uppercase;margin-left:6px;padding:6px 2px;text-decoration:underline;
   text-underline-offset:3px;transition:color .2s}
 .cart-rm:hover{color:var(--err)}
+/* Why plus has stopped, or why a quantity came down on its own. */
+.cart-cap{font-size:11.5px;color:var(--accent-strong);line-height:1.5;margin-top:6px}
 
 /* The foot: what it comes to, what the shop says about tax, and what
    still has to happen next. */
@@ -1288,3 +1294,249 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .chat-wa{padding:8px 14px 0;text-align:center}
 .chat-wa a{font-size:11.5px;color:var(--wa-d);text-decoration:underline;text-underline-offset:3px}
 .chat-wa a:hover{color:var(--wa)}
+
+/* =====================================================================
+   PHONES: A TIGHTER FIT
+   ---------------------------------------------------------------------
+   THE OWNER: "make the layout and display on the phone smaller so that
+   the fit doesn't display bigger icons. Just for the phone."
+
+   Everything above was drawn for a desktop and only loosened for a
+   phone, so a 390px screen was being built out of desktop parts: a 74px
+   header, three round buttons of 46 to 56px stacked over the pieces, a
+   filter panel pinned across a third of the screen, one 470px category
+   card per row, and buttons whose words would not fit on one line. The
+   homepage came to nearly 16,000px of scrolling.
+
+   The block below only applies at phone width -- 560px and under -- and
+   sits last in the file so it wins over the rules above on order alone,
+   with no !important. Desktops are exactly as they were, and tablets too
+   but for the one rule just below, which says why. Nothing here takes
+   away anything a customer could use: the same things, smaller and
+   closer together.
+   ===================================================================== */
+
+/* With the menu links hidden there is nothing pushing the icons to the
+   right, so they sat bunched against the logo with an empty strip beside
+   them. This is the only rule here that reaches past phones: the strip
+   was there on every screen too narrow for the links. */
+@media(max-width:860px){
+  .nav-icons{margin-left:auto}
+}
+
+@media(max-width:560px){
+  :root{--nav-h:60px}
+  body{font-size:15px}
+  .wrap{padding:0 16px}
+
+  /* The strip along the top, and the header. */
+  .announce{font-size:10px;letter-spacing:.12em;padding:7px 12px}
+  .nav{gap:10px;padding:0 16px}
+  .brand-logo{height:38px}
+  .nav-icons{gap:4px}
+  .icon-btn svg{width:19px;height:19px}
+  .icon-btn .count{top:-2px;right:-3px;min-width:15px;height:15px;font-size:8.5px}
+  .menu-btn{gap:4px;margin-left:4px}
+  .menu-btn span{width:20px}
+
+  /* The menu that slides in. */
+  .mobile-menu{padding:18px}
+  .mm-top{margin-bottom:22px}
+  .mm-logo{height:40px}
+  .mobile-menu nav a{font-size:22px;padding:10px 0}
+
+  /* The three round buttons in the corner -- chat, WhatsApp and back to
+     top -- smaller, and tucked closer to the edge so they cover less of
+     the pieces underneath. */
+  .chat-fab{right:12px;bottom:12px;width:46px;height:46px}
+  .chat-fab svg{width:21px;height:21px}
+  .fab{right:12px;bottom:66px;width:46px;height:46px}
+  .fab svg{width:23px;height:23px}
+  .to-top{right:16px;bottom:120px;width:38px;height:38px}
+  .to-top svg{width:15px;height:15px}
+  /* With chat switched off its slot is empty, so WhatsApp takes it rather
+     than floating above a gap. */
+  body:has(#chatFab.hide) .fab{bottom:12px}
+  body:has(#chatFab.hide) .to-top{bottom:66px}
+
+  /* Type and spacing shared by every section. */
+  .eyebrow{font-size:9.5px;letter-spacing:.3em}
+  .section{padding:40px 0}
+  .section.tight{padding:30px 0}
+  .section-head{margin-bottom:24px}
+  .section-head h2{font-size:26px;margin-top:8px}
+  .section-head p{font-size:13.5px;margin-top:8px}
+  .btn{padding:12px 20px;font-size:11px;letter-spacing:.14em;gap:8px}
+  .btn svg{width:15px;height:15px}
+  .link-more{font-size:10.5px;letter-spacing:.16em}
+
+  /* The hero keeps the whole screen; its words come down a size. */
+  .hero{min-height:520px}
+  .hero-content{padding:0 20px 110px}
+  .hero-content h1{font-size:36px;margin-top:12px}
+  .hero-content p{font-size:14.5px;margin-top:16px}
+  .hero-cta{margin-top:28px;gap:10px}
+
+  /* The trust strip and the core values, which share its look. */
+  .trust-cell{padding:14px 10px;gap:10px;justify-content:flex-start}
+  .trust-cell svg{width:20px;height:20px}
+  .trust-cell .t{font-size:12px}
+  .trust-cell .s{font-size:10px;letter-spacing:.03em}
+
+  /* Collections two to a row instead of one, and a lone last card
+     spanning the row rather than leaving a hole beside it. */
+  .collections{grid-template-columns:repeat(2,1fr);gap:10px}
+  .collections > .col-card:last-child:nth-child(odd){grid-column:1/-1;aspect-ratio:16/9}
+  .col-card .ov{padding:12px}
+  .col-card .ov .k{font-size:8.5px;letter-spacing:.22em}
+  .col-card .ov .n{font-size:19px}
+  .soon-ribbon{top:10px;right:-38px;font-size:8px;padding:3px 36px}
+
+  /* Product cards, on the shop grid and in the rows on the homepage.
+     The two buttons share one row: buying on WhatsApp keeps its words,
+     and the cart beside it becomes its bag, wearing the count once the
+     piece is in the cart. Its words are still read out to anybody
+     using a screen reader, from the label every cart button carries. */
+  .grid{gap:18px 12px}
+  .card .badges{top:8px;left:8px;gap:4px}
+  .tag{font-size:8px;letter-spacing:.1em;padding:3px 7px}
+  .card .wish{top:8px;right:8px;width:30px;height:30px}
+  .wish svg{width:15px;height:15px}
+  .card-info{padding:8px 0 0}
+  .card-info .c{font-size:8px;letter-spacing:.14em}
+  .card-info .n{font-size:15px;margin:2px 0 1px}
+  .card-info .a{font-size:10.5px;min-height:14px}
+  .card-info .p{font-size:16px;margin-top:3px}
+  .card-info .p .px-was{font-size:11px}
+  .card-info .p .px-off{font-size:9px}
+  /* THE OWNER: "the buy on WhatsApp button is too big ... keep the words
+     for both, just make them smaller and equal size." So the two share
+     the row as equal halves, in smaller type, with their icons left out
+     to give the words the room; a label too long for one line wraps to
+     two, and the pair stay the same height. */
+  .card-info .wa-line{margin-top:7px;display:flex;gap:6px;align-items:stretch}
+  .card-info .wa-line .btn-wa,.card-info .wa-line .btn-cart{flex:1 1 0;width:auto;min-width:0;
+    min-height:32px;margin-top:0;padding:6px 4px;gap:0;font-size:8.5px;letter-spacing:.05em;
+    line-height:1.25;text-align:center}
+  /* The cart's outline is 1px each side; the same, in the button's own
+     green, keeps the two exactly the same width. */
+  .card-info .wa-line .btn-wa{border:1px solid var(--wa)}
+  .card-info .wa-line .btn-wa svg,.card-info .wa-line .btn-cart svg{display:none}
+  .cards-bordered .card,.cards-shadow .card{padding:8px}
+  .cards-framed .card{padding:9px}
+  .cards-bordered .card-info,.cards-shadow .card-info,.cards-framed .card-info{padding:10px 2px 0}
+  .row-head{margin-bottom:16px}
+  .row-head h2{font-size:24px;margin-top:4px}
+  /* Two and a bit cards across, so the row plainly scrolls. */
+  .carousel-track{gap:12px}
+  .carousel-track > *{flex:0 0 calc((100% - 12px) / 2.25)}
+
+  /* The shop. Its filter panel used to stay pinned under the header,
+     keeping a third of the screen while the pieces scrolled behind it;
+     on a phone it now scrolls away with the page. */
+  .shop-hero{padding:26px 0}
+  .shop-hero h1{font-size:30px;margin-top:6px}
+  .shop-toolbar{position:static;padding:10px 0}
+  .toolbar-inner{gap:8px}
+  .search-field svg{left:12px;width:15px;height:15px}
+  .search-field input:not([type=radio]):not([type=checkbox]){padding:8px 12px 8px 34px}
+  .chips{gap:6px}
+  .chip{font-size:10px;letter-spacing:.08em;padding:6px 12px}
+  .filters{gap:6px}
+  .select{padding:7px 12px;font-size:12px}
+  .stock-toggle{padding:6px 11px;font-size:12px;gap:6px}
+  .stock-toggle input{width:14px;height:14px}
+  .toolbar-end{gap:8px}
+  .result-count{font-size:11px}
+
+  /* A piece's own page. */
+  .detail{padding:16px 0 28px}
+  .crumbs{font-size:10px;margin-bottom:14px}
+  .detail-grid{gap:20px}
+  .gallery{gap:10px}
+  .gallery-thumbs{gap:8px}
+  .gallery-thumbs button{width:52px;height:65px}
+  .gal-nav{width:34px;height:34px}
+  .gal-nav svg{width:18px;height:18px}
+  .detail-info h1{font-size:26px;margin:4px 0 8px}
+  .detail-price{font-size:24px}
+  .detail-price .px-was{font-size:15px}
+  .detail-price .px-off{font-size:11px}
+  .desc{font-size:14px;line-height:1.7;margin:14px 0}
+  .opt-block{margin:12px 0}
+  .opt-chip{padding:7px 12px;font-size:12px;margin-right:6px}
+  .detail-cta{margin:16px 0;gap:8px}
+  .detail-cta .btn-wa{padding:13px;font-size:12px}
+  .detail-cta .btn-wa svg{width:17px;height:17px}
+  .acc-head{padding:13px 0;font-size:11.5px}
+  .prod-reviews{margin-top:40px}
+  .prod-videos{margin-top:36px}
+
+  /* The cart. */
+  .cart-actions .btn-wa{padding:13px;font-size:12px}
+  .cart-total .serif{font-size:23px}
+
+  /* Why us, help, delivery. */
+  .why-grid,.care-grid,.dl-grid{gap:14px}
+  .why-card{padding:22px 18px}
+  .why-card .ic{width:44px;height:44px;margin-bottom:12px}
+  .why-card .ic svg{width:20px;height:20px}
+  .why-card h3{font-size:19px}
+  .why-card p{font-size:13px;margin-top:6px}
+  .care-card,.dl-card{padding:20px 18px}
+  .care-card .ic,.dl-card .ic{width:40px;height:40px;margin-bottom:12px}
+  .care-card .ic svg,.dl-card .ic svg{width:19px;height:19px}
+  .care-card h3,.dl-card h3{font-size:20px;margin-bottom:6px}
+  .care-body{font-size:13.5px;margin-bottom:14px}
+  .dl-card .dl-l{font-size:13.5px}
+  .faq-q{padding:14px 2px;font-size:14px}
+  .faq-a .inner{font-size:13.5px}
+
+  /* The philosophy band, reviews and the lookbook. */
+  .ed-img{min-height:220px}
+  .ed-text{padding:32px 20px}
+  .ed-text h2{font-size:26px;margin:10px 0 12px}
+  .ed-text p{font-size:14px}
+  .ed-text .btn{margin-top:20px}
+  .testi-grid{gap:14px}
+  .testi{padding:22px 18px}
+  .testi .mark{font-size:54px}
+  .testi p{font-size:17px;margin:4px 0 12px}
+  .pr-item p{font-size:16px}
+  .ig-grid{gap:6px}
+
+  /* Rewards, the WhatsApp band, the promotional banner, the newsletter. */
+  .rewards-band{padding:32px 18px}
+  .rewards-band h2{font-size:26px}
+  .rewards-body{font-size:14px;margin-bottom:18px}
+  .wa-banner .inner{padding:40px 18px}
+  .wa-banner .ic{width:50px;height:50px;margin-bottom:14px}
+  .wa-banner .ic svg{width:26px;height:26px}
+  .wa-banner h2{font-size:28px}
+  .wa-banner p{font-size:14px;margin:12px auto 22px}
+  .promo{padding:48px 0}
+  .promo h2{font-size:26px}
+  .promo p{font-size:14px}
+  .nl-form{margin-top:18px}
+  .nl-form input{padding:12px 14px}
+
+  /* Visit us. */
+  .visit-info{padding:24px 18px}
+  .visit-info h2{font-size:26px}
+  .visit-row{padding:12px 0;gap:12px}
+  .visit-row svg{width:18px;height:18px}
+  .visit-row .val{font-size:14px}
+  .visit-map,.visit-map iframe{min-height:240px}
+
+  /* The footer: the brand across the top, the lists two to a row. */
+  .foot-top{grid-template-columns:1fr 1fr;gap:24px 18px;padding:40px 0 26px}
+  .foot-brand{grid-column:1/-1}
+  .foot-logo{height:64px}
+  .foot-brand p{font-size:13px;margin-top:10px}
+  .foot-social{margin-top:14px}
+  .foot-social a{width:34px;height:34px}
+  .foot-social svg{width:15px;height:15px}
+  .foot-col h4{font-size:10.5px;margin-bottom:12px}
+  .foot-col li{font-size:13px;margin-bottom:8px}
+  .foot-bottom{padding:16px 0;font-size:11px}
+}

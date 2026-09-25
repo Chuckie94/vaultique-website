@@ -56,12 +56,15 @@ psql -d <scratch db> -f tests/analytics-fixture.sql \
                      -f tests/analytics.sql     the analytics database
 VBP_TEST_DB=<url> node tests/analytics.roundtrip.cjs   browser to database, end to end
 node tests/chat.browser.cjs             the chat window, in a real browser
+node tests/cart-stock.browser.cjs       the cart stops at the stock
+node tests/phone-layout.browser.cjs     the phone layout, and a desktop left as it was
+node tests/collection-pictures.browser.cjs   uploaded category pictures on the homepage
 psql -d <scratch db> -f tests/chat-jobs-fixture.sql \
                      -f supabase-chat-jobs.sql \
                      -f tests/chat-jobs.sql     the job-enquiry filter
 ```
 
-The two browser ones need Playwright (`npm install playwright`); the two SQL
+The browser ones need Playwright (`npm install playwright`); the two SQL
 ones need any Postgres to point at, and the round trip skips itself politely
 when it is given none.
 

@@ -143,12 +143,15 @@ function toSafeProduct(p) {
     // colour blank on the website for everything entered through procurement.
     color: clean(p.color) || clean(p.colour),
     material: clean(p.material),
-    // Availability is a boolean ONLY. The raw stock count never leaves here.
+    // Whether it can be bought at all.
     available: toNumber(p.stock) > 0,
     // And so is scarcity. The shop can show "only a few left" without the
     // count ever crossing this line: the comparison happens here and only
     // its answer is sent. LOW_STOCK_AT sets where "a few" begins.
     lowStock: toNumber(p.stock) > 0 && toNumber(p.stock) <= LOW_STOCK_AT,
+    // How many of this piece a customer's cart may hold. See cartCeiling
+    // below: it is the stock count, but never more than CART_CEILING.
+    maxQty: cartCeiling(p.stock),
     // The price this piece used to be, IF the till happens to record one.
     // Some point of sale systems keep a "was" price beside the current one
     // and some do not; this passes it through when it is there so the shop
@@ -189,8 +192,9 @@ function toSafeProduct(p) {
   };
   // Deliberately omitted forever: cost, supplierCost, supplierCurrency,
   // targetMargin, supplierCode, supplier name and id, the purchase order and
-  // goods-received references, the branch, stock (number), id, vatable,
-  // and anything outside this object.
+  // goods-received references, the branch, the stock field itself (maxQty
+  // above is the only figure taken from it), id, vatable, and anything
+  // outside this object.
   //
   // targetMargin is the one to keep in mind. The platform sets a profit
   // margin against a category and stamps it onto every piece priced under
@@ -232,13 +236,52 @@ function formerPrice(p) {
 // environment variables; the number itself is never sent to the browser.
 const LOW_STOCK_AT = toNumber(process.env.LOW_STOCK_AT) || 3;
 
+// THE MOST OF ONE PIECE A CART MAY HOLD.
+//
+// THE OWNER: "in cart, product quantity shouldn't add more than what is in
+// stock." The cart lives in the customer's browser, so to stop at the stock
+// it has to be told the stock -- and that is a real change, because until
+// now this file sent only "in stock" and "only a few left" and never a
+// number.
+//
+// So it is told as little as does the job: the count, but never more than
+// the 99 the website's cart has always stopped at. A piece with 3 left says
+// 3 -- and a visitor pressing plus could work that out from the cart anyway,
+// which is unavoidable once the cart stops at the stock. A piece with 400
+// left says 99, and nobody learns anything about the other 301.
+//
+// This must match CART_MAX in assets/app.js: below it the storefront reads
+// the figure as the stock and says "that's all we have".
+const CART_CEILING = 99;
+
+function cartCeiling(stock) {
+  const n = toNumber(stock);
+  if (n <= 0) return 0;
+  // A part-unit left over (0.5 of something sold by the metre) is still in
+  // stock, and still one piece a customer can ask for.
+  return Math.min(Math.max(1, Math.floor(n)), CART_CEILING);
+}
+
+// The feed WITHOUT the cart ceiling, for the fingerprint below. The ceiling
+// moves with every sale, and the storefront redraws whatever is on screen
+// when the fingerprint changes -- which would send every open carousel back
+// to its first card each time a piece sold in the shop. It changes nothing a
+// visitor can see, so the storefront picks it up quietly instead.
+function withoutCeiling(products) {
+  return products.map((p) => {
+    const out = Object.assign({}, p);
+    delete out.maxQty;
+    return out;
+  });
+}
+
 // A short, stable fingerprint of the whole public feed.
 //
-// It is taken from the SAFE products — the ones about to be sent — so it
-// changes when and only when something a visitor could see changes: a piece
-// added or removed, renamed, repriced, resized, restocked to zero or back. It
-// cannot leak anything, because it is derived from what is already on its way
-// out of here.
+// It is taken from the SAFE products — the ones about to be sent, less the
+// cart ceiling (see withoutCeiling above) — so it changes when and only when
+// something a visitor could see changes: a piece added or removed, renamed,
+// repriced, resized, restocked to zero or back. It cannot leak anything,
+// because it is derived from what is already on its way out of here.
 const crypto = require('crypto');
 function fingerprint(products) {
   try {
@@ -397,7 +440,7 @@ exports.handler = async function (event) {
         // compares it with the last one it drew and redraws only when it has
         // actually changed, so a refresh triggered by a signal that turned out
         // to mean nothing costs one small request and no repaint at all.
-        version: fingerprint(products),
+        version: fingerprint(withoutCeiling(products)),
       }),
     };
   } catch (err) {
