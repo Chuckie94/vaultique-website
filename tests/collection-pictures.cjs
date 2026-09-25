@@ -91,8 +91,20 @@ is(sApp.replace(/\b[sv]\b/g, 'x') === sHome.replace(/\b[sv]\b/g, 'x'),
 hdr('The storefront prefers what was uploaded, and still falls back to a file');
 is(/HOME && HOME\['col_' \+ slug\(c\)\]/.test(app),
    'it looks for the uploaded picture first');
-is(/if \(!pic\) pic = '\/images\/collection-' \+ slug\(c\) \+ '\.jpg';/.test(app),
+is(/pic = '\/images\/collection-' \+ slug\(c\) \+ '\.jpg';/.test(app),
    'and falls back to the file a shop may have been using for months');
+
+/* THE BUG THIS BUILD FIXES. preload() says "no" whenever the admin is
+   connected (USE_LOCAL is false), so an uploaded picture routed through it
+   was never drawn, and every card stayed navy and gold. */
+{
+  const at = app.indexOf('function buildCollections');
+  const body = app.slice(at, app.indexOf('observeReveals();', at));
+  const up = body.indexOf('if (pic) {');
+  const pre = body.indexOf('preload(pic,');
+  is(up !== -1 && pre > up && /new Image\(\)/.test(body.slice(up, pre)),
+     'an uploaded picture is loaded directly, not through preload(), which refuses when the admin is connected');
+}
 is(/preload\(pic,/.test(app) && /bgStyle\(pic\)/.test(app),
    'and draws whichever of the two it found');
 
@@ -105,6 +117,8 @@ is(/collapsible: true/.test(home),
    'the section folds away, being one row per category');
 is(/cats\.slice\(0, 24\)/.test(home),
    'and a platform with a hundred categories cannot make the page unusable');
+is(/\/\^col_\/\.test\(k\) && !\(k in values\)/.test(home),
+   'saving keeps the pictures of categories not on screen, rather than wiping them');
 is(/cats\.length \?/.test(home),
    'a shop whose catalogue will not load simply does not see the section');
 

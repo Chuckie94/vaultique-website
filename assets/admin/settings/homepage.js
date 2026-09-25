@@ -129,6 +129,8 @@
           build(cats.slice(0, 24));
         });
 
+      var stored = null;   // the row as it was loaded, see beforeSave
+
       function build(cats) {
       ctx.ui.form(host, {
         key: 'homepage',
@@ -297,6 +299,7 @@
         }] : []),
 
         afterLoad: function (values, form) {
+          stored = values;
           /* The saved list is reconciled against the sections the site
              actually has, so a shop never sees one that has gone and
              always sees one that has arrived. */
@@ -311,6 +314,14 @@
              uploader, and one array so the storefront can just walk it. */
           values.lookImages = [1, 2, 3, 4, 5, 6]
             .map(function (n) { return values['look' + n] || ''; });
+          /* A save writes the whole row, and the form only holds a slot
+             for the categories the catalogue sent this time. Without this,
+             saving -- even just the announcement bar -- wiped the picture
+             of every category not on screen, and every picture at all on
+             a day the catalogue was slow to answer. */
+          Object.keys(stored || {}).forEach(function (k) {
+            if (/^col_/.test(k) && !(k in values) && stored[k]) values[k] = stored[k];
+          });
           return values;
         }
       });

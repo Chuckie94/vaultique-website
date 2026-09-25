@@ -2552,10 +2552,22 @@
          uploaded, so a shop that has been dropping files in the images
          folder for months loses nothing by taking this build. */
       var pic = (HOME && HOME['col_' + slug(c)]) || '';
-      if (!pic) pic = '/images/collection-' + slug(c) + '.jpg';
-      preload(pic, function (ok) {
-        if (ok) { ph.classList.remove('fallback'); ph.style.cssText = bgStyle(pic); }
-      });
+      /* AN UPLOADED PICTURE IS LOADED DIRECTLY, not through preload().
+         preload() answers "no" whenever the admin is connected, because
+         it exists to stop the site probing the images folder for files
+         that are not there -- and routing the uploaded picture through
+         it meant every picture uploaded in the admin was thrown away and
+         the card stayed navy and gold. */
+      if (pic) {
+        var probe = new Image();
+        probe.onload = function () { ph.classList.remove('fallback'); ph.style.cssText = bgStyle(pic); };
+        probe.src = pic;
+      } else {
+        pic = '/images/collection-' + slug(c) + '.jpg';
+        preload(pic, function (ok) {
+          if (ok) { ph.classList.remove('fallback'); ph.style.cssText = bgStyle(pic); }
+        });
+      }
       var ov = el('div', 'ov');
       ov.innerHTML = '<div class="k">Collection</div><div class="n serif">' + esc(c) + '</div>' +
         (has ? '<div class="go">Explore →</div>' : '<div class="go soon-go">Coming soon</div>');
