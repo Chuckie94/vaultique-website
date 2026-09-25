@@ -332,6 +332,14 @@ Push the updated folder to your repo (or run `netlify deploy --prod`).
   The tagline and trading hours used to sit under Site Content and now live
   here, so the same value is not kept in two places.
 
+  **The map in Find us** pins the places listed here: the physical address,
+  plus any **Other shop locations** you add (a name and an address each). With
+  one place it is a Google map pinned on the shop; with several, a map with a
+  red pin on every one of them. Each address is looked up when you press Save,
+  which takes about a second per new address. If one cannot be found you are
+  told which, and it is listed without a pin — write it the way Google Maps
+  shows it, with the town.
+
 ### Settings > Branding & Appearance
 
 Your logos, colours, fonts and the shapes the storefront uses. A live preview
@@ -522,6 +530,8 @@ in Newsletter.
 - **Testimonials.** Quotes you write yourself, shown after the reviews customers
   actually leave. Real reviews always come first and yours fill what is left.
 - **Lookbook photos.** Six squares for the lookbook band.
+- **Philosophy band.** The photo beside "The Vaultique philosophy". Leave it
+  empty and the navy text fills the band on its own, with no blank space.
 - **Promotional banner.** A band for a sale or an announcement. It stays hidden
   until you switch it on *and* give it a headline, and you place it in the
   section list below.

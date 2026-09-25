@@ -59,6 +59,8 @@ node tests/chat.browser.cjs             the chat window, in a real browser
 node tests/cart-stock.browser.cjs       the cart stops at the stock
 node tests/phone-layout.browser.cjs     the phone layout, and a desktop left as it was
 node tests/collection-pictures.browser.cjs   uploaded category pictures on the homepage
+node tests/shop-locations.cjs           the admin finds each shop location for the map
+node tests/visit-map.browser.cjs        the map pins those places (needs npm install leaflet)
 psql -d <scratch db> -f tests/chat-jobs-fixture.sql \
                      -f supabase-chat-jobs.sql \
                      -f tests/chat-jobs.sql     the job-enquiry filter

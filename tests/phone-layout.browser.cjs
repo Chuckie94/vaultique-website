@@ -135,14 +135,22 @@ const settle = (page, ms) => page.waitForTimeout(ms || 500);
     is(cols.length === 2 && cols[0].y === cols[1].y && cols[0].w < 200,
        'categories are two to a row', JSON.stringify(cols));
     is(cols.length === 2 && cols[0].h < 260, 'and each is well under half the height it was', JSON.stringify(cols));
-    const rowCards = await page.evaluate(() => Array.from(document.querySelectorAll('#row-new > .card'))
-      .map(c => { const b = c.getBoundingClientRect(); return b.width ? { x: Math.round(b.left), y: Math.round(b.top) } : null; })
-      .filter(Boolean));
-    is(rowCards.length === Math.min(4, rowCards.length) && rowCards.length >= 2 &&
-       rowCards[0].y === rowCards[1].y && (rowCards.length < 3 || rowCards[2].y > rowCards[0].y),
-       'the homepage rows are a two-column grid, not a sideways strip', JSON.stringify(rowCards));
-    const sideRow = await page.evaluate(() => { const t = document.querySelector('#row-new'); return t.scrollWidth - t.clientWidth; });
-    is(sideRow <= 0, 'with nothing hidden off to the right', String(sideRow));
+    const strip = await page.evaluate(() => {
+      const t = document.querySelector('#row-new');
+      const c = Array.from(t.children).map(x => Math.round(x.getBoundingClientRect().top));
+      return { sideways: t.scrollWidth > t.clientWidth, oneLine: c.every(y => y === c[0]) };
+    });
+    is(strip.sideways && strip.oneLine, 'the homepage rows still scroll sideways, as on every screen', JSON.stringify(strip));
+    await page.evaluate(() => { const e = document.querySelector('#philosophy'); window.scrollTo(0, e.getBoundingClientRect().top + scrollY - 100); });
+    await settle(page, 1200);
+    const band = await page.evaluate(() => {
+      const img = document.querySelector('#philosophy .ed-img');
+      const txt = document.querySelector('#philosophy .ed-text').getBoundingClientRect();
+      const sec = document.querySelector('#philosophy').getBoundingClientRect();
+      return { imgShown: img.getBoundingClientRect().height, gapAbove: Math.round(txt.top - sec.top) };
+    });
+    is(band.imgShown === 0 && band.gapAbove === 0,
+       'with no philosophy photo, its empty half is taken away rather than left as a blank band', JSON.stringify(band));
     const tall = await page.evaluate(() => document.documentElement.scrollHeight);
     is(tall < 12500, 'the whole homepage is over a quarter shorter to scroll (was 15,759px)', String(tall));
 

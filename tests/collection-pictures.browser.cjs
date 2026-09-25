@@ -106,6 +106,7 @@ function serve() {
   const server = await serve();
   const base = 'http://127.0.0.1:' + server.address().port;
   HOMEPAGE.col_bags = base + UPLOADED;
+  HOMEPAGE.philosophyImage = base + UPLOADED;
   const browser = await chromium.launch();
   const page = await browser.newPage();
 
@@ -132,6 +133,16 @@ function serve() {
        'the card whose picture was uploaded in the admin shows that picture', JSON.stringify(bags));
     is(!!women && !women.bg && women.fallback === true,
        'and a category with nothing uploaded keeps the navy and gold card', JSON.stringify(women));
+
+    console.log('\nThe philosophy band, with a photo uploaded in Settings > Homepage');
+    await page.waitForTimeout(400);
+    const band = await page.evaluate(() => {
+      const img = document.querySelector('#philosophy .ed-img');
+      return { bg: img.style.backgroundImage, hidden: img.classList.contains('no-photo'),
+               h: Math.round(img.getBoundingClientRect().height) };
+    });
+    is(band.bg.indexOf('collection-bags-1.png') !== -1 && !band.hidden && band.h > 0,
+       'the uploaded photo fills the photo half instead of it being taken away', JSON.stringify(band));
   } catch (e) {
     fail('threw: ' + (e && e.message || e));
   } finally {

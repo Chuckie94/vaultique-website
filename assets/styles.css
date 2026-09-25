@@ -479,6 +479,13 @@ header.site.solid .brand .v{color:var(--navy)}
 .editorial{position:relative;overflow:hidden}
 .ed-grid{display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:0}
 .ed-img{aspect-ratio:1/1;background:linear-gradient(150deg,var(--navy-2),var(--navy-3));background-size:cover;background-position:center;min-height:420px}
+/* No photo to show: the text band takes the whole width (see
+   checkEditorialPhoto in app.js). */
+.ed-img.no-photo{display:none}
+.ed-grid:has(.ed-img.no-photo){grid-template-columns:1fr}
+.ed-grid:has(.ed-img.no-photo) .ed-text{align-items:center;text-align:center}
+.ed-grid:has(.ed-img.no-photo) .ed-text .btn{align-self:center}
+.ed-grid:has(.ed-img.no-photo) .ed-text p{margin:0 auto}
 .ed-text{padding:clamp(40px,7vw,90px);background:var(--navy);color:var(--cream);height:100%;display:flex;flex-direction:column;justify-content:center}
 .ed-text .eyebrow{color:var(--gold-2)}
 .ed-text h2{font-family:var(--font-head);font-weight:500;font-size:clamp(30px,4.4vw,48px);color:#fff;line-height:1.08;margin:14px 0 18px}
@@ -549,6 +556,9 @@ header.site.solid .brand .v{color:var(--navy)}
 .visit-row .val a:hover{color:var(--gold-deep)}
 .visit-map{min-height:380px;background:var(--paper)}
 .visit-map iframe{width:100%;height:100%;border:0;display:block;min-height:380px;filter:grayscale(.3) contrast(1.05)}
+/* Several shops: an OpenStreetMap map with a red pin on each. */
+.visit-pins{width:100%;height:100%;min-height:380px}
+.visit-pin{background:none;border:none}
 
 /* =====================================================================
    FOOTER
@@ -1427,15 +1437,9 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
   .cards-bordered .card-info,.cards-shadow .card-info,.cards-framed .card-info{padding:10px 2px 0}
   .row-head{margin-bottom:16px}
   .row-head h2{font-size:24px;margin-top:4px}
-  /* THE OWNER, of a row that scrolled sideways: "that space down, why
-     can't other products occupy it". On a phone a sideways row showed two
-     pieces and left the rest of the screen empty, so the rows on the
-     homepage become the same two-column grid as the shop: four pieces,
-     two by two, with "View all" for the rest. */
-  .carousel-track{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px;
-    overflow:visible;scroll-snap-type:none;padding-bottom:0}
-  .carousel-track > *{min-width:0}
-  .carousel-track > :nth-child(n+5){display:none}
+  /* Two and a bit cards across, so the row plainly scrolls sideways. */
+  .carousel-track{gap:12px}
+  .carousel-track > *{flex:0 0 calc((100% - 12px) / 2.25)}
 
   /* The shop. Its filter panel used to stay pinned under the header,
      keeping a third of the screen while the pieces scrolled behind it;
@@ -1532,7 +1536,7 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
   .visit-row{padding:12px 0;gap:12px}
   .visit-row svg{width:18px;height:18px}
   .visit-row .val{font-size:14px}
-  .visit-map,.visit-map iframe{min-height:240px}
+  .visit-map,.visit-map iframe,.visit-pins{min-height:240px}
 
   /* The footer: the brand across the top, the lists two to a row. */
   .foot-top{grid-template-columns:1fr 1fr;gap:24px 18px;padding:40px 0 26px}

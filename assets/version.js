@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.25.1',
-  build: 39,
-  builtAt: '2026-09-25T15:00:00Z',
-  notes: 'On phones: the buy and cart buttons are equal halves of the card, the homepage rows are a two-by-two grid instead of a sideways strip, and Discover on the Women and Men rows opens that collection in the shop.'
+  version: '1.26.0',
+  build: 41,
+  builtAt: '2026-09-25T20:00:00Z',
+  notes: 'Find us: the "Based in Zambia, delivering nationwide" heading is gone, and the map pins the shop address from General plus any other shop locations listed there, one red pin each.'
 };

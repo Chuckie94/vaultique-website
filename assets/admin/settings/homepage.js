@@ -52,6 +52,8 @@
     promoCtaLink: '',
     promoImage: '',
 
+    philosophyImage: '',
+
     sections: [],
 
     testimonials: [],
@@ -191,6 +193,17 @@
                 maxLength: 600 },
               { type: 'textarea', name: 'storyP2', label: 'Second paragraph', rows: 4,
                 maxLength: 600, hint: 'Leave either blank to drop that paragraph.' }
+            ]
+          },
+          {
+            title: 'Philosophy band',
+            note: 'The band with "The Vaultique philosophy" in navy beside a photo. ' +
+                  'Without a photo the navy text fills the band on its own.',
+            fields: [
+              { type: 'image', name: 'philosophyImage', label: 'Photo', previewOn: 'light',
+                prefix: 'homepage/philosophy', maxSize: 900 * 1024,
+                hint: 'Square or portrait works best: it sits beside the text on a computer ' +
+                      'and above it on a phone.' }
             ]
           },
           {

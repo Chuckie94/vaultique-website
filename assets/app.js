@@ -640,6 +640,9 @@
       applyHeroCta(h);
     }
 
+    // The philosophy band's photo, when one has been uploaded.
+    if (h.philosophyImage) checkEditorialPhoto(h.philosophyImage);
+
     // Our story. Once this section has been saved, a paragraph left empty
     // is meant to be gone rather than left as the words the site shipped.
     setText('#storyHeading', h.storyHeading);
@@ -4066,7 +4069,33 @@
   ];
 
   // ------------------------------------------------------------------ init
+  /* THE PHILOSOPHY BAND'S PHOTO. The band is half photo, half navy text.
+     The photo is the one uploaded in Settings > Homepage > Philosophy band
+     or, failing that, a file called images/editorial-1.jpg -- which no shop
+     had been asked to supply. Where neither was there, the photo half was an
+     empty block: on a phone, 400px of blank between the new arrivals and the
+     text. So the photo is tried, and if it does not load its half is taken
+     away and the text band stands on its own.
+
+     Called once with no address (the file), and again with the uploaded one
+     when the homepage settings arrive. Each try remembers what it was for,
+     so a slow failure on the file cannot hide an upload that arrived after. */
+  function checkEditorialPhoto(uploaded) {
+    $all('.ed-img').forEach(function (box) {
+      if (uploaded) box.style.backgroundImage = "url('" + uploaded + "')";
+      var m = /url\(['"]?([^'")]+)['"]?\)/.exec(box.style.backgroundImage || '');
+      if (!m) { box.classList.add('no-photo'); return; }
+      var want = m[1];
+      box._photo = want;
+      box.classList.remove('no-photo');
+      var probe = new Image();
+      probe.onerror = function () { if (box._photo === want) box.classList.add('no-photo'); };
+      probe.src = want;
+    });
+  }
+
   function bindStatic() {
+    checkEditorialPhoto();
     $all('[data-go-home]').forEach(function (e) { e.addEventListener('click', goHome); });
     $all('[data-go-shop]').forEach(function (e) { e.addEventListener('click', function () { goShop('All'); }); });
     $all('[data-discover]').forEach(function (e) {
@@ -4222,6 +4251,78 @@
   }
 
 
+  /* THE MAP IN THE VISIT PANEL.
+
+     THE OWNER: "the red location icon should be where the store is
+     currently listed. If 10 places are listed, it should show exactly
+     those places." It used to be a map of the word "Zambia", so the pin sat
+     in the middle of the country whatever the address said.
+
+     Now it is drawn from the places in Settings > General -- the main
+     address and any other shop locations -- whose positions the admin
+     looks up when they are saved (mapPoints):
+       - one place: Google's map, pinned on exactly that spot;
+       - several: an OpenStreetMap map with a red pin on each and every
+         one, zoomed to fit them all, each pin naming its shop;
+       - none looked up yet (a shop that has not saved General since this
+         build): Google's map, searching for the address as written, which
+         still puts the pin on the shop rather than on the country. */
+  var LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+  var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+  function applyVisitMap(s) {
+    var frame = $('#visitMap');
+    if (!frame) return;
+    var pts = (Array.isArray(s.mapPoints) ? s.mapPoints : []).filter(function (p) {
+      return p && isFinite(Number(p.lat)) && isFinite(Number(p.lng));
+    });
+    if (pts.length > 1) { drawManyPins(frame, pts); return; }
+    if (frame.tagName !== 'IFRAME') {             // was several, now one or none
+      var f = document.createElement('iframe');
+      f.id = 'visitMap'; f.loading = 'lazy'; f.referrerPolicy = 'no-referrer-when-downgrade';
+      frame.parentNode.replaceChild(f, frame);
+      frame = f;
+    }
+    var q = pts.length === 1 ? pts[0].lat + ',' + pts[0].lng
+      : [String(s.address || '').replace(/\s*\n\s*/g, ', '), s.city, s.country].filter(Boolean).join(', ');
+    if (!q) return;
+    frame.src = 'https://www.google.com/maps?q=' + encodeURIComponent(q) + '&z=15&output=embed';
+    frame.title = 'Map: ' + (pts.length === 1 ? pts[0].name : q);
+  }
+  function drawManyPins(frame, pts) {
+    var box = el('div', 'visit-pins');
+    box.setAttribute('role', 'region');
+    box.setAttribute('aria-label', 'Map of our ' + pts.length + ' locations');
+    frame.parentNode.replaceChild(box, frame);
+    box.id = 'visitMap';
+    function draw() {
+      var L = window.L;
+      if (!L) return;
+      var map = L.map(box, { scrollWheelZoom: false });
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+      var pin = L.divIcon({ className: 'visit-pin', iconSize: [28, 38], iconAnchor: [14, 37], popupAnchor: [0, -32],
+        html: "<svg viewBox='0 0 24 32' width='28' height='38' aria-hidden='true'><path d='M12 0C5.4 0 0 5.3 0 11.9 0 20.8 12 32 12 32s12-11.2 12-20.1C24 5.3 18.6 0 12 0z' fill='#d93025'/><circle cx='12' cy='12' r='4.5' fill='#7a1b12'/></svg>" });
+      var bounds = [];
+      pts.forEach(function (p) {
+        var at = [Number(p.lat), Number(p.lng)];
+        bounds.push(at);
+        L.marker(at, { icon: pin, title: p.name, alt: p.name }).addTo(map)
+          .bindPopup('<b>' + esc(p.name) + '</b><br>' + esc(p.address || ''));
+      });
+      map.fitBounds(bounds, { padding: [36, 36], maxZoom: 15 });
+    }
+    if (window.L) { draw(); return; }
+    if (!document.querySelector('link[href="' + LEAFLET_CSS + '"]')) {
+      var css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = LEAFLET_CSS;
+      document.head.appendChild(css);
+    }
+    var js = document.createElement('script');
+    js.src = LEAFLET_JS; js.onload = draw;
+    document.head.appendChild(js);
+  }
+
   // Put Settings > General on the page. Runs after applyContent, so where the
   // two ever overlapped it is General that has the last word.
   function applySettings() {
@@ -4242,6 +4343,16 @@
       setText('#locVal', placeLine);
       setText('#footLocation', s.city && s.country ? s.city + ', ' + s.country : placeLine);
     }
+    /* Any other shops listed in Settings > General, one to a line under
+       the main address. */
+    var others = (Array.isArray(s.locations) ? s.locations : []).filter(function (l) { return l && (l.name || l.address); });
+    var locEl = $('#locVal');
+    if (locEl && others.length) {
+      locEl.innerHTML = esc(placeLine) + others.map(function (l) {
+        return '<br>' + esc(l.name || '') + (l.name && l.address ? ' · ' : '') + esc(l.address || '');
+      }).join('');
+    }
+    applyVisitMap(s);
 
     /* Two timetables, and they are not the same question. Trading hours
        say when the shop is open; support hours say when somebody answers

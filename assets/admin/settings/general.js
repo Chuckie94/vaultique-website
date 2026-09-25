@@ -118,6 +118,8 @@
     country: 'Zambia',
     city: 'Lusaka',
     address: '',
+    locations: [],
+    mapPoints: [],
     timezone: 'Africa/Lusaka',
     currency: 'ZMW',
     dateFormat: 'DD/MM/YYYY',
@@ -140,6 +142,61 @@
 
   A.store.registerDefaults('general', DEFAULTS);
 
+  /* ---- map pins ------------------------------------------------------ */
+
+  var lastMissed = [];
+  var known = {};         // address -> {lat, lng}, from the last save
+
+  /* OpenStreetMap's address search: free, no key, and it answers a
+     browser directly. Its rule is at most one question a second, so the
+     places are asked one after another with a pause between. */
+  function lookUp(q) {
+    return fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' +
+                 encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) {
+        var r = rows && rows[0];
+        var lat = r && Number(r.lat), lng = r && Number(r.lon);
+        return (isFinite(lat) && isFinite(lng)) ? { lat: lat, lng: lng } : null;
+      })
+      .catch(function () { return null; });
+  }
+  function pause(ms) { return new Promise(function (ok) { setTimeout(ok, ms); }); }
+  function oneLine(s) { return String(s || '').replace(/\s*\n\s*/g, ', ').trim(); }
+
+  function remember(points) {
+    (Array.isArray(points) ? points : []).forEach(function (m) {
+      if (m && m.query && isFinite(m.lat) && isFinite(m.lng)) known[m.query] = { lat: m.lat, lng: m.lng };
+    });
+  }
+  function pinPlaces(values) {
+    var country = values.country || '';
+    var places = [];
+    var main = oneLine(values.address);
+    if (main || values.city) {
+      places.push({ name: values.businessName || 'Our shop', address: main || values.city,
+                    query: [main, values.city, country].filter(Boolean).join(', ') });
+    }
+    (Array.isArray(values.locations) ? values.locations : []).forEach(function (l) {
+      var a = oneLine(l && l.address);
+      if (!a) return;
+      places.push({ name: l.name || a, address: a, query: [a, country].filter(Boolean).join(', ') });
+    });
+
+    var out = [], missed = [], chain = Promise.resolve(), asked = 0;
+    places.forEach(function (pl) {
+      chain = chain.then(function () {
+        if (known[pl.query]) return known[pl.query];
+        var wait = asked++ ? pause(1100) : Promise.resolve();
+        return wait.then(function () { return lookUp(pl.query); });
+      }).then(function (at) {
+        if (at) { known[pl.query] = at; out.push({ name: pl.name, address: pl.address, query: pl.query, lat: at.lat, lng: at.lng }); }
+        else missed.push(pl.name);
+      });
+    });
+    return chain.then(function () { values.mapPoints = out; return missed; });
+  }
+
   /* ---- the page ------------------------------------------------------ */
 
   A.registerSetting({
@@ -150,6 +207,27 @@
       ctx.ui.form(host, {
         key: 'general',
         savedMessage: 'Saved ✓ — the site picks this up within about a minute',
+
+        /* THE MAP PINS. The website map has to know where each place is,
+           not just what it is called, so each address is looked up once,
+           here, when it is saved -- not by every visitor on every visit.
+           An address that has not changed keeps the position it had. One
+           that cannot be found is still saved and listed; it just has no
+           pin, and the owner is told which. */
+        afterLoad: function (values) { remember(values.mapPoints); },
+        beforeSave: function (values) {
+          return pinPlaces(values).then(function (missed) {
+            lastMissed = missed;
+            return values;
+          });
+        },
+        afterSave: function () {
+          if (lastMissed.length && ctx.tell) {
+            ctx.tell('Saved. These could not be found on the map, so they have no pin: ' +
+                     lastMissed.join('; ') + '. Try writing the address the way Google Maps ' +
+                     'shows it, with the town.');
+          }
+        },
 
         groups: [
           {
@@ -176,7 +254,19 @@
               { type: 'select', name: 'country', label: 'Country', half: true, options: COUNTRIES },
               { type: 'text', name: 'city', label: 'City', half: true, maxLength: 60 },
               { type: 'textarea', name: 'address', label: 'Physical address', rows: 3, maxLength: 200,
-                hint: 'The address customers use to find the shop.' }
+                hint: 'The address customers use to find the shop. It is the first pin on the map.' },
+              { type: 'list', name: 'locations', label: 'Other shop locations',
+                addLabel: 'Add a location', itemName: 'Location', max: 20,
+                summary: function (row) { return row.name || row.address || 'New location'; },
+                blank: function () { return { name: '', address: '' }; },
+                fields: [
+                  { type: 'text', name: 'name', label: 'Name', half: true, maxLength: 60,
+                    required: true, placeholder: 'e.g. Lusaka, Manda Hill' },
+                  { type: 'text', name: 'address', label: 'Address', half: true, maxLength: 200,
+                    required: true, placeholder: 'Street, area, town' }
+                ],
+                hint: 'Every shop you list here gets its own pin on the website map, beside the ' +
+                      'main address. Leave it empty if there is only the one.' }
             ]
           },
           {
