@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.25.0',
-  build: 38,
-  builtAt: '2026-09-25T12:00:00Z',
-  notes: 'A tighter fit on phones, with smaller cards, buttons and icons; the cart stops at the stock; category pictures uploaded in the admin now show on the homepage, and saving the Homepage settings no longer wipes them.'
+  version: '1.25.1',
+  build: 39,
+  builtAt: '2026-09-25T15:00:00Z',
+  notes: 'On phones: the buy and cart buttons are equal halves of the card, the homepage rows are a two-by-two grid instead of a sideways strip, and Discover on the Women and Men rows opens that collection in the shop.'
 };

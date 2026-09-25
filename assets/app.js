@@ -2616,13 +2616,33 @@
     }
     return out;
   }
+  /* Which pieces the Women's and Men's rows show, by category. Kept in one
+     place because the rows and their Discover links must agree. */
+  var ROW_TEST = {
+    women: function (p) { return /women|ladies/i.test(p.category); },
+    men: function (p) { return /\bmen\b|gent/i.test(p.category) && !/women/i.test(p.category); }
+  };
+  /* Where a row's Discover link goes: the shop, opened on the category
+     most of that row's pieces are in. It used to scroll to the row it sat
+     on, which went nowhere. A shop with no such pieces gets the whole
+     shop rather than an empty one. */
+  function discoverRow(key) {
+    var test = ROW_TEST[key], count = {}, best = 'All', most = 0;
+    if (!test) { goShop('All'); return; }
+    PRODUCTS.forEach(function (p) {
+      if (!test(p)) return;
+      count[p.category] = (count[p.category] || 0) + 1;
+      if (count[p.category] > most) { most = count[p.category]; best = p.category; }
+    });
+    goShop(best);
+  }
   function buildHomeRows() {
     var featured = PRODUCTS.filter(function (p) { return p.featured; }).slice(0, 12);
     var best = PRODUCTS.filter(function (p) { return p.best_seller; }).slice(0, 12);
     var newArrivals = PRODUCTS.filter(function (p) { return p.is_new; });
     if (!newArrivals.length) newArrivals = PRODUCTS.slice(0, 10); else newArrivals = newArrivals.slice(0, 12);
-    var women = rowFor(function (p) { return /women|ladies/i.test(p.category); }, 10);
-    var men = rowFor(function (p) { return /\bmen\b|gent/i.test(p.category) && !/women/i.test(p.category); }, 10);
+    var women = rowFor(ROW_TEST.women, 10);
+    var men = rowFor(ROW_TEST.men, 10);
     var acc = rowFor(function (p) { return /access|bag|jewel|shoe|footwear/i.test(p.category); }, 10);
 
     fillRow('row-featured', 'sec-featured', featured, false);
@@ -4049,6 +4069,9 @@
   function bindStatic() {
     $all('[data-go-home]').forEach(function (e) { e.addEventListener('click', goHome); });
     $all('[data-go-shop]').forEach(function (e) { e.addEventListener('click', function () { goShop('All'); }); });
+    $all('[data-discover]').forEach(function (e) {
+      e.addEventListener('click', function () { discoverRow(e.getAttribute('data-discover')); });
+    });
     $all('[data-scroll]').forEach(function (e) {
       e.addEventListener('click', function () {
         var id = e.getAttribute('data-scroll');

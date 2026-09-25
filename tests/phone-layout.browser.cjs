@@ -135,6 +135,14 @@ const settle = (page, ms) => page.waitForTimeout(ms || 500);
     is(cols.length === 2 && cols[0].y === cols[1].y && cols[0].w < 200,
        'categories are two to a row', JSON.stringify(cols));
     is(cols.length === 2 && cols[0].h < 260, 'and each is well under half the height it was', JSON.stringify(cols));
+    const rowCards = await page.evaluate(() => Array.from(document.querySelectorAll('#row-new > .card'))
+      .map(c => { const b = c.getBoundingClientRect(); return b.width ? { x: Math.round(b.left), y: Math.round(b.top) } : null; })
+      .filter(Boolean));
+    is(rowCards.length === Math.min(4, rowCards.length) && rowCards.length >= 2 &&
+       rowCards[0].y === rowCards[1].y && (rowCards.length < 3 || rowCards[2].y > rowCards[0].y),
+       'the homepage rows are a two-column grid, not a sideways strip', JSON.stringify(rowCards));
+    const sideRow = await page.evaluate(() => { const t = document.querySelector('#row-new'); return t.scrollWidth - t.clientWidth; });
+    is(sideRow <= 0, 'with nothing hidden off to the right', String(sideRow));
     const tall = await page.evaluate(() => document.documentElement.scrollHeight);
     is(tall < 12500, 'the whole homepage is over a quarter shorter to scroll (was 15,759px)', String(tall));
 
@@ -192,6 +200,16 @@ const settle = (page, ms) => page.waitForTimeout(ms || 500);
       }
       is(!over.length, 'at ' + width + 'px wide', over.join(', '));
       await ctx.close();
+    }
+
+    console.log('\nDiscover opens the collection, rather than scrolling to itself');
+    for (const [key, cat, piece] of [['women', "Women's Fashion", 'Kitenge Wrap Dress'], ['men', "Men's Fashion", 'Linen Shirt']]) {
+      await page.goto(base + '/', { waitUntil: 'networkidle' }); await settle(page, 600);
+      await page.click('[data-discover="' + key + '"]'); await settle(page, 600);
+      const where = await page.evaluate(() => ({ path: decodeURIComponent(location.pathname),
+        names: Array.from(document.querySelectorAll('#grid .card .n')).map(n => n.textContent.trim()) }));
+      is(where.path === '/shop/' + cat && where.names.indexOf(piece) > -1 && where.names.length === 1,
+         'the ' + key + '\'s row opens the shop on ' + cat, JSON.stringify(where));
     }
 
     console.log('\nA desktop is exactly as it was');

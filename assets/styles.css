@@ -1427,9 +1427,15 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
   .cards-bordered .card-info,.cards-shadow .card-info,.cards-framed .card-info{padding:10px 2px 0}
   .row-head{margin-bottom:16px}
   .row-head h2{font-size:24px;margin-top:4px}
-  /* Two and a bit cards across, so the row plainly scrolls. */
-  .carousel-track{gap:12px}
-  .carousel-track > *{flex:0 0 calc((100% - 12px) / 2.25)}
+  /* THE OWNER, of a row that scrolled sideways: "that space down, why
+     can't other products occupy it". On a phone a sideways row showed two
+     pieces and left the rest of the screen empty, so the rows on the
+     homepage become the same two-column grid as the shop: four pieces,
+     two by two, with "View all" for the rest. */
+  .carousel-track{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px;
+    overflow:visible;scroll-snap-type:none;padding-bottom:0}
+  .carousel-track > *{min-width:0}
+  .carousel-track > :nth-child(n+5){display:none}
 
   /* The shop. Its filter panel used to stay pinned under the header,
      keeping a third of the screen while the pieces scrolled behind it;
