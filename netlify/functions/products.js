@@ -114,6 +114,15 @@ function toDetails(attrs) {
 // is what the box it was typed into is called. A gross weight is the PACKED
 // weight of one unit and this is the piece's own; they are close enough to
 // share a box and not close enough to relabel behind the shop's back.
+// The same figure as a number, for working out delivery by weight (see
+// _delivery.js). 0 when the till has none, which the delivery rules treat
+// as "weight unknown" rather than as weightless.
+function weightKg(p) {
+  const n = Number(p.weight !== undefined ? p.weight : p.unitWeight);
+  if (!Number.isFinite(n) || n <= 0 || n > 100000) return 0;
+  return Math.round(n * 1000) / 1000;
+}
+
 function weightDetail(p) {
   const n = Number(p.weight !== undefined ? p.weight : p.unitWeight);
   // Nought is not a weight, and neither is a negative one or something that
@@ -182,6 +191,8 @@ function toSafeProduct(p) {
     // together, in one fixed order, already filtered down to the boxes that
     // were actually filled in.
     details: toDetails(p.attrs).concat(weightDetail(p) || []),
+    // The unit weight in kg, as a number, for delivery fees by weight.
+    weightKg: weightKg(p),
 
     // What the platform lists a piece under when it arrived in several
     // colours or sizes (its builds 381 and 382). Carried so that the group

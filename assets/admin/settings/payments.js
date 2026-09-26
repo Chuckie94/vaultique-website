@@ -61,6 +61,15 @@
     cardName: 'Card Payment',
     cardInstructions: 'Card payment can be arranged in person at the shop.',
 
+    // Online payment through Flutterwave. Off until the shop is ready.
+    onlineEnabled: false,
+    onlineMode: 'test',
+    onlineCard: true,
+    onlineMobile: true,
+    onlineLabel: '',
+    onlineConfirmEmail: true,
+    onlineNotifyShop: true,
+
     codEnabled: false,
     codName: 'Payment on Delivery',
     codInstructions: 'Pay the courier when your order arrives.',
@@ -119,6 +128,45 @@
         savedMessage: 'Saved ✓ — the site picks this up within about a minute',
 
         groups: [
+          {
+            title: 'Online payment',
+            note: 'Card and mobile money, paid on Flutterwave\u2019s secure page. A second button ' +
+                  'appears under "Continue on WhatsApp" at checkout; WhatsApp ordering stays ' +
+                  'exactly as it is.',
+            fields: [
+              { type: 'toggle', name: 'onlineEnabled', label: 'Take payments online',
+                hint: 'Off: the button disappears straight away, and the server refuses ' +
+                      'new payments. A payment already under way still completes.' },
+              { type: 'select', name: 'onlineMode', label: 'Mode', half: true,
+                showIf: function (v) { return !!v.onlineEnabled; },
+                options: [
+                  { value: 'test', label: 'Test \u2014 practise, no real money moves' },
+                  { value: 'live', label: 'Live \u2014 real payments' }
+                ] },
+              { type: 'text', name: 'onlineLabel', label: 'Button wording', half: true,
+                maxLength: 50, placeholder: 'Pay now \u2014 card or mobile money',
+                showIf: function (v) { return !!v.onlineEnabled; } },
+              { type: 'toggle', name: 'onlineCard', label: 'Accept cards', half: true,
+                showIf: function (v) { return !!v.onlineEnabled; } },
+              { type: 'toggle', name: 'onlineMobile', label: 'Accept mobile money', half: true,
+                hint: 'MTN, Airtel and Zamtel, as Flutterwave supports them.',
+                showIf: function (v) { return !!v.onlineEnabled; } },
+              { type: 'toggle', name: 'onlineConfirmEmail',
+                label: 'Email the customer a confirmation automatically',
+                hint: 'Sent the moment a payment is confirmed, from the email account in ' +
+                      'Settings > Notifications. Customers paying online always give an email.',
+                showIf: function (v) { return !!v.onlineEnabled; } },
+              { type: 'toggle', name: 'onlineNotifyShop',
+                label: 'Email the shop when a payment arrives',
+                hint: 'To the business email in Contact & Social.',
+                showIf: function (v) { return !!v.onlineEnabled; } },
+              { type: 'note', name: 'onlineLiveNote', tone: 'warn',
+                label: 'Live mode takes real money',
+                text: 'Make one small test purchase yourself after switching to Live, and ' +
+                      'check it arrives in the Orders tab marked Paid.',
+                showIf: function (v) { return !!v.onlineEnabled && v.onlineMode === 'live'; } }
+            ]
+          },
           {
             title: 'Ways to pay',
             note: 'Turn on what you accept. Whatever is on appears in the footer and ' +
@@ -185,12 +233,63 @@
             fail('cashEnabled', 'Accept at least one way of paying, or customers have no way ' +
                                 'to complete an order.');
           }
+          if (values.onlineEnabled && values.onlineCard === false && values.onlineMobile === false) {
+            fail('onlineCard', 'Online payment is on but accepts nothing. Turn on cards, ' +
+                               'mobile money, or both.');
+          }
           if (values.mobileEnabled && (!values.mobileAccounts || !values.mobileAccounts.length)) {
             fail('mobileAccounts', 'Mobile money is on but there are no accounts. Add one, ' +
                                    'or turn the method off.');
           }
         }
       });
+
+      /* Whether the keys are in place on Netlify. Asked of the server, which
+         answers yes or no for each and never shows the keys themselves. */
+      (function readiness() {
+        var box = null, tries2 = 0;
+        (function find() {
+          var cards = host.querySelectorAll('.card');
+          for (var i = 0; i < cards.length; i++) {
+            var h = cards[i].querySelector('h3');
+            if (h && h.textContent === 'Online payment') { box = cards[i]; break; }
+          }
+          if (!box) { if (tries2++ < 60) setTimeout(find, 50); return; }
+          var line = document.createElement('div');
+          line.className = 'pay-ready';
+          line.textContent = 'Checking the payment setup\u2026';
+          var h3 = box.querySelector('h3');
+          h3.parentNode.insertBefore(line, h3.nextSibling);
+          fetch('/.netlify/functions/pay-status?check=1', { cache: 'no-store' })
+            .then(function (r) { return r.json(); })
+            .then(function (c) {
+              var bits = [
+                [c.test, 'Flutterwave test key'], [c.live, 'Flutterwave live key'],
+                [c.hash, 'Webhook secret hash'], [c.service, 'Supabase service key'],
+                [c.formats, 'Price rules']
+              ];
+              line.innerHTML = '';
+              bits.forEach(function (b) {
+                var s2 = document.createElement('span');
+                s2.className = b[0] ? 'ok' : 'no';
+                s2.textContent = (b[0] ? '\u2713 ' : '\u2715 ') + b[1];
+                line.appendChild(s2);
+              });
+              var all = c.hash && c.service && c.formats && (c.test || c.live);
+              var note = document.createElement('div');
+              note.className = 'pay-ready-note';
+              note.textContent = all
+                ? 'Ready. The keys live in Netlify and are never shown here.'
+                : 'Not ready yet: add the missing items in Netlify > Site configuration > ' +
+                  'Environment variables, then redeploy. SETUP.md has the steps.';
+              line.appendChild(note);
+            })
+            .catch(function () {
+              line.textContent = 'The payment setup could not be checked from here (the ' +
+                                 'Netlify functions may not be deployed yet).';
+            });
+        })();
+      })();
 
       /* A visible reminder of which half of this page the website can see. */
       var tries = 0;

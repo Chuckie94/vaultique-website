@@ -61,6 +61,7 @@
     </label>
     <div style="margin-top:18px"><button class="btn btn-gold" id="loginBtn" style="width:100%">Sign in</button></div>
     <div class="msg" id="loginMsg"></div>
+    <div style="margin-top:14px"><button type="button" class="btn btn-out btn-sm" id="forgotBtn">Forgot your password?</button></div>
   </div>
 
   <!-- second step: the code from the authenticator app. Shown only when
@@ -80,8 +81,8 @@
        not get past this: the password they were given is known to
        somebody else, and a shared password is nobody's. -->
   <div class="panel hide" id="newpw">
-    <h1 class="serif">Choose your own password</h1>
-    <p>You signed in with a password somebody gave you. Pick one only you know before
+    <h1 class="serif" id="pwHead">Choose your own password</h1>
+    <p id="pwLead">You signed in with a password somebody gave you. Pick one only you know before
        you start answering.</p>
     <label for="pw1">New password</label>
     <input type="password" id="pw1" autocomplete="new-password" />
@@ -206,6 +207,7 @@
 <script src="assets/seo.js"></script>
 <script src="assets/admin/dialogs.js"></script>
 <script src="assets/admin/registry.js"></script>
+<script src="assets/image-shrink.js"></script>
 <script src="assets/admin/audit.js"></script>
 <script src="assets/admin/settings-store.js"></script>
 <script src="assets/admin/settings-ui.js"></script>
@@ -252,6 +254,12 @@
      when the owner asked to stay signed in, sessionStorage when they did
      not, so closing the browser really does sign them out. */
   var SEC = (window.VBP_ADMIN || {}).security || null;
+  /* Back from a "reset your password" email. Read before the client is
+     made, because the client tidies its own part of the address away as
+     it signs them in. ?reset=1 is ours (see sendReset); type=recovery is
+     Supabase's, for a link sent from anywhere else. */
+  var recovering = /[?&]reset=1(&|$)/.test(location.search) ||
+                   /(^#|&)type=recovery(&|$)/.test(location.hash);
   var sb = SEC
     ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY,
         { auth: { storage: SEC.sessionStore(), persistSession: true } })
@@ -315,9 +323,24 @@
     }
   } catch (e) {}
 
+  try {
+    sb.auth.onAuthStateChange(function (event) {
+      if (event === 'PASSWORD_RECOVERY') recovering = true;
+    });
+  } catch (e) {}
+
   sb.auth.getSession().then(function (res) {
     if (res.data && res.data.session) return afterPassword();
     show('login', true);
+    /* A reset link that has run out, or was already used, lands here
+       with no session. Say so, rather than showing a bare sign-in. */
+    if (recovering) {
+      var m = $('loginMsg');
+      m.textContent = 'That reset link has expired or was already used. Ask for a new one below.';
+      m.className = 'msg err';
+      recovering = false;
+      try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    }
   });
 
   /* The password is only the first half.
@@ -458,10 +481,18 @@
     /* The password they were handed is known to whoever handed it over,
        so it is good for exactly this one arrival. Asked before the admin
        is built, not after: there is nothing to see until it is done. */
-    if (mustChangePassword) { askForNewPassword(); return; }
-    if (!SEC) { enterAdmin(); return; }
+    if (mustChangePassword && !recovering) { askForNewPassword(); return; }
+    /* Back from a reset email: the authenticator code first, if the
+       account has one, so an email inbox alone is never enough to take
+       over an account that has two factor switched on. Then the new
+       password. Then in. */
+    if (!SEC) { if (recovering) { askForNewPassword(); return; } enterAdmin(); return; }
     return SEC.codeOwed(sb).then(function (owed) {
-      if (!owed) { show('mfa', false); enterAdmin(); return; }
+      if (!owed) {
+        show('mfa', false);
+        if (recovering) { askForNewPassword(); return; }
+        enterAdmin(); return;
+      }
       show('mfa', true);
       var box = $('mfaCode');
       if (box) { box.value = ''; box.focus(); }
@@ -470,6 +501,11 @@
 
   function askForNewPassword() {
     show('mfa', false); show('topbar', false); show('admin', false);
+    $('pwHead').textContent = recovering ? 'Choose a new password' : 'Choose your own password';
+    $('pwLead').textContent = recovering
+      ? 'You asked to reset your password. Choose a new one to finish signing in.'
+      : 'You signed in with a password somebody gave you. Pick one only you know before ' +
+        'you start answering.';
     show('newpw', true);
     var a = $('pw1'), b = $('pw2'), msg = $('pwMsg');
     if (a) { a.value = ''; a.focus(); }
@@ -512,6 +548,10 @@
       })
       .then(function () {
         mustChangePassword = false;
+        if (recovering) {
+          recovering = false;
+          try { history.replaceState(null, '', location.pathname); } catch (e) {}
+        }
         btn.disabled = false;
         show('newpw', false);
         return continueAsAdmin();
@@ -576,6 +616,52 @@
     });
   });
 
+  /* Forgot your password. Supabase sends the email, through whatever
+     mail service the project is set up with (SETUP.md: Password reset).
+     The answer is the same whether or not the address has an account,
+     so this page cannot be used to find out who works here. */
+  $('forgotBtn').addEventListener('click', sendReset);
+  function sendReset() {
+    var msg = $('loginMsg');
+    var email = $('email').value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      msg.textContent = 'Type your email address above, then press "Forgot your password?".';
+      msg.className = 'msg err';
+      $('email').focus();
+      return;
+    }
+    var btn = $('forgotBtn');
+    btn.disabled = true;
+    msg.textContent = 'Sending…'; msg.className = 'msg';
+    Promise.resolve(sb.auth.resetPasswordForEmail(email, {
+      redirectTo: location.origin + location.pathname + '?reset=1'
+    })).then(function (r) {
+      var e = r && r.error;
+      if (e && (e.status === 429 || /rate|seconds|too many/i.test(e.message || ''))) {
+        msg.textContent = 'A reset email was sent a moment ago. Please wait a minute before asking again.';
+        msg.className = 'msg err';
+        return;
+      }
+      /* The mail service itself failing says nothing about who has an
+         account, and pretending the email went would leave the owner
+         waiting for one that never comes. */
+      if (e && (e.status >= 500 || /sending|smtp|email/i.test(e.message || ''))) {
+        msg.textContent = 'The email could not be sent. The mail settings in Supabase may need ' +
+                          'checking (SETUP.md: Password reset).';
+        msg.className = 'msg err';
+        return;
+      }
+      msg.textContent = 'If ' + email + ' belongs to an admin account, a link to set a new ' +
+                        'password is on its way. Check your inbox, and the spam folder.';
+      msg.className = 'msg';
+    }, function () {
+      msg.textContent = 'That could not be sent. Check your connection and try again.';
+      msg.className = 'msg err';
+    }).then(function () {
+      setTimeout(function () { btn.disabled = false; }, 30000);
+    });
+  }
+
   $('loginBtn').addEventListener('click', doLogin);
   $('password').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
 
@@ -639,6 +725,7 @@
       msg.textContent = '';
       $('mfaCode').value = '';
       show('mfa', false);
+      if (recovering) { askForNewPassword(); return; }
       enterAdmin();
     }).catch(function (e) {
       msg.textContent = (e && e.message) || 'That code was not accepted.';
@@ -939,10 +1026,22 @@
       "<text x='50%' y='54%' fill='%23C8A24A' font-family='Georgia' font-size='30' text-anchor='middle'>VB</text></svg>";
   }
   function extOf(name) { var p = (name || '').split('.'); return (p.length > 1 ? p.pop() : 'jpg').toLowerCase(); }
+  /* Every photo is shrunk to screen size first (assets/image-shrink.js),
+     so visitors download a few hundred KB rather than the phone's original.
+     A path is never reused -- each upload gets a new one -- so the file can
+     be kept by browsers for a year: a changed photo is a new address. */
   function uploadImage(file, prefix) {
-    var path = prefix + '-' + Date.now() + '.' + extOf(file.name);
-    return sb.storage.from(BUCKET).upload(path, file, { upsert: true, cacheControl: '3600' })
-      .then(function (r) {
+    var S = window.VBP_SHRINK;
+    var ready = (S && typeof S.shrink === 'function') ? S.shrink(file) : Promise.resolve(null);
+    return ready.then(function (small) {
+      var body = small || file;
+      var path = prefix + '-' + Date.now() + '.' + (small ? 'jpg' : extOf(file.name));
+      return sb.storage.from(BUCKET).upload(path, body,
+        { upsert: true, cacheControl: '31536000', contentType: body.type || undefined })
+        .then(function (r) { return { r: r, path: path }; });
+    })
+      .then(function (x) {
+        var r = x.r, path = x.path;
         if (r.error) throw r.error;
         return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
       });
@@ -1588,6 +1687,20 @@
   $('ordFilter').addEventListener('change', function () { drawOrders(false); });
   $('ordMore').addEventListener('click', function () { drawOrders(true); });
 
+  /* Online payment, set only by the payment service (supabase-payments.sql
+     stops anybody else writing it). WhatsApp orders carry none and show none. */
+  function payBadge(o) {
+    if (o.payment_method !== 'online') return '';
+    var how = o.pay_channel === 'card' ? 'card' : (o.pay_channel ? 'mobile money' : '');
+    var map = {
+      paid:     ['pay-paid', 'Paid \u2713' + (how ? ' \u00b7 ' + how : '')],
+      awaiting: ['pay-wait', 'Awaiting payment'],
+      failed:   ['pay-fail', 'Payment failed'],
+      expired:  ['pay-fail', 'Payment not completed']
+    };
+    var b = map[o.payment_status] || ['pay-wait', 'Online payment'];
+    return '<div class="pay-badge ' + b[0] + '">' + escapeHtml(b[1]) + '</div>';
+  }
   function orderRow(o) {
     var d = document.createElement('div');
     d.className = 'card';
@@ -1603,8 +1716,19 @@
       (o.customer_id ? ' · signed in' : ' · guest') +
       ' · ' + escapeHtml(o.fulfilment === 'collection' ? 'collection' : 'delivery') + '</div></div>' +
       '<div style="text-align:right"><b>' +
-      (o.total == null ? '—' : escapeHtml(fmtMoney(o.total))) + '</b></div>';
+      (o.total == null ? '—' : escapeHtml(fmtMoney(o.total))) + '</b>' + payBadge(o) + '</div>';
     d.appendChild(head);
+
+    /* An order paid online: how the total breaks down. */
+    if (o.payment_method === 'online' && (Number(o.delivery_fee) || Number(o.tax_total))) {
+      var brk = document.createElement('div');
+      brk.className = 'hint';
+      brk.style.marginTop = '4px';
+      brk.textContent = 'Items ' + fmtMoney(o.goods_total) +
+        (Number(o.tax_total) ? ' · Tax ' + fmtMoney(o.tax_total) : '') +
+        (Number(o.delivery_fee) ? ' · Delivery ' + fmtMoney(o.delivery_fee) : '');
+      d.appendChild(brk);
+    }
 
     var items = document.createElement('div');
     items.className = 'hint';

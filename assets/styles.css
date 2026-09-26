@@ -1029,6 +1029,17 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 @media (max-width:560px){ .ac-addr{flex-direction:column} }
 .od-opt{font-size:9.5px;letter-spacing:.1em;color:var(--muted);text-transform:none;margin-left:6px;opacity:.8}
 .od-note{font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:14px}
+/* Paying online: the second button under WhatsApp, and the quote. */
+.od-pay{margin-top:0}
+.pq{margin:6px 0 18px;border-top:1px solid var(--line)}
+.pq-row{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid var(--line);
+  font-size:13.5px;color:var(--ink)}
+.pq-row span:last-child{white-space:nowrap;font-variant-numeric:tabular-nums}
+.pq-sub{color:var(--muted)}
+.pq-total{font-weight:600;font-size:15px;border-bottom:none;padding-top:12px}
+.pq-note{font-size:12px;color:var(--muted);margin:6px 0 0}
+#orderBody select#od_town{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);font-family:var(--font-body);font-size:14px;color:var(--ink)}
+.od-lead.err{color:#b3261e}
 #orderModal .modal-card{max-width:460px}
 #orderBody textarea{resize:vertical;min-height:44px}
 #orderModal .btn-wa{flex:1 1 auto;justify-content:center}
@@ -1261,6 +1272,15 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .chat-send:hover{background:var(--gold-2);transform:scale(1.06)}
 .chat-send svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;
   stroke-linecap:round;stroke-linejoin:round}
+.chat-attach{flex:0 0 auto;width:40px;height:40px;border:1px solid var(--line);border-radius:50%;
+  background:transparent;color:var(--navy);display:flex;align-items:center;justify-content:center;transition:.2s}
+.chat-attach:hover{border-color:var(--gold);color:var(--gold)}
+.chat-attach:disabled{opacity:.45}
+.chat-attach svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+.from-me .chat-photo{width:220px;max-width:100%}
+.chat-photo.is-sending img{opacity:.55}
+.chat-photo-gone{padding:10px 14px;font-size:12px;font-style:italic;color:var(--muted)}
 
 @media(max-width:560px){
   .chat-panel{right:0;left:0;bottom:0;width:auto;max-width:none;height:100dvh;max-height:100dvh;

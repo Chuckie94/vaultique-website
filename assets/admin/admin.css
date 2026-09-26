@@ -882,3 +882,18 @@
      is described. */
   .plat-details{background:#fff;border:1px solid var(--line);border-radius:6px;padding:10px 12px;font-size:13px;line-height:1.7;color:var(--ink)}
   .plat-details b{color:var(--navy);font-weight:600}
+
+/* Settings > Payments > Online payment: which keys are in place. */
+.pay-ready{display:flex;flex-wrap:wrap;gap:6px 14px;margin:4px 0 14px;font-size:12.5px}
+.pay-ready .ok{color:#1e7d46}
+.pay-ready .no{color:#b3261e}
+.pay-ready-note{flex-basis:100%;color:var(--muted,#666);font-size:12px}
+.pay-badge{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;letter-spacing:.02em}
+.pay-paid{background:#e3f4ea;color:#1e7d46}
+.pay-wait{background:#fdf3dc;color:#8a5a00}
+.pay-fail{background:#fbe4e2;color:#b3261e}
+
+/* Analytics > How orders were paid */
+.an-pay{margin-bottom:14px}
+.an-pay-tiles{margin:6px 0 16px}
+.an-pay-tiles .an-kpi-n{font-size:24px}

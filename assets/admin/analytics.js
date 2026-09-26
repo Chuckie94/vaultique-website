@@ -289,6 +289,20 @@
       });
       wrap.appendChild(kpiBox);
 
+      /* ---- how orders were paid ---------------------------------------
+         WhatsApp orders and online payments, side by side. Read from
+         pay_sales_split (supabase-payments.sql). Until online payment is
+         switched on, or on a shop that has not run that file, the card
+         stays hidden and nothing else on the page changes. */
+      var payCard = el('div', 'card an-pay hide');
+      payCard.appendChild(el('h3', null, 'How orders were paid'));
+      var payBody = el('div', 'an-pay-body');
+      payCard.appendChild(payBody);
+      wrap.appendChild(payCard);
+      var onlineOn = false;
+      Promise.resolve(store && store.load ? store.load('payments') : {})
+        .then(function (p) { onlineOn = !!(p && p.onlineEnabled); }, function () {});
+
       /* ---- the chart --------------------------------------------------- */
       var chartCard = el('div', 'card');
       var chartHead = el('div', 'an-chart-head');
@@ -436,6 +450,7 @@
           paintDevices(r.data || {});
           paintNewReturning(r.data || {});
           rangeSaid.textContent = saidRange();
+          loadSplit(mine, r.data || {});
         }).catch(function (e) {
           if (mine !== asking) return;
           if (trouble(e)) return;
@@ -444,6 +459,86 @@
 
         loadSeries(mine);
         loadTops(mine);
+      }
+
+      function loadSplit(mine, stats) {
+        Promise.resolve(sb.rpc('pay_sales_split', {
+          p_from: range.from, p_to: range.to, p_tz: tz
+        })).then(function (r) {
+          if (mine !== asking) return;
+          if (r.error || !r.data) { payCard.classList.add('hide'); return; }
+          var d = r.data;
+          var cur = d.currency || stats.currency;
+          /* Orders and Sales, counted the one right way: every WhatsApp
+             order that stands, and an online one only once it is paid. An
+             order sent to the payment page and never paid was not a sale. */
+          var orders = (Number(d.whatsapp_orders) || 0) + (Number(d.online_orders) || 0);
+          var sales = (Number(d.whatsapp_sales) || 0) + (Number(d.online_sales) || 0);
+          kpiNums.orders.textContent = num(orders);
+          kpiNums.sales.textContent = money(sales, cur);
+          var any = (Number(d.online_orders) || 0) + (Number(d.online_waiting) || 0) +
+                    (Number(d.online_unfinished) || 0);
+          if (!any && !onlineOn) { payCard.classList.add('hide'); return; }
+          paintSplit(d, cur, sales);
+          payCard.classList.remove('hide');
+        }, function () { payCard.classList.add('hide'); });
+      }
+
+      function paintSplit(d, cur, sales) {
+        payBody.innerHTML = '';
+        var n = function (k) { return Number(d[k]) || 0; };
+
+        var tiles = el('div', 'an-kpis an-pay-tiles');
+        function tile(big, label, small) {
+          var t = el('div', 'an-kpi');
+          t.appendChild(el('div', 'an-kpi-n', big));
+          t.appendChild(el('div', 'an-kpi-l', label));
+          t.appendChild(el('div', 'an-kpi-s', small || ''));
+          tiles.appendChild(t);
+        }
+        tile(money(n('online_sales'), cur), 'Paid online',
+             num(n('online_orders')) + (n('online_orders') === 1 ? ' order' : ' orders'));
+        tile(money(n('whatsapp_sales'), cur), 'Ordered on WhatsApp',
+             num(n('whatsapp_orders')) + (n('whatsapp_orders') === 1 ? ' order' : ' orders'));
+        tile(sales ? Math.round(n('online_sales') / sales * 100) + '%' : '\u2014',
+             'Online share', 'Of sales in this range.');
+        tile(num(n('online_unfinished')), 'Not completed',
+             'Sent to pay online, never paid.' +
+             (n('online_waiting') ? ' ' + num(n('online_waiting')) + ' still waiting.' : ''));
+        payBody.appendChild(tiles);
+
+        var rows = [
+          { label: 'Card', v: n('card_sales'), c: n('card_orders'), cls: '' },
+          { label: 'Mobile money', v: n('mobile_sales'), c: n('mobile_orders'), cls: 'is-2' },
+          { label: 'WhatsApp (paid on delivery, transfer, cash\u2026)', v: n('whatsapp_sales'),
+            c: n('whatsapp_orders'), cls: 'is-3' }
+        ];
+        var total = rows.reduce(function (a, r) { return a + r.v; }, 0);
+        if (!total) {
+          payBody.appendChild(el('p', 'count', 'No sales in this range yet.'));
+        } else {
+          rows.forEach(function (r) {
+            var row = el('div', 'an-row ' + r.cls);
+            var head = el('div', 'an-row-top');
+            head.appendChild(el('div', 'an-row-l', r.label));
+            var v = el('div', 'an-row-n', money(r.v, cur));
+            v.appendChild(el('small', null, num(r.c) + (r.c === 1 ? ' order' : ' orders') +
+                                           ' \u00b7 ' + Math.round(r.v / total * 100) + '%'));
+            head.appendChild(v);
+            row.appendChild(head);
+            var track = el('div', 'an-track');
+            var fill = el('div', 'an-fill');
+            fill.style.width = Math.max(r.v ? 2 : 0, Math.round(r.v / total * 100)) + '%';
+            track.appendChild(fill);
+            row.appendChild(track);
+            payBody.appendChild(row);
+          });
+        }
+        payBody.appendChild(el('p', 'an-note',
+          (n('delivery_paid') ? 'Paid online includes ' + money(n('delivery_paid'), cur) +
+                                ' of delivery fees. ' : '') +
+          'An online order counts as a sale only once the payment is confirmed. WhatsApp ' +
+          'orders count as they always have, until cancelled.'));
       }
 
       function loadSeries(mine) {

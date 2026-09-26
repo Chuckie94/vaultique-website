@@ -18,6 +18,8 @@ vaultique-website/
 ├── supabase-analytics.sql     run once to start counting the website's traffic
 ├── supabase-chat-jobs.sql     run once to answer job enquiries automatically
 ├── supabase-chat-realtime.sql run once so chat replies arrive without asking
+├── supabase-chat-photos.sql   run once so customers can send photos in the chat
+├── supabase-payments.sql      run once before switching on online payment
 ├── netlify.toml               Netlify config + /api/products redirect
 ├── netlify/
 │   └── functions/
@@ -61,6 +63,18 @@ node tests/phone-layout.browser.cjs     the phone layout, and a desktop left as 
 node tests/collection-pictures.browser.cjs   uploaded category pictures on the homepage
 node tests/shop-locations.cjs           the admin finds each shop location for the map
 node tests/visit-map.browser.cjs        the map pins those places (needs npm install leaflet)
+node tests/fast-load.browser.cjs        hero first, settings alongside products, photos shrunk
+node tests/chat-photos.browser.cjs      a customer sends a photo in the chat, shrunk first
+node tests/payments.test.cjs            the payment functions, and attempts to cheat them
+node tests/payments.browser.cjs         paying online end to end; WhatsApp checkout unchanged
+node tests/payment-settings.cjs         the admin switches for online payment and delivery
+node tests/delivery-zones.test.cjs      delivery fees by town zone and parcel weight
+node tests/analytics-payments.browser.cjs  Analytics: how orders were paid
+node tests/password-reset.browser.cjs   "Forgot your password?" on the admin and customer accounts
+psql -d <scratch db> -f tests/payments-fixture.sql -f supabase-payments.sql \
+     -f tests/payments.sql                                   who may mark an order paid
+psql -d <scratch db> -f tests/chat-jobs-fixture.sql -f tests/chat-photos-fixture.sql \
+     -f supabase-chat-photos.sql -f tests/chat-photos.sql    the database side of chat photos
 psql -d <scratch db> -f tests/chat-jobs-fixture.sql \
                      -f supabase-chat-jobs.sql \
                      -f tests/chat-jobs.sql     the job-enquiry filter

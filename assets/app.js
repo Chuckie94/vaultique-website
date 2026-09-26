@@ -605,6 +605,31 @@
 
 
 
+  // ---------------------------------------------------------------- hero photos
+  /* THE HERO, AS EARLY AS IT CAN BE. The photos are named in Settings >
+     Homepage, so the page cannot know them until that row arrives. They
+     are painted the moment it does -- not after the other sixteen
+     settings rows and the catalogue -- and remembered in this browser, so
+     that on the next visit index.html asks for the first one while the
+     page is still being read, before any script has run. */
+  var HERO_MEMO = 'vbp_hero';
+  function paintHeroPhotos(h) {
+    if (!h) return;
+    var urls = [];
+    ['#heroPhoto1', '#heroPhoto2', '#heroPhoto3'].forEach(function (sel, i) {
+      var url = h['heroImage' + (i + 1)] || '';
+      urls.push(url);
+      var e = $(sel);
+      if (!e || !url) return;
+      var css = "url('" + url + "')";
+      if (e.style.backgroundImage.replace(/"/g, "'") !== css) e.style.backgroundImage = css;
+    });
+    try {
+      if (h.heroEnabled === false || !urls.some(Boolean)) localStorage.removeItem(HERO_MEMO);
+      else localStorage.setItem(HERO_MEMO, JSON.stringify(urls));
+    } catch (e) {}
+  }
+
   // ---------------------------------------------------------------- homepage
   // Settings > Homepage on the page. Runs after applyContent, so where the
   // two still overlap it is the setting that has the last word.
@@ -632,11 +657,7 @@
       setText('#heroTitle', h.heroTitle);
       setText('#heroTitleEm', h.heroTitleEm);
       setText('#heroSub', h.heroSubtitle);
-      ['#heroPhoto1', '#heroPhoto2', '#heroPhoto3'].forEach(function (sel, i) {
-        var url = h['heroImage' + (i + 1)];
-        var e = $(sel);
-        if (e && url) e.style.backgroundImage = "url('" + url + "')";
-      });
+      paintHeroPhotos(h);
       applyHeroCta(h);
     }
 
@@ -895,7 +916,7 @@
       /* A session found after the page had already drawn: the account
          view needs redrawing, or it would sit there offering a sign-in to
          somebody already signed in. */
-      if (location.hash === '#/account') renderAccount();
+      if (currentRoute() === 'account') renderAccount();
       /* Whatever was wished for on this device before signing in is
          merged with whatever the account already held, so nothing is
          lost by signing in on a second phone. */
@@ -913,7 +934,7 @@
 
     ACCT.onChange(function () {
       paintAccount();
-      if (location.hash === '#/account') renderAccount();
+      if (currentRoute() === 'account') renderAccount();
     });
     }
   }
@@ -1378,7 +1399,10 @@
      putting a step back for one more question would contradict it. Where
      there is no step, the conversation settles it, as it always did. */
   function needsDetails() {
-    return buyerFields().length > 0 || !!SHOP.orderNotes;
+    /* Paying online needs a name, a phone and an email to hand to the
+       payment page, so with it switched on the details step always opens.
+       Switched off, this is exactly what it always was. */
+    return buyerFields().length > 0 || !!SHOP.orderNotes || payOnline();
   }
 
   function savedBuyer() {
@@ -1477,6 +1501,14 @@
 
     var fields = buyerFields();
     var saved = savedBuyer();
+    /* Online payment, when the shop has switched it on and every piece in
+       the order has a price. It adds a second button under the WhatsApp
+       one, and whichever of name, phone, email and address the shop does
+       not already ask for -- marked as needed only to pay online, and
+       never required for WhatsApp. */
+    var payable = payOnline() && order.lines.length > 0 &&
+      order.lines.every(function (l) { return !priceOf(l.product).onRequest; });
+    if (payable) fields = fields.concat(payFields(fields));
 
     /* A signed-in customer's default address beats what this device
        happens to remember: they chose it deliberately, and it is the one
@@ -1529,8 +1561,17 @@
         : '') +
       fields.map(function (f) {
         var v = esc(saved[f.key] || '');
-        return '<label class="rv-lbl" for="od_' + f.key + '">' + esc(f.label) + '</label>' +
-          (f.type === 'area'
+        return '<label class="rv-lbl" for="od_' + f.key + '">' + esc(f.label) +
+          (f.payOnly ? ' <span class="od-opt">needed to pay online</span>' : '') + '</label>' +
+          (f.type === 'select'
+            ? '<select id="od_' + f.key + '" autocomplete="' + f.ac + '">' +
+                '<option value="">Choose your town</option>' +
+                f.options.map(function (o) {
+                  return '<option' + (saved[f.key] === o ? ' selected' : '') + '>' + esc(o) + '</option>';
+                }).join('') +
+                '<option value="__other">My town is not listed</option>' +
+              '</select>'
+          : f.type === 'area'
             ? '<textarea id="od_' + f.key + '" rows="2" maxlength="200" autocomplete="' + f.ac + '">' + v + '</textarea>'
             : '<input type="' + f.type + '" id="od_' + f.key + '" maxlength="120" autocomplete="' + f.ac + '" value="' + v + '">');
       }).join('') +
@@ -1540,6 +1581,7 @@
         : '') +
       '<div class="rv-actions">' +
         '<button class="btn btn-wa" id="odGo">' + waIcon() + 'Continue on WhatsApp</button>' +
+        (payable ? '<button class="btn btn-gold od-pay" id="odPay">' + esc(payLabel()) + '</button>' : '') +
         '<span class="rv-msg" id="odMsg"></span>' +
       '</div>' +
       '<p class="od-note">Your details are kept on this device so you do not have to type ' +
@@ -1624,6 +1666,7 @@
          allowed to continue would be a dead end. */
       var missing = fields.filter(function (f) {
         if (f.onlyWhenDelivering && d.how === 'collection') return false;
+        if (f.payOnly) return false;          // asked only for paying online
         return !d[f.key];
       });
       if (missing.length) {
@@ -1676,6 +1719,36 @@
     }
 
     $('#odGo').addEventListener('click', go);
+    var payBtn = $('#odPay');
+    if (payBtn) payBtn.addEventListener('click', function () {
+      var d = collect();
+      var msg = $('#odMsg');
+      var need = fields.filter(function (f) {
+        if (f.onlyWhenDelivering && d.how === 'collection') return false;
+        return !d[f.key];
+      });
+      if (need.length) {
+        msg.textContent = 'Please fill in ' + need[0].label.toLowerCase() + '.';
+        msg.className = 'rv-msg err';
+        var e1 = $('#od_' + need[0].key);
+        if (e1) e1.focus();
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email || '')) {
+        msg.textContent = 'Please give an email address, for your receipt.';
+        msg.className = 'rv-msg err';
+        var e2 = $('#od_email'); if (e2) e2.focus();
+        return;
+      }
+      var keep = savedBuyer();
+      fields.forEach(function (f) {
+        if (f.onlyWhenDelivering && d.how === 'collection') return;
+        keep[f.key] = d[f.key];
+      });
+      keep.how = d.how;
+      rememberBuyer(keep);
+      showPayQuote(order, d);
+    });
     body.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); go(); }
     });
@@ -1690,6 +1763,231 @@
     var m = $('#orderModal');
     if (m) m.classList.remove('open');
     document.body.style.overflow = '';
+  }
+
+  /* ==================================================================
+     PAYING ONLINE -- card and mobile money, through Flutterwave
+
+     Switched on in Settings > Payments > Online payment, and nothing
+     here does anything until it is. WhatsApp checkout is untouched: this
+     is a second button beside it.
+
+     THE PAGE NEVER SAYS WHAT TO CHARGE. It sends the pieces and how many
+     of each; the server works out the price from the POS feed and the
+     shop's price rules (netlify/functions/_pay.js), shows it back as a
+     quote, and charges exactly that. The card or mobile money details are
+     typed on Flutterwave's own page, never on this one.
+     ================================================================== */
+  var PAY_MEMO = 'vbp_pay';
+  var PAY_FN = '/.netlify/functions/';
+  function payOnline() {
+    return !PREVIEW && !!PAY && PAY.onlineEnabled === true &&
+           (PAY.onlineCard !== false || PAY.onlineMobile !== false);
+  }
+  function payLabel() {
+    if (PAY && PAY.onlineLabel) return PAY.onlineLabel;
+    var card = PAY.onlineCard !== false, mobile = PAY.onlineMobile !== false;
+    return 'Pay now — ' + (card && mobile ? 'card or mobile money' : card ? 'card' : 'mobile money');
+  }
+  function payFields(have) {
+    var got = {};
+    have.forEach(function (f) { got[f.key] = true; });
+    var want = [
+      { key: 'name',  label: 'Your name',     type: 'text',  ac: 'name' },
+      { key: 'phone', label: 'Phone number',  type: 'tel',   ac: 'tel' },
+      { key: 'email', label: 'Email address', type: 'email', ac: 'email' }
+    ];
+    if (deliversAnywhere()) {
+      want.push({ key: 'address', label: 'Delivery address', type: 'area', ac: 'street-address',
+                  onlyWhenDelivering: true });
+      /* Delivery priced by town zone and parcel weight (Settings > Delivery):
+         the customer picks their town from the shop's own list. */
+      var towns = payTowns();
+      if (towns.length) {
+        want.push({ key: 'town', label: 'Your town', type: 'select', ac: 'address-level2',
+                    onlyWhenDelivering: true, options: towns });
+      }
+    }
+    return want.filter(function (f) { return !got[f.key]; })
+               .map(function (f) { f.payOnly = true; return f; });
+  }
+  function payTowns() {
+    if (!DELIVERY || !DELIVERY.payDelivery || DELIVERY.feeMethod !== 'zones') return [];
+    var seen = {}, out = [];
+    (DELIVERY.towns || []).forEach(function (t) {
+      var n = String((t && t.name) || '').trim();
+      if (!n || seen[n.toLowerCase()]) return;
+      seen[n.toLowerCase()] = true;
+      out.push(n);
+    });
+    return out;
+  }
+  function payCall(fn, body) {
+    var h = { 'Content-Type': 'application/json' };
+    try {
+      var t = ACCT && ACCT.accessToken && ACCT.accessToken();
+      if (t) h.Authorization = 'Bearer ' + t;
+    } catch (e) {}
+    return fetch(PAY_FN + fn, { method: 'POST', headers: h, body: JSON.stringify(body) })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) { j._code = r.status; return j; });
+      });
+  }
+  function payItems(order) {
+    return order.lines.map(function (l) { return { sku: l.product.sku, qty: l.qty }; });
+  }
+
+  /* The quote: what the server says this order costs, delivery and all,
+     before anybody is sent anywhere to pay it. */
+  function showPayQuote(order, d) {
+    var body = $('#orderBody');
+    if (!body) return;
+    body.innerHTML =
+      '<button class="qv-close" id="odClose" aria-label="Close">&times;</button>' +
+      '<div class="c">Pay online</div>' +
+      '<h3 class="serif">Your order</h3>' +
+      '<p class="od-lead" id="pqLead">Working out your total…</p>' +
+      '<div class="pq" id="pqBox"></div>' +
+      '<div class="rv-actions">' +
+        '<button class="btn btn-gold" id="pqPay" disabled>Pay</button>' +
+        '<button class="btn btn-outline" id="pqBack">Back</button>' +
+        '<span class="rv-msg" id="pqMsg"></span>' +
+      '</div>' +
+      '<p class="od-note">You will pay on Flutterwave’s secure page, by ' +
+      (PAY.onlineCard !== false && PAY.onlineMobile !== false ? 'card or mobile money'
+        : PAY.onlineCard !== false ? 'card' : 'mobile money') +
+      '. Your card and PIN are never seen by this website.</p>';
+    $('#odClose').addEventListener('click', closeOrderForm);
+    $('#pqBack').addEventListener('click', function () { openOrderForm(order); });
+
+    var ask = { items: payItems(order), fulfilment: d.how, town: d.town || '', preview: previewKey() || null };
+    payCall('pay-quote', ask).then(function (q) {
+      var lead = $('#pqLead'), box = $('#pqBox'), btn = $('#pqPay');
+      if (!lead) return;                                   // closed meanwhile
+      if (q._code !== 200) {
+        lead.textContent = (q.problems && q.problems.length) ? q.problems.join(' ')
+          : (q.error || 'Your total could not be worked out just now.');
+        lead.classList.add('err');
+        btn.textContent = 'Order on WhatsApp instead';
+        btn.disabled = false;
+        btn.addEventListener('click', function () { openOrderForm(order); });
+        return;
+      }
+      lead.textContent = 'Please check your order before paying.';
+      var rows = q.lines.map(function (l) {
+        return '<div class="pq-row"><span>' + esc(l.name) + ' × ' + l.qty + '</span><span>' + esc(l.totalText) + '</span></div>';
+      });
+      if (q.lines.length > 1 || q.tax || q.deliveryText) {
+        rows.push('<div class="pq-row pq-sub"><span>Items</span><span>' + esc(q.goodsText) + '</span></div>');
+      }
+      if (q.tax) rows.push('<div class="pq-row"><span>' + esc(q.taxLabel) + '</span><span>' + esc(q.taxText) + '</span></div>');
+      if (q.deliveryText) {
+        rows.push('<div class="pq-row"><span>' + esc(q.deliveryLabel || 'Delivery') + '</span><span>' +
+                  esc(q.deliveryText) + '</span></div>');
+      }
+      rows.push('<div class="pq-row pq-total"><span>Total</span><span>' + esc(q.totalText) + '</span></div>');
+      if (q.deliveryNote && !q.deliveryText) rows.push('<p class="pq-note">' + esc(q.deliveryNote) + '</p>');
+      box.innerHTML = rows.join('');
+      btn.textContent = 'Pay ' + q.totalText;
+      btn.disabled = false;
+      btn.addEventListener('click', function () { startPayment(order, d, btn); });
+    });
+  }
+
+  function startPayment(order, d, btn) {
+    var msg = $('#pqMsg');
+    btn.disabled = true;
+    btn.textContent = 'Opening the payment page…';
+    payCall('pay-start', {
+      items: payItems(order), fulfilment: d.how, town: d.town || '', preview: previewKey() || null,
+      buyer: { name: d.name, phone: d.phone, email: d.email, address: d.address, notes: d.notes }
+    }).then(function (r) {
+      if (r._code === 200 && r.link) {
+        try { sessionStorage.setItem(PAY_MEMO, JSON.stringify({ tx: r.txRef, cart: !order.single })); } catch (e) {}
+        location.href = r.link;
+        return;
+      }
+      btn.disabled = false;
+      btn.textContent = 'Try again';
+      if (msg) {
+        msg.textContent = (r.problems && r.problems.join(' ')) || r.error ||
+                          'The payment page could not be opened. Nothing has been charged.';
+        msg.className = 'rv-msg err';
+      }
+    }, function () {
+      btn.disabled = false;
+      btn.textContent = 'Try again';
+      if (msg) { msg.textContent = 'Check your connection and try again. Nothing has been charged.'; msg.className = 'rv-msg err'; }
+    });
+  }
+
+  /* Back from Flutterwave. What the address says is only a hint: the
+     server asks Flutterwave itself, and this page says what it was told. */
+  function showPaymentReturn() {
+    var q = {};
+    try { new URLSearchParams(location.search).forEach(function (v, k) { q[k] = v; }); } catch (e) {}
+    try { history.replaceState({}, '', pathFor('')); } catch (e) {}
+    var modal = $('#orderModal'), body = $('#orderBody');
+    if (!modal || !body || !q.tx_ref) return;
+    body.innerHTML =
+      '<button class="qv-close" id="odClose" aria-label="Close">&times;</button>' +
+      '<div class="c">Payment</div>' +
+      '<h3 class="serif" id="prHead">Checking your payment…</h3>' +
+      '<p class="od-lead" id="prLead">This takes a moment. Please keep this page open.</p>' +
+      '<div class="rv-actions" id="prActs"></div>';
+    $('#odClose').addEventListener('click', closeOrderForm);
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+
+    var tries = 0;
+    function ask() {
+      tries++;
+      var u = PAY_FN + 'pay-status?tx_ref=' + encodeURIComponent(q.tx_ref) +
+              (q.transaction_id ? '&transaction_id=' + encodeURIComponent(q.transaction_id) : '');
+      fetch(u, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (r) {
+        if (r.status === 'paid') return done('paid', r);
+        if (r.status === 'failed' || (q.status === 'cancelled' && tries >= 2)) return done('failed', r);
+        if (tries < 8) return setTimeout(ask, 2500);
+        done('pending', r);
+      }, function () {
+        if (tries < 8) return setTimeout(ask, 2500);
+        done('pending', {});
+      });
+    }
+    function done(how, r) {
+      var head = $('#prHead'), lead = $('#prLead'), acts = $('#prActs');
+      if (!head) return;
+      var memo = null;
+      try { memo = JSON.parse(sessionStorage.getItem(PAY_MEMO) || 'null'); } catch (e) {}
+      if (how === 'paid') {
+        head.textContent = 'Payment received';
+        lead.textContent = 'Thank you. Order ' + (r.ref || '') + ' is paid' +
+          (r.amountText ? ' (' + r.amountText + ')' : '') +
+          '. A confirmation is on its way to your email, and we will be in touch about your order.';
+        if (memo && memo.tx === q.tx_ref) {
+          if (memo.cart) { cart = []; saveCart(); afterCartChange(); }
+          try { sessionStorage.removeItem(PAY_MEMO); } catch (e) {}
+        }
+        acts.innerHTML = '<button class="btn btn-gold" id="prOk">Continue shopping</button>';
+        $('#prOk').addEventListener('click', closeOrderForm);
+      } else if (how === 'failed') {
+        head.textContent = 'The payment did not go through';
+        lead.textContent = 'Nothing has been taken. You can try again, or order on WhatsApp instead.';
+        acts.innerHTML = '<button class="btn btn-gold" id="prAgain">Try again</button>';
+        $('#prAgain').addEventListener('click', function () {
+          closeOrderForm();
+          if (memo && memo.cart) openCart();
+        });
+      } else {
+        head.textContent = 'Waiting for confirmation';
+        lead.textContent = 'We have not heard back from your bank or mobile money provider yet. ' +
+          'If you approved the payment, you will get an email as soon as it arrives. ' +
+          'Please do not pay a second time.';
+        acts.innerHTML = '<button class="btn btn-gold" id="prOk">Close</button>';
+        $('#prOk').addEventListener('click', closeOrderForm);
+      }
+    }
+    ask();
   }
 
   /* Every buy button comes through here. With nothing to ask for, it is
@@ -1997,6 +2295,7 @@
 
   // ------------------------------------------------------------------ data load
   function load() {
+    websiteData(function () {});          // start now; finishLoad picks it up
     fetch('/api/products' + (previewKey() ? '?preview=' + encodeURIComponent(previewKey()) : ''),
           { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error('bad'); return r.json(); })
@@ -2245,8 +2544,17 @@
       }
     });
   }
+  /* The website's own settings used to be asked for only after the
+     catalogue had answered, so a visitor waited for the two one after the
+     other. They are now asked for at the same moment (load() starts
+     this), and finishLoad waits for whichever is slower. */
+  var WEB_DATA = null;
+  function websiteData(cb) {
+    if (!WEB_DATA) WEB_DATA = new Promise(function (resolve) { loadWebsiteData(resolve); });
+    WEB_DATA.then(function () { cb(); });
+  }
   function finishLoad() {
-    loadWebsiteData(function () {
+    websiteData(function () {
       applyContent(CONTENT);          // contact details first, the gate uses them
       applyTheme();                   // the notice below is branded too
       if (applyGate()) return;        // closed or under maintenance: build nothing
@@ -2314,7 +2622,10 @@
       .catch(function () {}).then(done);
     fetch(base + '/rest/v1/site_settings?key=eq.homepage&select=data', { headers: h })
       .then(function (r) { return r.ok ? r.json() : []; })
-      .then(function (rows) { HOME = (rows && rows[0] && rows[0].data) || null; })
+      .then(function (rows) {
+        HOME = (rows && rows[0] && rows[0].data) || null;
+        if (HOME && HOME.heroEnabled !== false) paintHeroPhotos(HOME);
+      })
       .catch(function () {}).then(done);
     fetch(base + '/rest/v1/site_settings?key=eq.payments&select=data', { headers: h })
       .then(function (r) { return r.ok ? r.json() : []; })
@@ -3925,6 +4236,8 @@
 
     var polm = h.match(/^policies(?:\/([^?]+))?$/);
     if (polm) { renderPolicies(polm[1] ? decodeURIComponent(polm[1]) : null); showView('policies'); window.scrollTo(0, 0); return; }
+
+    if (h === 'payment-return') { showView('home'); showPaymentReturn(); return; }
 
     if (h === 'account') {
       /* Asking for the account page on a shop that has none is not an

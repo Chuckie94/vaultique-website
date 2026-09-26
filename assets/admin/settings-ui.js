@@ -495,13 +495,23 @@
       file.value = '';                     // so picking the same file again still fires
       if (!chosen) return;
 
-      if (chosen.size > MAX) {
-        ctrl.mark('That image is ' + Math.round(chosen.size / 1024) + 'KB. Please keep it under ' +
-                  Math.round(MAX / 1024) + 'KB.');
-        return;
-      }
       if (!/^image\//.test(chosen.type)) {
         ctrl.mark('That file is not an image.');
+        return;
+      }
+      /* A phone photo is usually over the limit as taken. It is shrunk
+         first (assets/image-shrink.js) and only refused if it is
+         still too big afterwards. */
+      var S = window.VBP_SHRINK;
+      var sized = (chosen.size > MAX && S && typeof S.shrink === 'function')
+        ? S.shrink(chosen) : Promise.resolve(null);
+      stat.textContent = chosen.size > MAX ? 'Shrinking\u2026' : '';
+      sized.then(function (small) {
+      if (small) chosen = small;
+      if (chosen.size > MAX) {
+        stat.textContent = '';
+        ctrl.mark('That image is ' + Math.round(chosen.size / 1024) + 'KB. Please keep it under ' +
+                  Math.round(MAX / 1024) + 'KB.');
         return;
       }
 
@@ -530,6 +540,7 @@
         stat.textContent = '';
         stat.className = 'stat';
         ctrl.mark('Upload failed: ' + (e && e.message ? e.message : e));
+      });
       });
     });
 

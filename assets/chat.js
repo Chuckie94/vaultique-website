@@ -97,7 +97,6 @@
     hours: null,
     hideOutsideHours: false,
     outsideHoursText: 'We are closed just now — leave a message and we will reply when we open',
-    waHandover: true,
     rememberHours: 4
   };
 
@@ -274,6 +273,16 @@
     var form = $('#chatForm', panel);
     form.addEventListener('submit', function (e) { e.preventDefault(); send(); });
 
+    var attach = $('#chatAttach', panel), file = $('#chatFile', panel);
+    if (attach && file) {
+      attach.addEventListener('click', function () { if (!sending) file.click(); });
+      file.addEventListener('change', function () {
+        var f = file.files && file.files[0];
+        file.value = '';                   // so the same photo can be picked again
+        if (f) sendPhoto(f);
+      });
+    }
+
     var box = $('#chatInput', panel);
     box.setAttribute('maxlength', MAX_LEN);
     /* Enter sends, shift+Enter starts a line: what every messaging app
@@ -383,7 +392,7 @@
          sent, this is the same answer as before. */
       var row = el('div', 'chat-msg ' + (m.sender === 'customer' ? 'from-me' : 'from-shop'));
       if (m.body) row.appendChild(el('div', 'chat-bubble', m.body));
-      var card = cardFor(m.meta);
+      var card = cardFor(m.meta, m.sender);
       if (card) row.appendChild(card);
       row.appendChild(el('div', 'chat-at', timeOf(m.at)));
       log.appendChild(row);
@@ -454,9 +463,9 @@
      the note in supabase-chat-phase4.sql. An unknown kind draws nothing
      rather than guessing, so an older page meeting a newer message
      shows the words and skips the rest. */
-  function cardFor(meta) {
+  function cardFor(meta, sender) {
     if (!meta || typeof meta !== 'object') return null;
-    if (meta.kind === 'image')   return imageCard(meta);
+    if (meta.kind === 'image')   return imageCard(meta, sender);
     if (meta.kind === 'product') return productCard(meta);
     if (meta.kind === 'order')   return orderCard(meta);
     return null;
@@ -469,16 +478,27 @@
     return CFG.SUPABASE_URL.replace(/\/+$/, '') +
            '/storage/v1/object/public/chat-uploads/' + String(path || '');
   }
-  function imageCard(meta) {
-    if (!meta.path) return null;
-    var wrap = el('a', 'chat-card chat-photo');
-    wrap.href = imageUrl(meta.path);
+  function imageCard(meta, sender) {
+    /* meta.local is the customer's own photo while it is still on its
+       way: a picture of it on this phone, shown at once. */
+    if (!meta.path && !meta.local) return null;
+    var src = meta.local || imageUrl(meta.path);
+    var wrap = el('a', 'chat-card chat-photo' + (meta.local ? ' is-sending' : ''));
+    wrap.href = src;
     wrap.target = '_blank';
     wrap.rel = 'noopener';
     var img = document.createElement('img');
-    img.alt = 'Photo from the shop';
+    img.alt = sender === 'customer' ? 'Your photo' : 'Photo from the shop';
     img.loading = 'lazy';
-    img.src = imageUrl(meta.path);
+    /* Cleared from storage to save space: say so rather than show a
+       broken picture. */
+    img.onerror = function () {
+      if (meta.local) return;
+      wrap.removeAttribute('href');
+      wrap.className = 'chat-card chat-photo-gone';
+      wrap.textContent = 'Photo removed';
+    };
+    img.src = src;
     wrap.appendChild(img);
     return wrap;
   }
@@ -539,47 +559,14 @@
      a form in front of a question gets fewer questions. It can be
      ignored — the conversation works perfectly well without it — and it
      goes as soon as it is answered or dismissed. */
-  /* The way out to WhatsApp, and the answer to "can I send you a
-     picture". The shop already runs WhatsApp, it already handles photos
-     well, and opening this site's storage to anonymous uploads to
-     duplicate that would be a bill waiting to happen. The conversation
-     is summarised into the message so the shop does not start again. */
-  function waHandover() {
-    var CT = window.VBP_CONTACT;
-    var num = '';
-    try {
-      var C = (window.VBP_CHAT_CONTACT || {});
-      num = C.orderNumber || C.whatsapp || '';
-    } catch (e) {}
-    if (!num) num = document.body.getAttribute('data-wa-number') || '';
-    if (!num) {
-      /* Read off a link the page is already showing rather than
-         hardcoding a number the shop may have changed. */
-      var a = document.querySelector('a[href*="wa.me/"]');
-      var m = a && a.href.match(/wa\.me\/(\d+)/);
-      num = m ? m[1] : '';
-    }
-    if (!num) return '';
-
-    var said = msgs.filter(function (m) { return m.sender === 'customer' && m.body; })
-                   .slice(-3).map(function (m) { return m.body; }).join(' / ');
-    var text = 'Hello, I was chatting on your website' +
-               (said ? ' about: ' + said : '') + '.';
-    if (CT && CT.waUrl) return CT.waUrl(num, text);
-    return 'https://wa.me/' + num + '?text=' + encodeURIComponent(text);
-  }
-
+  /* The WhatsApp link that used to sit at the foot of the conversation
+     ("Need to send a photo? Continue on WhatsApp") is gone: photos can be
+     sent here now, and the shop asked for it to be removed. Kept as a
+     function that only hides, so an older index.html still carrying the
+     empty #chatWa box never shows it. */
   function paintHandover() {
     var host = $('#chatWa');
-    if (!host) return;
-    if (!SET.waHandover) { host.style.display = 'none'; return; }
-    var url = waHandover();
-    if (!url || !msgs.length) { host.style.display = 'none'; return; }
-    host.style.display = 'block';
-    if (host.dataset.built === '1') { host.querySelector('a').href = url; return; }
-    host.dataset.built = '1';
-    host.innerHTML = '<a target="_blank" rel="noopener">Need to send a photo? Continue on WhatsApp</a>';
-    host.querySelector('a').href = url;
+    if (host) host.style.display = 'none';
   }
 
   function paintAsk() {
@@ -794,6 +781,101 @@
       .then(function () { msgs = []; lastAt = null; status = 'open'; return ask(); })
       .catch(function () {
         say('That did not send. Check your connection and try again.', 'err');
+      });
+  }
+
+  /* ------------------------------------------------------- a photo
+     Shrunk on the phone first (assets/image-shrink.js, fetched the first
+     time somebody picks a photo, so nobody else downloads it): a phone
+     photo of several MB goes up as a JPEG of a few hundred KB. Then the
+     database hands out one address to put it at, and sending it attaches
+     it to the conversation. See supabase-chat-photos.sql for why it
+     cannot be done any other way. */
+  var PHOTO_MAX = 1600;                     // long side, pixels
+  var PHOTO_LIMIT = 5 * 1024 * 1024;        // what the bucket accepts
+  var shrinker = null;
+  function loadShrinker() {
+    if (window.VBP_SHRINK) return Promise.resolve(window.VBP_SHRINK);
+    if (!shrinker) {
+      shrinker = new Promise(function (resolve) {
+        var tag = document.createElement('script');
+        tag.src = (window.VBP_BASE || '/') + 'assets/image-shrink.js';
+        tag.onload = function () { resolve(window.VBP_SHRINK || null); };
+        tag.onerror = function () { shrinker = null; resolve(null); };
+        document.head.appendChild(tag);
+      });
+    }
+    return shrinker;
+  }
+  function uploadTo(path, blob) {
+    return fetch(CFG.SUPABASE_URL.replace(/\/+$/, '') + '/storage/v1/object/chat-uploads/' + path, {
+      method: 'POST',
+      headers: {
+        'apikey': CFG.SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + bearer(),
+        'Content-Type': blob.type || 'image/jpeg',
+        'cache-control': 'max-age=31536000',
+        'x-upsert': 'false'
+      },
+      body: blob
+    }).then(function (r) {
+      if (!r.ok) return r.text().then(function (t) { throw new Error(t || r.status); });
+    });
+  }
+  function sendPhoto(file, retried) {
+    if (sending) return;
+    if (!/^image\//.test(file.type || '')) { say('That file is not a photo.', 'err'); return; }
+    sending = true;
+    say('');
+    var attach = $('#chatAttach');
+    if (attach) attach.disabled = true;
+    var local = '';
+    try { local = URL.createObjectURL(file); } catch (e) {}
+    var pending = { id: 'p' + Date.now(), sender: 'customer', body: '', at: new Date().toISOString(),
+                    meta: { kind: 'image', local: local } };
+    if (local) { msgs.push(pending); paint(); }
+
+    function done() {
+      sending = false;
+      if (attach) attach.disabled = false;
+    }
+    var photo = null;
+    loadShrinker()
+      .then(function (S) { return S ? S.shrink(file, { max: PHOTO_MAX }) : null; })
+      .then(function (small) {
+        photo = small || file;
+        if (photo.size > PHOTO_LIMIT) throw new Error('too big');
+        return ensureConversation();
+      })
+      .then(function () { return rpc('chat_photo_start', { p_token: token }); })
+      .then(function (path) {
+        return uploadTo(path, photo).then(function () {
+          return rpc('chat_send_photo', { p_token: token, p_path: path, p_body: null });
+        });
+      })
+      .then(function () {
+        done();
+        if (token) memoSet({ token: token });
+        followTheCustomer();
+        return ask();
+      })
+      .then(function () {
+        /* The stand-in has been replaced by the stored photo by now. */
+        if (local) setTimeout(function () { try { URL.revokeObjectURL(local); } catch (e) {} }, 30000);
+      }, function (e) {
+        done();
+        msgs = msgs.filter(function (m) { return m.id !== pending.id; });
+        paint();
+        var why = String((e && e.message) || '');
+        /* Closed by the shop: start a new conversation and try once more,
+           the same as a written message does. */
+        if (why.indexOf('no open conversation') > -1 && !retried) {
+          token = null; memoSet(null); started = false; msgs = []; lastAt = null; status = 'open';
+          return sendPhoto(file, true);
+        }
+        say(why === 'too big' ? 'That photo is too large to send. Try a smaller one.'
+          : why.indexOf('too many photos') > -1 ? 'That is a lot of photos at once. Please wait a little and try again.'
+          : 'The photo did not send. Check your connection and try again.', 'err');
       });
   }
 
@@ -1060,6 +1142,13 @@
 
     var fab = $('#chatFab');
     if (fab) fab.classList.remove('hide');
+
+    /* The photo button, only once the shop has run supabase-chat-photos.sql.
+       Asked once per page; a shop that has not simply never shows it. */
+    rpc('chat_photos_on', {}).then(function (yes) {
+      var a = $('#chatAttach');
+      if (a && yes === true) a.classList.remove('hide');
+    }).catch(function () {});
 
     var saved = memoFresh();
     if (saved && saved.token) {

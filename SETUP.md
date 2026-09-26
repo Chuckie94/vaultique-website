@@ -506,6 +506,189 @@ stops you — putting one there would undo the point of the private table.
 > `site_settings_private`. It is safe to run more than once. Without it, the
 > bank and mobile money details cannot save.
 
+### Password reset ("Forgot your password?")
+
+Both sign-in pages have it:
+- **Admin** (`/admin.html`): **Forgot your password?** under the Sign in button.
+- **Customer accounts** (`/account`): **Forgotten your password?**, which you can
+  switch off in Settings > Customer Accounts.
+
+The person types their email and presses the link. **Supabase sends the email**
+through your mail service (Amazon SES, set up below). They click the link in the
+email, choose a new password, and are signed in. On the admin, anyone with an
+authenticator app set up must also enter their code, so an email inbox alone is
+never enough to get in. The page gives the same answer whether or not the email
+has an account, so it can't be used to find out who has one. Links expire, and
+an expired link says so.
+
+#### Setting up the email (once): Amazon SES, then Supabase
+
+Supabase's built-in email is for testing only: it sends very few emails an hour
+and only to your own team. Pointing it at SES makes reset emails reliable and
+sends them from your own address.
+
+**In AWS (the SES console, in the region you use):**
+1. **Verified identities:** make sure `vaultiqueboutique.com` is verified (the DKIM
+   records are in your DNS). If only an email address is verified, verify the
+   domain instead.
+2. **Account dashboard:** if it says *Sandbox*, press **Request production access**.
+   In the sandbox, SES only sends to addresses you have verified yourself, so your
+   customers' reset emails would never arrive.
+3. **SMTP settings:** note the **SMTP endpoint** (for example
+   `email-smtp.eu-west-1.amazonaws.com`), then **Create SMTP credentials**. Save
+   the **SMTP username and password** it shows you. These are not your normal AWS
+   access keys, and the password is shown only once.
+
+**In Supabase (your website project):**
+1. **Authentication > Emails > SMTP Settings** (older dashboards: Project
+   Settings > Authentication): switch on **custom SMTP**:
+   - Sender email: `no-reply@vaultiqueboutique.com` (any address on the verified domain)
+   - Sender name: `Vaultique Boutique Point`
+   - Host: your SMTP endpoint · Port: `587`
+   - Username and password: the SES SMTP credentials. Save.
+2. **Authentication > URL Configuration**:
+   - Site URL: `https://vaultiqueboutique.com`
+   - Redirect URLs: add both
+     `https://vaultiqueboutique.com/admin.html?reset=1` and
+     `https://vaultiqueboutique.com/account?reset=1`.
+     A reset link will not work until these are added.
+3. **Authentication > Emails > Templates > Reset Password**: replace the
+   default with your own. For example:
+   - Subject: `Set a new password for Vaultique Boutique Point`
+   - Body:
+     ```html
+     <p>Hello,</p>
+     <p>Someone asked to reset the password for this email address at
+        Vaultique Boutique Point. If it was you, choose a new password here:</p>
+     <p><a href="{{ .ConfirmationURL }}">Set a new password</a></p>
+     <p>This link works once and expires soon. If you did not ask, ignore this
+        email and your password stays as it is.</p>
+     <p>Vaultique Boutique Point</p>
+     ```
+4. Optional: **Authentication > Rate Limits** controls how many emails can go out
+   an hour. The default is fine for a boutique.
+
+**Order emails too.** The same SES SMTP details work in **Settings > Notifications**
+in the admin (host, port 587, username, password, sender email), for payment
+confirmations and order messages.
+
+**Test it:** open `/admin.html`, type your email, press **Forgot your password?**,
+and follow the link in the email.
+
+### Online payment (card and mobile money)
+
+Customers can pay by card or mobile money through **Flutterwave**. It is **off**
+until you switch it on. **WhatsApp checkout does not change**: when this is on,
+a second button, **Pay now — card or mobile money**, appears under
+**Continue on WhatsApp** in the checkout form.
+
+**What the customer sees.** Their details (name, phone, email, and address if
+delivering), then a **quote**: each piece, any VAT, the delivery fee if you
+charge it online, and the total. They press **Pay K…**, pay on Flutterwave's
+secure page, and come back to **Payment received — order VB-XXXXX**. The
+order appears in the **Orders** tab with a green **Paid ✓** badge. An email
+confirmation goes to the customer and to you automatically.
+
+**Why it is safe.**
+- The website never says how much to charge. The server works the price out
+  from your POS prices and your price settings, the same way the page shows
+  them. A customer who edits the page pays the real price anyway.
+- Card numbers and PINs are typed on Flutterwave's page, never on yours.
+- An order is marked Paid only after the server has asked Flutterwave directly
+  and the amount, currency and reference all match. A fake "paid" message does
+  nothing, and nobody can mark an order paid from a browser or an admin login.
+- The secret keys live only in Netlify, never in the admin or the website.
+
+#### Setting it up (once)
+
+1. **Flutterwave account.** Sign up at flutterwave.com as a business and
+   complete their checks. You can test straight away. Live payments start
+   once Flutterwave approves you.
+2. **Run `supabase-payments.sql`** in the Supabase SQL Editor (it is safe to run again).
+3. **Add these in Netlify** > your site > **Site configuration** >
+   **Environment variables** > **Add a variable**:
+
+   | Key | Value |
+   |---|---|
+   | `FLW_SECRET_KEY_TEST` | Flutterwave dashboard > Settings > API keys, **test** secret key (starts `FLWSECK_TEST-`) |
+   | `FLW_SECRET_KEY_LIVE` | the **live** secret key, once Flutterwave has approved you |
+   | `FLW_WEBHOOK_HASH` | a long random phrase you make up, such as 30 mixed letters and numbers |
+   | `SUPABASE_SERVICE_ROLE_KEY` | already there if you set up logins (see above) |
+
+   Then **Deploys** > **Trigger deploy**.
+4. **In Flutterwave** > Settings > **Webhooks**: URL
+   `https://vaultiqueboutique.com/.netlify/functions/pay-webhook`, and
+   **Secret hash** exactly the same phrase as `FLW_WEBHOOK_HASH`. Save.
+5. **Settings > Notifications**: make sure the email account is set up and the
+   test email works, because that is what sends the confirmations.
+6. **Settings > Payments > Online payment**: switch it on, leave the mode on
+   **Test**, and save. The line at the top should show ✓ against every item.
+7. **Try it** on your phone: add something to the cart, press **Pay now**, and pay
+   with one of Flutterwave's test cards or test mobile money numbers (listed in
+   their documentation under "Testing"). Check the order shows **Paid ✓**.
+8. When you are ready, set the mode to **Live**, save, and make one small real
+   purchase yourself.
+
+**To stop taking online payments**, switch **Take payments online** off. The
+button goes at once. Any payment already under way still completes and is recorded.
+
+#### Delivery in online payments
+
+**Settings > Delivery > Delivery in online payments** decides whether the
+delivery fee is added to the total before paying.
+
+- **Off** (the default): customers pay for the pieces only and are told
+  delivery is settled separately, as it is today.
+- **On**: the fee appears in the quote and is part of the payment. Customers
+  who collect are never charged delivery. Choose **How the fee is worked out**:
+  - **One standard fee for everywhere:** your **Standard delivery fee**, free
+    above **Free delivery over** if you set it.
+  - **By the customer's town and the parcel's weight:** the courier's flat
+    rates, set out in the table described below.
+
+#### Delivery fees by town and weight
+
+Your courier charges a flat rate per parcel, set by the **zone** of the town it
+goes to and the parcel's **weight tier**. With this method chosen, four more
+groups appear under Settings > Delivery:
+
+1. **Parcel weight tiers.** Enter the small parcel limit and the medium parcel
+   limit in kg (they start at 5 and 15). Up to and including the small limit
+   is **small**. Over that, up to and including the medium limit, is **medium**.
+   Anything heavier is **large**.
+2. **Zone fees.** There are three zones, each with a name for your own
+   reference and a fee for a small, medium and large parcel. The boxes start
+   empty: enter your courier's rates. Leave a box empty if that parcel size
+   cannot go to that zone. **0** means free.
+3. **Towns.** Add every town customers can choose, each with its zone. At
+   checkout, a customer paying online for delivery picks their town from this
+   list.
+4. **Pieces with no weight, and large orders.**
+   - The parcel weight is each piece's **Unit weight (kg)** from your POS,
+     multiplied by how many are in the cart, all added up. If a piece has no
+     weight in the POS, you choose between **Do not price delivery online**
+     (the safe default) and **Count it as a set weight** (you give the kg).
+     Filling in the weight in the POS avoids the question entirely.
+   - **Extra charge for large orders:** optionally, add a flat amount once an
+     order holds a set number of pieces.
+
+**Free delivery over** still applies, and is checked last.
+
+**What the customer sees:** the quote shows a line such as *Delivery to Kitwe ·
+5.5 kg* with the fee, and the town is added to the delivery address on the order.
+
+**What is never guessed:** if a town isn't listed ("My town is not listed"), a
+zone has no fee for that parcel size, or a piece has no weight, delivery is
+**not** priced online. The customer is told to collect in person or order on
+WhatsApp so you can quote them. Nothing is charged as K0 by mistake. The admin
+refuses to save a table that can't work, for example towns in a zone with no
+fees, the same town listed twice, or a medium limit below the small one.
+
+**Payments nobody finished.** If a customer opens the payment page and walks
+away, the order shows **Awaiting payment**. After three hours it is marked
+**Payment not completed** and cancelled, so it no longer counts as a sale. If the
+money arrives late after all, the order comes back as **Paid**.
+
 ### Settings > Homepage
 
 The announcement bar, the hero, your story, the core values, and which
@@ -976,6 +1159,34 @@ changed.
 This needs **supabase-chat-jobs.sql** run once in the SQL Editor. Without it
 nothing is detected and the chat behaves exactly as it does today.
 
+#### Customers sending photos
+
+A camera button beside the message box lets a customer send a photo, for
+example of a piece they saw or an item they want to return. The photo is
+shrunk on their phone before it is sent: a photo of several MB goes up as a
+JPEG of about 200–400 KB. Your own photos sent from the admin chat are shrunk
+the same way.
+
+**Run supabase-chat-photos.sql once** in the SQL Editor. Until you do, the
+button does not appear and nothing changes.
+
+**Strangers cannot fill your storage with it.** A customer can upload only
+while they have an open conversation, only images of 5 MB or less, only to a
+one-time address the database gives them, and at most 10 photos an hour per
+conversation. They cannot replace or delete anything.
+
+The old "Need to send a photo? Continue on WhatsApp" link at the foot of the
+chat has been removed, along with its switch in Settings > Live Chat.
+
+**Storage.** Chat photos are files in Supabase **file storage** (1 GB on the
+free plan), not in the database. Each is about 200–400 KB, so 1 GB holds
+roughly 3,000–5,000 of them. Deleting a conversation now deletes its photos.
+To clear older ones, go to **Settings > System & Maintenance > Chat photos**,
+which shows how many are stored and how much space they take. Pick an age
+("older than 3 months", say) and press **Clear chat photos**. The messages
+stay and read "Photo removed". Photos left behind by conversations deleted
+before build 44 are cleared at the same time.
+
 #### Replies that arrive without waiting
 
 Both sides of the chat used to ask the database every few seconds whether
@@ -1088,6 +1299,25 @@ led to a tab that is not there would be a dead end on the first screen.
 ### The Analytics tab
 
 How many people came to the website, what they looked at, and on what.
+
+**Orders** and **Sales** come from the Orders tab. To remove a test order from
+these figures, open **Orders**, find it, and press **Delete** (or set its status
+to **Cancelled**; cancelled orders are not counted).
+
+**How orders were paid.** Once online payment is switched on (and
+`supabase-payments.sql` has been run), a card under the figures splits sales for
+the chosen dates into:
+- **Paid online**, and within it **card** and **mobile money**.
+- **Ordered on WhatsApp**.
+- The **online share** of sales.
+- Online payments **not completed**: sent to the payment page and never paid.
+
+It also says how much of the online money was delivery fees.
+
+**An online order counts as a sale only once it is paid**, in Orders and Sales
+here and on the Dashboard. One still on the payment page is not counted, and is
+not shown as "waiting" for you either. WhatsApp orders count as they always
+have, until cancelled.
 
 **Nothing here works until you run one file.** Open the **SQL Editor** for this
 website's Supabase project > **New query**, paste in the whole of
@@ -1520,6 +1750,16 @@ need their own logins, tell me and I will build it properly.
 
 This section has nothing to fill in. Everything on it is either a fact read live
 from your site, or a button that does something.
+
+#### Make photos load faster
+
+Photos are now shrunk to screen size (at most 1800 pixels on the long side)
+when you upload them, so visitors download a few hundred KB instead of the
+several MB a phone photo starts at. Photos uploaded **before build 42** are
+still full size. Press **Shrink uploaded photos** once to shrink them all.
+Each one keeps its address, so products and settings need no changes. Keep
+the page open until it says **Done**. Logos with see-through parts, and
+photos that are already small, are left as they are.
 
 #### System information
 

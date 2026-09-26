@@ -508,7 +508,10 @@
           .sort()[0];
         return Promise.resolve(
           sb.from('orders')
-            .select('id,ref,total,currency,status,created_at')
+            /* '*' rather than a list: the payment columns exist only once
+               supabase-payments.sql has been run, and naming them would
+               break this read on a shop that has not run it. */
+            .select('*')
             .gte('created_at', reachBackTo(earliest))
             .order('created_at', { ascending: false })
         ).then(function (r) {
@@ -516,7 +519,11 @@
           if (r.error) throw r.error;
           var rows = (r.data || []).map(function (o) {
             return {
-              id: o.id, ref: o.ref, status: o.status,
+              id: o.id, ref: o.ref,
+              /* An order sent to pay online and not paid is not a sale, and
+                 is treated here exactly like a cancelled one. */
+              status: (o.payment_method === 'online' && o.payment_status !== 'paid')
+                ? 'cancelled' : o.status,
               total: Number(o.total) || 0,
               at: o.created_at,
               day: dayIn(tz, new Date(o.created_at))
@@ -810,7 +817,17 @@
             sb.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'pending')
           ).then(function (r) {
             if (r.error) throw r.error;
-            attnDone('orders', r.count || 0);
+            /* Orders still on the payment page are not waiting for the shop.
+               Asked separately so a shop without the payment columns still
+               gets its count: there, this second read fails and takes off 0. */
+            return Promise.resolve(
+              sb.from('orders').select('*', { count: 'exact', head: true })
+                .eq('status', 'pending').eq('payment_method', 'online').neq('payment_status', 'paid')
+            ).then(function (u) {
+              return Math.max(0, (r.count || 0) - ((u && !u.error && u.count) || 0));
+            }, function () { return r.count || 0; });
+          }).then(function (n) {
+            attnDone('orders', n);
           }).catch(function () { attnDone('orders', 0); }));
         }
 

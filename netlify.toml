@@ -17,7 +17,11 @@
   # three fail quietly: robots.txt drops to two hardcoded lines, the
   # sitemap loses the catalogue and the policies, and every attempt to
   # send email is refused as though the sender were not an administrator.
-  included_files = ["config.js"]
+  #
+  # assets/formats.js is included for the payment functions (pay-*.js):
+  # they work out what to charge with the very same price rules the page
+  # uses to show a price, so the two can never disagree.
+  included_files = ["config.js", "assets/formats.js"]
 
 # ---------------------------------------------------------------------
 # The product pulse.
@@ -224,6 +228,18 @@
 
 [[redirects]]
   from = "/supabase-chat-realtime.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-chat-photos.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-payments.sql"
   to = "/index.html"
   status = 404
   force = true

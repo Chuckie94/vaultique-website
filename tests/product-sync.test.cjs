@@ -116,10 +116,13 @@ const product = over => Object.assign({
                         for does not change. */
                      'brand', 'description', 'details', 'variantGroup',
                      /* How many the cart may hold: the stock, capped at 99. */
-                     'maxQty'].sort();
+                     'maxQty',
+                     /* The unit weight as a number, for delivery fees by
+                        weight. Already public as the "Unit Weight" row. */
+                     'weightKg'].sort();
     const got = Object.keys(p).sort();
     is(JSON.stringify(got) === JSON.stringify(ALLOWED),
-       'and a product carries exactly these fifteen fields and no others',
+       'and a product carries exactly these sixteen fields and no others',
        'got: ' + JSON.stringify(got));
     is(p.targetMargin === undefined && !/51\.4/.test(JSON.stringify(p)),
        'the category profit margin the platform stamps on every piece is not among them');

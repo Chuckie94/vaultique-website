@@ -422,6 +422,123 @@
 
   /* ---- the page -------------------------------------------------------- */
 
+  /* ---- shrinking the photos already in storage ---------------------
+
+     New uploads are shrunk on the way in (assets/image-shrink.js).
+     Everything uploaded before that is still the size the phone took it,
+     and those are what make the storefront slow. This walks the bucket,
+     and every photo over BIG is shrunk and written back AT THE SAME PATH,
+     so every product, setting and page that points at it keeps working
+     without being touched. */
+  var BIG = 400 * 1024;
+
+  var PAGE = 1000;
+  function listAll(store, prefix, out, offset) {
+    offset = offset || 0;
+    return store.list(prefix, { limit: PAGE, offset: offset, sortBy: { column: 'name', order: 'asc' } })
+      .then(function (r) {
+        if (r.error) throw r.error;
+        var rows = r.data || [];
+        var folders = [];
+        rows.forEach(function (f) {
+          var path = prefix ? prefix + '/' + f.name : f.name;
+          if (f.id === null || f.id === undefined) folders.push(path);   // a folder
+          else out.push({ path: path, size: (f.metadata && f.metadata.size) || 0,
+                          type: (f.metadata && f.metadata.mimetype) || '',
+                          at: f.created_at || f.updated_at || '' });
+        });
+        var more = rows.length === PAGE ? listAll(store, prefix, out, offset + PAGE) : Promise.resolve();
+        return more.then(function () {
+          return folders.reduce(function (p, dir) {
+            return p.then(function () { return listAll(store, dir, out); });
+          }, Promise.resolve());
+        });
+      })
+      .then(function () { return out; });
+  }
+
+  /* ---- chat photos ------------------------------------------------------
+
+     Every photo sent in the chat, by the shop or by a customer, is a file
+     in the chat-uploads bucket, in a folder named after its conversation.
+     They count against the plan's file storage (1 GB on Supabase's free
+     plan), not against the database. This finds the ones worth clearing:
+     photos older than the age chosen, and any left behind by a
+     conversation that has since been deleted. */
+  function chatPhotos(ctx) {
+    var store = ctx.sb.storage.from('chat-uploads');
+    return Promise.all([
+      listAll(store, '', []),
+      Promise.resolve(ctx.sb.from('chat_conversations').select('id')).then(function (r) {
+        if (r.error) throw r.error;
+        var ids = {};
+        (r.data || []).forEach(function (c) { ids[c.id] = true; });
+        return ids;
+      })
+    ]).then(function (both) { return { files: both[0], live: both[1] }; });
+  }
+  function chatPhotosToClear(report, days) {
+    var cut = Date.now() - days * 86400000;
+    return report.files.filter(function (f) {
+      var folder = f.path.split('/')[0];
+      if (!report.live[folder]) return true;                  // conversation deleted
+      var t = Date.parse(f.at);
+      return !isNaN(t) && t < cut;
+    });
+  }
+  function clearChatPhotos(ctx, files) {
+    var store = ctx.sb.storage.from('chat-uploads');
+    var paths = files.map(function (f) { return f.path; });
+    var gone = 0;
+    var batches = [];
+    for (var i = 0; i < paths.length; i += 100) batches.push(paths.slice(i, i + 100));
+    return batches.reduce(function (p, b) {
+      return p.then(function () {
+        return store.remove(b).then(function (r) {
+          if (r && r.error) throw r.error;
+          gone += b.length;
+        });
+      });
+    }, Promise.resolve()).then(function () { return gone; });
+  }
+  A.chatPhotoTools = { report: chatPhotos, pick: chatPhotosToClear, clear: clearChatPhotos };
+
+  function shrinkStored(ctx, onStep) {
+    var S = window.VBP_SHRINK;
+    if (!S || typeof S.shrink !== 'function') return Promise.reject(new Error('The photo shrinker did not load.'));
+    var bucket = (ctx.cfg && ctx.cfg.IMAGE_BUCKET) || 'product-images';
+    var store = ctx.sb.storage.from(bucket);
+    var tally = { looked: 0, done: 0, before: 0, after: 0, failed: 0 };
+    return listAll(store, '', []).then(function (files) {
+      var todo = files.filter(function (f) {
+        return f.size > BIG && /^image\/(jpeg|jpg|pjpeg|webp|png)$/i.test(f.type);
+      });
+      tally.looked = todo.length;
+      return todo.reduce(function (p, f, i) {
+        return p.then(function () {
+          onStep(i + 1, todo.length);
+          return store.download(f.path).then(function (r) {
+            if (r.error) throw r.error;
+            var blob = r.data;
+            if (!blob.type && f.type) blob = new Blob([blob], { type: f.type });
+            return S.shrink(blob);
+          }).then(function (small) {
+            if (!small) return;
+            /* The same address is kept, so browsers may hold the old file
+               for an hour; no longer. */
+            return store.upload(f.path, small, { upsert: true, cacheControl: '3600',
+                                                contentType: 'image/jpeg' })
+              .then(function (r) {
+                if (r.error) throw r.error;
+                tally.done++; tally.before += f.size; tally.after += small.size;
+              });
+          }).catch(function () { tally.failed++; });
+        });
+      }, Promise.resolve());
+    }).then(function () { return tally; });
+  }
+  A.shrinkStoredPhotos = shrinkStored;     // reachable for tests/fast-load.browser.cjs
+
   A.registerSetting({
     key: 'system-maintenance',
     title: 'System & Maintenance',
@@ -533,6 +650,105 @@
           A.store.forget();
           location.reload();
         });
+      });
+
+      maint.appendChild(el('h3', 'sys-sub', 'Make photos load faster'));
+      maint.appendChild(el('p', 'grp-note',
+        'Photos uploaded before build 42 are still the full size your phone took them, ' +
+        'often several MB each, and that is what makes the website slow to show them. ' +
+        'This shrinks every large photo to screen size, keeping the same look and ' +
+        'the same address, so nothing else needs changing. New uploads are shrunk ' +
+        'automatically. You only need to press this once. Keep this page open ' +
+        'until it finishes.'));
+      var shrinkRow = el('div', 'row');
+      var shrinkBtn = el('button', 'btn btn-gold btn-sm', 'Shrink uploaded photos');
+      shrinkBtn.type = 'button';
+      shrinkRow.appendChild(shrinkBtn);
+      maint.appendChild(shrinkRow);
+      var shrinkOut = el('p', 'count', '');
+      maint.appendChild(shrinkOut);
+      shrinkBtn.addEventListener('click', function () {
+        shrinkBtn.disabled = true;
+        shrinkBtn.textContent = 'Working\u2026';
+        shrinkOut.textContent = 'Looking through your photos\u2026';
+        shrinkStored(ctx, function (n, of) {
+          shrinkOut.textContent = 'Shrinking photo ' + n + ' of ' + of + '\u2026';
+        }).then(function (t) {
+          var mb = function (b) { return (b / 1048576).toFixed(1) + ' MB'; };
+          shrinkOut.textContent = !t.looked
+            ? 'All your photos are already a good size. Nothing to do.'
+            : 'Done. ' + t.done + ' of ' + t.looked + ' large photos shrunk' +
+              (t.done ? ', from ' + mb(t.before) + ' to ' + mb(t.after) : '') + '.' +
+              (t.failed ? ' ' + t.failed + ' could not be read and were left as they were.' : '');
+        }).catch(function (e) {
+          shrinkOut.textContent = 'Could not finish: ' + errText(e);
+        }).then(function () {
+          shrinkBtn.disabled = false;
+          shrinkBtn.textContent = 'Shrink uploaded photos';
+        });
+      });
+
+      maint.appendChild(el('h3', 'sys-sub', 'Chat photos'));
+      maint.appendChild(el('p', 'grp-note',
+        'Photos sent in the live chat, by you or by customers, are kept in your Supabase ' +
+        'file storage (1 GB on the free plan; each chat photo is about 200-400 KB). ' +
+        'Deleting a conversation now deletes its photos too. This clears older ones: ' +
+        'the messages stay, and the photo in them reads "Photo removed".'));
+      var cpUse = statusRow(maint, 'Chat photos stored', 'Counting\u2026');
+      var cpRow = el('div', 'row');
+      var cpAge = el('select', 'cp-age');
+      [[30, 'older than 1 month'], [90, 'older than 3 months'],
+       [180, 'older than 6 months'], [365, 'older than 1 year']].forEach(function (o) {
+        var opt = el('option', null, o[1]); opt.value = String(o[0]);
+        if (o[0] === 90) opt.selected = true;
+        cpAge.appendChild(opt);
+      });
+      var cpBtn = el('button', 'btn btn-out btn-sm', 'Clear chat photos');
+      cpBtn.type = 'button';
+      cpRow.appendChild(cpAge);
+      cpRow.appendChild(cpBtn);
+      maint.appendChild(cpRow);
+      var cpOut = el('p', 'count', '');
+      maint.appendChild(cpOut);
+      var cpMb = function (b) { return (b / 1048576).toFixed(1) + ' MB'; };
+      var cpSum = function (list) { return list.reduce(function (n, f) { return n + (f.size || 0); }, 0); };
+      var cpReport = null;
+      function cpCount() {
+        return chatPhotos(ctx).then(function (r) {
+          cpReport = r;
+          cpUse.className = 'sys-value';
+          cpUse.textContent = r.files.length + (r.files.length === 1 ? ' photo, ' : ' photos, ') +
+                              cpMb(cpSum(r.files));
+        }, function (e) {
+          cpUse.className = 'sys-value sys-warn';
+          cpUse.textContent = '! Could not be counted: ' + errText(e);
+        });
+      }
+      cpCount();
+      cpBtn.addEventListener('click', function () {
+        var days = Number(cpAge.value) || 90;
+        cpBtn.disabled = true;
+        (cpReport ? Promise.resolve() : cpCount()).then(function () {
+          if (!cpReport) return;
+          var list = chatPhotosToClear(cpReport, days);
+          if (!list.length) { cpOut.textContent = 'Nothing to clear: no chat photos are that old.'; return; }
+          var label = cpAge.options[cpAge.selectedIndex].textContent;
+          return ask('Delete ' + list.length + (list.length === 1 ? ' chat photo ' : ' chat photos ') +
+                     label + ' (' + cpMb(cpSum(list)) + ')? The messages stay; the photos cannot be brought back.',
+                     { title: 'Clear chat photos', okText: 'Delete them', danger: true })
+            .then(function (yes) {
+              if (!yes) return;
+              cpOut.textContent = 'Deleting\u2026';
+              return clearChatPhotos(ctx, list).then(function (n) {
+                cpOut.textContent = 'Done. ' + n + (n === 1 ? ' photo' : ' photos') +
+                                    ' deleted, ' + cpMb(cpSum(list)) + ' freed.';
+                cpReport = null;
+                return cpCount();
+              });
+            });
+        }).catch(function (e) {
+          cpOut.textContent = 'Could not finish: ' + errText(e);
+        }).then(function () { cpBtn.disabled = false; });
       });
 
       maint.appendChild(el('h3', 'sys-sub', 'System health check'));

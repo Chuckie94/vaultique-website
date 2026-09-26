@@ -87,6 +87,12 @@ function builder(table) {
     then: function (onOk, onErr) {
       window.__asked.from.push(q);
       var key = q.head ? table + ':count' : table;
+      /* The count of orders still on the online payment page is its own
+         question, answered 0 unless a test plans otherwise. */
+      if (q.head && q.filters.some(function (f) { return f[1] === 'payment_method'; })) {
+        key = table + ':count:unpaid';
+        return answer(window.PLAN[key] !== undefined ? window.PLAN[key] : { count: 0 }).then(onOk, onErr);
+      }
       var spec = window.PLAN[key] !== undefined ? window.PLAN[key] : window.PLAN[table];
       return answer(spec).then(onOk, onErr);
     }
@@ -305,7 +311,12 @@ const stock = p => p.evaluate(() => {
         { id: '1', ref: 'VB-001', total: 1850, currency: 'ZMW', status: 'pending',   created_at: at(0) },
         { id: '2', ref: 'VB-002', total: 3200, currency: 'ZMW', status: 'confirmed', created_at: at(0) },
         { id: '3', ref: 'VB-003', total: 900,  currency: 'ZMW', status: 'cancelled', created_at: at(0) },
-        { id: '4', ref: 'VB-004', total: 2400, currency: 'ZMW', status: 'completed', created_at: at(3) }
+        { id: '4', ref: 'VB-004', total: 2400, currency: 'ZMW', status: 'completed', created_at: at(3) },
+        /* Paid online: a sale. Sent to pay online and not paid: not one. */
+        { id: '5', ref: 'VB-005', total: 500,  currency: 'ZMW', status: 'pending', created_at: at(0),
+          payment_method: 'online', payment_status: 'paid' },
+        { id: '6', ref: 'VB-006', total: 700,  currency: 'ZMW', status: 'pending', created_at: at(0),
+          payment_method: 'online', payment_status: 'awaiting' }
       ] },
       'customers:count': { count: 42 },
       customers: { data: [{ created_at: at(2) }, { created_at: at(5) }] },
@@ -326,12 +337,12 @@ const stock = p => p.evaluate(() => {
 
     group('Orders are counted the way a shop counts them');
     c = await cardBy(page, 'Orders');
-    is(c && c.n === '2', 'two orders today — the cancelled one is not one of them', JSON.stringify(c));
+    is(c && c.n === '3', 'three orders today — the cancelled one and the unpaid online one are not among them', JSON.stringify(c));
     c = await cardBy(page, 'Order value');
-    is(c && /5,050/.test(c.n), 'and today is worth 1850 + 3200, with the cancelled 900 left out',
+    is(c && /5,550/.test(c.n), 'and today is worth 1850 + 3200 + 500 paid online, with the cancelled 900 and the unpaid 700 left out',
        c && c.n);
     is(c && /K/.test(c.n), 'shown in the shop’s own money', c && c.n);
-    is(c && /7,450/.test(c.s), 'the week includes the older order and still excludes the cancelled',
+    is(c && /7,950/.test(c.s), 'the week includes the older order and still excludes the cancelled',
        c && c.s);
 
     group('The people are totals, not today');
@@ -471,6 +482,25 @@ const stock = p => p.evaluate(() => {
 
     let items = await attnText(page);
     is(items.some(t => /^6 orders waiting/.test(t)), 'six orders waiting', items.join(' | '));
+
+    await render(page, Object.assign({}, SETTINGS_OK, QUIET, {
+      'orders:count': { count: 6 }, 'orders:count:unpaid': { count: 2 }
+    }));
+    let unpaid = await attnText(page);
+    is(unpaid.some(t => /^4 orders waiting/.test(t)),
+       'two of them still on the online payment page are not waiting for the shop', unpaid.join(' | '));
+    await render(page, Object.assign({}, SETTINGS_OK, QUIET, {
+      'orders:count': { count: 6 },
+      'rpc:chat_stats': { data: { unanswered: 2 } },
+      'reviews:count': { count: 1 },
+      product_meta: { data: [{ sku: 'A', image_url: 'x.jpg' }, { sku: 'B', image_url: '' }] },
+      feed: { data: [
+        { sku: 'A', name: 'Silk Dress', available: true,  lowStock: false },
+        { sku: 'B', name: 'Tote Bag',   available: true,  lowStock: true },
+        { sku: 'C', name: 'Loafers',    available: false, lowStock: false }
+      ] }
+    }));
+    items = await attnText(page);
     is(items.some(t => /^2 chats unanswered/.test(t)), 'two chats unanswered', items.join(' | '));
     is(items.some(t => /^1 review waiting/.test(t)), 'one review, in the singular', items.join(' | '));
     is(items.some(t => /pieces? with no photo/.test(t)),

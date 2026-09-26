@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.26.0',
-  build: 41,
-  builtAt: '2026-09-25T20:00:00Z',
-  notes: 'Find us: the "Based in Zambia, delivering nationwide" heading is gone, and the map pins the shop address from General plus any other shop locations listed there, one red pin each.'
+  version: '1.32.0',
+  build: 48,
+  builtAt: '2026-09-27T10:00:00Z',
+  notes: 'Password reset: "Forgot your password?" on the admin sign-in, new-password step after the email link (authenticator code first where set up), and the customer reset link fixed. Emails go through Supabase with Amazon SES as its mail service.'
 };

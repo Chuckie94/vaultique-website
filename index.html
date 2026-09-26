@@ -60,6 +60,31 @@
 
   window.VBP_MARKS = { pick: pick, SHIPPED: SHIPPED };
 
+  /* The hero photo this browser was shown last time (remembered by
+     app.js). Asked for now, at the highest priority, so it is on its way
+     before the stylesheet, the fonts or any script. Same rule as above:
+     only this site or its own photo storage. */
+  var hero = [];
+  try {
+    var hr = JSON.parse(localStorage.getItem('vbp_hero') || 'null');
+    if (hr && hr.length) hero = hr;
+  } catch (e) {}
+  function mine(v) {
+    return typeof v === 'string' && v &&
+      ((v.charAt(0) === '/' && v.charAt(1) !== '/') ||
+       v.indexOf(location.origin + '/') === 0 ||
+       /^https:\/\/[a-z0-9-]+\.supabase\.co\//i.test(v));
+  }
+  window.VBP_HERO = function (i) { return mine(hero[i]) ? hero[i] : ''; };
+  try {
+    if (window.VBP_HERO(0)) {
+      var pre = document.createElement('link');
+      pre.rel = 'preload'; pre.as = 'image'; pre.href = hero[0];
+      pre.setAttribute('fetchpriority', 'high');
+      document.head.appendChild(pre);
+    }
+  } catch (e) {}
+
   /* The tab icon can be set now, because it lives up here. */
   try {
     var link = document.querySelector('link[rel="icon"]');
@@ -180,6 +205,7 @@
     <div class="hero-slide active"><div class="bg"></div><div class="photo" id="heroPhoto1"></div><div class="scrim"></div></div>
     <div class="hero-slide"><div class="bg"></div><div class="photo" id="heroPhoto2"></div><div class="scrim"></div></div>
     <div class="hero-slide"><div class="bg"></div><div class="photo" id="heroPhoto3"></div><div class="scrim"></div></div>
+    <script>(function(f){if(!f)return;for(var i=0;i<3;i++){var u=f(i),e=document.getElementById('heroPhoto'+(i+1));if(u&&e)e.style.backgroundImage="url('"+u.replace(/'/g,'%27')+"')";}}(window.VBP_HERO));</script>
     <div class="hero-content">
       <div class="eyebrow" id="heroEyebrow">Zambia</div>
       <h1 class="serif"><span id="heroTitle">Curated Elegance,</span><br><em id="heroTitleEm">Accessible Luxury</em></h1>
@@ -647,10 +673,14 @@
     </div>
   </div>
   <div class="chat-log" id="chatLog" role="log" aria-live="polite"></div>
-  <div class="chat-wa" id="chatWa" style="display:none"></div>
   <div class="chat-ask" id="chatAsk" style="display:none"></div>
   <div class="chat-note" id="chatNote" style="display:none"></div>
   <form class="chat-form" id="chatForm">
+    <!-- Shown only once supabase-chat-photos.sql has been run. -->
+    <button type="button" class="chat-attach hide" id="chatAttach" aria-label="Send a photo" title="Send a photo">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+    </button>
+    <input type="file" id="chatFile" accept="image/*" hidden>
     <textarea id="chatInput" rows="1" placeholder="Write a message" aria-label="Your message"></textarea>
     <button type="submit" class="chat-send" aria-label="Send message">
       <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>

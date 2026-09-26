@@ -194,11 +194,7 @@
                 hint: 'A card with the name, the price and a link to the piece.' },
               { type: 'toggle', name: 'sendOrders', label: 'Send an order', showIf: on('enabled'),
                 hint: 'Where one of their orders has got to.' },
-              { type: 'toggle', name: 'sendPhotos', label: 'Send a photo', showIf: on('enabled') },
-              { type: 'toggle', name: 'waHandover', label: 'Offer WhatsApp as a way out',
-                showIf: on('enabled'),
-                hint: 'A link at the foot of the conversation carrying what was said, so ' +
-                      'the customer can carry on there without starting again.' }
+              { type: 'toggle', name: 'sendPhotos', label: 'Send a photo', showIf: on('enabled') }
             ]
           },
           {

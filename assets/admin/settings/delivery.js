@@ -56,6 +56,27 @@
     deliveryEnabled: true,
     areas: [],
     showFees: false,
+    payDelivery: false,
+
+    /* How the fee for an online payment is worked out: 'standard' is the
+       one Standard delivery fee, 'zones' is town zone x parcel weight
+       (netlify/functions/_delivery.js). The fees are left empty: they are
+       the courier's prices, and only the shop knows them. */
+    feeMethod: 'standard',
+    tierSmallMax: 5,
+    tierMediumMax: 15,
+    zone1Name: 'Local and nearby towns',
+    zone1Small: '', zone1Medium: '', zone1Large: '',
+    zone2Name: 'Mid-distance and central hubs',
+    zone2Small: '', zone2Medium: '', zone2Large: '',
+    zone3Name: 'Long distance, other provinces',
+    zone3Small: '', zone3Medium: '', zone3Large: '',
+    towns: [],
+    missingWeight: 'block',
+    defaultWeight: '',
+    surchargeEnabled: false,
+    surchargeItems: '',
+    surchargeAmount: '',
     standardFee: '',
     standardDays: 'Confirmed on WhatsApp',
     freeOver: '',
@@ -117,6 +138,33 @@
 
       function deliveryOn(v) { return !!v.deliveryEnabled; }
       function feesOn(v) { return !!v.deliveryEnabled && !!v.showFees; }
+      /* The fee a payment needs is the same Standard fee, so it is shown
+         whenever either of the two wants it. */
+      function feeNeeded(v) {
+        return feesOn(v) || (!!v.deliveryEnabled && !!v.payDelivery && v.feeMethod !== 'zones');
+      }
+      function payOn(v) { return !!v.deliveryEnabled && !!v.payDelivery; }
+      function zonesOn(v) { return payOn(v) && v.feeMethod === 'zones'; }
+      function zoneFields(n) {
+        var z = 'zone' + n;
+        var tier = function (t, label, hint) {
+          return { type: 'number', name: z + t, label: label, prefix: symbol, min: 0,
+                   showIf: zonesOn, hint: hint,
+                   placeholder: '' };
+        };
+        return [
+          { type: 'text', name: z + 'Name', label: 'Zone ' + n + ' name', maxLength: 50,
+            showIf: zonesOn, hint: 'For you. Customers see only their town and the fee.' },
+          tier('Small', 'Small parcel', 'Up to the small parcel limit.'),
+          tier('Medium', 'Medium parcel', 'Over the small limit, up to the medium limit.'),
+          tier('Large', 'Large parcel', 'Over the medium limit.')
+        ];
+      }
+      var ZONE_OPTIONS = [
+        { value: 'zone1', label: 'Zone 1' },
+        { value: 'zone2', label: 'Zone 2' },
+        { value: 'zone3', label: 'Zone 3' }
+      ];
       function sameDayOn(v) { return !!v.deliveryEnabled && v.speeds === 'both'; }
       function pickupOn(v) { return !!v.pickupEnabled; }
 
@@ -170,6 +218,88 @@
               ]
             },
             {
+              title: 'Delivery in online payments',
+              note: 'Only matters once online payment is switched on in Settings > Payments. ' +
+                    'WhatsApp orders are not affected.',
+              fields: [
+                { type: 'toggle', name: 'payDelivery', label: 'Add the delivery fee to online payments',
+                  showIf: deliveryOn,
+                  hint: 'On: a customer paying online sees the delivery fee in their total ' +
+                        'before they pay. Off: they pay for the pieces only, and delivery is ' +
+                        'settled separately as it is today. Collection is never charged.' },
+                { type: 'select', name: 'feeMethod', label: 'How the fee is worked out',
+                  showIf: payOn,
+                  options: [
+                    { value: 'standard', label: 'One standard fee for everywhere' },
+                    { value: 'zones', label: 'By the customer\u2019s town and the parcel\u2019s weight' }
+                  ],
+                  hint: 'With one standard fee, it is the Standard delivery fee under Charges. ' +
+                        'By town and weight uses the table below.' }
+              ]
+            },
+            {
+              title: 'Parcel weight tiers',
+              note: 'The parcel\u2019s weight is each piece\u2019s unit weight from your POS, times ' +
+                    'how many are in the cart, all added up. A parcel up to the small limit is ' +
+                    'small; over it and up to the medium limit is medium; heavier is large.',
+              fields: [
+                { type: 'number', name: 'tierSmallMax', label: 'Small parcels: up to', half: true,
+                  suffix: 'kg', min: 0, showIf: zonesOn },
+                { type: 'number', name: 'tierMediumMax', label: 'Medium parcels: up to', half: true,
+                  suffix: 'kg', min: 0, showIf: zonesOn,
+                  hint: 'Anything heavier is a large parcel.' }
+              ]
+            },
+            {
+              title: 'Zone fees',
+              note: 'The courier\u2019s flat rate for each zone and parcel size. Leave a box empty ' +
+                    'if that size cannot be sent to that zone: those orders are pointed to ' +
+                    'collection or WhatsApp instead of being charged nothing. 0 means free.',
+              fields: [].concat(zoneFields(1), zoneFields(2), zoneFields(3))
+            },
+            {
+              title: 'Towns',
+              note: 'Every town customers can choose at checkout, and the zone it is in. A town ' +
+                    'that is not listed cannot be priced online; its customers are told to ' +
+                    'collect or order on WhatsApp.',
+              fields: [
+                { type: 'list', name: 'towns', label: 'Towns', addLabel: 'Add a town',
+                  itemName: 'Town', max: 300, showIf: zonesOn,
+                  summary: function (row) {
+                    return (row.name || 'New town') + (row.zone ? ' \u00b7 Zone ' + String(row.zone).slice(-1) : '');
+                  },
+                  blank: function () { return { name: '', zone: 'zone1' }; },
+                  fields: [
+                    { type: 'text', name: 'name', label: 'Town', half: true, maxLength: 60, required: true },
+                    { type: 'select', name: 'zone', label: 'Zone', half: true, options: ZONE_OPTIONS }
+                  ] }
+              ]
+            },
+            {
+              title: 'Pieces with no weight, and large orders',
+              fields: [
+                { type: 'select', name: 'missingWeight', label: 'When a piece has no weight in the POS',
+                  showIf: zonesOn,
+                  options: [
+                    { value: 'block', label: 'Do not price delivery online (collect or WhatsApp instead)' },
+                    { value: 'default', label: 'Count it as a set weight' }
+                  ],
+                  hint: 'Fill in "Unit weight (kg)" on the product in your POS to avoid this altogether.' },
+                { type: 'number', name: 'defaultWeight', label: 'Weight to count it as', suffix: 'kg',
+                  min: 0, required: true,
+                  showIf: function (v) { return zonesOn(v) && v.missingWeight === 'default'; } },
+                { type: 'toggle', name: 'surchargeEnabled', label: 'Add an extra charge for large orders',
+                  showIf: zonesOn,
+                  hint: 'A flat amount on top of the zone fee once an order holds a set number of pieces.' },
+                { type: 'number', name: 'surchargeItems', label: 'From this many pieces', half: true,
+                  min: 1, required: true,
+                  showIf: function (v) { return zonesOn(v) && !!v.surchargeEnabled; } },
+                { type: 'number', name: 'surchargeAmount', label: 'Extra charge', half: true,
+                  prefix: symbol, min: 0, required: true,
+                  showIf: function (v) { return zonesOn(v) && !!v.surchargeEnabled; } }
+              ]
+            },
+            {
               title: 'Charges',
               fields: [
                 { type: 'toggle', name: 'showFees', label: 'Show delivery fees on the site',
@@ -180,10 +310,10 @@
                   rows: 2, maxLength: 200,
                   showIf: function (v) { return deliveryOn(v) && !v.showFees; } },
                 { type: 'number', name: 'standardFee', label: 'Standard delivery fee',
-                  half: true, prefix: symbol, min: 0, showIf: feesOn,
+                  half: true, prefix: symbol, min: 0, showIf: feeNeeded,
                   hint: 'Used for anywhere not named above.' },
                 { type: 'number', name: 'freeOver', label: 'Free delivery over',
-                  half: true, prefix: symbol, min: 0, showIf: feesOn,
+                  half: true, prefix: symbol, min: 0, showIf: feeNeeded,
                   hint: 'Leave empty for no free delivery.' },
                 { type: 'text', name: 'standardDays', label: 'Usual delivery time',
                   maxLength: 60, showIf: deliveryOn,
@@ -272,6 +402,38 @@
           ],
 
           validate: function (v, fail) {
+            var empty = function (x) { return x === '' || x === null || x === undefined; };
+            if (zonesOn(v)) {
+              var small = Number(v.tierSmallMax), medium = Number(v.tierMediumMax);
+              if (empty(v.tierSmallMax) || !(small > 0)) {
+                fail('tierSmallMax', 'Give the small parcel limit in kg.');
+              } else if (empty(v.tierMediumMax) || !(medium > small)) {
+                fail('tierMediumMax', 'The medium limit must be heavier than the small limit.');
+              }
+              var list = (v.towns || []).filter(function (t) { return t && String(t.name || '').trim(); });
+              if (!list.length) {
+                fail('towns', 'Add the towns customers can choose, each with its zone.');
+              }
+              var seen = {};
+              list.forEach(function (t) {
+                var k = String(t.name).trim().toLowerCase();
+                if (seen[k]) fail('towns', '"' + String(t.name).trim() + '" is listed twice.');
+                seen[k] = true;
+              });
+              ['1', '2', '3'].forEach(function (n) {
+                var z = 'zone' + n;
+                var used = list.some(function (t) { return t.zone === z; });
+                if (used && empty(v[z + 'Small']) && empty(v[z + 'Medium']) && empty(v[z + 'Large'])) {
+                  fail(z + 'Small', 'Towns are listed in Zone ' + n + ' but it has no fees yet.');
+                }
+              });
+            }
+            if (v.deliveryEnabled && v.payDelivery && v.feeMethod !== 'zones' &&
+                (v.standardFee === '' || v.standardFee === null || v.standardFee === undefined)) {
+              fail('standardFee',
+                   'Online payments need a delivery fee to add. Set one here, or switch ' +
+                   '"Add the delivery fee to online payments" off.');
+            }
             if (!v.deliveryEnabled && !v.pickupEnabled) {
               fail('pickupEnabled',
                    'With both off there is no way for an order to reach anyone. ' +

@@ -1258,6 +1258,7 @@
           a.href = photoUrl(meta.path);
           var im = document.createElement('img');
           im.alt = 'Photo sent'; im.loading = 'lazy'; im.src = photoUrl(meta.path);
+          im.onerror = function () { a.removeAttribute('href'); a.textContent = 'Photo removed'; };
           a.appendChild(im);
           return a;
         }
@@ -1293,21 +1294,31 @@
         input.value = '';
         if (!file || !openId) return;
         if (!/^image\//.test(file.type)) { tell(msgHost, 'That is not an image.'); return; }
-        if (file.size > 5 * 1024 * 1024) { tell(msgHost, 'That photo is over 5MB.'); return; }
 
         tell(msgHost, 'Sending the photo…');
-        var ext = (file.name.match(/\.([a-z0-9]+)$/i) || [null, 'jpg'])[1].toLowerCase();
-        var path = openId + '/' + Date.now() + '-' +
+        var path;
+        /* Shrunk first, like every other upload (assets/image-shrink.js),
+           so the customer's phone downloads a few hundred KB. */
+        var S = window.VBP_SHRINK;
+        (S && S.shrink ? S.shrink(file, { max: 1600 }) : Promise.resolve(null))
+          .then(function (small) {
+            var body = small || file;
+            if (body.size > 5 * 1024 * 1024) throw new Error('too big');
+            var ext = small ? 'jpg' : (file.name.match(/\.([a-z0-9]+)$/i) || [null, 'jpg'])[1].toLowerCase();
+            path = openId + '/' + Date.now() + '-' +
                    Math.random().toString(36).slice(2, 10) + '.' + ext;
-
-        sb.storage.from('chat-uploads').upload(path, file, { contentType: file.type })
+            return sb.storage.from('chat-uploads').upload(path, body,
+              { contentType: body.type, cacheControl: '31536000' });
+          })
           .then(function (r) {
             if (r && r.error) throw r.error;
             return sendWith('', { kind: 'image', path: path });
           })
           .then(function () { tell(msgHost, ''); },
-                function () {
+                function (e) {
+                  if (e && e.message === 'too big') { tell(msgHost, 'That photo is over 5MB.'); return; }
                   tell(msgHost, 'The photo did not send.');
+                  if (!path) return;
                   /* The upload may well have landed even though the
                      message did not. Nothing points at it now and
                      nothing ever will, so it goes back out of the bucket
@@ -1635,12 +1646,28 @@
          emptied first because the conversation it was showing no longer
          exists, and a panel left standing over a deleted row is the next
          poll's error. */
+      /* The conversation's photos, both sides', live in a folder named
+         after it. Deleting the conversation used to leave them in
+         storage for ever with nothing pointing at them. Quietly, after
+         the conversation itself is gone: a photo left behind is only a
+         few hundred KB, and System & Maintenance can sweep up any that
+         are missed. */
+      function dropChatPhotos(id) {
+        var store = sb.storage.from('chat-uploads');
+        Promise.resolve(store.list(String(id), { limit: 1000 })).then(function (r) {
+          var paths = ((r && r.data) || []).filter(function (f) { return f.id; })
+            .map(function (f) { return id + '/' + f.name; });
+          if (paths.length) return store.remove(paths);
+        }).catch(function () {});
+      }
+
       function removeConversation(c) {
         /* The admin's own notice, not the tell(host, words) further down
            this file that writes into a tool's message line. */
         var notice = (ctx && ctx.tell) || (A && A.tell);
         sb.rpc('chat_delete', { p_id: c.id }).then(function (r) {
           if (r && r.error) throw r.error;
+          dropChatPhotos(c.id);
           if (openId === c.id) { openId = null; msgs = []; notes = []; painted = ''; }
           return loadList();
         }).then(function () { paintThread(); }, function (e) {

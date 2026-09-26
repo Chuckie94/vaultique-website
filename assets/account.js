@@ -30,7 +30,16 @@
     user: null,          // { id, email, emailConfirmed }
     profile: null,       // row from customers
     settings: null,      // Settings > Customer Accounts
-    addresses: []
+    addresses: [],
+    /* Back from a "set a new password" email: signed in by the link, and
+       asked for the new password before anything else. Read from the
+       address now, because the client tidies its part of it away. */
+    recovering: (function () {
+      try {
+        return /[?&]reset=1(&|$)/.test(location.search) ||
+               /(^#|&)type=recovery(&|$)/.test(location.hash);
+      } catch (e) { return false; }
+    }())
   };
 
   var sb = null;
@@ -150,6 +159,7 @@
          another tab should not leave this one looking signed in. */
       try {
         sb.auth.onAuthStateChange(function (_e, session) {
+          if (_e === 'PASSWORD_RECOVERY') api.recovering = true;
           var was = api.user && api.user.id;
           api.user = readUser(session && session.user);
           api.token = (session && session.access_token) || null;
@@ -213,8 +223,10 @@
     if (api.settings && api.settings.passwordReset === false) {
       return Promise.reject(new Error('Password reset is not available. Please message us.'));
     }
+    /* A real address with ?reset=1, not #/account: Supabase puts its own
+       part of the link after a #, and two #s in one address broke it. */
     return sb.auth.resetPasswordForEmail(String(email || '').trim(), {
-      redirectTo: location.origin + location.pathname + '#/account'
+      redirectTo: location.origin + (window.VBP_BASE || '/') + 'account?reset=1'
     }).then(function (r) {
       if (r && r.error) throw r.error;
       return true;
@@ -584,7 +596,8 @@
         if (!email.value.trim()) { say(msg, 'Enter your email address first.', 'err'); email.focus(); return; }
         say(msg, 'Sending…', 'busy');
         resetPassword(email.value).then(function () {
-          say(msg, 'Check your inbox for a link to set a new password.', 'ok');
+          say(msg, 'If that address has an account, a link to set a new password is on its ' +
+                   'way. Check your inbox, and the spam folder.', 'ok');
         }, function (e) { say(msg, friendly(e), 'err'); });
       });
       body.addEventListener('keydown', function (e) {
@@ -690,6 +703,8 @@
     head.appendChild(out);
     host.appendChild(head);
 
+    if (api.recovering) { host.appendChild(recoveryCard(host)); return; }
+
     if (needsVerifiedEmail() && !api.user.emailConfirmed) {
       var warn = el('div', 'ac-warn');
       warn.textContent = 'Your email address is not confirmed yet, so you cannot check out. ' +
@@ -701,6 +716,35 @@
     if (api.settings.savedAddresses !== false) host.appendChild(addressCard());
     if (historyOn()) host.appendChild(ordersCard());
     if (api.settings.accountDeletion !== false) host.appendChild(dangerCard(host));
+  }
+
+  /* The one thing to do after following a reset link. */
+  function recoveryCard(host) {
+    var c = card('Choose a new password');
+    c.appendChild(el('p', 'ac-quiet', 'You asked to reset the password for ' + api.user.email + '.'));
+    var pw1 = field(c, 'ac_reset1', 'New password', 'password', '', 'new-password');
+    var pw2 = field(c, 'ac_reset2', 'Type it again', 'password', '', 'new-password');
+    var rule = el('p', 'ac-rule', passwordRule());
+    c.appendChild(rule);
+    var msg = el('p', 'ac-msg');
+    var go = el('button', 'btn btn-gold', 'Save new password');
+    go.type = 'button';
+    var row = el('div', 'ac-actions'); row.appendChild(go);
+    c.appendChild(row); c.appendChild(msg);
+    go.addEventListener('click', function () {
+      if (pw1.value !== pw2.value) { say(msg, 'Those two are not the same.', 'err'); pw2.focus(); return; }
+      say(msg, 'Saving…', 'busy');
+      go.disabled = true;
+      changePassword(pw1.value).then(function () {
+        api.recovering = false;
+        try { history.replaceState(null, '', location.pathname); } catch (e) {}
+        render(host);
+        var done = host.querySelector('.ac-card .ac-msg');
+        if (done) say(done, 'Your new password is saved ✓', 'ok');
+      }, function (e) { go.disabled = false; say(msg, friendly(e), 'err'); });
+    });
+    c.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go.click(); } });
+    return c;
   }
 
   function card(title) {
