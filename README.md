@@ -71,6 +71,8 @@ node tests/payment-settings.cjs         the admin switches for online payment an
 node tests/delivery-zones.test.cjs      delivery fees by town zone and parcel weight
 node tests/analytics-payments.browser.cjs  Analytics: how orders were paid
 node tests/password-reset.browser.cjs   "Forgot your password?" on the admin and customer accounts
+psql -d <scratch db> -f tests/chat-jobs-fixture.sql -f tests/chat-realtime-fixture.sql \
+     -f supabase-chat-realtime.sql -f tests/chat-realtime.sql   the shop typing reaches the customer live
 psql -d <scratch db> -f tests/payments-fixture.sql -f supabase-payments.sql \
      -f tests/payments.sql                                   who may mark an order paid
 psql -d <scratch db> -f tests/chat-jobs-fixture.sql -f tests/chat-photos-fixture.sql \

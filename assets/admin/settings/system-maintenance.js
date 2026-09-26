@@ -92,6 +92,9 @@
     if (!iso) return '';
     var then = new Date(iso).getTime();
     if (isNaN(then)) return '';
+    /* A time ahead of this device's clock is not "today": it is a wrong
+       stamp or a wrong clock, and a label would only hide which. */
+    if (then - Date.now() > 5 * 60000) return '';
     var days = Math.floor((Date.now() - then) / 86400000);
     if (days <= 0) return 'today';
     if (days === 1) return 'yesterday';
@@ -100,6 +103,8 @@
     if (months < 24) return months + (months === 1 ? ' month ago' : ' months ago');
     return Math.round(days / 365) + ' years ago';
   }
+
+  function paren(t) { return t ? ' (' + t + ')' : ''; }
 
   /* ---- the deployment record ----------------------------------------- */
 
@@ -323,7 +328,10 @@
       .order('updated_at', { ascending: false })
       .then(function (r) {
         if (r.error) throw r.error;
-        return r.data || [];
+        /* Not the deployment history: this page writes that row itself the
+           first time it sees a new build, so counting it made "Settings last
+           changed" simply repeat "Went live". */
+        return (r.data || []).filter(function (row) { return row.key !== HKEY; });
       })
       .catch(function () { return []; });
   }
@@ -580,7 +588,7 @@
         statusRow(info, 'Website version', v.version || '—').className = 'sys-value';
         statusRow(info, 'Build number', String(v.build)).className = 'sys-value';
         statusRow(info, 'This build was packaged',
-          when(v.builtAt) + (v.builtAt ? ' (' + ago(v.builtAt) + ')' : '')).className = 'sys-value';
+          when(v.builtAt) + paren(ago(v.builtAt))).className = 'sys-value';
       } else {
         var noStamp = el('div', 'warn');
         noStamp.textContent =
@@ -601,7 +609,7 @@
       lastUpdated(ctx).then(function (rows) {
         if (!rows.length) { updEl.textContent = 'Nothing saved yet'; return; }
         var top = rows[0];
-        updEl.textContent = when(top.updated_at) + ' (' + ago(top.updated_at) + ')';
+        updEl.textContent = when(top.updated_at) + paren(ago(top.updated_at));
       });
 
       /* ================= Maintenance ================================ */
@@ -957,7 +965,7 @@
       function showLastBackup() {
         A.store.load(HKEY).then(function (row) {
           if (!row.lastBackupAt) { lastBackEl.textContent = 'No backup taken yet'; return; }
-          lastBackEl.textContent = when(row.lastBackupAt) + ' (' + ago(row.lastBackupAt) + ')';
+          lastBackEl.textContent = when(row.lastBackupAt) + paren(ago(row.lastBackupAt));
         }).catch(function () { lastBackEl.textContent = '—'; });
       }
       showLastBackup();
@@ -1064,7 +1072,7 @@
           if (list[i] && list[i].build === v.build) { current = list[i]; break; }
         }
         if (current) {
-          liveEl.textContent = when(current.liveAt) + ' (' + ago(current.liveAt) + ')';
+          liveEl.textContent = when(current.liveAt) + paren(ago(current.liveAt));
         } else {
           liveEl.textContent = 'Not recorded yet';
         }
@@ -1079,7 +1087,7 @@
           if (tag) head.appendChild(el('span', 'sys-tag', tag));
           item.appendChild(head);
           item.appendChild(el('div', 'count', 'Went live ' + when(d.liveAt) +
-                                              ' (' + ago(d.liveAt) + ')'));
+                                              paren(ago(d.liveAt))));
           if (d.notes) item.appendChild(el('p', 'sys-notes', d.notes));
           histBody.appendChild(item);
         });

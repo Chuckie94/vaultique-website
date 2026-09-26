@@ -161,6 +161,11 @@ create trigger chat_msg_nudge_customer
 
 -- Typing, seen, closed, and who is at the desk all reach the customer
 -- through this row rather than through a message.
+--
+-- shop_typing_at IS IN THE LIST. It was not, in the first version of this
+-- file, although the line above said typing came this way: so once the
+-- socket was live and the customer's timer had slowed to its 45 second
+-- safety net, the green dot (which lasts six seconds) was never seen.
 drop trigger if exists chat_conv_nudge_customer on public.chat_conversations;
 create trigger chat_conv_nudge_customer
   after update on public.chat_conversations
@@ -168,7 +173,8 @@ create trigger chat_conv_nudge_customer
   when (old.last_message_at is distinct from new.last_message_at
      or old.status          is distinct from new.status
      or old.shop_unread     is distinct from new.shop_unread
-     or old.customer_unread is distinct from new.customer_unread)
+     or old.customer_unread is distinct from new.customer_unread
+     or old.shop_typing_at  is distinct from new.shop_typing_at)
   execute function public.chat_nudge_customer();
 
 revoke all on function public.chat_channel(text) from public;

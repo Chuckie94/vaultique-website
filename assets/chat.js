@@ -154,6 +154,7 @@
   var here    = false;     // somebody is at the desk to answer
   var presenceKnown = false;  // ...and whether we have actually asked yet
   var typing  = false;     // somebody at the shop is writing, as of a moment ago
+  var typingCheck = null;  // the look again that takes the dot away
   var saidTypingAt = 0;    // when we last told them we are
   var status  = 'open';    // open | closed, as the shop left it
   var open    = false;
@@ -943,6 +944,12 @@
         presenceKnown = true;
         var wasTyping = typing;
         typing = r.typing === true;
+        /* The shop stopping is not an event anybody can send: it is six
+           seconds of nothing. So while the dot is up, look again just
+           after it would have lapsed, and it goes when they stop rather
+           than whenever the next message or the slow timer comes. */
+        clearTimeout(typingCheck);
+        if (typing) typingCheck = setTimeout(function () { ask(); }, 6500);
         paintPresence();
         /* On its own, so a dot appearing or going does not redraw the
            conversation underneath it. */

@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.32.0',
-  build: 48,
-  builtAt: '2026-09-27T10:00:00Z',
-  notes: 'Password reset: "Forgot your password?" on the admin sign-in, new-password step after the email link (authenticator code first where set up), and the customer reset link fixed. Emails go through Supabase with Amazon SES as its mail service.'
+  version: '1.32.2',
+  build: 50,
+  builtAt: '2026-09-26T17:25:58Z',
+  notes: 'Live chat: the green typing dot is pushed to the customer live again (supabase-chat-realtime.sql left typing out of what it announces; re-run it), and the dot goes promptly when the shop stops typing.'
 };

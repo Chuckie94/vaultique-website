@@ -250,6 +250,36 @@ const subLine = page => page.evaluate(() =>
       is(asks >= 1, 'the timer is doing the work, as it does when the socket is not there');
       await ctx.close();
     }
+
+    /* ==================================================================== */
+    console.log('\nThe breathing dot when the shop is typing');
+    {
+      const now = new Date().toISOString();
+      const { ctx, page } = await open(
+        { enabled: true },
+        { status: 'open', unread: 0, named: true, seen: false, here: true, typing: true,
+          messages: [{ id: 'm1', sender: 'customer', body: 'Hello', at: now }] }
+      );
+      await page.click('#chatFab');
+      await page.fill('#chatInput', 'Hello');
+      await page.press('#chatInput', 'Enter');
+      await page.waitForTimeout(1800);
+      const dot = await page.evaluate(() => {
+        const d = document.querySelector('#chatLog .chat-typing .chat-typing-dot');
+        if (!d) return null;
+        const r = d.getBoundingClientRect(), cs = getComputedStyle(d);
+        return { w: r.width, h: r.height, bg: cs.backgroundColor, anim: cs.animationName,
+                 last: document.querySelector('#chatLog').lastElementChild.className };
+      });
+      is(!!dot && dot.w > 0 && dot.h > 0 && /31, 157, 87/.test(dot.bg),
+         'with the shop typing, a green dot is on the customer\'s side', JSON.stringify(dot));
+      is(!!dot && dot.anim && dot.anim !== 'none', 'and it breathes', dot && dot.anim);
+      is(!!dot && /chat-typing/.test(dot.last), 'at the foot of the conversation', dot && dot.last);
+      POLL = Object.assign({}, POLL, { typing: false });
+      await page.waitForTimeout(3600);
+      is(!(await page.$('#chatLog .chat-typing')), 'and goes when they stop');
+      await ctx.close();
+    }
   } finally {
     await browser.close();
     server.close();
