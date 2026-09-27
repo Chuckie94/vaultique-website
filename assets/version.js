@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.33.2',
-  build: 53,
-  builtAt: '2026-09-27T14:14:33Z',
-  notes: 'Analytics counted live: the Analytics page updates by itself the moment somebody browses; a visit is sent the instant it starts, so visitors who leave quickly are counted; a piece opened straight from a link is counted; the live count failing no longer stops the page views; a table without a sku column no longer refuses every visit. Needs supabase-analytics-live.sql.'
+  version: '1.34.1',
+  build: 55,
+  builtAt: '2026-09-27T21:06:47Z',
+  notes: 'Analytics wording: "Browsing location" for the map and "Browsing device" for mobile, desktop and tablet. No SQL needed.'
 };

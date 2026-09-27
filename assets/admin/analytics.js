@@ -52,6 +52,11 @@
     }
     return n;
   }
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
   function num(v) {
     var F = window.VBP_FORMAT;
     return F && F.number ? F.number(v || 0) : String(v || 0);
@@ -212,6 +217,8 @@
       var asking = 0;               // which question is in flight
       var liveTimer = null;     // only when Realtime is not carrying it
       var liveChannel = null;   // Realtime, which is how this normally works
+      var figChannel = null;    // the live figures, on a channel of their own
+      var figTimer = null;      // only when that channel is refused
       var liveTick = null;      // the local one-second count, no network
       var liveWasOff = false;   // the connection dropped; take the set again
       var series = [];
@@ -338,6 +345,33 @@
       chartCard.appendChild(legend);
       wrap.appendChild(chartCard);
 
+      /* ---- where they browsed from ---------------------------------------
+         A map of the towns visits came from, with the countries and towns
+         listed under it. The place is Netlify's reading of the visitor's
+         connection, written by the visit-where function: the country is
+         very reliable, the town right for most visitors (a phone is
+         sometimes placed at its network's hub). Nothing finer than a town
+         is ever shown, because nothing finer is known. */
+      var placeCard = el('div', 'card an-places');
+      placeCard.appendChild(el('h3', null, 'Browsing location'));
+      var placeSaid = el('p', 'an-note an-places-said', 'Reading…');
+      placeCard.appendChild(placeSaid);
+      var mapBox = el('div', 'an-map');
+      placeCard.appendChild(mapBox);
+      var placeTwo = el('div', 'an-two an-places-lists');
+      var countryBox = el('div');
+      countryBox.appendChild(el('h4', null, 'Countries'));
+      var countryRows = el('div', 'an-rows');
+      countryBox.appendChild(countryRows);
+      var townBox = el('div');
+      townBox.appendChild(el('h4', null, 'Towns'));
+      var townRows = el('div', 'an-rows');
+      townBox.appendChild(townRows);
+      placeTwo.appendChild(countryBox);
+      placeTwo.appendChild(townBox);
+      placeCard.appendChild(placeTwo);
+      wrap.appendChild(placeCard);
+
       /* ---- most looked at ---------------------------------------------- */
       var two = el('div', 'an-two');
       var pagesCard = el('div', 'card');
@@ -358,7 +392,7 @@
       /* ---- devices, and who had been before ----------------------------- */
       var two2 = el('div', 'an-two');
       var devCard = el('div', 'card');
-      devCard.appendChild(el('h3', null, 'What they came on'));
+      devCard.appendChild(el('h3', null, 'Browsing device'));
       var devRows = el('div', 'an-rows');
       devCard.appendChild(devRows);
       two2.appendChild(devCard);
@@ -459,6 +493,108 @@
 
         loadSeries(mine);
         loadTops(mine);
+        loadPlaces(mine);
+      }
+
+      /* ---- the map ----------------------------------------------------------- */
+
+      var LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+      var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+      var leafletAsked = null;
+      function leaflet() {
+        if (window.L && window.L.map) return Promise.resolve(window.L);
+        if (leafletAsked) return leafletAsked;
+        leafletAsked = new Promise(function (resolve, reject) {
+          var css = document.createElement('link');
+          css.rel = 'stylesheet'; css.href = LEAFLET_CSS;
+          document.head.appendChild(css);
+          var js = document.createElement('script');
+          js.src = LEAFLET_JS; js.async = true;
+          js.onload = function () { window.L ? resolve(window.L) : reject(new Error('no map')); };
+          js.onerror = function () { leafletAsked = null; reject(new Error('The map could not be loaded.')); };
+          document.head.appendChild(js);
+        });
+        return leafletAsked;
+      }
+
+      /* A country's flag from its two letters, as the phone draws it. */
+      function flag(code) {
+        var c = String(code || '').toUpperCase();
+        if (!/^[A-Z]{2}$/.test(c)) return '';
+        return String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65, 0x1F1E6 + c.charCodeAt(1) - 65) + ' ';
+      }
+
+      var map = null, mapLayer = null;
+      function paintMap(d) {
+        var towns = (d.cities || []).filter(function (t) { return t.lat != null && t.lon != null; });
+        leaflet().then(function (L) {
+          if (!map) {
+            mapBox.innerHTML = '';
+            map = L.map(mapBox, { scrollWheelZoom: false, worldCopyJump: true, attributionControl: true });
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              maxZoom: 12,
+              attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+            mapLayer = L.layerGroup().addTo(map);
+          }
+          mapLayer.clearLayers();
+          var top = towns.reduce(function (m, t) { return Math.max(m, Number(t.visits) || 0); }, 1);
+          var pts = [];
+          towns.forEach(function (t) {
+            var n = Number(t.visits) || 0;
+            var ll = [Number(t.lat), Number(t.lon)];
+            pts.push(ll);
+            var where = (t.name || 'Somewhere in ' + (t.region || t.country_name || t.country)) +
+                        (t.country_name ? ', ' + t.country_name : '');
+            L.circleMarker(ll, {
+              radius: 6 + Math.round(Math.sqrt(n / top) * 16),
+              color: '#0f2340', weight: 1.5, fillColor: '#c9a24a', fillOpacity: 0.75
+            }).bindTooltip(
+              '<b>' + esc(where) + '</b><br>' + num(n) + ' visit' + (n === 1 ? '' : 's') +
+              ' · ' + num(t.visitors || 0) + ' ' + ((t.visitors === 1) ? 'person' : 'people') +
+              ' · ' + num(t.page_views || 0) + ' page view' + (t.page_views === 1 ? '' : 's')
+            ).addTo(mapLayer);
+          });
+          if (pts.length > 1) map.fitBounds(pts, { padding: [30, 30], maxZoom: 8 });
+          else if (pts.length === 1) map.setView(pts[0], 7);
+          else map.setView([-13.3, 27.8], 5);          // Zambia, until somebody is placed
+          setTimeout(function () { try { map.invalidateSize(); } catch (e) {} }, 0);
+        }).catch(function (e) {
+          mapBox.innerHTML = '';
+          mapBox.appendChild(el('p', 'count', (e && e.message) || 'The map could not be loaded.'));
+        });
+      }
+
+      function loadPlaces(mine) {
+        Promise.resolve(sb.rpc('site_places_report', {
+          p_from: range.from, p_to: range.to, p_tz: tz
+        })).then(function (r) {
+          if (mine !== asking) return;
+          if (r.error) throw r.error;
+          var d = r.data || {};
+          var total = Number(d.visits) || 0, placed = Number(d.located) || 0;
+          placeSaid.textContent = !total ? 'Nothing recorded in this range.'
+            : num(placed) + ' of ' + num(total) + ' visit' + (total === 1 ? '' : 's') + ' placed on the map.' +
+              (placed < total ? ' The rest came before the map was switched on, or could not be placed.' : '');
+          paintRows(countryRows, (d.countries || []).map(function (c) {
+            return { label: flag(c.code) + (c.name || c.code), n: Number(c.visits) || 0,
+                     extra: Number(c.visitors) || 0 };
+          }), 'visit', 'visitor');
+          paintRows(townRows, (d.cities || []).slice(0, 12).map(function (t) {
+            return { label: t.name || ('Somewhere in ' + (t.region || t.country_name || t.country)),
+                     sub: [t.region, t.country_name].filter(Boolean).join(', '),
+                     n: Number(t.visits) || 0, extra: Number(t.visitors) || 0 };
+          }), 'visit', 'visitor');
+          paintMap(d);
+        }).catch(function (e) {
+          if (mine !== asking) return;
+          var msg = (e && e.message) || String(e || '');
+          countryRows.innerHTML = ''; townRows.innerHTML = '';
+          placeSaid.textContent = /site_places|could not find|does not exist|schema cache/i.test(msg)
+            ? 'The map is not switched on yet: run supabase-analytics-live.sql in Supabase.'
+            : 'The map could not be read just now.';
+          paintMap({ cities: [] });
+        });
       }
 
       function loadSplit(mine, stats) {
@@ -943,7 +1079,10 @@
          is not an event. It does not need to be: we stop hearing from
          them, and forty-five seconds later they fall out of the count on
          their own, with nothing asked of anybody. */
-      var HERE_FOR = 45000;     // heard from within this, and you are here
+      /* Thirty-five seconds: two missed heartbeats (they come every fifteen)
+         and a margin, so somebody still reading is never dropped by one
+         late beat. site_here() and site_live() use the same window. */
+      var HERE_FOR = 35000;     // heard from within this, and you are here
       var heard = {};           // session -> when this page last heard it
 
       function paintHere() {
@@ -964,20 +1103,45 @@
          (their first heartbeat) or a page or piece being opened -- rather
          than when the page is next opened. Several things at once are
          read as one, a second after the last of them, and only while the
-         range on screen includes today: last month cannot change. */
+         range on screen includes today: last month cannot change.
+
+         NEVER LATER THAN FIVE SECONDS. Waiting for a quiet second alone
+         meant a steady stream of visitors -- one every half second --
+         postponed the refresh for as long as it lasted. So the wait is a
+         second after the last event or five after the first unread one,
+         whichever comes sooner. */
       var freshTimer = null;
+      var freshSince = 0;
       function freshen() {
         if (missing || !range || range.to < today(tz)) return;
+        var now = Date.now();
+        if (!freshSince) freshSince = now;
+        var wait = Math.max(0, Math.min(1000, freshSince + 5000 - now));
         if (freshTimer) clearTimeout(freshTimer);
         freshTimer = setTimeout(function () {
           freshTimer = null;
+          freshSince = 0;
           if (!document.hidden) loadAll(true);
-        }, 1000);
+        }, wait);
+      }
+
+      /* WHICH HALF OF THE MESSAGE NAMES THE VISIT. A departure arrives as
+         { new: {}, old: { session } } -- and an empty object is still an
+         object, so reading "new, or else old" found nothing and threw
+         every departure away. Somebody who left stayed on screen until
+         they aged out. A departure is read from old; anything else from
+         new; and whichever half actually carries a session wins. */
+      function rowOf(p) {
+        if (!p) return {};
+        var first = p.eventType === 'DELETE' ? p.old : p.new;
+        var other = p.eventType === 'DELETE' ? p.new : p.old;
+        if (first && first.session) return first;
+        return (other && other.session) ? other : {};
       }
 
       function heardFrom(p) {
         if (p && p.eventType === 'INSERT') freshen();
-        var row = (p && (p.new || p.old)) || {};
+        var row = rowOf(p);
         var id = row.session;
         if (!id) return;
         if (p && p.eventType === 'DELETE') delete heard[id];
@@ -1012,11 +1176,12 @@
         liveTick = setInterval(function () { if (!document.hidden) paintHere(); }, 1000);
 
         try {
+          /* Presence on a channel of its own. Realtime accepts or refuses
+             a channel whole, so sharing one with the live figures meant a
+             problem with those figures slowed "here now" down as well. */
           liveChannel = sb.channel('vbp-admin-presence')
             .on('postgres_changes',
                 { event: '*', schema: 'public', table: 'site_presence' }, heardFrom)
-            .on('postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'site_events' }, freshen)
             .subscribe(function (state) {
               if (state === 'SUBSCRIBED') {
                 if (liveWasOff) { liveWasOff = false; askHere(); }
@@ -1028,7 +1193,7 @@
                    is the degraded path, not the design. */
                 if (!liveTimer) {
                   liveTimer = setInterval(function () {
-                    if (!document.hidden) { askHere(); freshen(); }
+                    if (!document.hidden) askHere();
                   }, LIVE_EVERY);
                 }
               }
@@ -1037,14 +1202,37 @@
           liveChannel = null;
           liveTimer = setInterval(function () { if (!document.hidden) askHere(); }, LIVE_EVERY);
         }
+
+        /* The live figures, on theirs. If this one is refused (the live
+           SQL not run), only the figures fall back to a slow timer. */
+        try {
+          figChannel = sb.channel('vbp-admin-figures')
+            .on('postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'site_events' }, freshen)
+            .subscribe(function (state) {
+              if (state === 'SUBSCRIBED') {
+                if (figTimer) { clearInterval(figTimer); figTimer = null; }
+              } else if (state === 'CLOSED' || state === 'CHANNEL_ERROR' || state === 'TIMED_OUT') {
+                if (!figTimer) {
+                  figTimer = setInterval(function () { if (!document.hidden) freshen(); }, LIVE_EVERY);
+                }
+              }
+            });
+        } catch (e) {
+          figChannel = null;
+          if (!figTimer) figTimer = setInterval(function () { if (!document.hidden) freshen(); }, LIVE_EVERY);
+        }
       }
 
       function stopLive() {
         if (liveTick) { clearInterval(liveTick); liveTick = null; }
         try { if (liveChannel) sb.removeChannel(liveChannel); } catch (e) {}
+        try { if (figChannel) sb.removeChannel(figChannel); } catch (e) {}
         liveChannel = null;
+        figChannel = null;
         if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
-        if (freshTimer) { clearTimeout(freshTimer); freshTimer = null; }
+        if (figTimer) { clearInterval(figTimer); figTimer = null; }
+        if (freshTimer) { clearTimeout(freshTimer); freshTimer = null; freshSince = 0; }
       }
 
       /* ---- driving --------------------------------------------------------- */

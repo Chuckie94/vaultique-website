@@ -46,6 +46,9 @@ const TYPES = {
 let EVENTS = [];       // rows posted to site_events
 let REFUSED = [];      // batches the database would have refused
 let BEATS = [];        // bodies posted to rpc/site_beat
+let BYES = [];         // plain text goodbyes to rpc/site_bye: { type, body }
+let GONES = [];        // JSON goodbyes to rpc/site_gone
+let WHERE = [];        // bodies posted to the visit-where function
 let RAW = [];          // every request to /rest/v1/, verbatim, for the privacy sweep
 let EVENT_STATUS = 201;  // switched to 404 to prove the tracker gives up quietly
 let FAIL_NEXT = 0;
@@ -116,6 +119,16 @@ function serve() {
           res.end('');
           return;
         }
+        if (p === '/rest/v1/rpc/site_bye' && req.method === 'POST') {
+          BYES.push({ type: req.headers['content-type'] || '', body: sent, key: url.searchParams.get('apikey') });
+          res.writeHead(204); res.end();
+          return;
+        }
+        if (p === '/rest/v1/rpc/site_gone' && req.method === 'POST') {
+          try { GONES.push(JSON.parse(sent)); } catch (e) {}
+          res.writeHead(204); res.end();
+          return;
+        }
         if (p === '/rest/v1/rpc/site_beat' && req.method === 'POST') {
           try { BEATS.push(JSON.parse(sent)); } catch (e) {}
           res.writeHead(BEAT_STATUS); res.end();
@@ -123,6 +136,13 @@ function serve() {
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end('[]');
+        return;
+      }
+
+      if (p === '/.netlify/functions/visit-where') {
+        const sent = await body(req);
+        try { WHERE.push(JSON.parse(sent)); } catch (e) { WHERE.push({ unreadable: sent }); }
+        res.writeHead(204); res.end();
         return;
       }
 
@@ -177,7 +197,7 @@ async function asAVisitor(browser, ua) {
   return ctx;
 }
 const kinds = () => EVENTS.map(e => e.kind);
-const reset = () => { EVENTS = []; BEATS = []; RAW = []; };
+const reset = () => { EVENTS = []; BEATS = []; RAW = []; BYES = []; GONES = []; WHERE = []; };
 
 (async () => {
   const server = await serve();
@@ -407,6 +427,67 @@ const reset = () => { EVENTS = []; BEATS = []; RAW = []; };
        'page views are still counted, sent again without the empty sku');
     NO_SKU_COLUMN = false;
     await oldtab.close();
+
+    console.log('\nWhere the visit came from');
+    reset();
+    const whereCtx = await asAVisitor(browser);
+    const wherePage = await whereCtx.newPage();
+    await wherePage.goto(base + '/', { waitUntil: 'domcontentloaded' });
+    await settle(wherePage);
+    await wherePage.evaluate(() => history.pushState({}, '', '/shop'));
+    await settle(wherePage);
+    is(WHERE.length === 1, 'the shop\'s own function is asked once for the visit, not once per page',
+       'asked ' + WHERE.length + ' times');
+    is(WHERE[0] && Object.keys(WHERE[0]).join(',') === 'session' && WHERE[0].session === (EVENTS[0] || {}).session,
+       'sending only the visit\'s random token: the function works out the place itself');
+
+    console.log('\nSaying goodbye');
+    reset();
+    await wherePage.evaluate(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await wherePage.goto('about:blank');
+    await wherePage.waitForTimeout(1200);
+    is(BYES.length === 1, 'hiding the tab and then leaving says goodbye once, not twice',
+       BYES.length + ' plain text goodbyes');
+    is(BYES[0] && /^text\/plain/.test(BYES[0].type) && /^[a-f0-9]{8,64}$/.test(BYES[0].body),
+       'in plain text, carrying only the visit token, which a closing page still delivers',
+       JSON.stringify(BYES[0]));
+    is(GONES.length === 1, 'with the old way sent too, as a backup');
+    await whereCtx.close();
+
+    console.log('\nA shop device is told why it is not counted');
+    reset();
+    const shopDev = await asAVisitor(browser);
+    await shopDev.addInitScript(() => { try { localStorage.setItem('vbp_staff', '1'); } catch (e) {} });
+    const shopPage = await shopDev.newPage();
+    const said = [];
+    shopPage.on('console', m => { if (m.type() === 'info') said.push(m.text()); });
+    await shopPage.goto(base + '/', { waitUntil: 'domcontentloaded' });
+    await settle(shopPage);
+    is(EVENTS.length === 0, 'a device used to sign in to the admin is not counted');
+    is(said.some(t => /not counted because .*admin/.test(t)),
+       'and its developer console says so in one line', said.join(' | '));
+    await shopDev.close();
+
+    console.log('\nA table without sku still counts pieces');
+    reset();
+    NO_SKU_COLUMN = true;
+    const noSku = await asAVisitor(browser);
+    const noSkuPage = await noSku.newPage();
+    await noSkuPage.goto(base + '/product/VB-DRS-001', { waitUntil: 'domcontentloaded' });
+    await settle(noSkuPage, 3000);
+    await noSkuPage.evaluate(() => history.pushState({}, '', '/product/VB-BAG-003'));
+    await noSkuPage.evaluate(() => window.dispatchEvent(new PopStateEvent('popstate')));
+    await settle(noSkuPage, 2500);
+    is(EVENTS.filter(e => e.kind === 'product_view').length >= 2,
+       'every piece opened is counted, without its name',
+       JSON.stringify(EVENTS.map(e => e.kind)));
+    is(EVENTS.every(e => !('sku' in e)), 'and the sku is left out for the rest of the visit');
+    NO_SKU_COLUMN = false;
+    await noSku.close();
 
     console.log('\nWhen the analytics tables have not been created');
     reset();

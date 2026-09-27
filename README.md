@@ -22,7 +22,7 @@ vaultique-website/
 ├── supabase-payments.sql      run once before switching on online payment
 ├── supabase-chat-mentions.sql run once: chats taken when opened, @mentions in notes
 ├── supabase-chat-handover.sql run once: "Handed to" until the colleague replies
-├── supabase-analytics-live.sql run once: Analytics figures update live
+├── supabase-analytics-live.sql run once: live figures, instant "here now", the visitor map
 ├── netlify.toml               Netlify config + /api/products redirect
 ├── netlify/
 │   └── functions/
@@ -80,8 +80,10 @@ psql -d <scratch db> -f tests/chat-jobs-fixture.sql -f tests/chat-mentions-fixtu
      -f supabase-chat-mentions.sql -f tests/chat-mentions.sql      taking and mentions, in the database
 psql -d <scratch db> -f tests/chat-jobs-fixture.sql -f tests/chat-mentions-fixture.sql \
      -f supabase-chat-mentions.sql -f supabase-chat-handover.sql -f tests/chat-handover.sql
-psql -d <scratch db> -f tests/analytics-live-fixture.sql -f supabase-analytics-live.sql -f tests/analytics-live.sql
-node tests/analytics-live.browser.cjs     the Analytics page updates by itself
+psql -d <scratch db> -f tests/analytics-fixture.sql -f supabase-analytics.sql -f tests/analytics-live-fixture.sql \
+     -f supabase-analytics-live.sql -f tests/analytics-live.sql      live figures, goodbye and the map
+node tests/analytics-live.browser.cjs     the Analytics page updates by itself, and the visitor map
+node tests/visit-where.test.cjs           where a visit came from: Netlify's place, no internet address
 psql -d <scratch db> -f tests/chat-jobs-fixture.sql -f tests/chat-realtime-fixture.sql \
      -f supabase-chat-realtime.sql -f tests/chat-realtime.sql   the shop typing reaches the customer live
 psql -d <scratch db> -f tests/payments-fixture.sql -f supabase-payments.sql \

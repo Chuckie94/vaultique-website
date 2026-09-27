@@ -287,16 +287,15 @@ begin
 
   -- NOBODY READING IS EVER DROPPED, which is the point of this pair and
   -- has not changed. What changed is the numbers: a tab beats every
-  -- twenty seconds now rather than every sixty, so surviving one missed
-  -- beat means surviving forty seconds rather than a hundred and twenty.
-  -- Forty is comfortably inside the window; the window is what came
-  -- down, not the tolerance.
-  update public.site_presence set seen_at = now() - interval '40 seconds';
+  -- fifteen seconds now, so surviving one missed beat means surviving
+  -- thirty seconds. Thirty is inside the 35-second window; the window is
+  -- what came down, not the tolerance.
+  update public.site_presence set seen_at = now() - interval '30 seconds';
   perform chk(public.site_live() = 1,
-              'and is still here forty seconds later, having missed a beat');
+              'and is still here thirty seconds later, having missed a beat');
 
   -- The one that pins the window itself. It was five minutes, then two,
-  -- and is forty-five seconds: the shop said somebody who had left
+  -- and is thirty-five seconds: the shop said somebody who had left
   -- lingered on the screen, and every second of that was a shop being
   -- told something untrue about its own shop.
   update public.site_presence set seen_at = now() - interval '50 seconds';

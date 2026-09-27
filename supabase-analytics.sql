@@ -1026,7 +1026,7 @@ $$;
 --
 -- WHY THE SESSION TOKENS AND NOT THE TIMES. Once the admin is holding
 -- the set, ageing somebody out is "we have not heard from them in
--- forty-five seconds" -- measured by the admin's own clock, from when it
+-- thirty-five seconds" -- measured by the admin's own clock, from when it
 -- last heard. Sending server timestamps would mean comparing two clocks
 -- that need not agree, and a browser whose clock is wrong would count
 -- wrongly for ever.
@@ -1052,7 +1052,7 @@ begin
   return coalesce((
     select json_agg(p.session)
       from public.site_presence p
-     where p.seen_at > now() - interval '45 seconds'
+     where p.seen_at > now() - interval '35 seconds'
   ), '[]'::json);
 end;
 $$;
@@ -1075,7 +1075,7 @@ begin
 
   select count(*) into v_count
     from public.site_presence
-   where seen_at > now() - interval '45 seconds';
+   where seen_at > now() - interval '35 seconds';
 
   return coalesce(v_count, 0);
 end;

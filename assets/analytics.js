@@ -90,6 +90,15 @@
     catch (e) { return false; }
   }
 
+  /* One quiet line in the developer console saying why this browser is
+     not counted, so a shop testing its own site from its own phone is
+     told rather than left wondering. Customers never see the console. */
+  (function () {
+    var why = isTheShop() ? 'this device has been used to sign in to the admin (a shop device)'
+            : askedNotToBe() ? 'the browser asks not to be tracked (Do Not Track or Global Privacy Control)'
+            : isRobot() ? 'this looks like an automated browser' : '';
+    if (why) { try { console.info('Vaultique analytics: this visit is not counted because ' + why + '.'); } catch (e) {} }
+  })();
   if (askedNotToBe() || isRobot() || isTheShop()) return;
 
   /* ---- who and when, as far as this browser is concerned ------------- */
@@ -299,6 +308,24 @@
         /* 404 and 401 mean the tables or the rules are not there, and
            they will not appear during this visit. Stop, quietly. */
         if (res.status === 404 || res.status === 401 || res.status === 403) { stopped = true; return; }
+        if (res.status < 300) { whereFrom(); return; }
+        /* A COLUMN THE TABLE DOES NOT HAVE. The database names it; it is
+           left out of every row for the rest of the visit and the whole
+           batch goes again at once. Product views, adds to cart and
+           checkouts are still counted, just without the piece's name. */
+        if (res.status === 400 && attempt === 0) {
+          return res.text().then(function (t) {
+            var m = /'([a-z_]+)' column/i.exec(String(t || ''));
+            if (m && ALLOWED_COLS[m[1]]) {
+              noCols[m[1]] = true;
+              send(rows.map(trim), false, 1);
+              return;
+            }
+            rows.forEach(function (r) { send([bare(r)], false, 1); });
+          }, function () {
+            rows.forEach(function (r) { send([bare(r)], false, 1); });
+          });
+        }
         /* REFUSED. Each row goes again on its own, and without its empty
            fields: a database whose table was made before one of those
            columns existed (sku, for one) refuses any row that mentions it,
@@ -312,6 +339,40 @@
         if (res.status >= 500) again();
       }, again);
     } catch (e) { /* nothing here is worth an error in a shop's console */ }
+  }
+
+  /* Columns the database has told this visit it does not have. Only an
+     optional one can be learned this way; kind, visitor and session are
+     never dropped. */
+  var ALLOWED_COLS = { sku: 1, label: 1, referrer: 1, device: 1, is_new: 1, path: 1 };
+  var noCols = {};
+  function trim(row) {
+    var out = {};
+    for (var k in row) {
+      if (Object.prototype.hasOwnProperty.call(row, k) && !noCols[k]) out[k] = row[k];
+    }
+    return out;
+  }
+
+  /* WHERE THE VISIT CAME FROM. Asked once per visit, after the first
+     event has been accepted, of the shop's own Netlify function. The
+     function reads the country and town Netlify already knows from the
+     connection, checks that this visit really is recorded, and writes
+     those words and nothing else: no internet address is sent, read into
+     the database or kept. This page sends only the visit's random token. */
+  var WHERE_KEY = 'vbp_an_w';
+  function whereFrom() {
+    if (readStore(sessionStorage, WHERE_KEY) === session) return;
+    writeStore(sessionStorage, WHERE_KEY, session);
+    try {
+      fetch('/.netlify/functions/visit-where', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session: session }),
+        keepalive: true,
+        credentials: 'omit'
+      }).catch(function () {});
+    } catch (e) {}
   }
 
   function bare(row) {
@@ -353,7 +414,7 @@
       if (extra.sku) row.sku = String(extra.sku).slice(0, 64);
       if (extra.label) row.label = String(extra.label).slice(0, 200);
     }
-    queue.push(row);
+    queue.push(trim(row));
     touchSession();
     /* A visitor who opens twenty pages in one go is not twenty
        requests, and is not an unbounded queue either. */
@@ -379,15 +440,18 @@
      It is one row upserted, not a row inserted: a visit is one row
      however long it lasts, so beating oftener costs writes and not
      storage. */
-  var BEAT_EVERY = 20 * 1000;
+  /* Fifteen seconds (it was twenty), so "here now" can let somebody go
+     after thirty-five rather than forty-five. */
+  var BEAT_EVERY = 15 * 1000;
   var beatTimer = null;
-  var beatsLeft = 180;         // an hour of beating, then this visit is over
+  var beatsLeft = 240;         // an hour of beating, then this visit is over
 
   var beatStopped = false;
   function beat() {
     if (stopped || beatStopped || beatsLeft <= 0) return;
     if (document.hidden) return;
     beatsLeft--;
+    goneSaid = false;           // here again, so a later goodbye is a new one
     try {
       fetch(BEAT_URL, {
         method: 'POST',
@@ -415,24 +479,35 @@
 
      Quiet either way. Failing to say goodbye costs forty-five seconds of
      being counted, which is where this started. */
+  /* GOODBYE, TWICE OVER AND ONCE PER DEPARTURE.
+     First a beacon in PLAIN TEXT to site_bye: plain text needs no
+     permission check, so the browser delivers it as the page closes (a
+     JSON beacon only ever sent the check, which is why departures used
+     to be missed). Then the keepalive fetch to site_gone as a backup.
+     Deleting a row twice is harmless. goneSaid stops hiding the tab and
+     then closing it from sending four of these; the next heartbeat
+     clears it. */
+  var BYE_URL = URL_BASE + '/rest/v1/rpc/site_bye';
+  var goneSaid = false;
   function sayGone() {
-    if (stopped || !session) return;
-    var body = JSON.stringify({ p_session: session });
+    if (stopped || !session || goneSaid) return;
+    goneSaid = true;
     try {
-      /* keepalive fetch first, for the reason given in send(). */
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(BYE_URL + '?apikey=' + encodeURIComponent(KEY),
+          new Blob([session], { type: 'text/plain' }));
+      }
+    } catch (e) {}
+    try {
       if (typeof fetch === 'function') {
         fetch(GONE_URL, {
-          method: 'POST', headers: headers(), body: body,
+          method: 'POST', headers: headers(), body: JSON.stringify({ p_session: session }),
           mode: 'cors', credentials: 'omit', keepalive: true
         }).catch(function () {});
-        return;
-      }
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(GONE_URL + '?apikey=' + encodeURIComponent(KEY),
-          new Blob([body], { type: 'application/json' }));
       }
     } catch (e) {}
   }
+
 
   function startBeating() {
     if (beatTimer) return;

@@ -1343,11 +1343,26 @@ viewed** stayed empty and page views were short. Each visit is now always
 accepted, and if the connection drops for a moment it is sent again. Visits
 lost before build 52 cannot be recovered; the counts are complete from then on.
 
-**Live figures.** Run **supabase-analytics-live.sql** once. The Analytics page
-then updates by itself about a second after somebody opens a page or a piece on
-the website, whenever the dates shown include today. A visit is sent the moment
-it starts, so somebody who taps an advert and leaves after a few seconds is
-still counted.
+**Live figures.** Run **supabase-analytics-live.sql** once (again, if you ran an
+earlier copy; it is safe to repeat). It ends with a short report: every line
+must say **OK**. The Analytics page then updates by itself within a second or
+two of somebody opening a page or a piece, whenever the dates shown include
+today, and somebody leaving drops out of "here now" at once.
+
+**Browsing location.** The map on the Analytics page shows the towns
+visits came from, with countries and towns listed underneath. The place comes
+from Netlify, which knows roughly where each connection comes from; nothing is
+asked of the visitor and no internet address is kept. The country is very
+reliable. The town is right for most visitors, but a phone on a mobile network
+is sometimes placed at its network's hub (Lusaka, for somebody nearby). It never
+shows anything finer than a town. It uses the service key already in Netlify,
+**SUPABASE_SERVICE_ROLE_KEY** (there if you set up staff logins) or
+**WEB_SUPABASE_SERVICE_KEY**, and counts visits from the day it is switched on.
+
+**Testing it yourself.** A phone or computer that has ever signed in to the admin
+is a shop device and is never counted, so browsing the website on it shows
+nothing on this page. Test from a private window on a device that has never
+signed in to the admin.
 
 **Why an advert shows more than this page.** Meta counts a "landing page view"
 as soon as its own in-app browser starts loading the page. Somebody who closes
