@@ -252,6 +252,37 @@ const subLine = page => page.evaluate(() =>
     }
 
     /* ==================================================================== */
+    console.log('\n"Live chat" beside the chat button');
+    {
+      let { ctx, page } = await open({ enabled: true });
+      await page.setViewportSize({ width: 390, height: 800 });
+      await page.waitForTimeout(300);
+      let fab = await page.evaluate(() => {
+        const b = document.getElementById('chatFab'), l = document.getElementById('chatFabLabel');
+        return { text: l && l.textContent, shown: !!l && getComputedStyle(l).display !== 'none',
+                 w: b.getBoundingClientRect().width, right: window.innerWidth - b.getBoundingClientRect().right };
+      });
+      is(fab.shown && fab.text === 'Live chat' && fab.w > 80, 'the button says "Live chat" by default', JSON.stringify(fab));
+      is(fab.right >= 0, 'and fits on a phone screen');
+      if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
+      await page.click('#chatFab');
+      const openW = await page.evaluate(() => document.getElementById('chatFab').getBoundingClientRect().width);
+      is(openW < 60, 'open, it is the round close button again', String(openW));
+      await ctx.close();
+      ({ ctx, page } = await open({ enabled: true, fabLabel: false }));
+      fab = await page.evaluate(() => {
+        const l = document.getElementById('chatFabLabel');
+        return { shown: !!l && getComputedStyle(l).display !== 'none', w: document.getElementById('chatFab').getBoundingClientRect().width };
+      });
+      is(!fab.shown && fab.w < 60, 'switched off in Settings > Live Chat, just the icon', JSON.stringify(fab));
+      await ctx.close();
+      ({ ctx, page } = await open({ enabled: true, fabText: 'Talk to us' }));
+      const t = await page.textContent('#chatFabLabel');
+      is(t === 'Talk to us', 'and the words can be changed', t);
+      await ctx.close();
+    }
+
+    /* ==================================================================== */
     console.log('\nThe message box on a phone: no stray scrollbar');
     {
       const { ctx, page } = await open({ enabled: true });

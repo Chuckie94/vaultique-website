@@ -31,6 +31,9 @@
      what saving a form nobody edited should do. */
   var DEFAULTS = {
     enabled: true,
+    /* The words beside the chat icon in the corner of the website. */
+    fabLabel: true,
+    fabText: 'Live chat',
     title: 'Chat with us',
     openingText: 'Tell us what you are looking for — we would love to help',
     hereText: 'Someone is here now',
@@ -105,6 +108,12 @@
                   'Conversations already had are kept and still readable in Live Chats.',
             fields: [
               { type: 'toggle', name: 'enabled', label: 'Offer live chat on the website' },
+              { type: 'toggle', name: 'fabLabel', label: 'Show words beside the chat button',
+                showIf: on('enabled'),
+                hint: 'Off: just the round chat icon in the corner.' },
+              { type: 'text', name: 'fabText', label: 'The words', maxLength: 20,
+                placeholder: 'Live chat',
+                showIf: function (v) { return !!v.enabled && v.fabLabel !== false; } },
               { type: 'text', name: 'title', label: 'What the window is called',
                 maxLength: 40, showIf: on('enabled'),
                 hint: 'Across the top of the chat window.' },

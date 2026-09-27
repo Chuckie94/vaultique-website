@@ -238,8 +238,20 @@
     };
   }
 
-  function send(rows, leaving) {
+  /* try: 0 on the first attempt. A batch that does not arrive is not
+     simply let go any more -- that is how visits went uncounted:
+
+       - REFUSED (400): one row the database would not take must not
+         cost the rest, so each row is sent again on its own, once.
+       - A BAD MOMENT (5xx, or no connection): the same batch is sent
+         once more a few seconds later.
+
+     One retry and no more, so a database that is genuinely down is not
+     asked over and over by every open page. */
+  var RETRY_AFTER = 4000;
+  function send(rows, leaving, attempt) {
     if (!rows.length || stopped) return;
+    attempt = attempt || 0;
     var body = JSON.stringify(rows);
 
     /* On the way out, fetch may be cancelled with the page. sendBeacon
@@ -254,6 +266,11 @@
       } catch (e) { /* fall through to fetch */ }
     }
 
+    function again() {
+      if (attempt > 0 || stopped) return;
+      setTimeout(function () { send(rows, false, 1); }, RETRY_AFTER);
+    }
+
     try {
       fetch(EVENTS_URL, {
         method: 'POST',
@@ -265,14 +282,16 @@
         /* No cookie is sent and none is wanted: this is not an account. */
         credentials: 'omit'
       }).then(function (res) {
+        if (!res) return;
         /* 404 and 401 mean the tables or the rules are not there, and
-           they will not appear during this visit. Stop, quietly. A 5xx
-           or a dropped connection is a bad moment, not a bad setup, so
-           it is simply let go — the events in it are lost and nothing
-           is retried, because a retry queue in a page nobody can see is
-           more to go wrong than it is worth. */
-        if (res && (res.status === 404 || res.status === 401 || res.status === 403)) stopped = true;
-      }, function () {});
+           they will not appear during this visit. Stop, quietly. */
+        if (res.status === 404 || res.status === 401 || res.status === 403) { stopped = true; return; }
+        if (res.status === 400 && rows.length > 1 && attempt === 0) {
+          rows.forEach(function (r) { send([r], false, 1); });
+          return;
+        }
+        if (res.status >= 500) again();
+      }, again);
     } catch (e) { /* nothing here is worth an error in a shop's console */ }
   }
 
@@ -294,7 +313,14 @@
       session: session,
       device: device,
       is_new: isNewVisitor,
-      referrer: referrer
+      referrer: referrer,
+      /* ALWAYS PRESENT, even empty. The database takes a batch only if
+         every row in it has exactly the same fields, and a page view
+         sent without this beside a product view sent with it was a mixed
+         batch -- refused whole, so opening a piece (a page view and a
+         product view a moment apart) was never counted at all. That is
+         why Product views and Most viewed pieces stayed empty. */
+      sku: null
     };
     if (extra) {
       if (extra.sku) row.sku = String(extra.sku).slice(0, 64);

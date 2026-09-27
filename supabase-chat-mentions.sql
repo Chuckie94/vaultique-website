@@ -43,11 +43,9 @@ begin
     p_conversation, auth.uid(), 'event',
     case
       when p_to is null   then 'Released by ' || coalesce(v_bynm, 'someone')
-      when p_from is null then 'Taken by ' || coalesce(v_tonm, 'someone')
-      else 'Passed from ' || coalesce(v_fromnm, 'someone') ||
-           ' to ' || coalesce(v_tonm, 'someone') ||
-           case when auth.uid() is distinct from p_from
-                then ' by ' || coalesce(v_bynm, 'someone') else '' end
+      when p_to is not distinct from auth.uid() then 'Taken by ' || coalesce(v_tonm, 'someone')
+      else 'Handed to ' || coalesce(v_tonm, 'someone') ||
+           ' by ' || coalesce(v_bynm, v_fromnm, 'someone')
     end
   );
 end;

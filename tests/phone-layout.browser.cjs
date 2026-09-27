@@ -120,7 +120,9 @@ const settle = (page, ms) => page.waitForTimeout(ms || 500);
     const chatShown = await page.evaluate(() => !document.querySelector('#chatFab').classList.contains('hide'));
     if (chatShown) {
       const chat = await box(page, '#chatFab');
-      is(chat && chat.w <= 46, 'the chat button likewise', JSON.stringify(chat));
+      // With "Live chat" beside it the button is a pill: as tall as the
+      // WhatsApp one, and wider only by the words, never off the screen.
+      is(chat && chat.h <= 46 && chat.x >= 0 && chat.r <= 390, 'the chat button likewise', JSON.stringify(chat));
       is(fab.b <= chat.y, 'and WhatsApp sits above it rather than on top of it');
     }
     await page.evaluate(() => document.querySelector('#chatFab').classList.add('hide'));

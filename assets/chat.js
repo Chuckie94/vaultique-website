@@ -79,6 +79,8 @@
      exactly what it saw before. */
   var SET = {
     enabled: true,
+    fabLabel: true,
+    fabText: 'Live chat',
     title: 'Chat with us',
     /* The line under the title before anyone has asked anything, and the
        one most shops want to change first. It used to be written into
@@ -1156,6 +1158,15 @@
 
     var fab = $('#chatFab');
     if (fab) fab.classList.remove('hide');
+    /* "Live chat" beside the icon, or just the icon: Settings > Live Chat. */
+    var fabWords = $('#chatFabLabel');
+    var words = String(SET.fabText || '').trim() || 'Live chat';
+    if (fab && fabWords) {
+      var labelled = SET.fabLabel !== false;
+      fabWords.textContent = words;
+      fabWords.classList[labelled ? 'remove' : 'add']('hide');
+      fab.classList[labelled ? 'add' : 'remove']('has-label');
+    }
 
     /* The photo button, only once the shop has run supabase-chat-photos.sql.
        Asked once per page; a shop that has not simply never shows it. */

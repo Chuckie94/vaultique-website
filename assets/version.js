@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.33.0',
-  build: 51,
-  builtAt: '2026-09-26T18:04:15Z',
-  notes: 'Live chat: opening a chat nobody has taken takes it, "Taken by" shown to everyone, @mentions in notes notify the colleague (phone and on screen) with an optional hand-over; the customer message box no longer shows a stray scrollbar. Needs supabase-chat-mentions.sql.'
+  version: '1.33.1',
+  build: 52,
+  builtAt: '2026-09-27T09:56:18Z',
+  notes: 'Analytics: page views, product views and add-to-cart all counted (a batch mixing them was refused by the database), and a batch that fails is sent again. Live chat: "Handed to" until the colleague replies, mentions in green and announced anywhere in the admin, "Live chat" words on the website chat button (switchable). Needs supabase-chat-handover.sql.'
 };

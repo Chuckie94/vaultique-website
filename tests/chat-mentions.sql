@@ -72,8 +72,8 @@ delete from net.posted;
 set role authenticated;
 select public.chat_assign('cccccccc-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111');
 reset role;
-select chk(exists (select 1 from public.chat_notes where kind = 'event' and body = 'Passed from Mwila to Chanda'),
-           'handing it over writes "Passed from Mwila to Chanda" in the notes again');
+select chk(exists (select 1 from public.chat_notes where kind = 'event' and body = 'Handed to Chanda by Mwila'),
+           'handing it over writes "Handed to Chanda by Mwila" in the notes');
 
 -- a note with nobody mentioned sends nothing
 delete from net.posted;

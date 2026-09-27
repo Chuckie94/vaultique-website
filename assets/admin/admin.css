@@ -903,8 +903,8 @@
   background:#eef1f6;color:var(--navy,#0B1F3A)}
 .lc-taken.is-mine{background:#e3f4ea;color:#1e7d46}
 .lc-lock.is-info{background:#f4f6fa;border-color:#dfe4ec}
-.lc-mention{color:var(--navy,#0B1F3A)}
-.lc-mention.is-me{background:#fdf3dc;border-radius:3px;padding:0 2px}
+.lc-mention{color:#1e7d46;font-weight:600}
+.lc-mention.is-me{background:#e3f4ea;border-radius:3px;padding:0 3px}
 .lc-mention-pick{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
 .lc-mention-opt{border:1px solid var(--line,#ddd);background:#fff;border-radius:14px;padding:4px 10px;font-size:12.5px;cursor:pointer}
 .lc-mention-opt:hover{border-color:var(--gold,#C8A24A)}
@@ -913,3 +913,7 @@
   border:1px solid var(--line,#ddd);border-left:4px solid var(--gold,#C8A24A);border-radius:10px;
   padding:12px 14px;box-shadow:0 12px 30px -12px rgba(0,0,0,.35);display:flex;flex-direction:column;gap:6px;font-size:13px}
 .lc-toast-acts{display:flex;gap:8px;margin-top:4px}
+
+/* Handed over but not yet answered */
+.lc-taken.is-pending{background:#fdf3dc;color:#8a5a00}
+.lc-lock.is-pending{background:#fdf6e6;border-color:#f0dfb4}

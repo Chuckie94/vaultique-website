@@ -303,5 +303,69 @@
     } catch (e) {}
   };
 
+  /* ------------------------------------------------ mentions, anywhere
+     A colleague writing "@you" in a chat's notes. On the Live Chats page
+     the panel says so itself; everywhere else in the admin this does,
+     every half minute: a note in the corner with the way to the chat.
+     Quiet when supabase-chat-mentions.sql has not been run. */
+  API.watchMentions = function (sb) {
+    if (!sb || API._mentionTimer) return;
+    var since = new Date().toISOString();
+    var seen = {};
+    var me = null;
+    function onChats() { return /^#\/chats/.test(location.hash || ''); }
+    function show(n, who) {
+      var box = document.createElement('div');
+      box.className = 'lc-mention-toast';
+      var b = document.createElement('b'); b.textContent = (who || 'A colleague') + ' mentioned you';
+      var t = document.createElement('span'); t.textContent = String(n.body || '').slice(0, 140);
+      var go = document.createElement('a');
+      go.className = 'btn btn-gold btn-sm';
+      go.href = '#/chats/' + n.conversation_id;
+      go.textContent = 'Open the chat';
+      go.addEventListener('click', function () { box.remove(); });
+      var shut = document.createElement('button');
+      shut.type = 'button'; shut.className = 'btn btn-out btn-sm'; shut.textContent = 'Later';
+      shut.addEventListener('click', function () { box.remove(); });
+      var row = document.createElement('div'); row.className = 'lc-toast-acts';
+      row.appendChild(go); row.appendChild(shut);
+      box.appendChild(b); box.appendChild(t); box.appendChild(row);
+      document.body.appendChild(box);
+      setTimeout(function () { if (box.parentNode) box.remove(); }, 60000);
+    }
+    function look() {
+      if (document.hidden) return;
+      var ready = me ? Promise.resolve(me) : Promise.resolve(sb.auth.getSession()).then(function (r) {
+        me = r && r.data && r.data.session && r.data.session.user && r.data.session.user.id;
+        return me;
+      });
+      ready.then(function (id) {
+        if (!id) return;
+        return Promise.resolve(sb.from('chat_notes')
+          .select('id,conversation_id,author_id,body,created_at')
+          .contains('mentions', [id]).gt('created_at', since)
+          .order('created_at', { ascending: true }).limit(10)).then(function (r) {
+            if (!r || r.error) {
+              if (r && r.error && /mentions/.test(r.error.message || '')) {
+                clearInterval(API._mentionTimer);
+              }
+              return;
+            }
+            (r.data || []).forEach(function (n) {
+              if (n.created_at > since) since = n.created_at;
+              if (seen[n.id] || n.author_id === id) return;
+              seen[n.id] = true;
+              if (onChats()) return;          // the Live Chats page tells them itself
+              Promise.resolve(sb.from('chat_agents').select('display_name').eq('id', n.author_id).limit(1))
+                .then(function (a) { return a && a.data && a.data[0] && a.data[0].display_name; },
+                      function () { return ''; })
+                .then(function (who) { ding(0.5); show(n, who); });
+            });
+          });
+      }).catch(function () {});
+    }
+    API._mentionTimer = setInterval(look, 30000);
+  };
+
   window.VBP_CHAT_ALERTS = API;
 })();

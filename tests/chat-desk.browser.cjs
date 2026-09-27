@@ -21,7 +21,8 @@ var ME = '${ME}', CHANDA = '${CHANDA}';
 window.DB = {
   convs: [
     { id: 'c-new', name: 'Precious', status: 'open', last_message_at: new Date().toISOString(), shop_unread: 1, assigned_to: null },
-    { id: 'c-theirs', name: 'Bwalya', status: 'open', last_message_at: new Date().toISOString(), shop_unread: 0, assigned_to: CHANDA }
+    { id: 'c-theirs', name: 'Bwalya', status: 'open', last_message_at: new Date().toISOString(), shop_unread: 0, assigned_to: CHANDA },
+    { id: 'c-handed', name: 'Mutale', status: 'open', last_message_at: new Date().toISOString(), shop_unread: 0, assigned_to: CHANDA, handed_pending: true }
   ],
   agents: [
     { id: ME, display_name: 'Mwila', status: 'online', last_seen_at: new Date().toISOString() },
@@ -32,7 +33,7 @@ window.DB = {
 function answer(v) { return new Promise(function (r) { setTimeout(function () { r(v); }, 5); }); }
 function builder(table) {
   var q = { table: table, f: [] }, b = {};
-  ['select','order','limit','range','gte','lte','in','neq','or'].forEach(function (k) { b[k] = function () { return b; }; });
+  ['select','order','limit','range','gte','lte','in','neq','or','gt','contains'].forEach(function (k) { b[k] = function () { return b; }; });
   b.eq = function (c, v) { q.f.push([c, v]); return b; };
   b.is = function (c, v) { q.f.push([c, v]); return b; };
   b.maybeSingle = b.single = function () { q.one = true; return b; };
@@ -116,6 +117,7 @@ const server = http.createServer((req, res) => {
       (r.querySelector('.lc-who') || {}).textContent + ':' + ((r.querySelector('.lc-taken') || {}).textContent || '-')));
     is(tags.includes('Bwalya:Taken by Chanda'), 'a chat Chanda has is marked "Taken by Chanda" for everybody', tags.join(' | '));
     is(tags.includes('Precious:-'), 'a new chat is not marked', tags.join(' | '));
+    is(tags.includes('Mutale:Handed to Chanda'), 'a chat just handed to Chanda says "Handed to Chanda", not taken', tags.join(' | '));
 
     console.log('\nOpening a new chat takes it');
     await page.click('.lc-row >> text=Precious');
@@ -161,8 +163,15 @@ const server = http.createServer((req, res) => {
     const assigned = await page.evaluate(() => DB.rpc.filter(r => r.name === 'chat_assign').map(r => r.args));
     is(assigned.length === 1 && assigned[0].p_agent === CHANDA && assigned[0].p_conversation === 'c-new',
        'and the chat is handed to her', JSON.stringify(assigned));
-    const marked = await page.evaluate(() => Array.from(document.querySelectorAll('.lc-mention')).map(m => m.textContent));
-    is(marked.includes('@Chanda'), 'the mention is picked out in the note', JSON.stringify(marked));
+    const marked = await page.evaluate(() => Array.from(document.querySelectorAll('.lc-mention')).map(m =>
+      ({ t: m.textContent, c: getComputedStyle(m).color })));
+    is(marked.some(m => m.t === '@Chanda' && m.c === 'rgb(30, 125, 70)'), 'the mention is picked out in the note, in green', JSON.stringify(marked));
+
+    console.log('\nA chat that has just been handed over');
+    await page.click('.lc-row >> text=Mutale');
+    await page.waitForTimeout(500);
+    const banner = await page.evaluate(() => Array.from(document.querySelectorAll('.lc-lock')).map(l => l.textContent).join(' '));
+    is(/has been handed to Chanda/.test(banner) && /once they reply/.test(banner), 'it says it has been handed to Chanda, and will show as taken once she replies', banner);
 
     console.log('\nBeing mentioned');
     await page.evaluate(([a, b]) => DB.noteHandler({ new: {

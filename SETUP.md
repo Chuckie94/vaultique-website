@@ -1159,6 +1159,12 @@ changed.
 This needs **supabase-chat-jobs.sql** run once in the SQL Editor. Without it
 nothing is detected and the chat behaves exactly as it does today.
 
+#### The words on the chat button
+
+The chat button in the corner of the website says **Live chat** beside the icon.
+In **Settings > Live Chat** you can change the words, or switch **Show words beside
+the chat button** off to have just the round icon.
+
 #### Taking chats, and mentioning colleagues
 
 Needs **supabase-chat-mentions.sql** run once in the SQL Editor (it is safe to run again).
@@ -1168,7 +1174,7 @@ Needs **supabase-chat-mentions.sql** run once in the SQL Editor (it is safe to r
   the other sees who did. Opening a chat a colleague already has does not take it.
 - **Everybody can see who has what.** The chat list shows **Taken by Chanda** (or
   **You have this**). An open chat says who has taken it, and the notes record
-  **Taken by …**, **Passed from … to …** and **Released by …** as they happen.
+  **Taken by …**, **Handed to … by …** and **Released by …** as they happen.
 - **@mentions in notes.** In a chat's internal notes, type **@** and pick a
   colleague. They get a notification on their phone (if they turned on
   notifications on that device) and a pop-up in the admin with **Open the chat**,
@@ -1177,6 +1183,12 @@ Needs **supabase-chat-mentions.sql** run once in the SQL Editor (it is safe to r
   this chat to …** before pressing Note. The chat is theirs as the note is saved,
   and they are told. The **Who is dealing with this** list still works for
   handing over without a note.
+- **Handed to, then taken.** A chat handed to a colleague reads **Handed to Chanda**
+  until Chanda replies to the customer, then **Taken by Chanda**. The notes say
+  **Handed to Chanda by Mwila**, then **Taken by Chanda**. This needs
+  **supabase-chat-handover.sql** run once.
+- **Mentions are shown in green**, and the person mentioned is told wherever they
+  are in the admin, not only on the Live Chats page.
 
 #### Customers sending photos
 
@@ -1322,6 +1334,14 @@ How many people came to the website, what they looked at, and on what.
 **Orders** and **Sales** come from the Orders tab. To remove a test order from
 these figures, open **Orders**, find it, and press **Delete** (or set its status
 to **Cancelled**; cancelled orders are not counted).
+
+**Page views, product views and Most viewed pieces.** Every page a visitor
+opens is counted, and every piece opened to read about counts as a product
+view. Before build 52 a visit that mixed ordinary pages with pieces could be
+turned away by the database as a whole, which is why product views and **Most
+viewed** stayed empty and page views were short. Each visit is now always
+accepted, and if the connection drops for a moment it is sent again. Visits
+lost before build 52 cannot be recovered; the counts are complete from then on.
 
 **How orders were paid.** Once online payment is switched on (and
 `supabase-payments.sql` has been run), a card under the figures splits sales for

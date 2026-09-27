@@ -44,9 +44,11 @@ const TYPES = {
 
 /* Everything the page sent to the website's database, kept as it arrived. */
 let EVENTS = [];       // rows posted to site_events
+let REFUSED = [];      // batches the database would have refused
 let BEATS = [];        // bodies posted to rpc/site_beat
 let RAW = [];          // every request to /rest/v1/, verbatim, for the privacy sweep
 let EVENT_STATUS = 201;  // switched to 404 to prove the tracker gives up quietly
+let FAIL_NEXT = 0;       // this many POSTs answer 503, a bad moment, before it recovers
 
 function body(req) {
   return new Promise(resolve => {
@@ -75,12 +77,33 @@ function serve() {
         const sent = await body(req);
         RAW.push({ path: p, query: url.search, headers: req.headers, body: sent });
         if (p === '/rest/v1/site_events' && req.method === 'POST') {
+          if (FAIL_NEXT > 0) {
+            FAIL_NEXT--;
+            res.writeHead(503, { 'Content-Type': 'application/json' });
+            res.end('{"message":"temporarily unavailable"}');
+            return;
+          }
           if (EVENT_STATUS !== 201) {
             res.writeHead(EVENT_STATUS, { 'Content-Type': 'application/json' });
             res.end('{"message":"relation \\"public.site_events\\" does not exist"}');
             return;
           }
-          try { EVENTS = EVENTS.concat(JSON.parse(sent)); } catch (e) { /* asserted on below */ }
+          /* As strict as the real database (PostgREST): a batch whose rows
+             do not all have the same fields is refused whole. This stand-in
+             used to take anything, which is how product views were lost on
+             the live site for months while this test passed. */
+          let rows = [];
+          try { rows = JSON.parse(sent); } catch (e) { /* asserted on below */ }
+          if (Array.isArray(rows) && rows.length > 1) {
+            const shape = r => Object.keys(r).sort().join(',');
+            if (rows.some(r => shape(r) !== shape(rows[0]))) {
+              REFUSED.push(rows);
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end('{"code":"PGRST102","message":"All object keys must match"}');
+              return;
+            }
+          }
+          EVENTS = EVENTS.concat(rows);
           res.writeHead(201, { 'Content-Type': 'application/json' });
           res.end('');
           return;
@@ -220,6 +243,20 @@ const reset = () => { EVENTS = []; BEATS = []; RAW = []; };
     is(/^\/product\//.test(pv.path || ''), 'on the piece\'s own address');
     is(EVENTS.length <= 2 && RAW.filter(r => r.path === '/rest/v1/site_events').length === 1,
        'both went out in ONE request, not one each');
+    is(REFUSED.length === 0, 'and the database accepted that request: every row has the same fields',
+       JSON.stringify(REFUSED));
+
+    /* A bad moment at the database: the visit must still be counted. */
+    EVENTS = []; RAW = [];
+    FAIL_NEXT = 1;
+    await page.goBack();                       // back to the shop page: a page view
+    await settle(page, 7000);
+    is(RAW.filter(r => r.path === '/rest/v1/site_events').length >= 2 && kinds().indexOf('page_view') > -1,
+       'when the database has a bad moment, the visit is sent again and still counted',
+       JSON.stringify({ tries: RAW.filter(r => r.path === '/rest/v1/site_events').length, kinds: kinds() }));
+    /* And back to the piece, where the checks below carry on. */
+    await page.click('#grid .card .thumb');
+    await settle(page);
 
     /* ==================================================================== */
     console.log('\nThe two things only the storefront can say');

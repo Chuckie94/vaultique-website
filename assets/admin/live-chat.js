@@ -313,10 +313,15 @@
       host.appendChild(wrap);
 
       /* ---- reading -------------------------------------------------- */
+      /* handed_pending comes from supabase-chat-handover.sql. Asked for
+         until the database says it has no such column, then not again,
+         so a shop that has not run that file loses nothing. */
+      var askPending = true;
       function loadList() {
         var q = sb.from('chat_conversations')
           .select('id,name,phone,email,customer_id,status,last_message_at,shop_unread,customer_unread,' +
-                  'created_at,started_on,viewing,viewing_at,assigned_to,assigned_at,kind')
+                  'created_at,started_on,viewing,viewing_at,assigned_to,assigned_at,kind' +
+                  (askPending ? ',handed_pending' : ''))
           .order('last_message_at', { ascending: false })
           .limit(PAGE);
         if (filter !== 'all' && filter !== 'jobs') q = q.eq('status', 'open');
@@ -344,6 +349,10 @@
         }
         if (filter === 'free') q = q.is('assigned_to', null);
         return q.then(function (r) {
+          if (r.error && askPending && /handed_pending/.test((r.error && r.error.message) || '')) {
+            askPending = false;
+            return loadList();
+          }
           if (r.error) {
             /* The message, not a summary of it. "Could not read the
                conversations" is true of a network hiccup, of a migration
@@ -768,10 +777,7 @@
           row.appendChild(el('div', 'lc-meta' + (seeing ? ' live' : ''),
                              meta.join(' · ') || 'No details given'));
           /* Who has it, where everybody at the desk can see it at a glance. */
-          if (c.assigned_to) {
-            row.appendChild(el('span', 'lc-taken' + (c.assigned_to === me ? ' is-mine' : ''),
-              c.assigned_to === me ? 'You have this' : 'Taken by ' + agentName(c.assigned_to)));
-          }
+          if (c.assigned_to) row.appendChild(takenTag(c));
 
           if (c.shop_unread) {
             row.appendChild(el('span', 'lc-dot', String(c.shop_unread)));
@@ -1006,7 +1012,14 @@
            a careful paragraph and loses it. It can still be read: the
            lock is on speaking, not on looking, so a colleague can catch
            up before taking it on. */
-        if (!held && c.assigned_to && c.assigned_to !== me) {
+        if (c.handed_pending && c.assigned_to === me) {
+          threadCol.appendChild(el('div', 'lc-lock is-pending',
+            'This chat has been handed to you. It shows as taken by you once you reply to the customer.'));
+        } else if (c.handed_pending && c.assigned_to) {
+          threadCol.appendChild(el('div', 'lc-lock is-pending',
+            'This chat has been handed to ' + agentName(c.assigned_to) +
+            '. It shows as taken once they reply to the customer.'));
+        } else if (!held && c.assigned_to && c.assigned_to !== me) {
           threadCol.appendChild(el('div', 'lc-lock is-info',
             agentName(c.assigned_to) + ' has taken this chat.' +
             (isOwner ? ' As the owner you can still step in.' : '')));
@@ -1015,7 +1028,7 @@
           var lock = el('div', 'lc-lock');
           lock.appendChild(el('span', 'lc-lock-who',
             (held.display_name || agentName(held.id) || 'A colleague') +
-            ' is answering this one.'));
+            (c.handed_pending ? ' has been handed this one.' : ' is answering this one.')));
           lock.appendChild(el('span', 'lc-lock-why',
             'You can read it. To reply, ask them to hand it over — or wait: ' +
             'it comes free on its own if they go away.'));
@@ -1708,6 +1721,18 @@
         }, function () {});
       }
 
+      /* Handed to somebody is not taken by them: it becomes "Taken by"
+         only once they answer the customer (supabase-chat-handover.sql). */
+      function holdWords(c) {
+        var mine = c.assigned_to === me;
+        if (c.handed_pending) return mine ? 'Handed to you' : 'Handed to ' + agentName(c.assigned_to);
+        return mine ? 'You have this' : 'Taken by ' + agentName(c.assigned_to);
+      }
+      function takenTag(c) {
+        return el('span', 'lc-taken' + (c.assigned_to === me ? ' is-mine' : '') +
+                          (c.handed_pending ? ' is-pending' : ''), holdWords(c));
+      }
+
       function openConversation(id) {
         openId = id;
         takeOnOpen(convs.filter(function (x) { return x.id === id; })[0]);
@@ -1920,8 +1945,35 @@
       function beatList() {
         if (listTimer) clearInterval(listTimer);
         listTimer = setInterval(function () {
-          if (!document.hidden) loadList();
+          if (!document.hidden) { loadList(); checkMentions(); }
         }, liveWire.ok ? LIVE_LIST_EVERY : LIST_EVERY);
+      }
+
+      /* Mentions, asked for on the list's own beat as well as heard live.
+         The live channel is the fast way; this is the sure way, for a
+         project where Realtime is off or a socket that has quietly
+         dropped. noteArrived() tells about each note once, however it
+         arrives. Only notes written since this page opened. */
+      var mentionsSince = new Date().toISOString();
+      var mentionsOk = true;
+      function checkMentions() {
+        if (!me || !mentionsOk) return;
+        Promise.resolve(sb.from('chat_notes')
+          .select('id,conversation_id,author_id,kind,body,mentions,created_at')
+          .contains('mentions', [me])
+          .gt('created_at', mentionsSince)
+          .order('created_at', { ascending: true })
+          .limit(20)).then(function (r) {
+            if (!r || r.error) {
+              /* No mentions column: supabase-chat-mentions.sql not run. */
+              if (r && r.error && /mentions/.test(r.error.message || '')) mentionsOk = false;
+              return;
+            }
+            (r.data || []).forEach(function (n) {
+              noteArrived(n);
+              if (n.created_at > mentionsSince) mentionsSince = n.created_at;
+            });
+          }, function () {});
       }
       function beatThread() {
         if (threadTimer) clearInterval(threadTimer);

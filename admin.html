@@ -786,6 +786,9 @@
   function enterAdmin() {
     show('topbar', true); show('admin', true);
     adminReady = true;
+    /* A colleague mentioning this person in a chat's notes, wherever in
+       the admin they are (assets/admin/chat-alerts.js). */
+    try { if (window.VBP_CHAT_ALERTS && window.VBP_CHAT_ALERTS.watchMentions) window.VBP_CHAT_ALERTS.watchMentions(sb); } catch (e) {}
     /* This device belongs to the shop, so its trips through the shop
        front are not customer visits and Website Analytics ignores them
        from here on. See isTheShop() in assets/analytics.js. Left rather
