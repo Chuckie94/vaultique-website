@@ -763,11 +763,15 @@
           if (seeing) meta.push('on ' + seeing);
           else if (c.phone) meta.push(c.phone);
           if (c.customer_id) meta.push('account');
-          if (c.assigned_to) meta.push(c.assigned_to === me ? 'yours' : agentName(c.assigned_to));
           if (c.status === 'closed') meta.push('Closed');
           if (c.kind === 'job') meta.push('Job enquiry');
           row.appendChild(el('div', 'lc-meta' + (seeing ? ' live' : ''),
                              meta.join(' · ') || 'No details given'));
+          /* Who has it, where everybody at the desk can see it at a glance. */
+          if (c.assigned_to) {
+            row.appendChild(el('span', 'lc-taken' + (c.assigned_to === me ? ' is-mine' : ''),
+              c.assigned_to === me ? 'You have this' : 'Taken by ' + agentName(c.assigned_to)));
+          }
 
           if (c.shop_unread) {
             row.appendChild(el('span', 'lc-dot', String(c.shop_unread)));
@@ -1002,6 +1006,11 @@
            a careful paragraph and loses it. It can still be read: the
            lock is on speaking, not on looking, so a colleague can catch
            up before taking it on. */
+        if (!held && c.assigned_to && c.assigned_to !== me) {
+          threadCol.appendChild(el('div', 'lc-lock is-info',
+            agentName(c.assigned_to) + ' has taken this chat.' +
+            (isOwner ? ' As the owner you can still step in.' : '')));
+        }
         if (held) {
           var lock = el('div', 'lc-lock');
           lock.appendChild(el('span', 'lc-lock-who',
@@ -1119,18 +1128,83 @@
         var noteForm = el('form', 'lc-note-form');
         var noteBox = document.createElement('input');
         noteBox.type = 'text';
-        noteBox.placeholder = 'Add a note for your colleagues';
+        noteBox.placeholder = 'Add a note — type @ to mention a colleague';
         noteBox.setAttribute('aria-label', 'Internal note');
+        noteBox.setAttribute('autocomplete', 'off');
         noteBox.maxLength = 500;
         noteForm.appendChild(noteBox);
         var noteBtn = el('button', 'btn btn-out btn-sm', 'Note');
         noteBtn.type = 'submit';
         noteForm.appendChild(noteBtn);
+        noteWrap.appendChild(noteForm);
+
+        /* @ picks a colleague. Whoever is named is told: on their phone,
+           and on screen if they have the admin open. */
+        var picker = el('div', 'lc-mention-pick hide');
+        noteWrap.appendChild(picker);
+        /* With exactly one colleague named, the note can hand them the
+           chat in the same step. */
+        var handRow = el('label', 'lc-note-hand hide');
+        var handBox = document.createElement('input');
+        handBox.type = 'checkbox';
+        var handText = el('span');
+        handRow.appendChild(handBox);
+        handRow.appendChild(handText);
+        noteWrap.appendChild(handRow);
+
+        function mayHand() {
+          return c.status === 'open' && !held && (!c.assigned_to || c.assigned_to === me || isOwner);
+        }
+        function refreshHand() {
+          var ids = mentionedIn(noteBox.value);
+          var one = ids.length === 1 && ids[0] !== c.assigned_to && mayHand() ? ids[0] : null;
+          handRow.classList[one ? 'remove' : 'add']('hide');
+          handRow.dataset.to = one || '';
+          if (one) handText.textContent = ' Also hand this chat to ' + agentName(one);
+          else handBox.checked = false;
+        }
+        function atToken() {
+          var upto = noteBox.value.slice(0, noteBox.selectionStart || noteBox.value.length);
+          var m = /(^|\s)@([^@\n]{0,30})$/.exec(upto);
+          return m ? { query: m[2].toLowerCase(), start: upto.length - m[2].length - 1 } : null;
+        }
+        function showPicker() {
+          var t = atToken();
+          var list = !t ? [] : agents.filter(function (a) {
+            return a.id !== me && a.display_name &&
+                   a.display_name.toLowerCase().indexOf(t.query) === 0;
+          }).slice(0, 6);
+          picker.innerHTML = '';
+          picker.classList[list.length ? 'remove' : 'add']('hide');
+          list.forEach(function (a) {
+            var b = el('button', 'lc-mention-opt', '@' + a.display_name +
+                       (holderPresent(a) ? '' : ' — away'));
+            b.type = 'button';
+            b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            b.addEventListener('click', function () {
+              var v = noteBox.value, end = noteBox.selectionStart || v.length;
+              noteBox.value = v.slice(0, t.start) + '@' + a.display_name + ' ' + v.slice(end);
+              var at = t.start + a.display_name.length + 2;
+              noteBox.focus();
+              try { noteBox.setSelectionRange(at, at); } catch (err) {}
+              picker.classList.add('hide');
+              refreshHand();
+            });
+            picker.appendChild(b);
+          });
+        }
+        noteBox.addEventListener('input', function () { showPicker(); refreshHand(); });
+        noteBox.addEventListener('blur', function () {
+          setTimeout(function () { picker.classList.add('hide'); }, 150);
+        });
         noteForm.addEventListener('submit', function (e) {
           e.preventDefault();
-          addNote(noteBox);
+          var handTo = handBox.checked ? (handRow.dataset.to || null) : null;
+          addNote(noteBox, handTo ? c : null, handTo);
+          picker.classList.add('hide');
+          handRow.classList.add('hide');
+          handBox.checked = false;
         });
-        noteWrap.appendChild(noteForm);
         threadCol.appendChild(noteWrap);
         noteListEl = noteList;
         paintNotes();
@@ -1443,6 +1517,29 @@
         });
       }
 
+      /* The note, with each "@Name" picked out, and marked when it is you. */
+      function noteBody(n) {
+        var span = el('span', 'lc-note-body');
+        var text = String(n.body || '');
+        var names = agents.filter(function (a) { return a.display_name; })
+          .map(function (a) { return { id: a.id, tag: '@' + a.display_name }; })
+          .sort(function (a, b) { return b.tag.length - a.tag.length; });
+        var i = 0;
+        while (i < text.length) {
+          var hit = null, at = -1;
+          names.forEach(function (x) {
+            var k = text.toLowerCase().indexOf(x.tag.toLowerCase(), i);
+            if (k > -1 && (at < 0 || k < at)) { at = k; hit = x; }
+          });
+          if (!hit) { span.appendChild(document.createTextNode(text.slice(i))); break; }
+          if (at > i) span.appendChild(document.createTextNode(text.slice(i, at)));
+          span.appendChild(el('b', 'lc-mention' + (hit.id === me ? ' is-me' : ''),
+                              text.slice(at, at + hit.tag.length)));
+          i = at + hit.tag.length;
+        }
+        return span;
+      }
+
       function paintNotes() {
         if (!noteListEl) return;
         noteListEl.innerHTML = '';
@@ -1453,21 +1550,44 @@
         notes.forEach(function (n) {
           var row = el('div', 'lc-note' + (n.kind === 'event' ? ' is-event' : ''));
           var by = n.kind === 'event' ? '' : (agentName(n.author_id) || 'Someone') + ' · ';
-          row.appendChild(el('span', 'lc-note-body', n.body));
+          row.appendChild(noteBody(n));
           row.appendChild(el('span', 'lc-note-by', by + ago(n.created_at)));
           noteListEl.appendChild(row);
         });
       }
 
-      function addNote(box) {
+      /* Colleagues named in a note, by the "@Name" the picker wrote. */
+      function mentionedIn(text) {
+        var t = String(text || '').toLowerCase();
+        return agents.filter(function (a) {
+          return a.id !== me && a.display_name &&
+                 t.indexOf('@' + a.display_name.toLowerCase()) > -1;
+        }).map(function (a) { return a.id; });
+      }
+
+      function addNote(box, handConv, handTo) {
         var body = (box.value || '').trim();
         if (!body || !openId) return;
         box.value = '';
-        sb.from('chat_notes')
-          .insert({ conversation_id: openId, author_id: me, kind: 'note', body: body.slice(0, 500) })
+        var row = { conversation_id: openId, author_id: me, kind: 'note', body: body.slice(0, 500) };
+        var ids = mentionedIn(body);
+        if (ids.length) row.mentions = ids;
+        var noteFor = openId;
+        sb.from('chat_notes').insert(row)
+          .then(function (r) {
+            /* A shop that has not run supabase-chat-mentions.sql has no
+               mentions column. The note still matters more than the
+               mention, so it is saved without one. */
+            if (r && r.error && row.mentions) {
+              delete row.mentions;
+              return sb.from('chat_notes').insert(row);
+            }
+            return r;
+          })
           .then(function (r) {
             if (r && r.error) { box.value = body; return; }
-            return loadNotes(openId);
+            if (handConv && handTo) assign(handConv, handTo);
+            return loadNotes(noteFor);
           }, function () { box.value = body; });
       }
 
@@ -1572,8 +1692,25 @@
         if (near < 80) logEl.scrollTop = logEl.scrollHeight;
       }
 
+      /* Opening a chat nobody has taken takes it (supabase-chat-mentions.sql,
+         chat_take). One step in the database, so two people opening the
+         same new chat cannot both get it: the second is told who did. A
+         shop that has not run that file simply keeps the dropdown. */
+      function takeOnOpen(c) {
+        if (!c || c.status !== 'open' || c.assigned_to) return;
+        Promise.resolve(sb.rpc('chat_take', { p_conversation: c.id })).then(function (r) {
+          if (!r || r.error || !r.data) return;
+          if (r.data.taken) c.assigned_to = me || c.assigned_to;
+          else if (r.data.holder) c.assigned_to = r.data.holder;
+          return Promise.all([loadNotes(c.id), loadList()]).then(function () {
+            if (openId === c.id) paintThread();
+          });
+        }, function () {});
+      }
+
       function openConversation(id) {
         openId = id;
+        takeOnOpen(convs.filter(function (x) { return x.id === id; })[0]);
         msgs = [];
         /* Whoever was writing, it was in the conversation just left. */
         theyAreTyping = false;
@@ -1713,6 +1850,35 @@
         }, 150);
       }
 
+      /* A note written anywhere. If it names me, say so on screen at once,
+         with the way to the chat, and chime. The phone gets its own push. */
+      var toldAbout = {};
+      function noteArrived(n) {
+        if (!n) return;
+        if (openId && n.conversation_id === openId) loadNotes(openId);
+        var mine = Array.isArray(n.mentions) && me && n.mentions.indexOf(me) > -1;
+        if (!mine || n.author_id === me || toldAbout[n.id]) return;
+        toldAbout[n.id] = true;
+        if (alerts) alerts.ding(0.5);
+        var box = el('div', 'lc-mention-toast');
+        box.appendChild(el('b', null, (agentName(n.author_id) || 'A colleague') + ' mentioned you'));
+        box.appendChild(el('span', null, String(n.body || '').slice(0, 140)));
+        var go = el('button', 'btn btn-gold btn-sm', 'Open the chat');
+        go.type = 'button';
+        go.addEventListener('click', function () {
+          box.remove();
+          openConversation(n.conversation_id);
+        });
+        var shut = el('button', 'btn btn-out btn-sm', 'Later');
+        shut.type = 'button';
+        shut.addEventListener('click', function () { box.remove(); });
+        var row = el('div', 'lc-toast-acts');
+        row.appendChild(go); row.appendChild(shut);
+        box.appendChild(row);
+        host.appendChild(box);
+        setTimeout(function () { if (box.parentNode) box.remove(); }, 60000);
+      }
+
       function startLive() {
         if (liveWire.channel) return;
         try {
@@ -1728,6 +1894,9 @@
                 function (p) {
                   nudged((p && p.new && p.new.id) || (p && p.old && p.old.id) || null);
                 })
+            .on('postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'chat_notes' },
+                function (p) { noteArrived(p && p.new); })
             .subscribe(function (state) {
               liveWire.ok = (state === 'SUBSCRIBED');
               beatList();
@@ -1836,6 +2005,10 @@
       /* Tapping a notification when the panel is already open. sw.js
          sends this rather than reloading, which would throw away a
          half-typed reply. */
+      function linkedChat(url) {
+        var m = /#\/chats\/([0-9a-f-]{36})/i.exec(String(url || ''));
+        return m ? m[1] : null;
+      }
       function onWorkerMessage(e) {
         var d = e && e.data;
         if (!d) return;
@@ -1846,7 +2019,8 @@
              fetching straight away rather than waiting out the poll, so
              the message being pointed at is already there. */
           if (ctx && ctx.navigate) { try { ctx.navigate('chats'); } catch (err) {} }
-          loadList();
+          var want = linkedChat(d.url);
+          loadList().then(function () { if (want) openConversation(want); });
         }
       }
       if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
@@ -1954,6 +2128,11 @@
         .then(settled(loadCanned))
         .then(settled(beatPresence))
         .then(loadList)
+        /* Arrived from a notification about one chat: open that one. */
+        .then(function () {
+          var want = linkedChat(location.hash);
+          if (want && convs.some(function (x) { return x.id === want; })) openConversation(want);
+        })
         /* The timers first and the socket after, deliberately. If the
            socket never settles the desk is already covered rather than
            waiting to find out that it is not. */

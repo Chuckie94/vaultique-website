@@ -320,7 +320,14 @@
     var box = $('#chatInput');
     if (!box) return;
     box.style.height = 'auto';
-    box.style.height = Math.min(box.scrollHeight, 96) + 'px';
+    /* scrollHeight leaves out the border, so a box set to it came out two
+       pixels short and the phone drew a scrollbar down its right edge: the
+       grey line. The border is added back, and the scrollbar is allowed
+       only once the message is taller than the box can grow. */
+    var edge = box.offsetHeight - box.clientHeight;
+    var want = box.scrollHeight + edge;
+    box.style.height = Math.min(want, 96) + 'px';
+    box.style.overflowY = want > 96 ? 'auto' : 'hidden';
   }
 
   /* ------------------------------------------------------------ drawing */

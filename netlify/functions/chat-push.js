@@ -203,10 +203,33 @@ exports.handler = async function (event) {
   const who = conv.name || conv.phone || conv.email ||
               (conv.customer_id ? 'A customer' : 'Someone browsing');
 
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   let title, text;
-  if (body.kind === 'handover') {
+  let url = '/admin.html#/chats';
+  if (body.kind === 'mention') {
+    /* A colleague named this person in a note. Read from the note itself
+       rather than trusting the request for who or what, so the only thing
+       the caller decides is which note. */
+    const nRes = await db(s.url, serviceKey,
+      `chat_notes?id=eq.${encodeURIComponent(body.note || '')}&select=author_id,body,mentions`);
+    const note = nRes.ok ? (await nRes.json())[0] : null;
+    if (!note || !Array.isArray(note.mentions) || !note.mentions.length) {
+      return json(200, { sent: 0, why: 'no such mention' });
+    }
+    const aRes = await db(s.url, serviceKey,
+      `chat_agents?id=eq.${encodeURIComponent(note.author_id || '')}&select=display_name`);
+    const author = aRes.ok ? ((await aRes.json())[0] || {}).display_name : '';
+    title = (author || 'A colleague') + ' mentioned you';
+    const said = String(note.body || '').trim();
+    text = showPreview && said
+      ? (said.length > 120 ? said.slice(0, 117) + '…' : said)
+      : 'In the chat with ' + who + '.';
+    body.to = note.mentions.filter((m) => UUID.test(String(m)));
+    url = '/admin.html#/chats/' + conv.id;
+  } else if (body.kind === 'handover') {
     title = 'A conversation was passed to you';
     text = who + ' is waiting for an answer.';
+    url = '/admin.html#/chats/' + conv.id;
   } else {
     title = who + ' wrote to the shop';
     text = 'Tap to answer.';
@@ -224,7 +247,10 @@ exports.handler = async function (event) {
      only they are woken. One nobody has taken is everybody's, which is
      the case where waiting actually happens. */
   let people = null;
-  if (body.kind === 'handover' && body.to) {
+  if (body.kind === 'mention') {
+    people = body.to;
+    if (!people.length) return json(200, { sent: 0, why: 'nobody to tell' });
+  } else if (body.kind === 'handover' && body.to) {
     people = [body.to];
   } else if (conv.assigned_to) {
     people = [conv.assigned_to];
@@ -252,10 +278,11 @@ exports.handler = async function (event) {
   const payload = {
     title,
     body: text,
-    url: '/admin.html#/chats',
+    url,
     /* One notification per conversation rather than a pile of them: a
-       second message from the same person replaces the first. */
-    tag: 'chat-' + conv.id
+       second message from the same person replaces the first. A mention
+       has its own, so it is not swallowed by the customer's next message. */
+    tag: (body.kind === 'mention' ? 'mention-' : 'chat-') + conv.id
   };
 
   let sentCount = 0;

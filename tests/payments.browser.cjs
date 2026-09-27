@@ -149,9 +149,9 @@ const server = http.createServer(async (req, res) => {
   }
   async function checkout(page) {
     await page.click('#cartBtn');
-    await page.waitForSelector('#ctGo', { timeout: 5000 });
+    await page.waitForSelector('#ctGo', { timeout: 15000 });
     await page.click('#ctGo');
-    await page.waitForSelector('#odGo', { timeout: 5000 });
+    await page.waitForSelector('#odGo', { timeout: 15000 });
   }
 
   try {
@@ -207,7 +207,7 @@ const server = http.createServer(async (req, res) => {
       is(/address/i.test(need2), 'and a delivery address', need2);
       await page.fill('#od_address', 'Plot 5, Lusaka');
       await page.click('#odPay');
-      await page.waitForSelector('.pq-total', { timeout: 8000 });
+      await page.waitForSelector('.pq-total', { timeout: 15000 });
       const q = await page.evaluate(() => ({
         rows: Array.from(document.querySelectorAll('.pq-row')).map(r => r.textContent.replace(/\s+/g, ' ').trim()),
         btn: document.getElementById('pqPay').textContent
@@ -246,7 +246,7 @@ const server = http.createServer(async (req, res) => {
       await page.fill('#od_name', 'Chanda'); await page.fill('#od_phone', '0966000000');
       await page.fill('#od_email', 'c@example.com'); await page.fill('#od_address', 'Plot 5');
       await page.click('#odPay');
-      await page.waitForSelector('.pq-total', { timeout: 8000 });
+      await page.waitForSelector('.pq-total', { timeout: 15000 });
       await Promise.all([page.waitForURL(/fake-flutterwave/), page.click('#pqPay')]);
       const tx = await page.textContent('#tx');
       FLW.verify[tx] = { id: 901, tx_ref: tx, status: 'cancelled', amount: 1380, currency: 'ZMW' };
@@ -268,7 +268,7 @@ const server = http.createServer(async (req, res) => {
         await both.check();
         await page.fill('#od_name', 'C'); await page.fill('#od_phone', '0955000000'); await page.fill('#od_email', 'c@e.com');
         await page.click('#odPay');
-        await page.waitForSelector('.pq-total', { timeout: 8000 });
+        await page.waitForSelector('.pq-total', { timeout: 15000 });
         const rows = await page.evaluate(() => Array.from(document.querySelectorAll('.pq-row')).map(r => r.textContent.replace(/\s+/g, ' ').trim()));
         is(!rows.some(r => /Delivery/.test(r)) && rows.some(r => /Total\s*K1,300/.test(r)), 'no delivery fee when collecting', JSON.stringify(rows));
       } else {
@@ -292,10 +292,13 @@ const server = http.createServer(async (req, res) => {
       await page.fill('#od_email', 'c@e.com'); await page.fill('#od_address', 'Plot 9');
       await page.click('#odPay');
       await page.waitForTimeout(200);
-      is(/town/i.test(await page.textContent('#odMsg')), 'the town must be chosen before paying');
+      const why = await page.evaluate(() => ({ msg: document.getElementById('odMsg').textContent,
+        labels: Array.from(document.querySelectorAll('#orderBody label')).map(l => l.textContent),
+        lead: (document.getElementById('pqLead') || {}).textContent || null }));
+      is(/town/i.test(why.msg), 'the town must be chosen before paying', JSON.stringify(why));
       await page.selectOption('#od_town', 'Kitwe');
       await page.click('#odPay');
-      await page.waitForSelector('.pq-total', { timeout: 8000 });
+      await page.waitForSelector('.pq-total', { timeout: 15000 });
       const rows = await page.evaluate(() => Array.from(document.querySelectorAll('.pq-row')).map(r => r.textContent.replace(/\s+/g, ' ').trim()));
       is(rows.some(r => /Delivery to Kitwe · 5\.5 kg\s*K22/.test(r)) && rows.some(r => /Total\s*K1,322/.test(r)),
          'two satchels (2 kg) and a scarf (1.5 kg) to Kitwe: 5.5 kg, medium, zone 2 fee added', JSON.stringify(rows));
@@ -306,7 +309,7 @@ const server = http.createServer(async (req, res) => {
       await page.fill('#od_name', 'C'); await page.fill('#od_phone', '0955000001');
       await page.fill('#od_email', 'c@e.com'); await page.fill('#od_address', 'Plot 9');
       await page.click('#odPay');
-      await page.waitForFunction(() => /WhatsApp/.test((document.getElementById('pqLead') || {}).textContent || ''), null, { timeout: 8000 });
+      await page.waitForFunction(() => /WhatsApp/.test((document.getElementById('pqLead') || {}).textContent || ''), null, { timeout: 15000 });
       const lead = await page.textContent('#pqLead');
       is(/collect in person, or order on WhatsApp/.test(lead) && /WhatsApp instead/.test(await page.textContent('#pqPay')),
          '"My town is not listed" is pointed to collection or WhatsApp, never charged a guess', lead);

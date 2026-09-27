@@ -252,6 +252,28 @@ const subLine = page => page.evaluate(() =>
     }
 
     /* ==================================================================== */
+    console.log('\nThe message box on a phone: no stray scrollbar');
+    {
+      const { ctx, page } = await open({ enabled: true });
+      await page.setViewportSize({ width: 390, height: 800 });
+      await page.click('#chatFab');
+      const read = () => page.evaluate(() => {
+        const b = document.getElementById('chatInput'), cs = getComputedStyle(b);
+        return { overflow: cs.overflowY, short: b.scrollHeight > b.clientHeight, h: b.offsetHeight };
+      });
+      let r = await read();
+      is(r.overflow === 'hidden', 'empty, the box shows no scrollbar (the grey line)', JSON.stringify(r));
+      await page.type('#chatInput', 'Hello, do you have this in a size 40?');
+      r = await read();
+      is(r.overflow === 'hidden' && !r.short, 'nor with a line of text in it', JSON.stringify(r));
+      await page.fill('#chatInput', 'A long question.\n'.repeat(12));
+      await page.dispatchEvent('#chatInput', 'input');
+      r = await read();
+      is(r.overflow === 'auto' && r.h <= 96, 'a long message can still be scrolled, once the box is full height', JSON.stringify(r));
+      await ctx.close();
+    }
+
+    /* ==================================================================== */
     console.log('\nThe breathing dot when the shop is typing');
     {
       const now = new Date().toISOString();

@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.32.2',
-  build: 50,
-  builtAt: '2026-09-26T17:25:58Z',
-  notes: 'Live chat: the green typing dot is pushed to the customer live again (supabase-chat-realtime.sql left typing out of what it announces; re-run it), and the dot goes promptly when the shop stops typing.'
+  version: '1.33.0',
+  build: 51,
+  builtAt: '2026-09-26T18:04:15Z',
+  notes: 'Live chat: opening a chat nobody has taken takes it, "Taken by" shown to everyone, @mentions in notes notify the colleague (phone and on screen) with an optional hand-over; the customer message box no longer shows a stray scrollbar. Needs supabase-chat-mentions.sql.'
 };

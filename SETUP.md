@@ -1159,6 +1159,25 @@ changed.
 This needs **supabase-chat-jobs.sql** run once in the SQL Editor. Without it
 nothing is detected and the chat behaves exactly as it does today.
 
+#### Taking chats, and mentioning colleagues
+
+Needs **supabase-chat-mentions.sql** run once in the SQL Editor (it is safe to run again).
+
+- **Opening a chat nobody has taken makes it yours.** There is nothing to choose.
+  If two people open the same new chat at the same moment, only one gets it, and
+  the other sees who did. Opening a chat a colleague already has does not take it.
+- **Everybody can see who has what.** The chat list shows **Taken by Chanda** (or
+  **You have this**). An open chat says who has taken it, and the notes record
+  **Taken by …**, **Passed from … to …** and **Released by …** as they happen.
+- **@mentions in notes.** In a chat's internal notes, type **@** and pick a
+  colleague. They get a notification on their phone (if they turned on
+  notifications on that device) and a pop-up in the admin with **Open the chat**,
+  if they have it open.
+- **Handing over in one step.** When a note names one colleague, tick **Also hand
+  this chat to …** before pressing Note. The chat is theirs as the note is saved,
+  and they are told. The **Who is dealing with this** list still works for
+  handing over without a note.
+
 #### Customers sending photos
 
 A camera button beside the message box lets a customer send a photo, for
