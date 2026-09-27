@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.33.1',
-  build: 52,
-  builtAt: '2026-09-27T09:56:18Z',
-  notes: 'Analytics: page views, product views and add-to-cart all counted (a batch mixing them was refused by the database), and a batch that fails is sent again. Live chat: "Handed to" until the colleague replies, mentions in green and announced anywhere in the admin, "Live chat" words on the website chat button (switchable). Needs supabase-chat-handover.sql.'
+  version: '1.33.2',
+  build: 53,
+  builtAt: '2026-09-27T14:14:33Z',
+  notes: 'Analytics counted live: the Analytics page updates by itself the moment somebody browses; a visit is sent the instant it starts, so visitors who leave quickly are counted; a piece opened straight from a link is counted; the live count failing no longer stops the page views; a table without a sku column no longer refuses every visit. Needs supabase-analytics-live.sql.'
 };

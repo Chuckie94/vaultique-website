@@ -224,7 +224,13 @@
   var queue = [];
   var timer = null;
   var stopped = false;          // the tables are not there; say no more about it
-  var FLUSH_AFTER = 1500;       // gather a moment's worth, then send once
+  /* A QUARTER OF A SECOND, NOT ONE AND A HALF. Gathering is only there so
+     that a page view and the product view that comes with it travel as
+     one request. Waiting longer lost the visitor who arrived from an
+     advert and left within a couple of seconds: they were gone before
+     anything was sent. The first event of all is sent at once. */
+  var FLUSH_AFTER = 250;
+  var sentAny = false;
   var MAX_QUEUE = 20;
 
   function headers() {
@@ -254,16 +260,23 @@
     attempt = attempt || 0;
     var body = JSON.stringify(rows);
 
-    /* On the way out, fetch may be cancelled with the page. sendBeacon
-       is the one thing a browser promises to finish, and it cannot
-       carry headers — so the key goes in the address, which is what it
-       is for on a public anon key. If the beacon is refused, the
-       ordinary path below still has every other event of the visit. */
-    if (leaving && navigator.sendBeacon) {
-      try {
-        var blob = new Blob([body], { type: 'application/json' });
-        if (navigator.sendBeacon(EVENTS_URL + '?apikey=' + encodeURIComponent(KEY), blob)) return;
-      } catch (e) { /* fall through to fetch */ }
+    /* ON THE WAY OUT, NOT A BEACON. This used to send leaving events with
+       sendBeacon, which cannot carry headers and asks the database's
+       permission in a way it does not always grant: the browser said
+       "sent", only the permission check arrived, and the visit was lost.
+       Somebody who tapped an advert and left a few seconds later was
+       never counted. A fetch marked keepalive carries the proper headers
+       and is finished by the browser after the page has gone, so it is
+       used for every send; the beacon is kept only for a browser with no
+       fetch at all. */
+    if (typeof fetch !== 'function') {
+      if (leaving && navigator.sendBeacon) {
+        try {
+          navigator.sendBeacon(EVENTS_URL + '?apikey=' + encodeURIComponent(KEY),
+            new Blob([body], { type: 'application/json' }));
+        } catch (e) {}
+      }
+      return;
     }
 
     function again() {
@@ -286,13 +299,27 @@
         /* 404 and 401 mean the tables or the rules are not there, and
            they will not appear during this visit. Stop, quietly. */
         if (res.status === 404 || res.status === 401 || res.status === 403) { stopped = true; return; }
-        if (res.status === 400 && rows.length > 1 && attempt === 0) {
-          rows.forEach(function (r) { send([r], false, 1); });
+        /* REFUSED. Each row goes again on its own, and without its empty
+           fields: a database whose table was made before one of those
+           columns existed (sku, for one) refuses any row that mentions it,
+           even as null -- which is how build 52, sending sku on every row,
+           stopped the count altogether on such a shop. Without the empty
+           fields a page view is exactly what it always was. */
+        if (res.status === 400 && attempt === 0) {
+          rows.forEach(function (r) { send([bare(r)], false, 1); });
           return;
         }
         if (res.status >= 500) again();
       }, again);
     } catch (e) { /* nothing here is worth an error in a shop's console */ }
+  }
+
+  function bare(row) {
+    var out = {};
+    for (var k in row) {
+      if (Object.prototype.hasOwnProperty.call(row, k) && row[k] !== null && row[k] !== undefined) out[k] = row[k];
+    }
+    return out;
   }
 
   function flush(leaving) {
@@ -330,7 +357,7 @@
     touchSession();
     /* A visitor who opens twenty pages in one go is not twenty
        requests, and is not an unbounded queue either. */
-    if (queue.length >= MAX_QUEUE) { flush(false); return; }
+    if (queue.length >= MAX_QUEUE || !sentAny) { sentAny = true; flush(false); return; }
     if (!timer) timer = setTimeout(function () { flush(false); }, FLUSH_AFTER);
   }
 
@@ -356,8 +383,9 @@
   var beatTimer = null;
   var beatsLeft = 180;         // an hour of beating, then this visit is over
 
+  var beatStopped = false;
   function beat() {
-    if (stopped || beatsLeft <= 0) return;
+    if (stopped || beatStopped || beatsLeft <= 0) return;
     if (document.hidden) return;
     beatsLeft--;
     try {
@@ -368,7 +396,10 @@
         mode: 'cors',
         credentials: 'omit'
       }).then(function (res) {
-        if (res && (res.status === 404 || res.status === 401 || res.status === 403)) stopped = true;
+        /* The live count not being set up stops the live count, and only
+           that. It once stopped everything, so a problem with "here now"
+           silently cost the shop every page view after the first. */
+        if (res && (res.status === 404 || res.status === 401 || res.status === 403)) beatStopped = true;
       }, function () {});
     } catch (e) {}
   }
@@ -388,14 +419,18 @@
     if (stopped || !session) return;
     var body = JSON.stringify({ p_session: session });
     try {
-      if (navigator.sendBeacon) {
-        var blob = new Blob([body], { type: 'application/json' });
-        if (navigator.sendBeacon(GONE_URL + '?apikey=' + encodeURIComponent(KEY), blob)) return;
+      /* keepalive fetch first, for the reason given in send(). */
+      if (typeof fetch === 'function') {
+        fetch(GONE_URL, {
+          method: 'POST', headers: headers(), body: body,
+          mode: 'cors', credentials: 'omit', keepalive: true
+        }).catch(function () {});
+        return;
       }
-      fetch(GONE_URL, {
-        method: 'POST', headers: headers(), body: body,
-        mode: 'cors', credentials: 'omit', keepalive: true
-      }).catch(function () {});
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(GONE_URL + '?apikey=' + encodeURIComponent(KEY),
+          new Blob([body], { type: 'application/json' }));
+      }
     } catch (e) {}
   }
 
@@ -445,6 +480,13 @@
   /* Three things cannot be seen from the outside: which piece was
      opened, which was gathered, and when somebody set off to buy.
      assets/app.js says so through here, in one guarded line each. */
+  /* EVENTS FROM BEFORE THIS FILE LOADED. This file is deferred and runs
+     last; somebody arriving straight on a piece's own page (from an
+     advert, or a link sent on WhatsApp) had the piece drawn before it
+     ran, and that product view was simply missed. index.html now keeps
+     a small list of what happened in the meantime, handed over below,
+     after this page's own page view so the order stays true. */
+  var early = (window.VBP_TRACK && window.VBP_TRACK.q) || [];
   window.VBP_TRACK = {
     event: function (kind, detail) {
       try {
@@ -472,6 +514,12 @@
     });
 
     pageView();
+    setTimeout(function () {
+      early.slice(0, 10).forEach(function (e) {
+        try { window.VBP_TRACK.event(e[0], e[1]); } catch (x) {}
+      });
+      early = [];
+    }, 0);
     startBeating();
   } catch (e) {
     /* Whatever went wrong here, the shop is still a shop. */

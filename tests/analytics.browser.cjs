@@ -48,7 +48,9 @@ let REFUSED = [];      // batches the database would have refused
 let BEATS = [];        // bodies posted to rpc/site_beat
 let RAW = [];          // every request to /rest/v1/, verbatim, for the privacy sweep
 let EVENT_STATUS = 201;  // switched to 404 to prove the tracker gives up quietly
-let FAIL_NEXT = 0;       // this many POSTs answer 503, a bad moment, before it recovers
+let FAIL_NEXT = 0;
+let NO_SKU_COLUMN = false; // a table made before sku existed: any row naming it is refused
+let BEAT_STATUS = 204;     // the live count's own answer       // this many POSTs answer 503, a bad moment, before it recovers
 
 function body(req) {
   return new Promise(resolve => {
@@ -103,6 +105,12 @@ function serve() {
               return;
             }
           }
+          if (NO_SKU_COLUMN && Array.isArray(rows) && rows.some(r => 'sku' in r)) {
+            REFUSED.push(rows);
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end('{"code":"PGRST204","message":"Could not find the \'sku\' column of \'site_events\' in the schema cache"}');
+            return;
+          }
           EVENTS = EVENTS.concat(rows);
           res.writeHead(201, { 'Content-Type': 'application/json' });
           res.end('');
@@ -110,7 +118,7 @@ function serve() {
         }
         if (p === '/rest/v1/rpc/site_beat' && req.method === 'POST') {
           try { BEATS.push(JSON.parse(sent)); } catch (e) {}
-          res.writeHead(204); res.end();
+          res.writeHead(BEAT_STATUS); res.end();
           return;
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -349,6 +357,57 @@ const reset = () => { EVENTS = []; BEATS = []; RAW = []; };
     await phone.close();
 
     /* ==================================================================== */
+    console.log('\nA visitor from an advert who leaves within a second');
+    reset();
+    const quick = await asAVisitor(browser);
+    const quickPage = await quick.newPage();
+    await quickPage.goto(base + '/', { waitUntil: 'load' });
+    await quickPage.waitForTimeout(150);
+    await quickPage.goto('about:blank');
+    await quickPage.waitForTimeout(1500);
+    is(EVENTS.some(e => e.kind === 'page_view'),
+       'is still counted: the first page view is sent at once, not after a wait');
+    await quick.close();
+
+    console.log('\nArriving straight on a piece, from a link');
+    reset();
+    const direct = await asAVisitor(browser);
+    const directPage = await direct.newPage();
+    await directPage.goto(base + '/product/VB-DRS-001', { waitUntil: 'domcontentloaded' });
+    await settle(directPage);
+    is(EVENTS.some(e => e.kind === 'page_view'), 'the page view is counted');
+    is(EVENTS.some(e => e.kind === 'product_view' && e.sku === 'VB-DRS-001'),
+       'and so is the view of that piece');
+    await direct.close();
+
+    console.log('\nWhen the live count is not set up');
+    reset();
+    BEAT_STATUS = 404;
+    const nobeat = await asAVisitor(browser);
+    const nobeatPage = await nobeat.newPage();
+    await nobeatPage.goto(base + '/', { waitUntil: 'domcontentloaded' });
+    await settle(nobeatPage);
+    await nobeatPage.evaluate(() => history.pushState({}, '', '/product/VB-BAG-003'));
+    await nobeatPage.evaluate(() => window.dispatchEvent(new PopStateEvent('popstate')));
+    await settle(nobeatPage);
+    is(EVENTS.filter(e => e.kind === 'page_view').length >= 2,
+       'page views after the first are still counted');
+    is(EVENTS.some(e => e.kind === 'product_view'), 'and the piece opened is counted too');
+    BEAT_STATUS = 204;
+    await nobeat.close();
+
+    console.log('\nA shop whose table was made before sku existed');
+    reset();
+    NO_SKU_COLUMN = true;
+    const oldtab = await asAVisitor(browser);
+    const oldPage = await oldtab.newPage();
+    await oldPage.goto(base + '/', { waitUntil: 'domcontentloaded' });
+    await settle(oldPage, 3000);
+    is(EVENTS.some(e => e.kind === 'page_view'),
+       'page views are still counted, sent again without the empty sku');
+    NO_SKU_COLUMN = false;
+    await oldtab.close();
+
     console.log('\nWhen the analytics tables have not been created');
     reset();
     EVENT_STATUS = 404;

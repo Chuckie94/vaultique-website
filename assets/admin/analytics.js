@@ -436,9 +436,9 @@
         return false;
       }
 
-      function loadAll() {
+      function loadAll(quiet) {
         var mine = ++asking;
-        rangeSaid.textContent = 'Reading…';
+        if (!quiet) rangeSaid.textContent = 'Reading…';
         if (!grainPicked) { grain = grainFor(range.from, range.to); paintGrains(); }
 
         Promise.resolve(sb.rpc('site_stats', {
@@ -959,7 +959,24 @@
           : 'Nobody on the site right now';
       }
 
+      /* LIVE FIGURES. The cards, the chart and the lists are read again
+         the moment the website records something -- a visitor arriving
+         (their first heartbeat) or a page or piece being opened -- rather
+         than when the page is next opened. Several things at once are
+         read as one, a second after the last of them, and only while the
+         range on screen includes today: last month cannot change. */
+      var freshTimer = null;
+      function freshen() {
+        if (missing || !range || range.to < today(tz)) return;
+        if (freshTimer) clearTimeout(freshTimer);
+        freshTimer = setTimeout(function () {
+          freshTimer = null;
+          if (!document.hidden) loadAll(true);
+        }, 1000);
+      }
+
       function heardFrom(p) {
+        if (p && p.eventType === 'INSERT') freshen();
         var row = (p && (p.new || p.old)) || {};
         var id = row.session;
         if (!id) return;
@@ -998,6 +1015,8 @@
           liveChannel = sb.channel('vbp-admin-presence')
             .on('postgres_changes',
                 { event: '*', schema: 'public', table: 'site_presence' }, heardFrom)
+            .on('postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'site_events' }, freshen)
             .subscribe(function (state) {
               if (state === 'SUBSCRIBED') {
                 if (liveWasOff) { liveWasOff = false; askHere(); }
@@ -1009,7 +1028,7 @@
                    is the degraded path, not the design. */
                 if (!liveTimer) {
                   liveTimer = setInterval(function () {
-                    if (!document.hidden) askHere();
+                    if (!document.hidden) { askHere(); freshen(); }
                   }, LIVE_EVERY);
                 }
               }
@@ -1025,6 +1044,7 @@
         try { if (liveChannel) sb.removeChannel(liveChannel); } catch (e) {}
         liveChannel = null;
         if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+        if (freshTimer) { clearTimeout(freshTimer); freshTimer = null; }
       }
 
       /* ---- driving --------------------------------------------------------- */
@@ -1059,6 +1079,9 @@
         resizeTimer = setTimeout(function () { if (!missing) drawChart(); }, 150);
       }
       window.addEventListener('resize', onResize);
+      /* Back on this tab after a while away: catch up at once. */
+      function onBack() { if (!document.hidden) freshen(); }
+      document.addEventListener('visibilitychange', onBack);
 
       /* The shell replaces this host when another page is opened. Without
          this the live count would go on asking for a page nobody has
@@ -1067,6 +1090,7 @@
         stopLive();
         if (resizeTimer) clearTimeout(resizeTimer);
         window.removeEventListener('resize', onResize);
+        document.removeEventListener('visibilitychange', onBack);
         asking++;                       // any answer still in flight is nobody's
       }
       if (typeof MutationObserver === 'function' && host.parentNode) {

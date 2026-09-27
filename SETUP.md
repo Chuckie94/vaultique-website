@@ -1343,6 +1343,18 @@ viewed** stayed empty and page views were short. Each visit is now always
 accepted, and if the connection drops for a moment it is sent again. Visits
 lost before build 52 cannot be recovered; the counts are complete from then on.
 
+**Live figures.** Run **supabase-analytics-live.sql** once. The Analytics page
+then updates by itself about a second after somebody opens a page or a piece on
+the website, whenever the dates shown include today. A visit is sent the moment
+it starts, so somebody who taps an advert and leaves after a few seconds is
+still counted.
+
+**Why an advert shows more than this page.** Meta counts a "landing page view"
+as soon as its own in-app browser starts loading the page. Somebody who closes
+it before the page has finished loading never reached the shop and cannot be
+counted here. Expect this page to be somewhat lower than Meta, but no longer
+stuck.
+
 **How orders were paid.** Once online payment is switched on (and
 `supabase-payments.sql` has been run), a card under the figures splits sales for
 the chosen dates into:
