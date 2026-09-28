@@ -59,6 +59,7 @@
   var SHOP = {
     showOutOfStock: true, showSku: true, showLowStock: true, showCategory: true,
     showBadges: true, showReviews: true, defaultSort: 'featured',
+    photoAutoSwipe: false, photoSwipeSeconds: 4,
     enquiries: true, wishlist: true, sharing: true, customerReviews: true,
     whatsappCheckout: true,
     requireName: true, requirePhone: true, requireEmail: false, requireAddress: false,
@@ -383,6 +384,19 @@
   var USE_LOCAL = (window.VBP_CONFIG && typeof window.VBP_CONFIG.LOCAL_IMAGES === 'boolean')
     ? window.VBP_CONFIG.LOCAL_IMAGES
     : !WEB;
+
+  /* A photo fades in once it has arrived, rather than snapping in line by
+     line as it downloads. Whatever happens -- loaded, failed, or already
+     there from the cache -- it ends up shown. */
+  function fadeWhenLoaded(img) {
+    if (!img) return;
+    img.classList.add('img-fade');
+    function shown() { img.classList.add('is-in'); }
+    img.addEventListener('load', shown);
+    img.addEventListener('error', shown);
+    if (img.complete && img.naturalWidth) shown();
+    setTimeout(shown, 4000);
+  }
 
   // <img> with: admin photo (if any) -> SKU files (if enabled) -> placeholder
   function attachImgChain(imgEl, p) {
@@ -2980,6 +2994,62 @@
     list.forEach(function (p, i) { track.appendChild(productCard(p, i, markNew)); });
   }
 
+  /* PIECES IN THE SHOP AND ON THE HOMEPAGE SWIPE TOO, under the same
+     switch as a piece's own page (Settings > Shopping). Each card with
+     more than one photo moves through them at the shop's pace, only
+     while it is on screen and not being pointed at, and the cards start
+     a moment apart so a whole row never changes at once. One clock for
+     every card on the page, not one each. */
+  var cardSwipes = [];
+  var cardClock = null;
+  var cardSeen = null;
+  /* The shop's settings can arrive after the first cards are drawn, so
+     the switch and the pace are read on every beat, not once. */
+  function swipeMs() { return Math.min(15, Math.max(2, Number(SHOP.photoSwipeSeconds) || 4)) * 1000; }
+  function calmMotion() {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+  }
+  function cardAutoSwipe(thumb, photos, idx) {
+    if (!photos.length || calmMotion()) return;
+    var entry = { thumb: thumb, photos: photos.slice(0, 5), step: 0, seen: false,
+                  next: Date.now() + swipeMs() + ((idx || 0) % 5) * 700 };
+    cardSwipes.push(entry);
+    if (!cardSeen && 'IntersectionObserver' in window) {
+      cardSeen = new IntersectionObserver(function (list) {
+        list.forEach(function (x) {
+          cardSwipes.forEach(function (c) { if (c.thumb === x.target) c.seen = x.isIntersecting; });
+        });
+      }, { threshold: 0.5 });
+    }
+    if (cardSeen) cardSeen.observe(thumb); else entry.seen = true;
+    if (cardClock) return;
+    cardClock = setInterval(function () {
+      var now = Date.now();
+      cardSwipes = cardSwipes.filter(function (c) {
+        if (!document.body.contains(c.thumb)) { if (cardSeen) cardSeen.unobserve(c.thumb); return false; }
+        return true;
+      });
+      if (!cardSwipes.length) { clearInterval(cardClock); cardClock = null; return; }
+      if (document.hidden || !SHOP.photoAutoSwipe) return;
+      cardSwipes.forEach(function (c) {
+        if (now < c.next || !c.seen || c.thumb.matches(':hover')) return;
+        c.next = now + swipeMs();
+        c.step = (c.step + 1) % (c.photos.length + 1);
+        var alt = c.thumb.querySelector('img.secondary');
+        if (!alt) return;
+        if (c.step === 0) { c.thumb.classList.remove('auto-alt'); return; }
+        var want = c.photos[c.step - 1];
+        if (alt.getAttribute('src') === want) { c.thumb.classList.add('auto-alt'); return; }
+        /* Shown once it has arrived, so the swap is a fade and never a
+           blank frame. */
+        c.thumb.classList.remove('auto-alt');
+        alt.onload = function () { alt.onload = null; c.thumb.classList.add('auto-alt'); };
+        alt.loading = 'eager';
+        alt.src = want;
+      });
+    }, 500);
+  }
+
   // ------------------------------------------------------------------ product card
   function productCard(p, idx, markNew) {
     var card = el('div', 'card');
@@ -2990,6 +3060,7 @@
 
     var img = el('img', 'primary');
     img.alt = p.name; img.loading = 'lazy';
+    fadeWhenLoaded(img);
     attachImgChain(img, p);
     thumb.appendChild(img);
     // secondary image on hover: admin gallery photo, else images/<SKU>-2.jpg
@@ -2997,12 +3068,14 @@
     if (sec2) {
       var s2 = el('img', 'secondary'); s2.alt = p.name + ' alternate view';
       s2.loading = 'lazy'; s2.src = sec2; thumb.appendChild(s2);
+      cardAutoSwipe(thumb, (p.gallery || []).filter(Boolean), idx);
     } else {
       preload('/images/' + p.sku + '-2.jpg', function (ok) {
         if (!ok) return;
         var s = el('img', 'secondary'); s.alt = p.name + ' alternate view';
         s.loading = 'lazy'; s.src = '/images/' + p.sku + '-2.jpg';
         thumb.appendChild(s);
+        cardAutoSwipe(thumb, ['/images/' + p.sku + '-2.jpg'], idx);
       });
     }
 
@@ -3223,6 +3296,7 @@
     afterCartChange();
     flashCartBtn(btn, 'Added');
     bumpCartIcon();
+    cartToast(p);
     if (window.VBP_TRACK) window.VBP_TRACK.event('add_to_cart', { sku: p.sku, label: p.name });
   }
   function setCartQty(sku, qty) {
@@ -3295,6 +3369,34 @@
   }
   /* The icon acknowledges the tap, for the customer who added from the
      bottom of a long page and never saw the header. */
+  /* "Added to your cart", with the piece's photo, sliding up from the
+     bottom for three seconds: seen wherever on the page the button was,
+     and one tap from the cart. */
+  var toastTimer = null;
+  function cartToast(p) {
+    var t = $('#cartToast');
+    if (!t) {
+      t = el('div', 'cart-toast');
+      t.id = 'cartToast';
+      t.setAttribute('role', 'status');
+      t.setAttribute('aria-live', 'polite');
+      t.innerHTML = '<span class="ct-img"><img alt=""></span><span class="ct-words">' +
+        '<span class="ct-said">Added to your cart</span><span class="ct-name"></span></span>' +
+        '<button type="button" class="ct-view">View cart</button>';
+      document.body.appendChild(t);
+      $('.ct-view', t).addEventListener('click', function () {
+        t.classList.remove('show');
+        openCart();
+      });
+    }
+    $('.ct-name', t).textContent = p.name || '';
+    attachImgChain($('.ct-img img', t), p);
+    t.classList.remove('show');
+    void t.offsetWidth;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, 3200);
+  }
   function bumpCartIcon() {
     var b = $('#cartBtn');
     if (!b) return;
@@ -3874,11 +3976,16 @@
           ? ((SHOP.showLowStock && p.lowStock) ? 'In stock — only a few left' : 'In stock — ready to order')
           : 'Currently sold out') + '</div>' +
       '<div class="detail-cta">' +
+      /* Buying and the cart side by side on a computer, the two smaller
+         things under them in one row: four stacked full-width buttons read
+         as a form, not a boutique. */
+      '<div class="cta-main">' +
       ((canBuy(p) || canAsk(p))
         ? '<a class="btn btn-wa" id="buyDetail" target="_blank" rel="noopener" href="' + waLink(p) + '">' +
           waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       (canBuy(p) ? '<span id="cartSlot"></span>' : '') +
+      '</div><div class="cta-sub">' +
       (SHOP.wishlist
         ? '<button class="btn btn-outline" id="wishDetail">' +
           (isWished(p.sku) ? 'Saved to wishlist' : 'Add to wishlist') + '</button>'
@@ -3886,9 +3993,9 @@
       (SHOP.sharing
         ? '<button class="btn btn-outline" id="shareDetail">' + shareIcon() + 'Share</button>'
         : '') +
-      '</div>' +
-      accordion(specs) +
       '</div></div>' +
+      '</div></div>' +
+      moreDetails(specs) +
       ((p.videos && p.videos.length) ? '<div class="prod-videos"><div class="eyebrow">Watch</div><div class="pv-grid">' + p.videos.slice(0, 2).map(function (u) { return '<video controls preload="metadata" playsinline src="' + esc(u) + '"></video>'; }).join('') + '</div></div>' : '') +
       (reviewsShown() ? '<div id="prodReviews" class="prod-reviews"></div>' : '') +
       (related.length ? relatedBlock('You may also like', 'More in ' + p.category, 'relGrid') : '') +
@@ -3934,7 +4041,6 @@
     if (bd && canBuy(p)) bd.addEventListener('click', function (e) { startOrder(e, p); });
     var cs = $('#cartSlot', host);
     if (cs) cs.parentNode.replaceChild(cartButton(p), cs);
-    setupAccordion(host);
     if (related.length) { var rg = $('#relGrid'); related.forEach(function (rp, i) { rg.appendChild(productCard(rp, i, false)); }); }
     if (recentItems.length) { var cg = $('#recGrid'); recentItems.forEach(function (rp, i) { cg.appendChild(productCard(rp, i, false)); }); }
     if (reviewsShown()) renderProductReviews(p.sku);
@@ -3943,14 +4049,28 @@
     showView('detail');
     window.scrollTo(0, 0);
   }
+  /* PHOTOS THAT SWIPE BY THEMSELVES (Settings > Shopping, off unless the
+     shop switches it on). A piece with several photos moves through them
+     at the shop's pace. Pointing at the photo pauses it; touching,
+     swiping, tapping an arrow or a thumbnail stops it for good -- the
+     customer has taken over. It never runs for somebody whose phone asks
+     for less motion, while the tab is in the background, or once they
+     have left the piece. */
+  var galTimer = null;
+  function stopGalleryAuto() { if (galTimer) { clearInterval(galTimer); galTimer = null; } }
   function setupGallery(srcs) {
+    stopGalleryAuto();
     var galImg = $('#galImg'), main = $('#galMain'), thumbs = $('#galThumbs');
     var prev = $('#galPrev'), next = $('#galNext'), count = $('#galCount');
     if (!galImg || !srcs.length) return;
+    if (!galImg.classList.contains('img-fade')) fadeWhenLoaded(galImg);
     var i = 0, multi = srcs.length > 1;
     function show(n) {
       i = (n + srcs.length) % srcs.length;
-      galImg.src = srcs[i];
+      if (galImg.getAttribute('src') !== srcs[i]) {
+        galImg.classList.remove('is-in');
+        galImg.src = srcs[i];
+      }
       if (thumbs) $all('#galThumbs button').forEach(function (x, k) { x.classList.toggle('active', k === i); });
       if (count) count.textContent = (i + 1) + ' / ' + srcs.length;
     }
@@ -3978,6 +4098,24 @@
     // click the image (not the arrows) to zoom
     galImg.onclick = function () { openLightbox(galImg.src); };
     show(0);
+
+    if (multi && !calmMotion()) {
+      var paused = false;
+      var due = Date.now() + swipeMs();
+      galTimer = setInterval(function () {
+        if (!document.body.contains(main) || $('#view-detail').style.display === 'none') { stopGalleryAuto(); return; }
+        if (!SHOP.photoAutoSwipe || paused || document.hidden) { due = Date.now() + swipeMs(); return; }
+        if (Date.now() < due) return;
+        due = Date.now() + swipeMs();
+        show(i + 1);
+      }, 250);
+      main.addEventListener('mouseenter', function () { paused = true; });
+      main.addEventListener('mouseleave', function () { paused = false; });
+      var takeOver = function () { stopGalleryAuto(); };
+      main.addEventListener('touchstart', takeOver, { passive: true });
+      [prev, next].forEach(function (b) { if (b) b.addEventListener('click', takeOver); });
+      if (thumbs) thumbs.addEventListener('click', takeOver);
+    }
   }
   function relatedBlock(eyebrow, title, gridId) {
     return '<div style="margin-top:70px"><div class="section-head" style="text-align:left;margin:0 0 28px;max-width:none">' +
@@ -4014,22 +4152,32 @@
       return (d && d.label && d.value) ? [d.label, d.value] : null;
     }).filter(Boolean);
   }
-  function accordion(specs) {
-    return '<div class="accordion">' +
-      accItem('Product details',
-        '<table class="spec-table">' + specs.map(function (r) {
-          return '<tr><td class="l">' + esc(r[0]) + '</td><td class="r">' + esc(r[1]) + '</td></tr>';
-        }).join('') + '</table>') +
-      /* Was a paragraph typed into this file, naming the areas, the
-         charging and the collection offer. It is Settings > Delivery &
-         Collection's to say now, and the panel disappears entirely for a
-         shop that offers neither. */
-      (deliveryPanelHtml()
-        ? accItem(deliveryPanelTitle(), deliveryPanelHtml())
+  /* THE DETAILS, LAID OUT RATHER THAN LISTED. They used to be one long
+     table inside a drop-down in the narrow right-hand column, so a piece
+     with a dozen details left a tall empty space beside its photo. They
+     now sit under the photo and the price, the full width of the page:
+     the details as a grid on the left, delivery and returns as two cards
+     on the right. Nothing is hidden behind a tap. */
+  function moreDetails(specs) {
+    var cards = '';
+    /* Was a paragraph typed into this file. It is Settings > Delivery &
+       Collection's to say now, and the card disappears entirely for a shop
+       that offers neither. */
+    if (deliveryPanelHtml()) cards += detailCard(deliveryPanelTitle(), deliveryPanelHtml());
+    cards += detailCard('Returns & assistance',
+      'If something is not right, message us on WhatsApp within a reasonable time of receipt and we will make it right. Our team is happy to advise on sizing, fit and styling before you buy.');
+    return '<section class="pd-more">' +
+      (specs.length
+        ? '<div class="pd-specs"><div class="eyebrow">The details</div>' +
+          '<h2 class="serif">Product details</h2><dl class="spec-table">' +
+          specs.map(function (r) {
+            return '<div class="spec"><dt class="l">' + esc(r[0]) + '</dt><dd class="r">' + esc(r[1]) + '</dd></div>';
+          }).join('') + '</dl></div>'
         : '') +
-      accItem('Returns & assistance',
-        'If something is not right, message us on WhatsApp within a reasonable time of receipt and we will make it right. Our team is happy to advise on sizing, fit and styling before you buy.') +
-      '</div>';
+      '<aside class="pd-side">' + cards + '</aside></section>';
+  }
+  function detailCard(title, inner) {
+    return '<div class="pd-card"><h3>' + esc(title) + '</h3><div class="inner">' + inner + '</div></div>';
   }
   /* A panel called "Delivery & collection" on a shop that only collects
      is a small lie in a heading. */
@@ -4037,31 +4185,6 @@
     if (deliversAnywhere() && collectsInPerson()) return 'Delivery & collection';
     if (deliversAnywhere()) return 'Delivery';
     return 'Collection';
-  }
-  function accItem(title, inner) {
-    return '<div class="acc-item"><button class="acc-head">' + esc(title) +
-      '<span class="pm">+</span></button><div class="acc-body"><div class="inner">' + inner + '</div></div></div>';
-  }
-  function setupAccordion(root) {
-    $all('.acc-head', root).forEach(function (h) {
-      h.addEventListener('click', function () {
-        var item = h.parentElement; var body = h.nextElementSibling;
-        var open = item.classList.toggle('open');
-        /* A height of "none" cannot be animated from, so a panel opened
-           that way is given its real height first and closed from there. */
-        if (!open && body.style.maxHeight === 'none') {
-          body.style.maxHeight = body.firstElementChild.scrollHeight + 30 + 'px';
-          void body.offsetHeight;
-        }
-        body.style.maxHeight = open ? body.firstElementChild.scrollHeight + 30 + 'px' : '0px';
-      });
-    });
-    /* The first is open by default, and opened WITHOUT measuring it. This
-       runs before the product page is shown, while it is still hidden,
-       and a hidden panel measures nothing -- so it used to open 30px tall
-       and cut the product details off after the first line. */
-    var first = $('.acc-item', root);
-    if (first) { first.classList.add('open'); $('.acc-body', first).style.maxHeight = 'none'; }
   }
 
   // ------------------------------------------------------------------ lightbox
@@ -4072,7 +4195,16 @@
   function closeLightbox() { $('#lightbox').classList.remove('open'); document.body.style.overflow = ''; }
 
   // ------------------------------------------------------------------ views + routing
+  /* Moving from one page to another fades the new one in. Not the first
+     page of a visit: that one is drawn as fast as it can be, and a fade
+     there would only make it look slower. */
+  var viewShown = null;
   function showView(which) {
+    if (viewShown && viewShown !== which) {
+      var nv = $('#view-' + which);
+      if (nv) { nv.classList.remove('view-in'); void nv.offsetWidth; nv.classList.add('view-in'); }
+    }
+    viewShown = which;
     $('#view-home').style.display = which === 'home' ? 'block' : 'none';
     $('#view-shop').style.display = which === 'shop' ? 'block' : 'none';
     $('#view-detail').style.display = which === 'detail' ? 'block' : 'none';

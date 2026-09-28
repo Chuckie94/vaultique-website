@@ -53,7 +53,8 @@ let RAW = [];          // every request to /rest/v1/, verbatim, for the privacy 
 let EVENT_STATUS = 201;  // switched to 404 to prove the tracker gives up quietly
 let FAIL_NEXT = 0;
 let NO_SKU_COLUMN = false; // a table made before sku existed: any row naming it is refused
-let BEAT_STATUS = 204;     // the live count's own answer       // this many POSTs answer 503, a bad moment, before it recovers
+let BEAT_STATUS = 204;     // the live count's own answer
+let SLOW_APP = 0;          // milliseconds the shop's main script takes to arrive       // this many POSTs answer 503, a bad moment, before it recovers
 
 function body(req) {
   return new Promise(resolve => {
@@ -153,6 +154,7 @@ function serve() {
         return;
       }
 
+      if (SLOW_APP && p === '/assets/app.js') await new Promise(r => setTimeout(r, SLOW_APP));
       let file = path.join(ROOT, p);
       if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(ROOT, 'index.html');
       const ext = path.extname(file).toLowerCase();
@@ -388,6 +390,48 @@ const reset = () => { EVENTS = []; BEATS = []; RAW = []; BYES = []; GONES = []; 
     is(EVENTS.some(e => e.kind === 'page_view'),
        'is still counted: the first page view is sent at once, not after a wait');
     await quick.close();
+
+    console.log('\nOn a slow connection, from an advert');
+    reset();
+    SLOW_APP = 5000;
+    const slow = await asAVisitor(browser);
+    const slowPage = await slow.newPage();
+    slowPage.goto(base + '/', { waitUntil: 'commit' }).catch(() => {});
+    await slowPage.waitForTimeout(2500);
+    is(EVENTS.some(e => e.kind === 'page_view'),
+       'the visit is counted before the rest of the shop has even arrived');
+    await slowPage.goto('about:blank').catch(() => {});
+    SLOW_APP = 0;
+    await slow.close();
+
+    console.log('\nVisitors from Facebook and Instagram');
+    const FB_APP = REAL_PHONE + ' [FBAN/FBIOS;FBAV/450.0.0.38.108;FBBV/600000000]';
+    const IG_APP = REAL_PHONE + ' Instagram 300.0.0.21.110 (iPhone14,5; iOS 17_5)';
+    const cameFrom = async (ua, url) => {
+      reset();
+      const c = await asAVisitor(browser, ua);
+      const pg = await c.newPage();
+      await pg.goto(base + url, { waitUntil: 'domcontentloaded' });
+      await settle(pg);
+      const r = (EVENTS[0] || {}).referrer;
+      /* What the page itself sent: bodies and addresses, not the headers
+         every browser adds on its own. */
+      const raw = JSON.stringify(RAW.map(x => [x.path, x.query, x.body]));
+      await c.close();
+      return { r, raw };
+    };
+    let cf = await cameFrom(FB_APP, '/');
+    is(cf.r === 'facebook.com', 'Facebook\'s own browser is recorded as Facebook, though it gives no referrer', String(cf.r));
+    is(!/FBAN|FBAV/.test(cf.raw), 'and only that word is kept, not the app\'s browser string');
+    cf = await cameFrom(IG_APP, '/');
+    is(cf.r === 'instagram.com', 'Instagram\'s as Instagram', String(cf.r));
+    cf = await cameFrom(REAL_PHONE, '/?fbclid=IwAR0abc123');
+    is(cf.r === 'facebook.com', 'a link out of Facebook, opened in another browser, as Facebook', String(cf.r));
+    is(!/IwAR0abc123/.test(cf.raw), 'without keeping the link\'s tracking code');
+    cf = await cameFrom(REAL_PHONE, '/?utm_source=WhatsApp');
+    is(cf.r === 'whatsapp', 'a link the shop tagged, by its tag', String(cf.r));
+    cf = await cameFrom(REAL_PHONE, '/');
+    is(cf.r === null, 'and somebody who typed the address in, as nobody\'s', String(cf.r));
 
     console.log('\nArriving straight on a piece, from a link');
     reset();

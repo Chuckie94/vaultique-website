@@ -206,6 +206,63 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
     }
     await page.close();
 
+    console.log('\nLong lists, kept tidy');
+    const many = { data: Array.from({ length: 20 }, (_, k) => ({ sku: 'SKU-' + k, label: 'Piece ' + k, views: 40 - k, carts: 0 })) };
+    page = await open({ 'rpc:site_stats': stats(40), 'rpc:site_here': { data: [] }, 'rpc:site_top_products': many });
+    const rowsShown = () => page.evaluate(() => {
+      const card = Array.from(document.querySelectorAll('.card')).find(c => /Most viewed pieces/.test(c.textContent));
+      return Array.from(card.querySelectorAll('.an-row')).filter(r => r.getBoundingClientRect().height > 0).length;
+    });
+    is(await rowsShown() === 5, 'twenty pieces viewed shows the top five', String(await rowsShown()));
+    const moreBtn = await page.evaluate(() => {
+      const card = Array.from(document.querySelectorAll('.card')).find(c => /Most viewed pieces/.test(c.textContent));
+      const b = card.querySelector('.an-more'); return b && b.textContent;
+    });
+    is(moreBtn === 'Show 15 more', 'with the rest one tap away', moreBtn);
+    await page.evaluate(() => {
+      const card = Array.from(document.querySelectorAll('.card')).find(c => /Most viewed pieces/.test(c.textContent));
+      card.querySelector('.an-more').click();
+    });
+    is(await rowsShown() === 20, 'and all twenty once asked for');
+    await page.evaluate(() => {
+      const card = Array.from(document.querySelectorAll('.card')).find(c => /Browsing device/.test(c.textContent));
+      card.querySelector('.an-fold').click();
+    });
+    const shut = await page.evaluate(() => {
+      const card = Array.from(document.querySelectorAll('.card')).find(c => /Browsing device/.test(c.textContent));
+      return { folded: card.classList.contains('is-folded'), h: Math.round(card.querySelector('.an-rows').getBoundingClientRect().height),
+               saved: localStorage.getItem('vbp_an_folded') };
+    });
+    is(shut.folded && shut.h === 0, 'a card closes when its heading is pressed', JSON.stringify(shut));
+    await page.reload();
+    await page.evaluate(([p]) => {
+      window.PLAN = p;
+      window.VBP_ADMIN.pages.analytics.render(document.getElementById('host'), { sb: window.__sb, store: window.__store });
+    }, [{ 'rpc:site_stats': stats(40), 'rpc:site_here': { data: [] } }]);
+    await page.waitForTimeout(500);
+    is(await page.evaluate(() => Array.from(document.querySelectorAll('.card')).find(c => /Browsing device/.test(c.textContent)).classList.contains('is-folded')),
+       'and stays closed next time on this device');
+    await page.close();
+
+    console.log('\nWhere visitors came from');
+    page = await open({ 'rpc:site_stats': stats(40), 'rpc:site_here': { data: [] },
+      'rpc:site_sources': { data: [{ source: 'Facebook', visits: 21, visitors: 19 }, { source: 'Direct', visits: 9, visitors: 8 },
+                                   { source: 'Instagram', visits: 6, visitors: 6 }, { source: 'WhatsApp', visits: 4, visitors: 3 }] } });
+    const src = await page.evaluate(() => {
+      const card = document.querySelector('.an-sources');
+      return { said: card.querySelector('.an-src-said').textContent,
+               rows: Array.from(card.querySelectorAll('.an-row')).map(r => r.textContent.replace(/\s+/g, ' ').trim()) };
+    });
+    is(/^Facebook\s*21/.test(src.rows[0] || ''), 'Facebook first, with 21 visits', src.rows.join(' | '));
+    is(src.rows.some(r => /Typed in or unknown\s*9/.test(r)), 'visits with no source said plainly', src.rows.join(' | '));
+    is(/Facebook and Instagram together: 27 visits/.test(src.said), 'and Facebook and Instagram added up, to hold against Meta', src.said);
+    await page.close();
+    page = await open({ 'rpc:site_stats': stats(3), 'rpc:site_here': { data: [] },
+      'rpc:site_sources': { error: 'Could not find the function public.site_sources' } });
+    is(/supabase-analytics-sources\.sql/.test(await page.evaluate(() => document.querySelector('.an-src-said').textContent)),
+       'before its SQL is run, it says what to run, and nothing else breaks');
+    await page.close();
+
     console.log('\nBefore the map is switched on');
     page = await open({ 'rpc:site_stats': stats(3), 'rpc:site_here': { data: [] },
       'rpc:site_places_report': { error: 'Could not find the function public.site_places_report' } });

@@ -696,6 +696,12 @@
 <button class="to-top" id="toTop" aria-label="Back to top"><svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg></button>
 
 <script src="/config.js"></script>
+<!-- The traffic record, started as early as it can be. It used to be the
+     very last thing on the page, so a visitor who arrived from an advert
+     and left before the whole shop had loaded was never counted -- while
+     Meta counted them. async: it runs the moment it arrives, never holds
+     anything else up, and is small. It needs only config.js, just above. -->
+<script async src="/assets/analytics.js"></script>
 <script src="/assets/policies-data.js"></script>
 <script src="/assets/formats.js"></script>
 <script src="/assets/theme.js"></script>
@@ -707,18 +713,12 @@
      account.js is loaded here but the Supabase client it needs is fetched
      only once the settings say accounts are on. A shop without accounts
      pays for nothing. -->
-<!-- Holds what a visitor looks at before assets/analytics.js (deferred,
-     last) has loaded -- a piece opened straight from a link -- and hands
-     it over when it does. Nothing is sent from here. -->
+<!-- Holds what a visitor looks at if assets/analytics.js has not arrived
+     yet -- a piece opened straight from a link -- and hands it over when
+     it does. Nothing is sent from here. -->
 <script>window.VBP_TRACK=window.VBP_TRACK||{q:[],event:function(k,d){if(this.q.length<10)this.q.push([k,d]);}};</script>
 <script src="/assets/account.js"></script>
 <script src="/assets/chat.js"></script>
 <script src="/assets/app.js"></script>
-<!-- The traffic record. Last, and deferred, so that nothing a visitor is
-     waiting for is behind it: the storefront has finished drawing before
-     this file is executed, and a shop that has not created the analytics
-     tables loses nothing by having it here. It loads no library of its
-     own. See assets/analytics.js for what it does and does not record. -->
-<script defer src="/assets/analytics.js"></script>
 </body>
 </html>

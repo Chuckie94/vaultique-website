@@ -185,11 +185,12 @@ const settle = (page, ms) => page.waitForTimeout(ms || 500);
     console.log('\nA piece\'s own page');
     await page.click('#grid .card .card-info .n'); await settle(page, 700);
     const acc = await page.evaluate(() => {
-      const body = document.querySelector('#view-detail .acc-item.open .acc-body');
-      if (!body) return null;
-      return { shown: Math.round(body.getBoundingClientRect().height), content: body.firstElementChild.scrollHeight };
+      const box = document.querySelector('#view-detail .pd-more');
+      if (!box) return null;
+      const r = box.getBoundingClientRect();
+      return { shown: Math.round(r.height), width: Math.round(r.width), page: innerWidth };
     });
-    is(acc && acc.shown >= acc.content, 'the product details open in full, not cut off after the first line',
+    is(acc && acc.shown > 40 && acc.width <= acc.page, 'the product details are shown in full, and fit the phone',
        JSON.stringify(acc));
     const btn = await page.evaluate(() => {
       const b = document.querySelector('#view-detail .btn-cart');

@@ -23,6 +23,7 @@ vaultique-website/
 ├── supabase-chat-mentions.sql run once: chats taken when opened, @mentions in notes
 ├── supabase-chat-handover.sql run once: "Handed to" until the colleague replies
 ├── supabase-analytics-live.sql run once: live figures, instant "here now", the visitor map
+├── supabase-analytics-sources.sql run once: where visitors came from
 ├── netlify.toml               Netlify config + /api/products redirect
 ├── netlify/
 │   └── functions/
@@ -83,6 +84,9 @@ psql -d <scratch db> -f tests/chat-jobs-fixture.sql -f tests/chat-mentions-fixtu
 psql -d <scratch db> -f tests/analytics-fixture.sql -f supabase-analytics.sql -f tests/analytics-live-fixture.sql \
      -f supabase-analytics-live.sql -f tests/analytics-live.sql      live figures, goodbye and the map
 node tests/analytics-live.browser.cjs     the Analytics page updates by itself, and the visitor map
+node tests/motion.browser.cjs            fades, the cart confirmation, photos that swipe by themselves
+psql -d <scratch db> -f tests/analytics-fixture.sql -f supabase-analytics.sql \
+     -f supabase-analytics-sources.sql -f tests/analytics-sources.sql   where visitors came from
 node tests/visit-where.test.cjs           where a visit came from: Netlify's place, no internet address
 psql -d <scratch db> -f tests/chat-jobs-fixture.sql -f tests/chat-realtime-fixture.sql \
      -f supabase-chat-realtime.sql -f tests/chat-realtime.sql   the shop typing reaches the customer live

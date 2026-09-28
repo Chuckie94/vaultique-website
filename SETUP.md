@@ -433,6 +433,12 @@ What customers see on a product and what they can do with it.
 - **Product display.** Whether sold-out pieces appear at all, the badges on a
   photo, the low stock warning, the category line, the product code, whether
   reviews are shown, and which order the shop opens in.
+- **Photos swipe by themselves.** Off unless you switch it on. Pieces with more
+  than one photo move through them on their own, in the shop, on the homepage
+  and on the piece's own page, at the pace you set (**Seconds on each photo**,
+  4 is comfortable). A photo pauses while the customer points at it, stops for
+  good once they swipe or tap through it themselves, and never moves for
+  somebody whose phone asks for less motion.
 - **What customers can do.** Product enquiries on a sold-out piece, the
   wishlist, a share button, and whether new reviews can be written.
 
@@ -1358,6 +1364,20 @@ is sometimes placed at its network's hub (Lusaka, for somebody nearby). It never
 shows anything finer than a town. It uses the service key already in Netlify,
 **SUPABASE_SERVICE_ROLE_KEY** (there if you set up staff logins) or
 **WEB_SUPABASE_SERVICE_KEY**, and counts visits from the day it is switched on.
+
+**Where visitors came from.** Run **supabase-analytics-sources.sql** once. The
+card lists visits by source (Facebook, Instagram, WhatsApp, Google, other sites,
+and typed in or unknown) and adds Facebook and Instagram together, so you can hold
+the number against the landing page views Meta reports for the same days. Visitors
+from inside the Facebook and Instagram apps are recognised even when the app does
+not say where they came from. Nothing is sent to Meta: this only reads your own
+records.
+
+**Keeping it tidy.** Press a card's heading (Browsing location, Most viewed
+pages, Most viewed pieces, Browsing device, New and returning) to close or open
+it; this device remembers. Each list shows the top five, with **Show more** for
+the rest. Only the busiest twenty are ever fetched, however many pieces were
+viewed.
 
 **Testing it yourself.** A phone or computer that has ever signed in to the admin
 is a shop device and is never counted, so browsing the website on it shows

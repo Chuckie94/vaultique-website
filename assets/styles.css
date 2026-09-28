@@ -321,6 +321,7 @@ header.site.solid .brand .v{color:var(--navy)}
 .card .thumb img.secondary{position:absolute;inset:0;opacity:0}
 .card:hover .thumb img.primary{transform:scale(1.06)}
 .card:hover .thumb img.secondary{opacity:1}
+.card .thumb.auto-alt img.secondary{opacity:1}
 .card .badges{position:absolute;top:12px;left:12px;display:flex;flex-direction:column;gap:6px;z-index:2}
 .tag{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;padding:5px 10px;border-radius:var(--radius-2xl);font-weight:500;backdrop-filter:blur(4px)}
 .tag.new{background:var(--accent);color:var(--accent-on)}
@@ -417,7 +418,64 @@ header.site.solid .brand .v{color:var(--navy)}
 .avail-line{display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;margin:6px 0 4px}
 .avail-line .dot{width:8px;height:8px;border-radius:50%;background:var(--gold)}
 .avail-line.out .dot{background:#bbb}.avail-line.out{color:var(--muted)}
-.detail-cta{margin:24px 0;display:flex;flex-direction:column;gap:10px;max-width:420px}
+.detail-cta{margin:24px 0;display:flex;flex-direction:column;gap:10px;max-width:480px}
+/* Buy and cart side by side, wishlist and share as one quieter row. */
+.cta-main{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cta-main > :only-child{grid-column:1/-1}
+.cta-main .btn{width:100%}
+.cta-sub{display:flex;gap:10px}
+.cta-sub:empty{display:none}
+.cta-sub .btn{flex:1;padding:12px 14px;font-size:11px}
+
+/* The details, laid out under the photo and the price rather than listed
+   in the narrow column beside it. */
+.pd-more{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:44px;margin-top:64px;
+  padding-top:44px;border-top:1px solid var(--line);align-items:start}
+.pd-more > .pd-side:only-child{grid-column:1/-1;flex-direction:row}
+.pd-more > .pd-side:only-child .pd-card{flex:1}
+.pd-specs .eyebrow{color:var(--gold-deep)}
+.pd-specs h2{font-family:var(--font-head);font-weight:500;font-size:32px;color:var(--navy);margin:6px 0 18px;line-height:1.1}
+dl.spec-table{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:28px;margin:0}
+.spec{padding:14px 0 13px;border-bottom:1px solid var(--line);min-width:0}
+.spec .l{margin:0 0 5px;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.spec .r{margin:0;font-size:14.5px;line-height:1.45;color:var(--navy);overflow-wrap:anywhere}
+.pd-side{display:flex;flex-direction:column;gap:16px}
+.pd-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-lg);padding:22px 24px}
+.pd-card h3{margin:0 0 12px;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--navy);font-weight:500}
+.pd-card .inner{font-size:14px;color:var(--muted);line-height:1.7}
+@media(min-width:901px){
+  /* The photo stays in view while the words beside it are read. */
+  .detail-grid .gallery{position:sticky;top:96px}
+}
+@media(max-width:900px){
+  .pd-more{grid-template-columns:1fr;gap:28px;margin-top:44px;padding-top:32px}
+  dl.spec-table{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pd-more > .pd-side:only-child{flex-direction:column}
+}
+
+/* ---- motion, used sparingly ---------------------------------------- */
+/* A new page fades up into place. */
+.view-in{animation:viewIn .45s var(--ease) both}
+@keyframes viewIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+/* Photos fade in once they have arrived. */
+img.img-fade{opacity:0;transition:opacity .55s ease,transform .9s var(--ease)}
+img.img-fade.is-in{opacity:1}
+/* The large photo leans in a little under the pointer. */
+@media(hover:hover){ .gallery-main:hover img{transform:scale(1.035)} }
+/* "Added to your cart". */
+.cart-toast{position:fixed;left:50%;bottom:24px;z-index:140;display:flex;align-items:center;gap:12px;
+  min-width:280px;max-width:calc(100vw - 32px);padding:10px 12px 10px 10px;background:var(--navy);color:#fff;
+  border-radius:14px;box-shadow:0 18px 40px -14px rgba(0,0,0,.45);
+  transform:translate(-50%,140%);opacity:0;transition:transform .45s var(--ease),opacity .3s;pointer-events:none}
+.cart-toast.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
+.ct-img{width:44px;height:44px;border-radius:8px;overflow:hidden;flex:none;background:rgba(255,255,255,.08)}
+.ct-img img{width:100%;height:100%;object-fit:cover;display:block}
+.ct-words{display:flex;flex-direction:column;min-width:0;flex:1}
+.ct-said{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+.ct-name{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ct-view{flex:none;background:none;border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:999px;
+  padding:8px 14px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+.ct-view:hover{background:#fff;color:var(--navy)}
 .detail-cta .btn-wa{padding:17px;font-size:14px;letter-spacing:.1em}
 .detail-cta .btn-wa svg{width:20px;height:20px}
 .accordion{border-top:1px solid var(--line);margin-top:8px;max-width:480px}
@@ -1508,7 +1566,14 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
   .detail-cta{margin:16px 0;gap:8px}
   .detail-cta .btn-wa{padding:13px;font-size:12px}
   .detail-cta .btn-wa svg{width:17px;height:17px}
-  .acc-head{padding:13px 0;font-size:11.5px}
+  .cta-main{grid-template-columns:1fr;gap:8px}
+  .cta-sub{gap:8px}
+  .pd-more{margin-top:32px;padding-top:24px;gap:20px}
+  .pd-specs h2{font-size:24px;margin-bottom:8px}
+  .spec{padding:11px 0 10px}
+  .spec .r{font-size:13.5px}
+  .pd-card{padding:18px}
+  .cart-toast{bottom:16px;min-width:0;width:calc(100vw - 32px)}
   .prod-reviews{margin-top:40px}
   .prod-videos{margin-top:36px}
 

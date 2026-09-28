@@ -37,7 +37,8 @@
      case, on the same connection that already carries the chat --
      nothing is asked of the database after the first call. */
   var LIVE_EVERY = 30000;         // the fallback, when there is no Realtime
-  var TOP = 8;                    // how many pages and pieces are listed
+  var TOP = 20;                   // how many pages and pieces are fetched
+  var SHOWN = 5;                  // how many of them show before "Show more"
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -52,6 +53,36 @@
     }
     return n;
   }
+  /* HIDE AND REVEAL. A card's heading opens and closes it, and the choice
+     is remembered on this device, so a shop that never looks at devices
+     can leave that card shut. */
+  var FOLD_KEY = 'vbp_an_folded';
+  function foldedSet() {
+    try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function foldable(card, key, title, onOpen) {
+    var head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'an-fold';
+    head.setAttribute('aria-expanded', 'true');
+    head.innerHTML = '<h3></h3><span class="an-fold-i" aria-hidden="true"></span>';
+    head.querySelector('h3').textContent = title;
+    function set(shut) {
+      card.classList.toggle('is-folded', shut);
+      head.setAttribute('aria-expanded', shut ? 'false' : 'true');
+    }
+    set(!!foldedSet()[key]);
+    head.addEventListener('click', function () {
+      var shut = !card.classList.contains('is-folded');
+      set(shut);
+      var all = foldedSet();
+      if (shut) all[key] = 1; else delete all[key];
+      try { localStorage.setItem(FOLD_KEY, JSON.stringify(all)); } catch (e) {}
+      if (!shut && onOpen) onOpen();
+    });
+    card.appendChild(head);
+  }
+
   function esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -345,6 +376,20 @@
       chartCard.appendChild(legend);
       wrap.appendChild(chartCard);
 
+      /* ---- where visitors came from --------------------------------------
+         Facebook, Instagram, WhatsApp, Google or typed in, from the site
+         each visit arrived from. With Facebook and Instagram added up, so
+         the shop can hold its own count against Meta's landing page views
+         for the same days -- without sending Meta anything. */
+      var srcCard = el('div', 'card an-sources');
+      foldable(srcCard, 'sources', 'Where visitors came from');
+      var srcSaid = el('p', 'an-note an-src-said', '');
+      srcCard.appendChild(srcSaid);
+      var srcRows = el('div', 'an-rows');
+      srcRows.appendChild(el('p', 'count', 'Reading…'));
+      srcCard.appendChild(srcRows);
+      wrap.appendChild(srcCard);
+
       /* ---- where they browsed from ---------------------------------------
          A map of the towns visits came from, with the countries and towns
          listed under it. The place is Netlify's reading of the visitor's
@@ -353,7 +398,9 @@
          sometimes placed at its network's hub). Nothing finer than a town
          is ever shown, because nothing finer is known. */
       var placeCard = el('div', 'card an-places');
-      placeCard.appendChild(el('h3', null, 'Browsing location'));
+      foldable(placeCard, 'location', 'Browsing location', function () {
+        setTimeout(function () { try { if (map) map.invalidateSize(); } catch (e) {} }, 0);
+      });
       var placeSaid = el('p', 'an-note an-places-said', 'Reading…');
       placeCard.appendChild(placeSaid);
       var mapBox = el('div', 'an-map');
@@ -375,14 +422,14 @@
       /* ---- most looked at ---------------------------------------------- */
       var two = el('div', 'an-two');
       var pagesCard = el('div', 'card');
-      pagesCard.appendChild(el('h3', null, 'Most viewed pages'));
+      foldable(pagesCard, 'pages', 'Most viewed pages');
       var pagesRows = el('div', 'an-rows');
       pagesRows.appendChild(el('p', 'count', 'Reading…'));
       pagesCard.appendChild(pagesRows);
       two.appendChild(pagesCard);
 
       var prodCard = el('div', 'card');
-      prodCard.appendChild(el('h3', null, 'Most viewed pieces'));
+      foldable(prodCard, 'pieces', 'Most viewed pieces');
       var prodRows = el('div', 'an-rows');
       prodRows.appendChild(el('p', 'count', 'Reading…'));
       prodCard.appendChild(prodRows);
@@ -392,13 +439,13 @@
       /* ---- devices, and who had been before ----------------------------- */
       var two2 = el('div', 'an-two');
       var devCard = el('div', 'card');
-      devCard.appendChild(el('h3', null, 'Browsing device'));
+      foldable(devCard, 'devices', 'Browsing device');
       var devRows = el('div', 'an-rows');
       devCard.appendChild(devRows);
       two2.appendChild(devCard);
 
       var newCard = el('div', 'card');
-      newCard.appendChild(el('h3', null, 'New and returning'));
+      foldable(newCard, 'returning', 'New and returning');
       var newBody = el('div');
       newCard.appendChild(newBody);
       two2.appendChild(newCard);
@@ -494,6 +541,34 @@
         loadSeries(mine);
         loadTops(mine);
         loadPlaces(mine);
+        loadSources(mine);
+      }
+
+      function loadSources(mine) {
+        Promise.resolve(sb.rpc('site_sources', {
+          p_from: range.from, p_to: range.to, p_tz: tz
+        })).then(function (r) {
+          if (mine !== asking) return;
+          if (r.error) throw r.error;
+          var list = r.data || [];
+          var meta = list.filter(function (x) { return x.source === 'Facebook' || x.source === 'Instagram'; })
+                         .reduce(function (a, x) { return a + (Number(x.visits) || 0); }, 0);
+          srcSaid.textContent = list.length
+            ? 'From Facebook and Instagram together: ' + num(meta) + ' visit' + (meta === 1 ? '' : 's') +
+              '. Compare this with the landing page views Meta reports for the same days.'
+            : '';
+          paintRows(srcRows, list.map(function (x) {
+            return { label: x.source === 'Direct' ? 'Typed in or unknown' : x.source,
+                     n: Number(x.visits) || 0, extra: Number(x.visitors) || 0 };
+          }), 'visit', 'visitor');
+        }).catch(function (e) {
+          if (mine !== asking) return;
+          var msg = (e && e.message) || String(e || '');
+          srcRows.innerHTML = '';
+          srcSaid.textContent = /site_sources|could not find|does not exist|schema cache/i.test(msg)
+            ? 'Not switched on yet: run supabase-analytics-sources.sql in Supabase.'
+            : 'Could not be read just now.';
+        });
       }
 
       /* ---- the map ----------------------------------------------------------- */
@@ -547,8 +622,10 @@
             var where = (t.name || 'Somewhere in ' + (t.region || t.country_name || t.country)) +
                         (t.country_name ? ', ' + t.country_name : '');
             L.circleMarker(ll, {
-              radius: 6 + Math.round(Math.sqrt(n / top) * 16),
-              color: '#0f2340', weight: 1.5, fillColor: '#c9a24a', fillOpacity: 0.75
+              /* A dot, not a bubble: 4px for one visit, at most 11 for the
+                 busiest town, so a town never covers its neighbours. */
+              radius: 4 + Math.round(Math.sqrt(n / top) * 7),
+              color: '#0f2340', weight: 1, fillColor: '#c9a24a', fillOpacity: 0.85
             }).bindTooltip(
               '<b>' + esc(where) + '</b><br>' + num(n) + ' visit' + (n === 1 ? '' : 's') +
               ' · ' + num(t.visitors || 0) + ' ' + ((t.visitors === 1) ? 'person' : 'people') +
@@ -580,7 +657,7 @@
             return { label: flag(c.code) + (c.name || c.code), n: Number(c.visits) || 0,
                      extra: Number(c.visitors) || 0 };
           }), 'visit', 'visitor');
-          paintRows(townRows, (d.cities || []).slice(0, 12).map(function (t) {
+          paintRows(townRows, (d.cities || []).slice(0, TOP).map(function (t) {
             return { label: t.name || ('Somewhere in ' + (t.region || t.country_name || t.country)),
                      sub: [t.region, t.country_name].filter(Boolean).join(', '),
                      n: Number(t.visits) || 0, extra: Number(t.visitors) || 0 };
@@ -765,8 +842,12 @@
           return;
         }
         var top = rows[0].n || 1;
-        rows.forEach(function (r) {
-          var row = el('div', 'an-row');
+        /* The top few, and the rest one tap away. Only the busiest twenty
+           are ever fetched, so a shop with a thousand pieces viewed still
+           has a short list here. */
+        var more = rows.length > SHOWN;
+        rows.forEach(function (r, k) {
+          var row = el('div', 'an-row' + (k >= SHOWN ? ' an-extra' : ''));
           var head = el('div', 'an-row-top');
           var l = el('div', 'an-row-l', r.label || '—');
           if (r.sub && r.sub !== r.label) l.appendChild(el('small', null, r.sub));
@@ -786,6 +867,17 @@
           row.appendChild(track);
           hostEl.appendChild(row);
         });
+        if (more) {
+          var btn = el('button', 'an-more');
+          btn.type = 'button';
+          var paint = function () {
+            hostEl.classList.toggle('show-all', !!hostEl._all);
+            btn.textContent = hostEl._all ? 'Show less' : 'Show ' + (rows.length - SHOWN) + ' more';
+          };
+          btn.addEventListener('click', function () { hostEl._all = !hostEl._all; paint(); });
+          hostEl.appendChild(btn);
+          paint();
+        }
       }
 
       function paintDevices(d) {

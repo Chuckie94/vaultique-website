@@ -51,6 +51,8 @@
        drawn on this page any more. */
     showReviews: true,
     defaultSort: 'featured',
+    photoAutoSwipe: false,
+    photoSwipeSeconds: 4,
 
     enquiries: true,
     wishlist: true,
@@ -96,7 +98,15 @@
                 hint: 'The SKU row in the product details. Customers rarely need it, ' +
                       'but it makes an order unambiguous.' },
               { type: 'select', name: 'defaultSort', label: 'Default sorting', options: SORTS,
-                hint: 'How the shop is ordered before anyone changes it.' }
+                hint: 'How the shop is ordered before anyone changes it.' },
+              { type: 'toggle', name: 'photoAutoSwipe', label: 'Photos swipe by themselves',
+                hint: 'Pieces with more than one photo move through them on their own: in the ' +
+                      'shop, on the homepage and on the piece\u2019s own page. A photo pauses while ' +
+                      'the customer points at it, and stops once they swipe or tap through it themselves.' },
+              { type: 'number', name: 'photoSwipeSeconds', label: 'Seconds on each photo',
+                min: 2, max: 15, suffix: 'seconds',
+                showIf: function (v) { return !!v.photoAutoSwipe; },
+                hint: 'Four is a comfortable pace.' }
             ]
           },
           {

@@ -672,6 +672,20 @@
 
   /* the lists and the splits */
   .an-two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .an-fold{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+    background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:left;color:inherit;font:inherit}
+  .an-fold h3{margin:0}
+  .an-fold-i{flex:none;width:9px;height:9px;border-right:1.6px solid var(--muted);border-bottom:1.6px solid var(--muted);
+    transform:rotate(45deg) translateY(-2px);transition:transform .2s}
+  .card.is-folded .an-fold-i{transform:rotate(-45deg)}
+  .card.is-folded > :not(.an-fold){display:none !important}
+  .an-fold + *{margin-top:10px}
+  .an-rows .an-extra{display:none}
+  .an-rows.show-all .an-extra{display:block}
+  .an-more{margin-top:8px;background:none;border:0;padding:4px 0;color:var(--navy);font-size:12px;
+    letter-spacing:.06em;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+  .an-sources{margin-bottom:14px}
+  .an-src-said:empty{display:none}
   .an-places{margin-bottom:14px}
   .an-places-said{margin:2px 0 10px}
   .an-map{height:340px;border-radius:8px;overflow:hidden;background:#eef1f5;border:1px solid var(--line);position:relative;z-index:0}

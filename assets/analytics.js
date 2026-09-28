@@ -209,11 +209,30 @@
   var referrer = (function () {
     try {
       var r = document.referrer;
-      if (!r) return null;
-      var host = new URL(r).hostname;
-      if (!host || host === location.hostname) return null;
-      return host.replace(/^www\./, '').slice(0, 120);
-    } catch (e) { return null; }
+      if (r) {
+        var host = new URL(r).hostname;
+        if (host && host === location.hostname) return null;
+        if (host) return host.replace(/^www\./, '').slice(0, 120);
+      }
+    } catch (e) {}
+    /* NO REFERRER, BUT PLAINLY FROM AN ADVERT OR A POST. Facebook's and
+       Instagram's own browsers often leave the referrer empty, which made
+       ad visitors look as though they had typed the address. Three things
+       still give them away, and only the answer is kept -- one word --
+       never the user agent or the link's parameters themselves:
+         - the app's browser names itself in the user agent;
+         - a link out of Facebook or Instagram carries an fbclid;
+         - a link the shop tagged carries utm_source. */
+    try {
+      var ua = navigator.userAgent || '';
+      if (/Instagram/i.test(ua)) return 'instagram.com';
+      if (/FBAN|FBAV|FB_IAB|FBIOS|FB4A/i.test(ua)) return 'facebook.com';
+      var q = location.search || '';
+      if (/[?&]fbclid=/.test(q)) return 'facebook.com';
+      var utm = /[?&]utm_source=([a-z0-9._-]{1,40})/i.exec(q);
+      if (utm) return utm[1].toLowerCase();
+    } catch (e) {}
+    return null;
   })();
 
   /* What to call this page. document.title is what the shop has already

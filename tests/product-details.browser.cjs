@@ -131,7 +131,7 @@ function serve() {
 /* The specification table, read the way a visitor reads it: left column and
    right column, in the order they are drawn. */
 const specRows = page => page.evaluate(() =>
-  Array.from(document.querySelectorAll('#view-detail .spec-table tr')).map(tr => [
+  Array.from(document.querySelectorAll('#view-detail .spec-table .spec')).map(tr => [
     (tr.querySelector('.l') || {}).textContent || '',
     (tr.querySelector('.r') || {}).textContent || ''
   ]));
@@ -183,14 +183,12 @@ const descText = page => page.evaluate(() => {
     is(!/crafted in leather/i.test(await descText(page)),
        'rather than the sentence this website used to make up out of the colour and the material');
 
-    /* The details live inside a panel that starts shut. A visitor has to be
-       able to open it, or none of the above is worth anything. */
-    await page.click('#view-detail .acc-head');
-    await page.waitForTimeout(350);
+    /* The details are laid out in full now, not folded into a panel that
+       has to be opened. Every one of them must actually be on show. */
     is(await page.evaluate(() => {
-      const b = document.querySelector('#view-detail .acc-body');
-      return !!b && b.getBoundingClientRect().height > 0;
-    }), 'and the panel holding them opens when it is pressed');
+      const cells = Array.from(document.querySelectorAll('#view-detail .spec-table .spec'));
+      return cells.length > 0 && cells.every(c => c.getBoundingClientRect().height > 0);
+    }), 'and every one of them is on show, with nothing to open first');
 
     /* ================================================================== */
     console.log('\nA piece with none of it filled in');
