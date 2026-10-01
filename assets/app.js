@@ -3000,6 +3000,38 @@
      while it is on screen and not being pointed at, and the cards start
      a moment apart so a whole row never changes at once. One clock for
      every card on the page, not one each. */
+  /* A TRUE CROSS-FADE. The next photo is laid over the one showing and
+     brought up slowly once it has fully arrived; only then is the one
+     beneath taken away. Nothing ever blinks or switches. Back to the first
+     photo, the top layer simply fades away to reveal it. */
+  var FADE_MS = 1200;
+  function crossFade(thumb, src) {
+    var layers = $all('img.auto-layer', thumb);
+    var top = layers[layers.length - 1];
+    thumb.classList.toggle('auto-alt', !!src);
+    if (!src) {
+      layers.forEach(function (l) { l.classList.remove('is-on'); });
+      setTimeout(function () { layers.forEach(function (l) { if (l.parentNode) l.parentNode.removeChild(l); }); }, FADE_MS + 100);
+      return;
+    }
+    if (top && top.getAttribute('src') === src) return;
+    var img = document.createElement('img');
+    img.className = 'auto-layer';
+    img.alt = '';
+    img.setAttribute('aria-hidden', 'true');
+    img.onload = function () {
+      img.onload = null;
+      void img.offsetWidth;
+      img.classList.add('is-on');
+      setTimeout(function () {
+        layers.forEach(function (l) { if (l.parentNode) l.parentNode.removeChild(l); });
+      }, FADE_MS + 100);
+    };
+    img.onerror = function () { if (img.parentNode) img.parentNode.removeChild(img); };
+    thumb.appendChild(img);
+    img.src = src;
+  }
+
   var cardSwipes = [];
   var cardClock = null;
   var cardSeen = null;
@@ -3035,17 +3067,7 @@
         if (now < c.next || !c.seen || c.thumb.matches(':hover')) return;
         c.next = now + swipeMs();
         c.step = (c.step + 1) % (c.photos.length + 1);
-        var alt = c.thumb.querySelector('img.secondary');
-        if (!alt) return;
-        if (c.step === 0) { c.thumb.classList.remove('auto-alt'); return; }
-        var want = c.photos[c.step - 1];
-        if (alt.getAttribute('src') === want) { c.thumb.classList.add('auto-alt'); return; }
-        /* Shown once it has arrived, so the swap is a fade and never a
-           blank frame. */
-        c.thumb.classList.remove('auto-alt');
-        alt.onload = function () { alt.onload = null; c.thumb.classList.add('auto-alt'); };
-        alt.loading = 'eager';
-        alt.src = want;
+        crossFade(c.thumb, c.step === 0 ? null : c.photos[c.step - 1]);
       });
     }, 500);
   }
@@ -3828,10 +3850,11 @@
     else t.textContent = filterCat === 'All' ? 'The Collection' : filterCat;
   }
   function renderGrid() {
-    var grid = $('#grid'), empty = $('#shopEmpty'), count = $('#resultCount');
+    /* No "11 pieces" line: how much the shop holds is the shop's business,
+       not the customer's. The admin still counts. */
+    var grid = $('#grid'), empty = $('#shopEmpty');
     if (!grid) return;
     var list = currentList();
-    if (count) count.textContent = list.length + (list.length === 1 ? ' piece' : ' pieces');
     if (!list.length) {
       grid.innerHTML = '';
       if (empty) {
@@ -4065,11 +4088,46 @@
     if (!galImg || !srcs.length) return;
     if (!galImg.classList.contains('img-fade')) fadeWhenLoaded(galImg);
     var i = 0, multi = srcs.length > 1;
-    function show(n) {
+    /* The first photo simply fades in; every change after that is a
+       cross-fade: the new photo is laid over the old one and brought up,
+       then becomes the photo itself. Slow when it moves on its own, quick
+       when the customer taps. */
+    var fading = null;
+    function show(n, slow) {
       i = (n + srcs.length) % srcs.length;
-      if (galImg.getAttribute('src') !== srcs[i]) {
-        galImg.classList.remove('is-in');
-        galImg.src = srcs[i];
+      var want = srcs[i];
+      if (!galImg.getAttribute('src')) { galImg.src = want; }
+      else if (galImg.getAttribute('src') !== want) {
+        if (fading && fading.parentNode) fading.parentNode.removeChild(fading);
+        var over = document.createElement('img');
+        over.className = 'gal-fade' + (slow ? ' is-slow' : '');
+        over.alt = '';
+        over.setAttribute('aria-hidden', 'true');
+        fading = over;
+        over.onload = function () {
+          over.onload = null;
+          void over.offsetWidth;
+          over.classList.add('is-on');
+          setTimeout(function () {
+            if (fading !== over) return;
+            /* The photo underneath takes the new picture while the layer
+               still covers it, and the layer goes only once it has been
+               drawn: no frame without a photo. */
+            var gone = false;
+            var lift = function () {
+              if (gone) return; gone = true;
+              if (over.parentNode) over.parentNode.removeChild(over);
+              if (fading === over) fading = null;
+            };
+            galImg.addEventListener('load', function () { requestAnimationFrame(function () { requestAnimationFrame(lift); }); }, { once: true });
+            setTimeout(lift, 1500);
+            galImg.src = want;
+            galImg.classList.add('is-in');
+          }, slow ? FADE_MS + 50 : 500);
+        };
+        over.onerror = function () { if (over.parentNode) over.parentNode.removeChild(over); galImg.src = want; };
+        galImg.parentNode.insertBefore(over, galImg.nextSibling);
+        over.src = want;
       }
       if (thumbs) $all('#galThumbs button').forEach(function (x, k) { x.classList.toggle('active', k === i); });
       if (count) count.textContent = (i + 1) + ' / ' + srcs.length;
@@ -4107,7 +4165,7 @@
         if (!SHOP.photoAutoSwipe || paused || document.hidden) { due = Date.now() + swipeMs(); return; }
         if (Date.now() < due) return;
         due = Date.now() + swipeMs();
-        show(i + 1);
+        show(i + 1, true);
       }, 250);
       main.addEventListener('mouseenter', function () { paused = true; });
       main.addEventListener('mouseleave', function () { paused = false; });

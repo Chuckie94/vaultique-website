@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.36.0',
-  build: 58,
-  builtAt: '2026-09-28T04:47:11Z',
-  notes: 'Analytics: Where visitors came from (Facebook, Instagram, WhatsApp, Google, typed in), with Facebook and Instagram added up to compare with Meta. Visitors from the Facebook and Instagram apps are recognised even when the app hides where they came from. Nothing is sent to Meta. Needs supabase-analytics-sources.sql.'
+  version: '1.36.1',
+  build: 59,
+  builtAt: '2026-09-30T19:26:08Z',
+  notes: 'The shop no longer shows how many pieces it holds. Photos that change by themselves now cross-fade slowly, on the cards and on a piece\'s page, instead of switching. No SQL needed.'
 };

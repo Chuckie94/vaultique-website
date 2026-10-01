@@ -76,7 +76,9 @@ const server = http.createServer((req, res) => {
     await page.waitForTimeout(900);
     return page;
   }
-  const gal = page => page.evaluate(() => (document.querySelector('#galImg') || {}).getAttribute('src'));
+  /* Which photo is chosen, read from the counter ("2 / 3"): the photo itself
+     only takes its new picture once the cross-fade has finished. */
+  const gal = page => page.evaluate(() => (document.querySelector('#galCount') || {}).textContent);
   try {
     console.log('\nA piece\'s own page, with photos swiping switched on');
     let page = await open('/product/BG-WOTO');
@@ -99,6 +101,22 @@ const server = http.createServer((req, res) => {
     is(await gal(page) === chosen, 'once the customer moves through the photos, it stops for good');
     await page.context().close();
 
+    console.log('\nThe change is a cross-fade, never a switch');
+    page = await open('/product/BG-WOTO');
+    const fade = await page.evaluate(() => new Promise(done => {
+      const seen = [];
+      const t = setInterval(() => {
+        const o = document.querySelector('#galMain img.gal-fade');
+        if (o) seen.push(Number(getComputedStyle(o).opacity).toFixed(2));
+      }, 50);
+      setTimeout(() => { clearInterval(t); done(seen); }, 4500);
+    }));
+    const mids = fade.filter(v => v > 0.05 && v < 0.95);
+    is(mids.length >= 5, 'the new photo rises gradually over the old one', fade.slice(0, 40).join(' '));
+    is(await page.evaluate(() => getComputedStyle(document.querySelector('#galImg')).opacity) === '1',
+       'and the photo underneath never goes blank');
+    await page.context().close();
+
     console.log('\nThe pieces in the shop');
     page = await open('/shop');
     /* Watched over seven seconds rather than looked at once: a card with
@@ -111,6 +129,18 @@ const server = http.createServer((req, res) => {
       setTimeout(() => { clearInterval(t); done(seen.size); }, 7000);
     }));
     is(alt === 2, 'swipe to their other photos by themselves too, every card', alt + ' of 2 swiped');
+    const cardFade = await page.evaluate(() => new Promise(done => {
+      const seen = [];
+      const t = setInterval(() => document.querySelectorAll('#grid .card img.auto-layer').forEach(l => {
+        seen.push(Number(getComputedStyle(l).opacity));
+      }), 50);
+      setTimeout(() => { clearInterval(t); done(seen); }, 6000);
+    }));
+    is(cardFade.filter(v => v > 0.05 && v < 0.95).length >= 5, 'fading from one photo to the next, not switching',
+       cardFade.length + ' samples');
+    is(await page.evaluate(() => !document.querySelector('#resultCount') &&
+         !/\b\d+\s+pieces?\b/i.test(document.querySelector('#view-shop').textContent)),
+       'and the shop no longer says how many pieces it holds');
     is(await page.evaluate(() => Array.from(document.querySelectorAll('#grid .card img.primary'))
          .every(i => i.classList.contains('is-in'))), 'and their photos faded in as they arrived');
 
