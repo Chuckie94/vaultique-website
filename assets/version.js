@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.36.1',
-  build: 59,
-  builtAt: '2026-09-30T19:26:08Z',
-  notes: 'The shop no longer shows how many pieces it holds. Photos that change by themselves now cross-fade slowly, on the cards and on a piece\'s page, instead of switching. No SQL needed.'
+  version: '1.37.1',
+  build: 61,
+  builtAt: '2026-10-01T12:43:59Z',
+  notes: 'Checkout consent is always required: there is no switch to turn it off, buy buttons no longer carry a WhatsApp link that could skip it, and empty wording falls back to the standard words. The "kept on this device" line is gone from the order form. The Dashboard is checked on the first day of a month. No SQL needed.'
 };

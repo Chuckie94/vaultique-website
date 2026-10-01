@@ -433,6 +433,12 @@ What customers see on a product and what they can do with it.
 - **Product display.** Whether sold-out pieces appear at all, the badges on a
   photo, the low stock warning, the category line, the product code, whether
   reviews are shown, and which order the shop opens in.
+- **What customers agree to before ordering** (Checkout). Always asked, with no
+  switch to turn it off: no order goes on WhatsApp, from the cart or paid online
+  until the customer ticks the box. The box holds your wording; the words
+  "Privacy Policy" in it link to your privacy policy, and if the wording is ever
+  left empty the standard words are used. The WhatsApp order message ends with
+  *Privacy consent: given*.
 - **Photos swipe by themselves.** Off unless you switch it on. Pieces with more
   than one photo move through them on their own, in the shop, on the homepage
   and on the piece's own page, at the pace you set (**Seconds on each photo**,

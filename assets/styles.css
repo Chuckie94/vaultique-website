@@ -1093,6 +1093,14 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 @media (max-width:560px){ .ac-addr{flex-direction:column} }
 .od-opt{font-size:9.5px;letter-spacing:.1em;color:var(--muted);text-transform:none;margin-left:6px;opacity:.8}
 .od-note{font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:14px}
+/* The consent box before any order is sent. */
+.od-consent{display:flex;gap:10px;align-items:flex-start;margin:16px 0 2px;padding:12px 14px;
+  border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--paper);cursor:pointer;
+  font-size:12.5px;line-height:1.6;color:var(--ink,var(--navy));text-transform:none;letter-spacing:0}
+.od-consent input{flex:none;width:18px;height:18px;margin:2px 0 0;accent-color:var(--navy);cursor:pointer}
+.od-consent a{color:var(--gold-deep);text-decoration:underline;text-underline-offset:2px}
+.od-consent.is-wrong{border-color:#c0392b;animation:odShake .35s}
+@keyframes odShake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
 /* Paying online: the second button under WhatsApp, and the quote. */
 .od-pay{margin-top:0}
 .pq{margin:6px 0 18px;border-top:1px solid var(--line)}

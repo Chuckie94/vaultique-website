@@ -152,6 +152,9 @@ const server = http.createServer(async (req, res) => {
     await page.waitForSelector('#ctGo', { timeout: 15000 });
     await page.click('#ctGo');
     await page.waitForSelector('#odGo', { timeout: 15000 });
+    /* Every order now needs the consent box ticked, as a customer would.
+       The box itself is checked under "Consent before any order". */
+    if (!page.__leaveConsent && await page.$('#od_consent')) await page.check('#od_consent');
   }
 
   try {
@@ -168,7 +171,81 @@ const server = http.createServer(async (req, res) => {
       await ctx.close();
     }
 
+    console.log('\nConsent before any order');
     SETTINGS.payments.onlineEnabled = true;
+    {
+      const { ctx, page } = await open();
+      page.__leaveConsent = true;
+      await checkout(page);
+      const box = await page.evaluate(() => {
+        const l = document.querySelector('#orderBody .od-consent');
+        const a = l && l.querySelector('a');
+        return l && { text: l.textContent.trim(), href: a && a.getAttribute('href'), ticked: l.querySelector('input').checked,
+                      beforeButtons: !!(l.compareDocumentPosition(document.querySelector('#odGo')) & Node.DOCUMENT_POSITION_FOLLOWING) };
+      });
+      is(box && /^I confirm that the information provided is accurate/.test(box.text) && /outside Zambia/.test(box.text),
+         'the order form carries the consent, in the shop\'s words', JSON.stringify(box));
+      is(box && box.href === '/policies/privacy-policy', '"Privacy Policy" in it links to the privacy policy', box && box.href);
+      is(box && !box.ticked && box.beforeButtons, 'unticked to begin with, just above the buttons');
+      await page.fill('#od_name', 'Chanda');
+      await page.fill('#od_phone', '0977123456');
+      await page.click('#odGo');
+      await page.waitForTimeout(300);
+      is((await page.evaluate(() => window.__opened)).length === 0, 'WhatsApp does not open until it is ticked');
+      is(/tick the box/i.test(await page.textContent('#odMsg')), 'and the customer is told why');
+      await page.fill('#od_email', 'c@e.com');
+      if (await page.$('#od_address')) await page.fill('#od_address', 'Plot 9, Kabulonga');
+      await page.click('#odPay');
+      await page.waitForTimeout(300);
+      is(!(await page.$('#pqLead')) && /tick the box/i.test(await page.textContent('#odMsg')),
+         'nor does paying online go ahead');
+      await page.check('#od_consent');
+      await page.click('#odGo');
+      await page.waitForTimeout(300);
+      const sent = await page.evaluate(() => window.__opened);
+      is(sent.length === 1 && /Privacy%20consent%3A%20given/.test(sent[0]), 'ticked, the order goes, saying consent was given',
+         JSON.stringify(sent).slice(0, 300));
+      await ctx.close();
+    }
+    {
+      /* There is no switching it off: a shop that once saved
+         consentRequired: false still gets the box, and so does a shop
+         that asks for nothing at all before WhatsApp. */
+      SETTINGS.shopping = { requireName: false, requirePhone: false, requireEmail: false,
+                            requireAddress: false, orderNotes: false, consentRequired: false, consentText: '' };
+      const was = SETTINGS.payments.onlineEnabled;
+      SETTINGS.payments.onlineEnabled = false;
+      const { ctx, page } = await open();
+      page.__leaveConsent = true;
+      await checkout(page);
+      const bare = await page.evaluate(() => ({
+        box: !!document.getElementById('od_consent'),
+        text: (document.querySelector('.od-consent') || {}).textContent || '',
+        note: /kept on this device/i.test(document.getElementById('orderBody').textContent)
+      }));
+      is(bare.box, 'the box is always there, even with every other question switched off');
+      is(/^I confirm that the information provided is accurate/.test(bare.text.trim()),
+         'and wording left empty falls back to the standard words', bare.text);
+      is(!bare.note, 'the "kept on this device" line is gone');
+      await page.click('#odGo');
+      await page.waitForTimeout(300);
+      is((await page.evaluate(() => window.__opened)).length === 0, 'and nothing goes to WhatsApp without the tick');
+      await ctx.close();
+      SETTINGS.payments.onlineEnabled = was;
+
+      SETTINGS.shopping = { requireName: true, requirePhone: true, requireEmail: false, requireAddress: false,
+        consentText: 'I agree to the shop\'s Privacy Policy and terms.' };
+      const two = await open();
+      await checkout(two.page);
+      is(await two.page.evaluate(() => document.querySelector('.od-consent').textContent.trim()) ===
+         'I agree to the shop\'s Privacy Policy and terms.', 'the shop\'s own wording is used when changed');
+      const hrefs = await two.page.evaluate(() => Array.from(document.querySelectorAll('.card a.btn-wa, #buyDetail, #qvBuy')).map(a => a.getAttribute('href')));
+      is(hrefs.length > 0 && hrefs.every(h => !/wa\.me|whatsapp/i.test(h || '')),
+         'no buy button carries a WhatsApp link that could skip the form', JSON.stringify(hrefs));
+      await two.ctx.close();
+      SETTINGS.shopping = { requireName: true, requirePhone: true, requireEmail: false, requireAddress: false };
+    }
+
     console.log('\nSwitched on');
     {
       const { ctx, page, errors } = await open();

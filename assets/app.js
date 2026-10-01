@@ -63,7 +63,8 @@
     enquiries: true, wishlist: true, sharing: true, customerReviews: true,
     whatsappCheckout: true,
     requireName: true, requirePhone: true, requireEmail: false, requireAddress: false,
-    orderNotes: true, checkoutLabel: 'Buy on WhatsApp'
+    orderNotes: true, checkoutLabel: 'Buy on WhatsApp',
+    consentText: 'I confirm that the information provided is accurate and consent to Vaultique Boutique processing my personal information for the purposes of fulfilling and managing my order, including processing or storage by authorised service providers outside Zambia, in accordance with the Privacy Policy.'
   };
   // Settings > Pricing & Tax. Defaults match the admin's, and match the way
   // the shop was written before the section existed: a K in front, decimals
@@ -294,6 +295,14 @@
   function waSay(intent) {
     return CT ? CT.greet(shopName(), intent, enquiryMessage()) : (intent || '');
   }
+  /* Where a buy button points. Buying always goes through the order form,
+     where the customer agrees before anything is sent, so a buy button no
+     longer carries a WhatsApp address that "open in new tab" could follow
+     straight past it. An enquiry about a sold-out piece is not an order
+     and keeps its direct link. */
+  function buyHref(p) { return canBuy(p) ? '#order' : waLink(p); }
+  function buyTarget(p) { return canBuy(p) ? '' : ' target="_blank" rel="noopener"'; }
+
   function waLink(p) {
     /* A piece held back for a conversation asks what it costs; it does not
        offer to buy at a figure nobody has been shown. Sold out pieces keep
@@ -1416,7 +1425,49 @@
     /* Paying online needs a name, a phone and an email to hand to the
        payment page, so with it switched on the details step always opens.
        Switched off, this is exactly what it always was. */
-    return buyerFields().length > 0 || !!SHOP.orderNotes || payOnline();
+    return buyerFields().length > 0 || !!SHOP.orderNotes || payOnline() || consentOn();
+  }
+
+  /* CONSENT BEFORE ANY ORDER (Settings > Shopping > Checkout). One box the
+     customer must tick before an order goes anywhere -- WhatsApp, the
+     cart or paying online -- in the shop's own words. "Privacy Policy" in
+     those words becomes a link to the privacy policy, opened in a new tab
+     so the half-filled order is still there when they come back. */
+  var consentNow = false;
+  /* ALWAYS ASKED. There is no switch to turn it off: no order of any kind
+     goes anywhere without it. Only the wording is the shop's to change,
+     and wording left empty falls back to the standard words rather than
+     to no box at all. */
+  var CONSENT_DEFAULT = SHOP.consentText;
+  function consentOn() { return true; }
+  function consentWords() { return String(SHOP.consentText || '').trim() || CONSENT_DEFAULT; }
+  function privacyHref() {
+    var p = (POLICIES || []).filter(function (x) { return x && /privacy/i.test(x.title || ''); })[0];
+    if (p && SEO) return pathFor('policies/' + SEO.slug(p.title));
+    return pathFor('policies/privacy-policy');
+  }
+  function consentHtml() {
+    if (!consentOn()) return '';
+    var words = esc(consentWords()).replace(/Privacy Policy/,
+      '<a href="' + esc(privacyHref()) + '" target="_blank" rel="noopener">Privacy Policy</a>');
+    /* Ticked once for this order stays ticked: going back from the payment
+       quote redraws the form, and agreeing twice to the same order is a
+       chore. Closing the form forgets it. */
+    return '<label class="od-consent"><input type="checkbox" id="od_consent"' + (consentNow ? ' checked' : '') + '>' +
+      '<span>' + words + '</span></label>';
+  }
+  /* True when the box is ticked, or when the shop does not ask. Says why
+     and points at the box when it is not. */
+  function consentGiven(msg) {
+    if (!consentOn()) return true;
+    var box = $('#od_consent');
+    if (box && box.checked) return true;
+    msg.textContent = 'Please tick the box to confirm your details and give your consent.';
+    msg.className = 'rv-msg err';
+    var wrap = box && box.parentNode;
+    if (wrap) { wrap.classList.remove('is-wrong'); void wrap.offsetWidth; wrap.classList.add('is-wrong'); }
+    if (box) box.focus();
+    return false;
   }
 
   function savedBuyer() {
@@ -1498,6 +1549,8 @@
     if (offersBoth() && details && details.how) {
       lines.push(details.how === 'collection' ? 'Collecting in person' : 'To be delivered');
     }
+    /* The order says the customer agreed, so the shop has it in writing. */
+    if (details && details.consent) lines.push('Privacy consent: given');
     return lines.join('\n');
   }
 
@@ -1506,12 +1559,9 @@
     /* No dialog on the page: straight to WhatsApp with what we have,
        which for a cart still has to be composed rather than read off a
        link the markup was carrying. */
-    if (!modal || !body) {
-      var direct = order.single ? waLink(order.single)
-                                : waUrl(orderNumber(), composeOrder(order, null));
-      if (direct) window.open(direct, '_blank', 'noopener');
-      return;
-    }
+    /* No dialog on the page means no consent box, so no order: nothing
+       is sent to WhatsApp without the customer having agreed. */
+    if (!modal || !body) return;
 
     var fields = buyerFields();
     var saved = savedBuyer();
@@ -1593,15 +1643,23 @@
         ? '<label class="rv-lbl" for="od_notes">Anything else <span class="od-opt">optional</span></label>' +
           '<textarea id="od_notes" rows="2" maxlength="300" placeholder="A landmark, a gift message, a preferred day"></textarea>'
         : '') +
+      consentHtml() +
       '<div class="rv-actions">' +
         '<button class="btn btn-wa" id="odGo">' + waIcon() + 'Continue on WhatsApp</button>' +
         (payable ? '<button class="btn btn-gold od-pay" id="odPay">' + esc(payLabel()) + '</button>' : '') +
         '<span class="rv-msg" id="odMsg"></span>' +
-      '</div>' +
-      '<p class="od-note">Your details are kept on this device so you do not have to type ' +
-      'them again. They are sent only inside your WhatsApp message.</p>';
+      '</div>';
 
     $('#odClose').addEventListener('click', closeOrderForm);
+    var cBox = $('#od_consent', body);
+    if (cBox) cBox.addEventListener('change', function () {
+      consentNow = cBox.checked;
+      if (cBox.checked) {
+        cBox.parentNode.classList.remove('is-wrong');
+        var m = $('#odMsg');
+        if (m && /tick the box/i.test(m.textContent)) { m.textContent = ''; m.className = 'rv-msg'; }
+      }
+    });
 
     var picker = $('#od_book', body);
     if (picker) {
@@ -1696,6 +1754,8 @@
         $('#od_email').focus();
         return;
       }
+      if (!consentGiven(msg)) return;
+      d.consent = consentOn();
       /* Remembered for next time: their details and how they liked to
          receive it. An address is only overwritten when one was given, so
          collecting once does not lose the address they typed before. */
@@ -1754,6 +1814,8 @@
         var e2 = $('#od_email'); if (e2) e2.focus();
         return;
       }
+      if (!consentGiven(msg)) return;
+      d.consent = true;            // carried to "WhatsApp instead" from the quote, too
       var keep = savedBuyer();
       fields.forEach(function (f) {
         if (f.onlyWhenDelivering && d.how === 'collection') return;
@@ -1774,6 +1836,7 @@
   }
 
   function closeOrderForm() {
+    consentNow = false;
     var m = $('#orderModal');
     if (m) m.classList.remove('open');
     document.body.style.overflow = '';
@@ -2018,7 +2081,6 @@
     /* Counted here and not a line earlier: above this point the shop has
        refused checkout and nobody has started one. */
     if (window.VBP_TRACK) window.VBP_TRACK.event('checkout_start', { sku: p && p.sku, label: p && p.name });
-    if (!needsDetails()) return;          // let the anchor follow its href
     e.preventDefault();
     openOrderForm(orderOf(p));
   }
@@ -3148,7 +3210,8 @@
     if (canBuy(p) || canAsk(p)) {
       var waLine = el('div', 'wa-line');
       var wa = el('a', 'btn btn-wa');
-      wa.href = waLink(p); wa.target = '_blank'; wa.rel = 'noopener';
+      wa.href = buyHref(p);
+      if (!canBuy(p)) { wa.target = '_blank'; wa.rel = 'noopener'; }
       wa.innerHTML = waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, false));
       if (canBuy(p)) wa.addEventListener('click', function (e) { startOrder(e, p); });
       waLine.appendChild(wa);
@@ -3915,7 +3978,7 @@
           : 'Sold out') + '</div></div>' +
       '<div class="detail-cta" style="max-width:none">' +
       ((canBuy(p) || canAsk(p))
-        ? '<a class="btn btn-wa" id="qvBuy" target="_blank" rel="noopener" href="' + waLink(p) + '">' +
+        ? '<a class="btn btn-wa" id="qvBuy"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
           waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       '<span id="qvCartSlot"></span>' +
@@ -4004,7 +4067,7 @@
          as a form, not a boutique. */
       '<div class="cta-main">' +
       ((canBuy(p) || canAsk(p))
-        ? '<a class="btn btn-wa" id="buyDetail" target="_blank" rel="noopener" href="' + waLink(p) + '">' +
+        ? '<a class="btn btn-wa" id="buyDetail"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
           waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       (canBuy(p) ? '<span id="cartSlot"></span>' : '') +

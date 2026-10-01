@@ -201,8 +201,14 @@ const dayIn = (tz, d) => new Intl.DateTimeFormat('en-GB', {
   timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit'
 }).formatToParts(d).reduce((a, p) => (a[p.type] = p.value, a), {});
 function stampIn(tz, d) { const g = dayIn(tz, d); return g.year + '-' + g.month + '-' + g.day; }
-const TODAY = stampIn(TZ, new Date());
-const at = daysAgo => new Date(Date.now() - daysAgo * 86400000).toISOString();
+/* Every date in this test is measured from the 15th of the current month,
+   and the page's own clock is set to the same moment. Measured from the
+   real today, "five days ago" fell into last month on the first few days
+   of every month, and the month's totals came out wrong while the page
+   was right. */
+const NOW = (() => { const d = new Date(); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 15, 10); })();
+const at = daysAgo => new Date(NOW - daysAgo * 86400000).toISOString();
+const TODAY = stampIn(TZ, new Date(NOW));
 
 const SETTINGS_OK = {
   'settings:general': { data: { timezone: TZ, businessName: 'Vaultique Boutique Point', currency: 'ZMW' } },
@@ -288,6 +294,7 @@ const stock = p => p.evaluate(() => {
 
   try {
     const page = await browser.newPage();
+    await page.clock.setFixedTime(new Date(NOW));
     page.on('pageerror', e => errs.push((e && (e.message || e.stack)) || JSON.stringify(e)));
     await page.goto(base + '/', { waitUntil: 'domcontentloaded' });
 
@@ -393,6 +400,44 @@ const stock = p => p.evaluate(() => {
     pd = await period(page, 'This month');
     is(pd && /^4 orders/.test(pd.n), 'the month has all four that stand', JSON.stringify(pd));
     is(pd && /8,450/.test(pd.s), 'worth 1850 + 3200 + 2400 + 1000', pd && pd.s);
+
+    /* THE FIRST OF THE MONTH, which is when this used to go wrong: the
+       page's clock set to eight in the morning, shop time, on the 1st. An
+       order from two days ago belongs to last month and must not count. */
+    group('On the first day of a month');
+    {
+      const d = new Date(NOW);
+      const FIRST = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 6);
+      await page.clock.setFixedTime(new Date(FIRST));
+      await render(page, Object.assign({}, SETTINGS_OK, {
+        'rpc:site_stats': { when: { same: { data: {} }, span: { data: {} } } },
+        orders: { data: [
+          { id: 'f1', total: 1200, status: 'pending',   created_at: new Date(FIRST - 3600000).toISOString() },
+          { id: 'f2', total: 4000, status: 'completed', created_at: new Date(FIRST - 2 * 86400000).toISOString() }
+        ] },
+        'customers:count': { count: 0 }, customers: { data: [] },
+        'subscribers:count': { count: 0 }, subscribers: { data: [] }
+      }));
+      pd = await period(page, 'This month');
+      is(pd && /^1 order\b/.test(pd.n) && /1,200/.test(pd.s),
+         'this month holds only the order placed today, not the one from last month', JSON.stringify(pd));
+      pd = await period(page, 'Today');
+      is(pd && /^1 order\b/.test(pd.n), 'and today is the same one order', JSON.stringify(pd));
+      await page.clock.setFixedTime(new Date(NOW));
+      /* Back to the month above, for the checks that read it next. */
+      await render(page, Object.assign({}, SETTINGS_OK, {
+        'rpc:site_stats': { when: { same: { data: {} }, span: { data: {} } } },
+        orders: { data: [
+          { id: '1', total: 1850, status: 'pending',   created_at: at(0) },
+          { id: '2', total: 3200, status: 'confirmed', created_at: at(0) },
+          { id: '3', total: 900,  status: 'cancelled', created_at: at(0) },
+          { id: '4', total: 2400, status: 'completed', created_at: at(2) },
+          { id: '5', total: 1000, status: 'completed', created_at: at(5) }
+        ] },
+        'customers:count': { count: 0 }, customers: { data: [] },
+        'subscribers:count': { count: 0 }, subscribers: { data: [] }
+      }));
+    }
 
     is(/does not take payment/i.test(await textOf(page, '.card .an-note') || ''),
        'the card says plainly that the website takes no money',
@@ -803,10 +848,10 @@ const stock = p => p.evaluate(() => {
     group('Recent activity');
     await render(page, Object.assign({}, BUSY, {
       activity_log: { data: [
-        { id: 'a1', at: new Date(Date.now() - 4 * 60000).toISOString(),
+        { id: 'a1', at: new Date(NOW - 4 * 60000).toISOString(),
           actor_email: 'owner@vaultique.com', action: 'changed', module: 'Settings > Chat',
           record: 'Opening line' },
-        { id: 'a2', at: new Date(Date.now() - 3 * 3600000).toISOString(),
+        { id: 'a2', at: new Date(NOW - 3 * 3600000).toISOString(),
           actor_email: 'sales@vaultique.com', action: 'added', module: 'Products',
           record: 'VB-DRS-001' }
       ] }
@@ -994,7 +1039,7 @@ const stock = p => p.evaluate(() => {
           created_at: at(0) }
       ] },
       activity_log: { data: [
-        { id: 'a1', at: new Date(Date.now() - 120000).toISOString(),
+        { id: 'a1', at: new Date(NOW - 120000).toISOString(),
           actor_email: 'a-rather-long-address@vaultiqueboutique.com',
           action: 'changed', module: 'Settings > Branding & Appearance',
           record: 'Primary colour, Secondary colour, Button style' }

@@ -65,7 +65,8 @@
     requireEmail: false,
     requireAddress: false,
     orderNotes: true,
-    checkoutLabel: 'Buy on WhatsApp'
+    checkoutLabel: 'Buy on WhatsApp',
+    consentText: 'I confirm that the information provided is accurate and consent to Vaultique Boutique processing my personal information for the purposes of fulfilling and managing my order, including processing or storage by authorised service providers outside Zambia, in accordance with the Privacy Policy.'
   };
 
   A.store.registerDefaults('shopping', DEFAULTS);
@@ -157,7 +158,12 @@
               { type: 'toggle', name: 'orderNotes', label: 'Offer a notes box',
                 showIf: function (v) { return !!v.whatsappCheckout; },
                 hint: 'An optional line for anything else: a landmark, a gift message, ' +
-                      'a preferred delivery day.' }
+                      'a preferred delivery day.' },
+              { type: 'textarea', name: 'consentText', label: 'What customers agree to before ordering',
+                maxLength: 600, required: true,
+                hint: 'Always asked: no order goes on WhatsApp, from the cart or paid online until the ' +
+                      'customer ticks this. The order message says they agreed. The words "Privacy ' +
+                      'Policy" become a link to your privacy policy.' }
             ]
           }
         ],
