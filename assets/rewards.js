@@ -112,14 +112,58 @@
 
   function linkForm(body, s) {
     var waiting = (s.waiting || []);
-    body.appendChild(el('p', 'ac-quiet', 'Already a Vaultique customer? Add your customer number, printed on your ' +
-      'receipts, to see and use your points here.'));
+    var A = acct(), me = (A && A.state && A.state.profile) || {};
+
+    /* Waiting on the team: say so, and nothing else to fill in. */
+    if (waiting.indexOf('join') > -1) {
+      body.appendChild(el('p', 'rw-note', 'We have your request to join. We will register you and email you your ' +
+        'customer number, usually within a day. Your points will show here.'));
+      return;
+    }
     if (waiting.indexOf('link') > -1) body.appendChild(el('p', 'rw-note', 'Our team is checking your customer number and will be in touch.'));
-    var num = field(body, 'rw_num', 'Customer number', 'text', { autocomplete: 'off', maxlength: '30', placeholder: 'e.g. VB-0123' });
+
+    body.appendChild(el('p', 'ac-quiet', 'Earn points every time you shop with us, in the shop or online, and use them ' +
+      'to pay less.'));
+
+    /* Two doors: new to rewards, or already a customer. */
+    var pick = el('div', 'rw-pick');
+    var newBtn = el('button', 'btn btn-gold rw-pick-new', 'I\u2019m new \u2013 join');
+    var oldBtn = el('button', 'btn btn-outline rw-pick-old', 'I have a customer number');
+    newBtn.type = oldBtn.type = 'button';
+    pick.appendChild(newBtn); pick.appendChild(oldBtn);
+    body.appendChild(pick);
+
+    /* ---- new: the team registers them on the platform ---------------- */
+    var join = el('div', 'rw-join hide');
+    var myEmail = (A && A.state && A.state.user && A.state.user.email) || '';
+    join.appendChild(el('p', 'ac-quiet', 'We register you with your email' + (myEmail ? ' (' + myEmail + ')' : '') +
+      ' and email you your customer number once it is done.'));
+    var jn = field(join, 'rw_jname', 'Your name', 'text', { autocomplete: 'name', maxlength: '80' });
+    if (me.name) jn.value = me.name;
+    var jm = el('p', 'ac-msg');
+    var jb = el('button', 'btn btn-gold', 'Join Vaultique Rewards'); jb.type = 'button';
+    var r3 = el('div', 'ac-actions'); r3.appendChild(jb);
+    join.appendChild(r3); join.appendChild(jm);
+    body.appendChild(join);
+    jb.addEventListener('click', function () {
+      jm.textContent = 'Sending\u2026'; jm.className = 'ac-msg busy'; jb.disabled = true;
+      ask('join', { name: jn.value }).then(function (r) {
+        jm.textContent = 'Thank you. We will register you and email you your customer number' +
+          (r && r.emailed ? '. We have sent you a confirmation email.' : '.');
+        jm.className = 'ac-msg ok';
+        forget();
+      }, function (e) { jb.disabled = false; jm.textContent = e.message; jm.className = 'ac-msg err'; });
+    });
+
+    /* ---- already a customer: prove the number with a code ------------ */
+    var have = el('div', 'rw-have hide');
+    have.appendChild(el('p', 'ac-quiet', 'Your customer number is printed on your receipts. We send a code to the ' +
+      'email on your customer record to confirm it is yours.'));
+    var num = field(have, 'rw_num', 'Customer number', 'text', { autocomplete: 'off', maxlength: '30', placeholder: 'e.g. VB-0123' });
     var msg = el('p', 'ac-msg');
     var go = el('button', 'btn btn-gold', 'Send me a code'); go.type = 'button';
     var row = el('div', 'ac-actions'); row.appendChild(go);
-    body.appendChild(row); body.appendChild(msg);
+    have.appendChild(row); have.appendChild(msg);
 
     var codeBox = el('div', 'rw-code hide');
     var code = field(codeBox, 'rw_code', 'The 6-digit code', 'text', { inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '6' });
@@ -127,10 +171,11 @@
     var row2 = el('div', 'ac-actions'); row2.appendChild(check);
     codeBox.appendChild(row2);
     var msg2 = el('p', 'ac-msg'); codeBox.appendChild(msg2);
-    body.appendChild(codeBox);
+    have.appendChild(codeBox);
+    body.appendChild(have);
 
     go.addEventListener('click', function () {
-      msg.textContent = 'Sending…'; msg.className = 'ac-msg busy'; go.disabled = true;
+      msg.textContent = 'Sending\u2026'; msg.className = 'ac-msg busy'; go.disabled = true;
       ask('link', { number: num.value }).then(function (r) {
         go.disabled = false;
         msg.textContent = r.message; msg.className = 'ac-msg ok';
@@ -138,32 +183,24 @@
       }, function (e) { go.disabled = false; msg.textContent = e.message; msg.className = 'ac-msg err'; });
     });
     check.addEventListener('click', function () {
-      msg2.textContent = 'Checking…'; msg2.className = 'ac-msg busy'; check.disabled = true;
+      msg2.textContent = 'Checking\u2026'; msg2.className = 'ac-msg busy'; check.disabled = true;
       ask('verify', { code: code.value }).then(function () { forget(); draw(body, true); },
         function (e) { check.disabled = false; msg2.textContent = e.message; msg2.className = 'ac-msg err'; });
     });
 
-    /* Not registered yet: the team registers them on the platform, where
-       the welcome points are given. Nothing is created here. */
-    var join = el('details', 'rw-join');
-    join.appendChild(el('summary', null, 'Not a registered customer yet?'));
-    if (waiting.indexOf('join') > -1) {
-      join.appendChild(el('p', 'rw-note', 'We have your request and will register you shortly.'));
-    } else {
-      var jn = field(join, 'rw_jname', 'Your name', 'text', { autocomplete: 'name', maxlength: '80' });
-      var jp = field(join, 'rw_jphone', 'Phone number', 'tel', { autocomplete: 'tel', maxlength: '20' });
-      var jm = el('p', 'ac-msg');
-      var jb = el('button', 'btn btn-outline', 'Ask to join'); jb.type = 'button';
-      var r3 = el('div', 'ac-actions'); r3.appendChild(jb);
-      join.appendChild(r3); join.appendChild(jm);
-      jb.addEventListener('click', function () {
-        ask('join', { name: jn.value, phone: jp.value }).then(function () {
-          jm.textContent = 'Thank you. We will register you and let you know your customer number.'; jm.className = 'ac-msg ok';
-          jb.disabled = true;
-        }, function (e) { jm.textContent = e.message; jm.className = 'ac-msg err'; });
-      });
+    function show(which) {
+      join.classList.toggle('hide', which !== 'new');
+      have.classList.toggle('hide', which !== 'have');
+      newBtn.className = 'btn rw-pick-new ' + (which === 'new' ? 'btn-gold' : 'btn-outline');
+      oldBtn.className = 'btn rw-pick-old ' + (which === 'have' ? 'btn-gold' : 'btn-outline');
+      newBtn.setAttribute('aria-pressed', String(which === 'new'));
+      oldBtn.setAttribute('aria-pressed', String(which === 'have'));
+      (which === 'new' ? (jn.value ? jb : jn) : num).focus();
     }
-    body.appendChild(join);
+    newBtn.addEventListener('click', function () { show('new'); });
+    oldBtn.addEventListener('click', function () { show('have'); });
+    /* Asked before: go straight back to the number. */
+    if (waiting.indexOf('link') > -1) show('have');
   }
 
   /* ---- at checkout --------------------------------------------------

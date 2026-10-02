@@ -173,18 +173,62 @@
 
   /* ---- signing up, in and out ---------------------------------------- */
 
+  /* The website's own sign-up (netlify/functions/account-signup.js): it
+     makes the account and sends the confirm link through the shop's own
+     email. Resolves null when that function is not there or not set up,
+     and the caller then uses Supabase's own way. */
+  var SIGNUP_FN = '/.netlify/functions/account-signup';
+  function viaSite(payload) {
+    if (typeof fetch !== 'function') return Promise.resolve(null);
+    return fetch(SIGNUP_FN, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    }).then(function (res) {
+      if (res.status === 404 || res.status === 405) return null;
+      return res.json().catch(function () { return null; }).then(function (b) {
+        /* Not this function's answer (a page, or nothing): not here. */
+        if (!b || typeof b !== 'object' || b.fallback) return null;
+        if (!res.ok) {
+          if (!b.error) return null;
+          var e = new Error(b.error);
+          e.waiting = !!b.waiting; e.site = true;
+          throw e;
+        }
+        if (payload.action === 'signup' && !b.created) return null;
+        if (payload.action === 'resend' && !b.message) return null;
+        return b;
+      });
+    }, function () { return null; });
+  }
+
   function signUp(email, password, name) {
     if (!sb) return Promise.reject(new Error('Accounts are not available.'));
     if (!canRegister()) return Promise.reject(new Error('New accounts are closed at the moment.'));
     var bad = passwordProblem(password);
     if (bad) return Promise.reject(new Error(bad));
+    var to = String(email || '').trim();
 
+    return viaSite({ action: 'signup', email: to, password: password, name: String(name || '').trim() })
+      .then(function (r) {
+        if (!r) return supabaseSignUp(to, password, name);
+        if (r.confirm) return { signedIn: false, confirm: true, emailed: r.emailed !== false, note: r.error || '' };
+        /* No confirmation asked for: the account is ready, so sign in. */
+        return signIn(to, password).then(function () {
+          if (name) return saveProfile({ name: name });
+        }).then(function () { return { signedIn: true }; });
+      });
+  }
+
+  /* Supabase's own sign-up, which also sends its own confirm email. */
+  function supabaseSignUp(email, password, name) {
     return sb.auth.signUp({
-      email: String(email || '').trim(),
+      email: email,
       password: password,
-      /* When they agreed, kept on the account itself, so the shop can show
-         it was given. */
-      options: { data: { name: String(name || '').trim(), consent_at: new Date().toISOString() } }
+      options: {
+        /* When they agreed, kept on the account itself, so the shop can
+           show it was given. */
+        data: { name: String(name || '').trim(), consent_at: new Date().toISOString() },
+        emailRedirectTo: confirmLanding()
+      }
     }).then(function (r) {
       if (r.error) throw r.error;
       var u = readUser(r.data && r.data.user);
@@ -199,6 +243,39 @@
       }
       return { signedIn: false, confirm: true };
     });
+  }
+
+  /* Where the link in the "confirm your email" message brings them back.
+     Supabase only follows it if the address is allowed in its URL
+     Configuration; otherwise it uses the Site URL there. */
+  function confirmLanding() { return location.origin + (window.VBP_BASE || '/') + 'account'; }
+
+  /* The confirm link, sent again. Supabase answers the same whether or not
+     the address has an account, so nothing is given away. */
+  function resendLink(email) {
+    if (!sb) return Promise.reject(new Error('Accounts are not available.'));
+    var to = String(email || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return Promise.reject(new Error('Enter your email address first.'));
+    return viaSite({ action: 'resend', email: to }).then(function (r) {
+      if (r) return true;
+      if (!sb.auth.resend) throw new Error('Please try creating the account again.');
+      return sb.auth.resend({ type: 'signup', email: to, options: { emailRedirectTo: confirmLanding() } })
+        .then(function (x) { if (x && x.error) throw x.error; return true; });
+    });
+  }
+
+  /* A "send the link again" button, quiet for a minute after each send. */
+  function resendButton(getEmail, msg) {
+    var b = el('button', 'ac-link ac-resend', 'Send the link again');
+    b.type = 'button';
+    b.addEventListener('click', function () {
+      say(msg, 'Sending…', 'busy'); b.disabled = true;
+      resendLink(getEmail()).then(function () {
+        say(msg, 'Sent again. Check your inbox and the spam or junk folder. It can take a few minutes.', 'ok');
+        setTimeout(function () { b.disabled = false; }, 60000);
+      }, function (e) { b.disabled = false; say(msg, friendly(e), 'err'); });
+    });
+    return b;
   }
 
   function signIn(email, password) {
@@ -592,7 +669,12 @@
         say(msg, 'Signing in…', 'busy');
         signIn(email.value, pw.value).then(function () {
           render(host);
-        }, function (e) { say(msg, friendly(e), 'err'); });
+        }, function (e) {
+          say(msg, friendly(e), 'err');
+          if (/email not confirmed/i.test(String((e && e.message) || '')) && !body.querySelector('.ac-resend')) {
+            row.appendChild(resendButton(function () { return email.value; }, msg));
+          }
+        });
       });
       forgot.addEventListener('click', function () {
         if (!email.value.trim()) { say(msg, 'Enter your email address first.', 'err'); email.focus(); return; }
@@ -671,10 +753,22 @@
             body.appendChild(el('p', 'ac-lead',
               'We have sent a link to ' + email.value.trim() +
               '. Click it to confirm your address, then sign in.'));
+            body.appendChild(el('p', 'ac-quiet', 'Not there after a few minutes? Check the spam or junk folder.'));
+            var again = el('p', 'ac-msg');
+            if (r.note) say(again, r.note, 'err');
+            var ar = el('div', 'ac-actions');
+            var sentTo = email.value;
+            ar.appendChild(resendButton(function () { return sentTo; }, again));
+            body.appendChild(ar); body.appendChild(again);
             return;
           }
           render(host);
-        }, function (e) { say(msg, friendly(e), 'err'); });
+        }, function (e) {
+          say(msg, friendly(e), 'err');
+          if (e && e.waiting && !row.querySelector('.ac-resend')) {
+            row.appendChild(resendButton(function () { return email.value; }, msg));
+          }
+        });
       });
     }
 
@@ -725,7 +819,8 @@
   function friendly(e) {
     var m = String((e && e.message) || e || '').toLowerCase();
     if (/invalid login/.test(m)) return 'That email and password do not match.';
-    if (/email not confirmed/.test(m)) return 'Please confirm your email address first — check your inbox.';
+    if (/email not confirmed/.test(m)) return 'Please confirm your email address first: click the link we emailed you.';
+    if (/error sending|sending confirmation|smtp|email.*(fail|could not)/.test(m)) return 'We could not send the email just now. Please try again in a few minutes, or contact us.';
     if (/already registered|already exists/.test(m)) return 'There is already an account with that address. Try signing in.';
     if (/rate limit|too many/.test(m)) return 'Too many attempts. Please wait a minute and try again.';
     if (/network|fetch/.test(m)) return 'We could not reach the server. Check your connection.';

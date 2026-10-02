@@ -57,6 +57,7 @@ to anybody: `netlify.toml` answers 404 to the whole folder.
 
 ```
 node tests/product-sync.test.cjs        the product feed and the pulse
+node tests/product-door.test.cjs        the feed and the pulse through the products-only door
 node tests/analytics.browser.cjs        what a visit records, in a real browser
 psql -d <scratch db> -f tests/analytics-fixture.sql \
                      -f supabase-analytics.sql \
@@ -154,9 +155,19 @@ netlify deploy --prod
 Either way, after deploy open `https://YOUR-SITE.netlify.app/api/products` — you
 should see product JSON. If you do, the live feed is working.
 
-### Optional hardening
-Move the POS read key into Netlify env vars (Site settings → Environment
-variables): `POS_SUPABASE_URL` and `POS_SUPABASE_KEY`.
+### The products-only door (website build 63)
+The product feed and its change bell no longer need the platform's secret
+key. They ask the platform's **products-only door** (`vbp_website_products`,
+created by the platform's `tools/vbp-website-door.sql`, build 454) with the
+publishable key, and get the shop window and nothing else. Until that SQL has
+been run they read the old way, so nothing stops in between.
+
+Check it at `https://YOUR-SITE.netlify.app/api/products`: near the end it says
+`"source":"door"`. `"source":"row"` means the old way is still in use.
+
+`POS_SUPABASE_KEY` still has to stay in Netlify for now: **Vaultique Rewards**
+(below, in SETUP.md) reads customers and sales with it. It can go once the
+rewards have a door of their own.
 
 ### The website's own Supabase, as seen by the functions
 `/robots.txt`, `/sitemap.xml` and the email sender run on Netlify rather than in

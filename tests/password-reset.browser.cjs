@@ -222,6 +222,41 @@ const server = http.createServer((req, res) => {
       await ctx.close();
     }
 
+    console.log('\nCreating an account: the link sent by the shop\'s own email');
+    {
+      const { ctx, page, errors } = await open('/account', {});
+      const asked = [];
+      await page.route('**/.netlify/functions/account-signup', async (r) => {
+        const b = JSON.parse(r.request().postData() || '{}'); asked.push(b);
+        if (b.action === 'signup' && b.email === 'waiting@example.com') {
+          return r.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'There is already an account with that address waiting to be confirmed. Use "Send the link again" below.', waiting: true }) });
+        }
+        const body = b.action === 'signup' ? { created: true, confirm: true, emailed: true } : { message: 'ok' };
+        return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      });
+      await page.waitForSelector('.ac-tab', { timeout: 5000 });
+      await page.click('.ac-tab:has-text("Create an account")');
+      await page.fill('#ac_name', 'Mutale'); await page.fill('#ac_email2', 'mutale@example.com'); await page.fill('#ac_pw2', 'Lusaka2026!');
+      await page.check('#ac_consent');
+      await page.click('.ac-body .btn-gold'); await page.waitForTimeout(500);
+      const sup = await page.evaluate(() => (window.__calls.signUp || []).length);
+      is(asked.length === 1 && asked[0].action === 'signup' && asked[0].email === 'mutale@example.com' && asked[0].name === 'Mutale' && sup === 0,
+         'the website makes the account itself, not Supabase\'s mailer', JSON.stringify(asked) + ' supabase:' + sup);
+      is(/Almost there/.test(await page.textContent('.ac-body')) && await page.isVisible('.ac-resend'),
+         'the customer is told to check their email, with "Send the link again"');
+      await page.click('.ac-resend'); await page.waitForTimeout(400);
+      is(asked.length === 2 && asked[1].action === 'resend' && asked[1].email === 'mutale@example.com' &&
+         /Sent again/.test(await page.textContent('.ac-body')), 'which sends the link again');
+      await page.click('.ac-tab:has-text("Create an account")');
+      await page.fill('#ac_name', 'W'); await page.fill('#ac_email2', 'waiting@example.com'); await page.fill('#ac_pw2', 'Lusaka2026!');
+      await page.check('#ac_consent');
+      await page.click('.ac-body .btn-gold'); await page.waitForTimeout(500);
+      is(/waiting to be confirmed/.test(await page.textContent('.ac-body')) && await page.isVisible('.ac-resend'),
+         'an address already waiting is offered the link again');
+      is(errors.length === 0, 'with no page errors' + (errors.length ? ': ' + errors[0] : ''));
+      await ctx.close();
+    }
+
     console.log('\nCustomer accounts');
     {
       const { ctx, page } = await open('/account', {});

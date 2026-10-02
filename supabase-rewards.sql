@@ -56,6 +56,13 @@ create table if not exists public.rewards_requests (
   decided_at  timestamptz,
   decided_by  uuid references auth.users(id) on delete set null
 );
+-- Why no code was emailed for a 'link' request (team's eyes only), and the
+-- website account's own email on a 'join' (the website asks for no phone).
+alter table public.rewards_requests add column if not exists note text;
+alter table public.rewards_requests add column if not exists email text;
+do $$ begin
+  alter table public.rewards_requests add constraint rewards_requests_note_len check (note is null or length(note) <= 300);
+exception when duplicate_object then null; end $$;
 create index if not exists rewards_requests_waiting on public.rewards_requests (created_at desc) where status = 'waiting';
 -- One open request of each kind per account.
 create unique index if not exists rewards_requests_one_open
@@ -243,5 +250,7 @@ select part, case when done then 'OK' else 'NOT DONE' end as status
     ('rewards_holds',    exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'rewards_holds')),
     ('rewards_decide',   exists (select 1 from pg_proc where proname = 'rewards_decide')),
     ('rewards_settle',   exists (select 1 from pg_proc where proname = 'rewards_settle')),
-    ('rewards_join_done', exists (select 1 from pg_proc where proname = 'rewards_join_done'))
+    ('rewards_join_done', exists (select 1 from pg_proc where proname = 'rewards_join_done')),
+    ('rewards_requests.email', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'rewards_requests' and column_name = 'email')),
+    ('rewards_requests.note', exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'rewards_requests' and column_name = 'note'))
   ) t(part, done);

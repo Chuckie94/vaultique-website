@@ -130,6 +130,9 @@ const codeIn = (m) => (/\b(\d{6})\b/.exec(m.text) || [])[1];
   }
   is(SENT.length === 0, 'no code is sent for either');
   is(DB.rewards_requests.filter((q) => q.kind === 'link').length === 2, 'each becomes a request for the team to check');
+  const notes = DB.rewards_requests.map((q) => q.note || '');
+  is(/no email/.test(notes[0]) && /not on exactly one/.test(notes[1]), 'and each says why no code went, for the team only', JSON.stringify(notes));
+  is(!/record on the platform|exactly one/.test(answerReal), 'while the customer is never told the reason');
   DB.rewards_requests = [];
   r = await call('tok-eve', { action: 'verify', code: '123456' });
   is(r.status === 400, 'and no code can link them');
@@ -162,8 +165,19 @@ const codeIn = (m) => (/\b(\d{6})\b/.exec(m.text) || [])[1];
   is(r.body.quote === null, 'and then there is nothing left to use');
 
   console.log('\nJoining');
-  r = await call('tok-eve', { action: 'join', name: 'Eve', phone: '0977 123 456' });
-  is(r.status === 200 && DB.rewards_requests.some((q) => q.kind === 'join' && q.name === 'Eve'), 'a shopper who is not registered asks the team');
+  SENT.length = 0;
+  r = await call('tok-eve', { action: 'join', name: 'Eve' });
+  const jq = DB.rewards_requests.find((q) => q.kind === 'join');
+  is(r.status === 200 && jq && jq.name === 'Eve' && jq.email === 'eve@example.com' && !jq.phone,
+     'a shopper who is not registered asks the team, with their account email and no phone', JSON.stringify(jq));
+  is(r.body.emailed === true && SENT.some((m) => m.to === 'eve@example.com' && /request to join/i.test(m.subject)),
+     'and is emailed to say the request arrived', JSON.stringify(SENT.map((m) => m.to + ': ' + m.subject)));
+  const n = SENT.length;
+  r = await call('tok-eve', { action: 'join', name: 'Eve' });
+  is(SENT.length === n, 'asking twice sends no second email');
+  r = await call('tok-eve', { action: 'join', name: '' });
+  is(r.status === 400 || SENT.length === n, 'a join with no name is refused');
+
 
   console.log('\nWhen the platform cannot be read safely');
   process.env.POS_SUPABASE_KEY = 'sb_publishable_abc';

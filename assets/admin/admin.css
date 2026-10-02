@@ -946,6 +946,8 @@
   .rw-row-t{min-width:0}
   .rw-row-h{font-size:14px;color:var(--navy);font-weight:500}
   .rw-row-s{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.5}
+  .rw-row-why{font-size:12.5px;color:#9a5b12;margin-top:4px;line-height:1.5}
+  .rw-flash{background:#eef7ee;border:1px solid #bfdcbf;color:#235c23;border-radius:8px;padding:10px 14px;margin:0 0 14px;font-size:13.5px}
   .rw-row-a{display:flex;gap:8px;flex:none;flex-wrap:wrap;justify-content:flex-end}
   #tab-rewards .card{margin-bottom:14px}
   .rw-num{width:150px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:13px}

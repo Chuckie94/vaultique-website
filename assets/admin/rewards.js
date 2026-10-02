@@ -93,6 +93,37 @@
       function rpc(name, args) {
         return Promise.resolve(sb.rpc(name, args)).then(function (r) { if (r.error) throw r.error; return r.data; });
       }
+      /* A decision on a request, through the website's rewards function so
+         the customer is emailed the outcome. The database still decides who
+         may make it. If the function cannot be reached, the decision is
+         made directly, without the email. */
+      function decide(op, q, number, direct) {
+        if (!sb.auth || typeof sb.auth.getSession !== 'function' || typeof fetch !== 'function') return Promise.resolve(direct());
+        return Promise.resolve(sb.auth.getSession()).then(function (r) {
+          var token = r && r.data && r.data.session && r.data.session.access_token;
+          if (!token) return direct();
+          return fetch('/.netlify/functions/rewards', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ action: 'team', op: op, request: q.id, number: number || '' })
+          }).then(function (res) {
+            if (res.status === 404 || res.status === 405 || res.status === 503) return direct();
+            return res.json().catch(function () { return {}; }).then(function (b) {
+              if (!res.ok) throw new Error(b.error || 'That could not be done.');
+              if (op !== 'decline') {
+                flash(b.emailed ? 'Done. The customer has been emailed.'
+                                : 'Done. No email could be sent, so please let the customer know.');
+              }
+            });
+          }, function () { return direct(); });
+        });
+      }
+      var flashBox = el('p', 'rw-flash hide');
+      host.insertBefore(flashBox, reqCard);
+      function flash(t) {
+        flashBox.textContent = t; flashBox.classList.remove('hide');
+        clearTimeout(flash.t); flash.t = setTimeout(function () { flashBox.classList.add('hide'); }, 8000);
+      }
 
       function load() {
         Promise.all([
@@ -134,9 +165,11 @@
               person(who, q.user_id) + ' · asked ' + when(q.created_at) +
               '. Check on the platform that this number is theirs before approving.', [
               { label: 'Approve', primary: true, confirm: 'Link this website account to customer number ' + q.cust_no + '?',
-                run: function () { return rpc('rewards_decide', { p_request: q.id, p_approve: true }); } },
-              { label: 'Decline', run: function () { return rpc('rewards_decide', { p_request: q.id, p_approve: false }); } }
+                run: function () { return decide('approve', q, '', function () { return rpc('rewards_decide', { p_request: q.id, p_approve: true }); }); } },
+              { label: 'Decline', run: function () { return decide('decline', q, '', function () { return rpc('rewards_decide', { p_request: q.id, p_approve: false }); }); } }
             ]);
+            /* Why no code was emailed: for the team's eyes only. */
+            if (q.note) reqBody.lastChild.querySelector('.rw-row-t').appendChild(el('div', 'rw-row-why', 'No code was emailed: ' + q.note));
           } else {
             /* Registered on the platform by the team: type the number it
                gave them, and the website account is linked there and then. */
@@ -145,14 +178,14 @@
             numBox.placeholder = 'Customer number';
             numBox.setAttribute('aria-label', 'The customer number the platform gave them');
             row(reqBody, 'Register ' + (q.name || 'a new customer'),
-              (q.phone || '') + ' \u00b7 asked ' + when(q.created_at) +
-              '. Register them on the platform, then type the customer number it gave them and press Link.', [
+              (q.email || q.phone || '') + ' \u00b7 asked ' + when(q.created_at) +
+              '. Register them on the platform with this email, then type the customer number it gave them and press Link. They are emailed their number.', [
               { label: 'Link', primary: true, run: function () {
                   var n = numBox.value.trim();
                   if (!n) { numBox.focus(); return Promise.reject(new Error('Type the customer number the platform gave them.')); }
-                  return rpc('rewards_join_done', { p_request: q.id, p_cust_no: n });
+                  return decide('join_done', q, n, function () { return rpc('rewards_join_done', { p_request: q.id, p_cust_no: n }); });
                 } },
-              { label: 'Decline', run: function () { return rpc('rewards_decide', { p_request: q.id, p_approve: false }); } }
+              { label: 'Decline', run: function () { return decide('decline', q, '', function () { return rpc('rewards_decide', { p_request: q.id, p_approve: false }); }); } }
             ]);
             var acts = reqBody.lastChild.querySelector('.rw-row-a');
             acts.insertBefore(numBox, acts.firstChild);

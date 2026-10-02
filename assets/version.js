@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.38.1',
-  build: 63,
-  builtAt: '2026-10-02T14:03:56Z',
-  notes: 'Creating an account needs the consent box ticked (wording in Settings > Customer Accounts; when they agreed is kept on the account). Admin > Rewards: a join request is finished by typing the customer number the platform gave them, which links the account at once. Needs the small rewards SQL update.'
+  version: '1.39.0',
+  build: 65,
+  builtAt: '2026-10-02T16:48:32Z',
+  notes: 'New accounts: the website makes the account and emails the confirm link through the shop\'s own email (Settings > Notifications), with Send the link again. Rewards join asks for no phone, only the account email; customers are emailed when they join and when linked; Admin > Rewards shows why no code went. Needs supabase-signup.sql and the updated supabase-rewards.sql.'
 };

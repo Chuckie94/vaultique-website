@@ -1107,8 +1107,9 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .rw-foot{font-size:12px;color:var(--muted);margin-top:12px}
 .rw-note{font-size:13px;color:var(--gold-deep);margin:8px 0}
 .rw-code{margin-top:14px}
-.rw-join{margin-top:18px;font-size:13px}
-.rw-join summary{cursor:pointer;color:var(--navy)}
+.rw-pick{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0 4px}
+.rw-pick .btn{flex:1 1 180px}
+.rw-join,.rw-have{margin-top:14px}
 /* The consent box before any order is sent. */
 .od-consent{display:flex;gap:10px;align-items:flex-start;margin:16px 0 2px;padding:12px 14px;
   border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--paper);cursor:pointer;

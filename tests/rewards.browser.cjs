@@ -108,9 +108,14 @@ const server = http.createServer((req, res) => {
 
     console.log('\nLinking a customer number');
     await page.evaluate(() => { const c = window.VBP_REWARDS.card(); c.id = 'rwCard'; document.body.prepend(c); });
-    await page.waitForSelector('#rw_num');
+    await page.waitForSelector('#rwCard .rw-pick-new');
+    await page.click('#rwCard .rw-pick-new');
+    is(await page.isVisible('#rw_jname') && !(await page.$('#rw_jphone')) && !(await page.isVisible('#rw_num')),
+       'a new customer joins with their name only: no phone number is asked for');
+    await page.click('#rwCard .rw-pick-old');
+    await page.waitForSelector('#rw_num:visible');
     await page.fill('#rw_num', 'VB-0007');
-    await page.click('#rwCard .ac-actions .btn');
+    await page.click('#rwCard .rw-have .ac-actions .btn');
     await page.waitForSelector('#rw_code:visible');
     const told = await page.textContent('#rwCard');
     is(/If this number is on our records/.test(told) && !/@/.test(told), 'the customer is told a code may be on its way, and no email is shown');

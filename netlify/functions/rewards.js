@@ -6,10 +6,15 @@
      { action: 'status' }              my points, if my account is linked
      { action: 'link', number }        prove a customer number is mine
      { action: 'verify', code }        the code from the email
-     { action: 'join', name, phone }   not registered yet: ask the team
+     { action: 'join', name }          not registered yet: ask the team
+                                       (with the account's own email)
      { action: 'quote', due }          what my points would take off this much
      { action: 'hold', orderRef, due } promise them on this order
      { action: 'unlink' }              stop using rewards on this account
+     { action: 'team', op, request, number }
+                                       Admin > Rewards: link a new customer
+                                       (join_done), approve or decline; the
+                                       customer is emailed the outcome
 
    WHAT IT NEVER SAYS. Whether a customer number exists, whether it has an
    email, whose it is, or anything on the platform record. Linking answers
@@ -73,13 +78,24 @@ async function openRequests(userId) {
   const r = await P.svc('GET', 'rewards_requests?user_id=eq.' + encodeURIComponent(userId) + '&status=eq.waiting&select=kind');
   return (r || []).map((x) => x.kind);
 }
+/* True when this is a new request, false when one was already waiting. */
 async function askTeam(userId, kind, extra) {
+  const row = Object.assign({ user_id: userId, kind }, extra || {});
   try {
-    await P.svc('POST', 'rewards_requests', Object.assign({ user_id: userId, kind }, extra || {}), 'return=minimal');
+    await P.svc('POST', 'rewards_requests', row, 'return=minimal');
+    return true;
   } catch (e) {
     /* One open request of each kind per account: a second ask while the
        first waits is the same ask. */
-    if (!/\b409\b|duplicate/.test(e.message)) throw e;
+    if (/\b409\b|duplicate/.test(e.message)) return false;
+    /* A database from before the team's note was added: ask without it. */
+    for (const col of ['note', 'email']) {
+      if (row[col] !== undefined && new RegExp('\\b' + col + '\\b').test(e.message)) {
+        delete row[col];
+        return askTeam(userId, kind, row);
+      }
+    }
+    throw e;
   }
 }
 
@@ -93,29 +109,61 @@ async function standingOf(custNo) {
   return { state, cust, standing: R.standing(state, cust, await promised(custNo)) };
 }
 
-async function mailCode(to, code) {
-  const [n, priv, general] = await Promise.all([
-    settings('notifications'),
-    P.svc('GET', 'site_settings_private?key=eq.notifications&select=data'),
-    settings('general')
+const mail = require('./_mail').shopMail;
+
+function mailCode(to, code) {
+  return mail(to, 'Your {shop} Rewards code: ' + code, [
+    'Your code is ' + code,
+    'Type it on the website to see and use your rewards points there. It works for ' + CODE_MINUTES + ' minutes.',
+    'If you did not ask for this, you can ignore this email: nothing changes unless the code is typed in.'
   ]);
-  const secret = (priv && priv[0] && priv[0].data) || {};
-  if (!n || !n.emailEnabled || !n.smtpHost || !n.senderEmail) return false;
-  const shop = (general && general.businessName) || 'Vaultique Boutique Point';
-  const sendMail = require('./send-email')._internals.sendMail;
-  await sendMail({
-    smtpHost: n.smtpHost, smtpPort: n.smtpPort, encryption: n.encryption,
-    smtpUser: n.smtpUser, smtpPassword: secret.smtpPassword,
-    senderName: n.senderName || shop, senderEmail: n.senderEmail, replyTo: n.replyTo,
-    to,
-    subject: 'Your ' + shop + ' Rewards code: ' + code,
-    text: 'Your code is ' + code + '\n\n' +
-          'Type it on the website to see and use your rewards points there. It works for ' +
-          CODE_MINUTES + ' minutes.\n\n' +
-          'If you did not ask for this, you can ignore this email: nothing changes unless the code is typed in.\n\n' +
-          (n.signature || shop)
+}
+
+/* The shop's own inbox, told that something is waiting in Admin > Rewards.
+   Never a customer's details from the platform: only what the shopper
+   typed on the website, which the team sees in the admin anyway. */
+async function tellShop(what) {
+  try {
+    const [contact, n] = await Promise.all([settings('contact'), settings('notifications')]);
+    const to = String((contact && (contact.email || contact.supportEmail)) || (n && n.replyTo) || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return false;
+    return mail(to, 'Rewards: ' + what, [
+      what + '.',
+      'Open your website admin > Rewards > Waiting for you to answer it.'
+    ]);
+  } catch (e) { return false; }
+}
+
+/* A website account's own email (the one they signed up with), read with
+   the website's service key. Used to tell them what the team decided. */
+async function accountEmail(userId) {
+  const site = readConfig();
+  const key = P.serviceKey();
+  if (!site.url || !key) return '';
+  try {
+    const res = await fetch(site.url.replace(/\/+$/, '') + '/auth/v1/admin/users/' + encodeURIComponent(userId), {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    if (!res.ok) return '';
+    const u = await res.json();
+    return R.emailOf({ email: u && (u.email || (u.user && u.user.email)) });
+  } catch (e) { return ''; }
+}
+
+/* A team decision, made with the team member's OWN session, so the
+   database's own check (may_handle_rewards) decides who may make it. */
+async function asTeam(token, fnName, args) {
+  const site = readConfig();
+  const res = await fetch(site.url.replace(/\/+$/, '') + '/rest/v1/rpc/' + fnName, {
+    method: 'POST',
+    headers: { apikey: site.key, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(args)
   });
-  return true;
+  if (res.ok) return;
+  const b = await res.json().catch(() => ({}));
+  const e = new Error((b && b.message) || 'That could not be done.');
+  e.team = true;
+  throw e;
 }
 
 exports.handler = async function (event) {
@@ -163,17 +211,24 @@ exports.handler = async function (event) {
 
       /* Whether the number is real, already someone's, or has no email is
          never said. Only what happens next differs, and only inside here. */
-      let to = '';
+      /* Why no code went is written for the team only (Admin > Rewards),
+         never for the person asking. */
+      let to = '', why = '';
       try {
         const state = await R.readPlatform();
         const cust = R.customerByNumber(state, number);
         const taken = await P.svc('GET', 'rewards_links?cust_no=eq.' + encodeURIComponent(number) + '&select=user_id');
-        if (cust && !(taken && taken.length)) to = R.emailOf(cust);
-      } catch (e) { to = ''; }
+        if (!cust) why = 'This number is not on exactly one customer on the platform (not found, a Walk-in, or used twice).';
+        else if (taken && taken.length) why = 'This number is already linked to another website account.';
+        else if (!(to = R.emailOf(cust))) why = 'The customer record on the platform has no email address.';
+      } catch (e) { to = ''; why = 'The platform could not be read just now.'; }
 
       const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
       let sent = false;
-      if (to) { try { sent = await mailCode(to, code); } catch (e) { sent = false; } }
+      if (to) {
+        sent = await mailCode(to, code);
+        if (!sent) why = 'The code email could not be sent. Check Settings > Notifications.';
+      }
 
       const fresh = !(mine && mine[0]) || new Date(mine[0].window_at) <= new Date(hourAgo);
       await P.svc('POST', 'rewards_codes?on_conflict=user_id', {
@@ -183,7 +238,9 @@ exports.handler = async function (event) {
         tries: 0, sends: fresh ? 1 : mineSends + 1,
         window_at: fresh ? new Date().toISOString() : mine[0].window_at
       }, 'resolution=merge-duplicates,return=minimal');
-      if (!sent) await askTeam(me.id, 'link', { cust_no: number });
+      if (!sent && await askTeam(me.id, 'link', { cust_no: number, note: why })) {
+        await tellShop('a customer asked to link customer number ' + number);
+      }
       return P.json(200, { asked: true, message: SAY_SENT });
     }
 
@@ -213,13 +270,21 @@ exports.handler = async function (event) {
 
     /* ------------------------------------------------------------ join */
     if (action === 'join') {
+      /* Email only: the account's own, already confirmed by Supabase. */
       const name = String(body.name || '').trim().slice(0, 80);
-      const phone = String(body.phone || '').replace(/[^\d+ ]/g, '').trim().slice(0, 30);
-      if (!name || phone.replace(/\D/g, '').length < 9) {
-        return P.json(400, { error: 'Please give your name and a phone number we can reach you on.' });
+      if (!name) return P.json(400, { error: 'Please give your name.' });
+      if (!R.emailOf(me)) return P.json(400, { error: 'Your account has no email address we can use.' });
+      const fresh = await askTeam(me.id, 'join', { name, email: me.email });
+      let emailed = false;
+      if (fresh) {
+        await tellShop(name + ' asked to join Vaultique Rewards');
+        emailed = await mail(R.emailOf(me), 'We have your request to join {shop} Rewards', [
+          'Hello ' + name.split(' ')[0] + ',',
+          'Thank you for asking to join {shop} Rewards. We will register you and email you your customer number, ' +
+          'usually within a day. Once you have it, your points show in your account on the website.'
+        ]);
       }
-      await askTeam(me.id, 'join', { name, phone });
-      return P.json(200, { asked: true });
+      return P.json(200, { asked: true, emailed });
     }
 
     /* ----------------------------------------------------- quote, hold */
@@ -244,6 +309,40 @@ exports.handler = async function (event) {
         throw e;
       }
       return P.json(200, { held: q, number: link.cust_no });
+    }
+
+    /* ------------------------------------------------------------ team
+       Admin > Rewards. The decision is the database's to allow; this only
+       adds the email to the customer afterwards. */
+    if (action === 'team') {
+      const id = String(body.request || '');
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return P.json(400, { error: 'unreadable request' });
+      const token = String((event.headers || {}).authorization || (event.headers || {}).Authorization || '').replace(/^Bearer\s+/i, '');
+      const op = String(body.op || '');
+      try {
+        if (op === 'join_done') await asTeam(token, 'rewards_join_done', { p_request: id, p_cust_no: String(body.number || '') });
+        else if (op === 'approve' || op === 'decline') await asTeam(token, 'rewards_decide', { p_request: id, p_approve: op === 'approve' });
+        else return P.json(400, { error: 'unknown step' });
+      } catch (e) {
+        if (e.team) return P.json(400, { error: e.message });
+        throw e;
+      }
+      if (op === 'decline') return P.json(200, { done: true, emailed: false });
+
+      const q = await P.svc('GET', 'rewards_requests?id=eq.' + encodeURIComponent(id) + '&select=user_id,kind,cust_no,name');
+      const req = q && q[0];
+      let emailed = false;
+      if (req && req.cust_no) {
+        const to = await accountEmail(req.user_id);
+        emailed = await mail(to, req.kind === 'join' ? 'Welcome to {shop} Rewards' : 'Your {shop} Rewards are linked', [
+          req.kind === 'join'
+            ? 'Hello' + (req.name ? ' ' + String(req.name).split(' ')[0] : '') + ', you are now registered for {shop} Rewards.'
+            : 'Your website account is now linked to your {shop} Rewards.',
+          'Your customer number is ' + req.cust_no + '. Give it at the till so your purchases earn points.',
+          'Sign in on the website and open your account to see your points and use them on your next order.'
+        ]);
+      }
+      return P.json(200, { done: true, emailed });
     }
 
     /* ---------------------------------------------------------- unlink */
