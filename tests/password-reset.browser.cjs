@@ -55,6 +55,10 @@ const SUPA = `
           return Promise.resolve({ data: { user: session && session.user }, error: null });
         },
         signInWithPassword: function () { return Promise.resolve({ data: {}, error: { message: 'Invalid login credentials' } }); },
+        signUp: function (o) {
+          (window.__calls.signUp = window.__calls.signUp || []).push(o);
+          return Promise.resolve({ data: { user: { id: 'u9', email: o.email } }, error: null });
+        },
         signOut: function () { window.__calls.signOut++; session = null; return Promise.resolve({ error: null }); },
         mfa: {
           getAuthenticatorAssuranceLevel: function () {
@@ -190,6 +194,31 @@ const server = http.createServer((req, res) => {
     {
       const { ctx, page } = await open('/admin.html', { session: true });
       is(await shown(page, 'admin') && !(await shown(page, 'newpw')), 'an ordinary sign-in is not asked for a new password');
+      await ctx.close();
+    }
+
+    console.log('\nCreating an account: consent first');
+    {
+      const { ctx, page } = await open('/account', {});
+      await page.waitForSelector('.ac-tab', { timeout: 5000 });
+      await page.click('.ac-tab:has-text("Create an account")');
+      await page.waitForSelector('#ac_consent');
+      const box = await page.evaluate(() => {
+        const l = document.querySelector('.ac-consent'); const a = l.querySelector('a');
+        return { text: l.textContent.trim(), href: a && a.getAttribute('href'), ticked: l.querySelector('input').checked };
+      });
+      is(/^I confirm that the information provided is accurate/.test(box.text) && /creating and managing my account/.test(box.text) && !box.ticked,
+         'the sign-up form carries the consent, unticked', box.text);
+      is(box.href === '/policies/privacy-policy', '"Privacy Policy" links to the privacy policy', box.href);
+      await page.fill('#ac_name', 'Chanda'); await page.fill('#ac_email2', 'chanda@example.com'); await page.fill('#ac_pw2', 'Lusaka2026!');
+      await page.click('.ac-body .btn-gold'); await page.waitForTimeout(300);
+      is((await page.evaluate(() => (window.__calls.signUp || []).length)) === 0 &&
+         /tick the box/i.test(await page.textContent('.ac-body .ac-msg')), 'no account is made until it is ticked, and the customer is told why');
+      await page.check('#ac_consent');
+      await page.click('.ac-body .btn-gold'); await page.waitForTimeout(400);
+      const made = await page.evaluate(() => window.__calls.signUp || []);
+      is(made.length === 1 && /^\d{4}-\d\d-\d\dT/.test(made[0].options.data.consent_at || ''),
+         'ticked, the account is made, with when they agreed kept on it', JSON.stringify(made));
       await ctx.close();
     }
 

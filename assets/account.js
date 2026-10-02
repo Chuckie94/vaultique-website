@@ -182,7 +182,9 @@
     return sb.auth.signUp({
       email: String(email || '').trim(),
       password: password,
-      options: { data: { name: String(name || '').trim() } }
+      /* When they agreed, kept on the account itself, so the shop can show
+         it was given. */
+      options: { data: { name: String(name || '').trim(), consent_at: new Date().toISOString() } }
     }).then(function (r) {
       if (r.error) throw r.error;
       var u = readUser(r.data && r.data.user);
@@ -627,6 +629,13 @@
         body.appendChild(joinLbl);
       }
 
+      /* CONSENT, ALWAYS. The same kind of box as at checkout: no account is
+         made until it is ticked. The wording is Settings > Customer
+         Accounts'; "Privacy Policy" in it links to the privacy policy, in a
+         new tab so nothing typed here is lost. */
+      var consent = consentBox();
+      body.appendChild(consent.label);
+
       var msg = el('p', 'ac-msg');
       var go = el('button', 'btn btn-gold', 'Create account');
       go.type = 'button';
@@ -642,6 +651,12 @@
 
       go.addEventListener('click', function () {
         if (!name.value.trim()) { say(msg, 'Please give us a name to call you by.', 'err'); return; }
+        if (!consent.input.checked) {
+          say(msg, 'Please tick the box to confirm your details and give your consent.', 'err');
+          consent.label.classList.remove('is-wrong'); void consent.label.offsetWidth; consent.label.classList.add('is-wrong');
+          consent.input.focus();
+          return;
+        }
         say(msg, 'Creating your account…', 'busy');
         signUp(email.value, pw.value, name.value).then(function (r) {
           /* After the account, never instead of it. Joining a list must
@@ -670,6 +685,30 @@
       tUp.classList.add('active'); tIn.classList.remove('active'); signUpForm();
     });
     signInForm();
+  }
+
+  var SIGNUP_CONSENT = 'I confirm that the information provided is accurate and consent to Vaultique Boutique processing my personal information for the purposes of creating and managing my account, including processing or storage by authorised service providers outside Zambia, in accordance with the Privacy Policy.';
+  function consentBox() {
+    var words = String((api.settings && api.settings.signupConsentText) || '').trim() || SIGNUP_CONSENT;
+    var label = el('label', 'od-consent ac-consent');
+    var input = document.createElement('input');
+    input.type = 'checkbox'; input.id = 'ac_consent';
+    label.appendChild(input);
+    var span = document.createElement('span');
+    var at = words.indexOf('Privacy Policy');
+    var href = typeof renderHooks.privacyHref === 'function' ? renderHooks.privacyHref() : '/policies/privacy-policy';
+    if (at > -1) {
+      span.appendChild(document.createTextNode(words.slice(0, at)));
+      var a = document.createElement('a');
+      a.href = href; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Privacy Policy';
+      span.appendChild(a);
+      span.appendChild(document.createTextNode(words.slice(at + 'Privacy Policy'.length)));
+    } else {
+      span.textContent = words;
+    }
+    label.appendChild(span);
+    input.addEventListener('change', function () { if (input.checked) label.classList.remove('is-wrong'); });
+    return { label: label, input: input };
   }
 
   function passwordRule() {

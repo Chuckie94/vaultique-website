@@ -78,7 +78,9 @@
     savedAddresses: true,
     maxAddresses: 5,
 
-    wishlistFollowsAccount: true
+    wishlistFollowsAccount: true,
+
+    signupConsentText: 'I confirm that the information provided is accurate and consent to Vaultique Boutique processing my personal information for the purposes of creating and managing my account, including processing or storage by authorised service providers outside Zambia, in accordance with the Privacy Policy.'
   };
 
   A.store.registerDefaults('customer-accounts', DEFAULTS);
@@ -116,6 +118,10 @@
               { type: 'toggle', name: 'accountsEnabled', label: 'Offer customer accounts',
                 hint: 'Off removes sign in from the site entirely. Everybody shops as a ' +
                       'guest, which is how the shop runs today.' },
+              { type: 'textarea', name: 'signupConsentText', label: 'What customers agree to when creating an account',
+                maxLength: 600, required: true, showIf: on,
+                hint: 'Always asked: no account is created until the box is ticked. The words "Privacy ' +
+                      'Policy" become a link to your privacy policy.' },
               { type: 'select', name: 'registration', label: 'New accounts',
                 options: REGISTRATION, showIf: on,
                 hint: 'Closed keeps existing customers signed in but stops new sign-ups.' },

@@ -54,11 +54,15 @@ const server = http.createServer((req, res) => {
     is(/RW-ABC234 · customer number VB0007/.test(t) && /60,000 points \(−K30\.00\)/.test(t), 'points promised on a website order, with its reference');
     is(/Customer number VB0007/.test(t) && /confirmed by email code/.test(t), 'linked accounts');
     is(!/balance|points left/i.test(t), 'and no balance from the platform anywhere on the page');
+    await page.fill('.rw-num', 'vb-0042');
+    await page.click('.rw-row:has(.rw-num) button.btn-gold'); await page.waitForTimeout(200);
     await page.click('text=Rung up on the till'); await page.waitForTimeout(200);
     await page.click('text=Approve'); await page.waitForTimeout(200);
     const rpc = await page.evaluate(() => window.RPC);
     is(rpc.some(r => r[0] === 'rewards_settle' && r[1].p_hold === 'h1' && r[1].p_rung_up === true), 'rung up on the till is recorded');
     is(rpc.some(r => r[0] === 'rewards_decide' && r[1].p_request === 'q1' && r[1].p_approve === true), 'and a link approved');
+    is(rpc.some(r => r[0] === 'rewards_join_done' && r[1].p_request === 'q2' && r[1].p_cust_no === 'vb-0042'),
+       'a join finished with the new customer number links the account in one step');
     await page.evaluate(() => { window.FAIL = true; }); await render(); await page.waitForTimeout(300);
     is(/supabase-rewards\.sql/.test(await page.textContent('#host')), 'before its SQL is run, the page says what to run');
     is(errors.length === 0, 'no errors on the page', errors.join(' | '));

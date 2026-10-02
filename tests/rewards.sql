@@ -76,6 +76,35 @@ insert into rc (ok, what) values
   ((select status from public.rewards_holds limit 1) = 'rung_up', 'promised points marked as rung up on the till');
 reset role;
 
+-- A join request completed with the number the platform gave them.
+reset role;
+insert into auth.users (id, email) values ('aaaaaaaa-0000-0000-0000-000000000003', 'eve@example.com');
+insert into public.rewards_requests (user_id, kind, name, phone)
+  values ('aaaaaaaa-0000-0000-0000-000000000003', 'join', 'Eve', '0977 123 456');
+delete from auth.whoami; insert into auth.whoami values ('11111111-1111-1111-1111-111111111111');
+set role authenticated;
+do $$ begin
+  begin
+    perform public.rewards_join_done((select id from public.rewards_requests where kind = 'join'), 'VB-0007');
+    insert into rc (ok, what) values (false, 'a join cannot be given a number already linked to someone else');
+  exception when others then insert into rc (ok, what) values (true, 'a join cannot be given a number already linked to someone else'); end;
+end $$;
+select public.rewards_join_done((select id from public.rewards_requests where kind = 'join'), 'vb-0042');
+insert into rc (ok, what) values
+  ((select cust_no from public.rewards_links where user_id = 'aaaaaaaa-0000-0000-0000-000000000003') = 'VB0042'
+     and (select status from public.rewards_requests where kind = 'join') = 'done',
+   'a join marked done with the new customer number links the account at once');
+reset role;
+delete from auth.whoami; insert into auth.whoami values ('33333333-3333-3333-3333-333333333333');
+set role authenticated;
+do $$ begin
+  begin
+    perform public.rewards_join_done(gen_random_uuid(), 'VB0050');
+    insert into rc (ok, what) values (false, 'staff without Orders cannot complete a join');
+  exception when others then insert into rc (ok, what) values (true, 'staff without Orders cannot complete a join'); end;
+end $$;
+reset role;
+
 -- One number, one account.
 do $$ begin
   begin

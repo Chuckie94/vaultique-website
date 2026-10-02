@@ -138,12 +138,24 @@
               { label: 'Decline', run: function () { return rpc('rewards_decide', { p_request: q.id, p_approve: false }); } }
             ]);
           } else {
+            /* Registered on the platform by the team: type the number it
+               gave them, and the website account is linked there and then. */
+            var numBox = document.createElement('input');
+            numBox.type = 'text'; numBox.className = 'rw-num'; numBox.maxLength = 30;
+            numBox.placeholder = 'Customer number';
+            numBox.setAttribute('aria-label', 'The customer number the platform gave them');
             row(reqBody, 'Register ' + (q.name || 'a new customer'),
-              (q.phone || '') + ' · asked ' + when(q.created_at) +
-              '. Register them on the platform, then tell them their customer number so they can link it.', [
-              { label: 'Done', primary: true, run: function () { return rpc('rewards_decide', { p_request: q.id, p_approve: true }); } },
+              (q.phone || '') + ' \u00b7 asked ' + when(q.created_at) +
+              '. Register them on the platform, then type the customer number it gave them and press Link.', [
+              { label: 'Link', primary: true, run: function () {
+                  var n = numBox.value.trim();
+                  if (!n) { numBox.focus(); return Promise.reject(new Error('Type the customer number the platform gave them.')); }
+                  return rpc('rewards_join_done', { p_request: q.id, p_cust_no: n });
+                } },
               { label: 'Decline', run: function () { return rpc('rewards_decide', { p_request: q.id, p_approve: false }); } }
             ]);
+            var acts = reqBody.lastChild.querySelector('.rw-row-a');
+            acts.insertBefore(numBox, acts.firstChild);
           }
         });
 

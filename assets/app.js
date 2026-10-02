@@ -169,7 +169,8 @@
                   'are kept, since we need them for our own records.',
     orderHistory: true, historyScope: 'all', historyMonths: 12,
     savedAddresses: true, maxAddresses: 5,
-    wishlistFollowsAccount: true
+    wishlistFollowsAccount: true,
+    signupConsentText: ''
   };
   // Settings > Delivery & Collection. Defaults match the admin's, and the
   // wording matches the paragraph that used to be printed into the product
@@ -928,6 +929,7 @@
     /* The database refuses an order while the shop is shut. This is what
        lets the owner place one anyway while they are testing. */
     ACCT.hooks.previewKey = previewKey;
+    ACCT.hooks.privacyHref = privacyHref;
     /* Told what the shop has decided straight away, so the router knows
        whether #/account is a page here before the client has downloaded. */
     ACCT.configure(ACCOUNTS);

@@ -727,7 +727,10 @@ shows them only their points and what they are worth.
   website never shows that email, or says whether the number exists.
 - A number with no email on the platform, or on two records, goes to
   **Admin > Rewards** for you to check on the platform and approve.
-- Not registered yet? They ask to join, and you register them on the platform.
+- Not registered yet? They ask to join. Register them on the platform, then in
+  **Admin > Rewards** type the customer number the platform gave them and press
+  **Link**: their website account is linked at once, and they see their points
+  (their welcome points first) next time they open their account.
 - Linked, they see their points, what they are worth and the milestone, and
   can use them on a WhatsApp order. Points are not offered when paying online
   yet.
@@ -966,6 +969,11 @@ piece rather than the shop. Category pages take the Shop settings and name
 themselves.
 
 ### Settings > Customer Accounts
+
+**Consent when creating an account.** Always asked: no account is made until the
+customer ticks the box. **What customers agree to when creating an account**
+holds the wording; "Privacy Policy" in it links to your privacy policy. When they
+agreed is kept on the account itself.
 
 Whether customers can have an account, and what one is worth having.
 

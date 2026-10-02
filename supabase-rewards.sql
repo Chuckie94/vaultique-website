@@ -176,6 +176,37 @@ begin
 end;
 $$;
 
+-- A request to join, completed: the team has registered the customer on
+-- the platform and types the customer number it was given. The website
+-- account is linked to it there and then -- no code is needed, because the
+-- team made that record itself.
+create or replace function public.rewards_join_done(p_request uuid, p_cust_no text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r public.rewards_requests;
+  v_no text := upper(regexp_replace(coalesce(p_cust_no, ''), '[^0-9A-Za-z]', '', 'g'));
+begin
+  if not public.may_handle_rewards() then raise exception 'not permitted'; end if;
+  if v_no !~ '^[0-9A-Z]{3,24}$' then raise exception 'Type the customer number the platform gave them.'; end if;
+  select * into r from public.rewards_requests where id = p_request for update;
+  if not found or r.status <> 'waiting' or r.kind <> 'join' then
+    raise exception 'That request has already been answered.';
+  end if;
+  if exists (select 1 from public.rewards_links where cust_no = v_no and user_id <> r.user_id) then
+    raise exception 'Customer number % is already linked to another website account.', v_no;
+  end if;
+  insert into public.rewards_links (user_id, cust_no, how) values (r.user_id, v_no, 'team')
+    on conflict (user_id) do update set cust_no = excluded.cust_no, how = 'team', linked_at = now();
+  update public.rewards_requests
+     set status = 'done', cust_no = v_no, decided_at = now(), decided_by = auth.uid()
+   where id = p_request;
+end;
+$$;
+
 -- Unlinking an account (a customer number typed in error, or a phone
 -- handed on). The customer's points on the platform are untouched.
 create or replace function public.rewards_unlink(p_user uuid)
@@ -194,10 +225,12 @@ revoke all on function public.may_handle_rewards() from public, anon;
 revoke all on function public.rewards_decide(uuid, boolean) from public, anon;
 revoke all on function public.rewards_settle(uuid, boolean) from public, anon;
 revoke all on function public.rewards_unlink(uuid) from public, anon;
+revoke all on function public.rewards_join_done(uuid, text) from public, anon;
 grant execute on function public.may_handle_rewards() to authenticated;
 grant execute on function public.rewards_decide(uuid, boolean) to authenticated;
 grant execute on function public.rewards_settle(uuid, boolean) to authenticated;
 grant execute on function public.rewards_unlink(uuid) to authenticated;
+grant execute on function public.rewards_join_done(uuid, text) to authenticated;
 
 notify pgrst, 'reload schema';
 
@@ -209,5 +242,6 @@ select part, case when done then 'OK' else 'NOT DONE' end as status
     ('rewards_requests', exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'rewards_requests')),
     ('rewards_holds',    exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'rewards_holds')),
     ('rewards_decide',   exists (select 1 from pg_proc where proname = 'rewards_decide')),
-    ('rewards_settle',   exists (select 1 from pg_proc where proname = 'rewards_settle'))
+    ('rewards_settle',   exists (select 1 from pg_proc where proname = 'rewards_settle')),
+    ('rewards_join_done', exists (select 1 from pg_proc where proname = 'rewards_join_done'))
   ) t(part, done);

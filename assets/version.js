@@ -29,6 +29,6 @@
 window.VBP_VERSION = {
   version: '1.38.1',
   build: 63,
-  builtAt: '2026-10-02T14:03:46Z',
-  notes: 'The product feed and its change bell read through the platform\'s products-only door with the public key, and no longer use the platform\'s secret key; what shoppers see is unchanged. If neither way can read the products the feed says so instead of showing an empty shop. Needs the platform\'s door SQL (build 454). Keep POS_SUPABASE_KEY: rewards still use it.'
+  builtAt: '2026-10-02T14:03:56Z',
+  notes: 'Creating an account needs the consent box ticked (wording in Settings > Customer Accounts; when they agreed is kept on the account). Admin > Rewards: a join request is finished by typing the customer number the platform gave them, which links the account at once. Needs the small rewards SQL update.'
 };
