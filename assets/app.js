@@ -60,6 +60,7 @@
     showOutOfStock: true, showSku: true, showLowStock: true, showCategory: true,
     showBadges: true, showReviews: true, defaultSort: 'featured',
     photoAutoSwipe: false, photoSwipeSeconds: 4,
+    rewardsOnline: false,
     enquiries: true, wishlist: true, sharing: true, customerReviews: true,
     whatsappCheckout: true,
     requireName: true, requirePhone: true, requireEmail: false, requireAddress: false,
@@ -936,6 +937,7 @@
     function begin(client) {
     ACCT.start(client, ACCOUNTS).then(function () {
       paintAccount();
+      paintRewards();
       /* A session found after the page had already drawn: the account
          view needs redrawing, or it would sit there offering a sign-in to
          somebody already signed in. */
@@ -957,6 +959,8 @@
 
     ACCT.onChange(function () {
       paintAccount();
+      paintRewards();
+      if (window.VBP_REWARDS) window.VBP_REWARDS.forget();   // another person's points are not this one's
       if (currentRoute() === 'account') renderAccount();
     });
     }
@@ -1549,6 +1553,14 @@
     if (offersBoth() && details && details.how) {
       lines.push(details.how === 'collection' ? 'Collecting in person' : 'To be delivered');
     }
+    /* Points promised on the server, for the till to take when the order
+       is rung up under this customer number. */
+    if (details && details.rewards) {
+      var rw = details.rewards, RWm = window.VBP_REWARDS;
+      lines.push('Rewards: customer number ' + rw.number + ', use ' + RWm.points(rw.points) +
+                 ' points (−' + RWm.money(rw.value) + '). Ref ' + rw.ref + '.');
+      lines.push('To pay after points: ' + RWm.money(rw.pay));
+    }
     /* The order says the customer agreed, so the shop has it in writing. */
     if (details && details.consent) lines.push('Privacy consent: given');
     return lines.join('\n');
@@ -1643,6 +1655,7 @@
         ? '<label class="rv-lbl" for="od_notes">Anything else <span class="od-opt">optional</span></label>' +
           '<textarea id="od_notes" rows="2" maxlength="300" placeholder="A landmark, a gift message, a preferred day"></textarea>'
         : '') +
+      '<div id="odPoints"></div>' +
       consentHtml() +
       '<div class="rv-actions">' +
         '<button class="btn btn-wa" id="odGo">' + waIcon() + 'Continue on WhatsApp</button>' +
@@ -1651,6 +1664,24 @@
       '</div>';
 
     $('#odClose').addEventListener('click', closeOrderForm);
+
+    /* VAULTIQUE REWARDS. A signed-in customer whose account is linked is
+       offered their points, worked out on the server from the platform's
+       own figures. Never in the way: if rewards cannot be reached, the
+       box simply does not appear. */
+    var RW = window.VBP_REWARDS, rwQuote = null;
+    if (RW && RW.ready()) {
+      RW.quote(orderTotal(order)).then(function (q) {
+        var slot = $('#odPoints', body);
+        if (!q || !slot || !document.body.contains(slot)) return;
+        rwQuote = q;
+        slot.innerHTML = '<label class="od-points"><input type="checkbox" id="od_points">' +
+          '<span>Use my rewards points: <b>' + esc(RW.points(q.points)) + ' points</b> take <b>' +
+          esc(RW.money(q.value)) + '</b> off this order.</span></label>';
+      });
+    }
+    function pointsWanted() { var b = $('#od_points', body); return !!(b && b.checked && rwQuote); }
+
     var cBox = $('#od_consent', body);
     if (cBox) cBox.addEventListener('change', function () {
       consentNow = cBox.checked;
@@ -1787,6 +1818,28 @@
         });
       }
 
+      if (pointsWanted()) {
+        /* The points are promised on the server first, recomputed there,
+           and only then written into the message. The tab is opened now,
+           while the tap still counts as the customer's, and filled in once
+           the server has answered. */
+        var tab = window.open('', '_blank');
+        var ref = RW.newRef();
+        msg.textContent = 'Using your points…'; msg.className = 'rv-msg';
+        RW.hold(ref, orderTotal(order)).then(function (r) {
+          var h = r.held;
+          d.rewards = { ref: ref, number: r.number, points: h.points, value: h.value,
+                        pay: Math.max(0, Math.round((orderTotal(order) - h.value) * 100) / 100) };
+          var u = waUrl(orderNumber(), composeOrder(order, d));
+          closeOrderForm();
+          if (tab) tab.location.href = u; else window.location.href = u;
+        }, function (e) {
+          if (tab) tab.close();
+          msg.textContent = e.message + ' Untick the points to order without them.';
+          msg.className = 'rv-msg err';
+        });
+        return;
+      }
       var url = waUrl(orderNumber(), composeOrder(order, d));
       closeOrderForm();
       if (url) window.open(url, '_blank', 'noopener');
@@ -1815,6 +1868,11 @@
         return;
       }
       if (!consentGiven(msg)) return;
+      if (pointsWanted()) {
+        msg.textContent = 'Rewards points can be used when you order on WhatsApp. Untick them to pay online.';
+        msg.className = 'rv-msg err';
+        return;
+      }
       d.consent = true;            // carried to "WhatsApp instead" from the quote, too
       var keep = savedBuyer();
       fields.forEach(function (f) {
@@ -2715,6 +2773,7 @@
         for (var k in d) {
           if (Object.prototype.hasOwnProperty.call(d, k) && d[k] !== null && d[k] !== undefined) SHOP[k] = d[k];
         }
+        paintRewards();
       })
       .catch(function () {}).then(done);
     fetch(base + '/rest/v1/site_settings?key=eq.reviews&select=data', { headers: h })
@@ -4727,8 +4786,38 @@
     var y = $('#year'); if (y) y.textContent = YEAR;
   }
 
+  /* VAULTIQUE REWARDS (Settings > Shopping). With it on and customer
+     accounts open, the homepage band leads to the customer's account,
+     where their points are; otherwise it is the WhatsApp message it
+     always was. */
+  function rewardsLive() {
+    return !!SHOP.rewardsOnline && !!ACCT && ACCT.enabled();
+  }
+  function paintRewards() {
+    if (window.VBP_REWARDS) window.VBP_REWARDS.enabled = !!SHOP.rewardsOnline;
+    var b = $('#rewards .btn');
+    if (!b) return;
+    if (rewardsLive()) {
+      if (!b.getAttribute('data-rw')) {
+        b.setAttribute('data-rw', '1');
+        b.addEventListener('click', function (e) {
+          if (!rewardsLive()) return;
+          e.preventDefault();
+          go('account');
+        });
+      }
+      b.removeAttribute('target');
+      b.href = pathFor('account');
+      b.textContent = (ACCT.signedIn() ? 'See my rewards' : 'Sign in to see your rewards');
+    } else if (b.getAttribute('data-wa') != null) {
+      b.href = waGeneral(b.getAttribute('data-wa') || '');
+      b.textContent = 'Join the rewards programme';
+    }
+  }
+
   function bindWa() {
     $all('[data-wa]').forEach(function (a) { a.href = waGeneral(a.getAttribute('data-wa') || ''); });
+    paintRewards();
     $all('[data-wa-enq]').forEach(function (a) { a.href = waEnquiry(a.getAttribute('data-wa-enq') || ''); });
     /* The chat panel needs the same number, and it is a separate file
        with no way to reach these settings. It has always looked for this

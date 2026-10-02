@@ -101,6 +101,7 @@
       <div class="tab" data-tab="analytics">Analytics</div>
       <div class="tab active" data-tab="products">Products &amp; Photos</div>
       <div class="tab" data-tab="orders">Orders</div>
+      <div class="tab" data-tab="rewards">Rewards</div>
       <div class="tab" data-tab="chats">Live Chats</div>
       <div class="tab" data-tab="reviews">Reviews</div>
       <div class="tab" data-tab="subscribers">Subscribers</div>
@@ -112,6 +113,7 @@
     <!-- DASHBOARD -->
     <div id="tab-dashboard" class="hide"></div>
     <div id="tab-analytics" class="hide"></div>
+    <div id="tab-rewards" class="hide"></div>
 
     <!-- PRODUCTS -->
     <div id="tab-products">
@@ -214,6 +216,7 @@
 <script src="assets/admin/security-core.js"></script>
 <script src="assets/admin/dashboard.js"></script>
 <script src="assets/admin/analytics.js"></script>
+<script src="assets/admin/rewards.js"></script>
 <script src="assets/admin/activity-log.js"></script>
 <!-- Before live-chat.js: it reads VBP_CHAT_ALERTS when the page renders. -->
 <script src="assets/admin/chat-alerts.js"></script>
@@ -438,6 +441,8 @@
   var mustChangePassword = false;
 
   function may(what) {
+    /* Rewards go with Orders: the points promised are on orders. */
+    if (what === 'rewards') what = 'orders';
     if (iAmOwner) return true;
     if (!perms) return true;         // question never answered: nothing is hidden
     return perms[what] === true;
@@ -813,7 +818,7 @@
   // ---------- navigation ----------
   // Routes are hash based: #/policies, #/settings, #/settings/general.
   // With no hash the admin opens on Products & Photos, as it always has.
-  var TABS = ['dashboard', 'analytics', 'products', 'orders', 'chats', 'reviews', 'subscribers', 'policies', 'settings', 'activity'];
+  var TABS = ['dashboard', 'analytics', 'products', 'orders', 'rewards', 'chats', 'reviews', 'subscribers', 'policies', 'settings', 'activity'];
   var pageCtx = null;
   var setIndexBuilt = false;
 
@@ -902,6 +907,7 @@
     if (which === 'policies') loadPolicies();
     if (which === 'dashboard') renderPage('dashboard', 'tab-dashboard');
     if (which === 'analytics') renderPage('analytics', 'tab-analytics');
+    if (which === 'rewards') renderPage('rewards', 'tab-rewards');
     if (which === 'activity') renderPage('activity', 'tab-activity');
     if (which === 'chats') renderPage('chats', 'tab-chats');
     if (which === 'settings') renderSettings(sub);

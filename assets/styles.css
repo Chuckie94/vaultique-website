@@ -1093,6 +1093,22 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 @media (max-width:560px){ .ac-addr{flex-direction:column} }
 .od-opt{font-size:9.5px;letter-spacing:.1em;color:var(--muted);text-transform:none;margin-left:6px;opacity:.8}
 .od-note{font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:14px}
+/* Vaultique Rewards: the points at checkout, and the account card. */
+.od-points{display:flex;gap:10px;align-items:flex-start;margin:14px 0 0;padding:12px 14px;border:1px solid var(--gold);
+  border-radius:var(--radius-lg);background:rgba(201,162,74,.08);cursor:pointer;font-size:13px;line-height:1.55;
+  text-transform:none;letter-spacing:0;color:var(--navy)}
+.od-points input{flex:none;width:18px;height:18px;margin:2px 0 0;accent-color:var(--navy)}
+.rw-points{display:flex;align-items:baseline;gap:8px;margin:6px 0 2px}
+.rw-n{font-family:var(--font-head);font-size:40px;color:var(--navy);line-height:1}
+.rw-l{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.rw-worth{color:var(--gold-deep);font-size:14px;margin:0 0 12px}
+.rw-bar{height:8px;border-radius:8px;background:var(--line);overflow:hidden;margin:6px 0 6px}
+.rw-bar i{display:block;height:100%;background:var(--gold);border-radius:8px}
+.rw-foot{font-size:12px;color:var(--muted);margin-top:12px}
+.rw-note{font-size:13px;color:var(--gold-deep);margin:8px 0}
+.rw-code{margin-top:14px}
+.rw-join{margin-top:18px;font-size:13px}
+.rw-join summary{cursor:pointer;color:var(--navy)}
 /* The consent box before any order is sent. */
 .od-consent{display:flex;gap:10px;align-items:flex-start;margin:16px 0 2px;padding:12px 14px;
   border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--paper);cursor:pointer;

@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.37.1',
-  build: 61,
-  builtAt: '2026-10-01T12:43:59Z',
-  notes: 'Checkout consent is always required: there is no switch to turn it off, buy buttons no longer carry a WhatsApp link that could skip it, and empty wording falls back to the standard words. The "kept on this device" line is gone from the order form. The Dashboard is checked on the first day of a month. No SQL needed.'
+  version: '1.38.1',
+  build: 63,
+  builtAt: '2026-10-02T14:03:46Z',
+  notes: 'The product feed and its change bell read through the platform\'s products-only door with the public key, and no longer use the platform\'s secret key; what shoppers see is unchanged. If neither way can read the products the feed says so instead of showing an empty shop. Needs the platform\'s door SQL (build 454). Keep POS_SUPABASE_KEY: rewards still use it.'
 };

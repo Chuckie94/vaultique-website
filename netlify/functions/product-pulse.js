@@ -53,6 +53,43 @@ const POS_KEY =
 // The same row /api/products reads. See the note there about row 1 and row 100.
 const STATE_ROW = String(process.env.POS_STATE_ROW || '100').trim();
 
+// THE DOOR'S BELL (the platform's build 454). Like /api/products, the pulse
+// used to need the secret key in POS_SUPABASE_KEY just to read one timestamp,
+// because app_state is locked and that key opens the whole business. The
+// platform's Supabase now answers "when did the shop window last change"
+// through vbp_website_products_stamp, asked with the publishable key. It is
+// the time the products' own row was last saved, so it moves when the
+// products could have, and not for a payslip or a leave request.
+//
+// Asked first. Anything but a proper answer and the pulse reads row 100's
+// time the way it always has, below.
+const DOOR = 'vbp_website_products';
+const PUBLIC_KEY =
+  String(process.env.POS_PUBLIC_KEY || '').trim() ||
+  'sb_publishable_wj1gGEwOnLu_HlBRkbeZvA_tCHEk1vR';
+
+async function doorStamp() {
+  try {
+    const res = await fetch(`${POS_URL}/rest/v1/rpc/${DOOR}_stamp`, {
+      method: 'POST',
+      headers: {
+        apikey: PUBLIC_KEY,
+        Authorization: `Bearer ${PUBLIC_KEY}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: '{}',
+    });
+    if (!res.ok) return '';
+    const body = await res.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return '';
+    if (body.door !== DOOR || !body.stamp) return '';
+    return String(body.stamp);
+  } catch (e) {
+    return '';
+  }
+}
+
 const PULSE_TABLE = 'product_pulse';
 const PULSE_ID = 1;
 
@@ -65,6 +102,8 @@ function writeKey() {
 }
 
 async function posUpdatedAt() {
+  const viaDoor = await doorStamp();
+  if (viaDoor) return viaDoor;
   const res = await fetch(
     `${POS_URL}/rest/v1/app_state?id=eq.${STATE_ROW}&select=updated_at`,
     {

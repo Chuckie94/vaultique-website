@@ -938,3 +938,14 @@
 /* Handed over but not yet answered */
 .lc-taken.is-pending{background:#fdf3dc;color:#8a5a00}
 .lc-lock.is-pending{background:#fdf6e6;border-color:#f0dfb4}
+
+  /* ---- Admin > Rewards ---- */
+  .rw-list{margin-top:8px}
+  .rw-row{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+  .rw-row:last-child{border-bottom:none}
+  .rw-row-t{min-width:0}
+  .rw-row-h{font-size:14px;color:var(--navy);font-weight:500}
+  .rw-row-s{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.5}
+  .rw-row-a{display:flex;gap:8px;flex:none;flex-wrap:wrap;justify-content:flex-end}
+  #tab-rewards .card{margin-bottom:14px}
+  @media(max-width:640px){ .rw-row{flex-direction:column;align-items:flex-start} .rw-row-a{justify-content:flex-start} }

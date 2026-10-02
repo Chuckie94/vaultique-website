@@ -12,6 +12,10 @@
 // They are kept server-side only. You may override them with Netlify
 // environment variables (Site settings > Environment variables) named
 // POS_SUPABASE_URL and POS_SUPABASE_KEY for cleaner separation.
+//
+// POS_SUPABASE_KEY is only for the old way of reading, below the door (see
+// THE PRODUCTS-ONLY DOOR). Once /api/products says "source": "door" it is
+// not used at all, and it should be deleted from Netlify.
 const POS_URL =
   process.env.POS_SUPABASE_URL || 'https://xbrchpxdmptwuvivdiqj.supabase.co';
 const POS_KEY =
@@ -36,6 +40,54 @@ const POS_KEY =
 // Overridable, because a number this important should never be a number only
 // one file knows.
 const STATE_ROW = String(process.env.POS_STATE_ROW || '100').trim();
+
+// THE PRODUCTS-ONLY DOOR (the platform's build 454).
+//
+// app_state has been locked since 18 September: somebody who has not signed
+// in gets nothing from it. Database rules work on whole rows, so the only way
+// this file could still read the products was the secret key in
+// POS_SUPABASE_KEY, and that key opens the whole business: every sale,
+// customer, payslip and staff record, and it can change them too.
+//
+// The platform's Supabase now has a door, vbp_website_products, that hands out
+// the shop window and nothing else: only active pieces, only the fields this
+// file reads, and in place of the stock count the three answers this file has
+// always given every visitor (available, lowStock, maxQty). It reads the Stock
+// section, row 102, where the platform keeps the products, not row 100's copy.
+// It is asked with the publishable key, which is public already, so once it
+// answers this site needs no secret key at all.
+//
+// Asked first, every time. Anything but a proper answer from it (not there
+// yet, an error, a reply of any other shape) and the feed reads the way it
+// always has, further down. So this file can go up before or after the door's
+// SQL is run, and the catalogue never stops.
+const DOOR = 'vbp_website_products';
+const PUBLIC_KEY =
+  String(process.env.POS_PUBLIC_KEY || '').trim() ||
+  'sb_publishable_wj1gGEwOnLu_HlBRkbeZvA_tCHEk1vR';
+
+async function readDoor() {
+  try {
+    const res = await fetch(`${POS_URL}/rest/v1/rpc/${DOOR}`, {
+      method: 'POST',
+      headers: {
+        apikey: PUBLIC_KEY,
+        Authorization: `Bearer ${PUBLIC_KEY}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: '{}',
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    // Its own name and a list, or it is not the door's answer.
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+    if (body.door !== DOOR || !Array.isArray(body.products)) return null;
+    return body;
+  } catch (e) {
+    return null;
+  }
+}
 
 // THE DETAILS A LISTING NEEDS.
 //
@@ -134,8 +186,15 @@ function weightDetail(p) {
 }
 
 // The ONLY fields permitted to reach the public. Everything else is dropped.
-function toSafeProduct(p) {
+//
+// `door` is true for a piece that came through the products-only door, which
+// never carries the stock: it carries the three answers worked out from it
+// instead, by the same rules as the lines below. Passed as `true` and nothing
+// else, because .map() hands a second argument (the index) to whatever it
+// calls.
+function toSafeProduct(p, door) {
   if (!p || typeof p !== 'object') return null;
+  door = door === true;
   const name = clean(p.name);
   const sku = clean(p.sku);
   if (!name || !sku) return null; // need both to be a real, linkable product
@@ -153,14 +212,15 @@ function toSafeProduct(p) {
     color: clean(p.color) || clean(p.colour),
     material: clean(p.material),
     // Whether it can be bought at all.
-    available: toNumber(p.stock) > 0,
+    available: door ? p.available === true : toNumber(p.stock) > 0,
     // And so is scarcity. The shop can show "only a few left" without the
     // count ever crossing this line: the comparison happens here and only
     // its answer is sent. LOW_STOCK_AT sets where "a few" begins.
-    lowStock: toNumber(p.stock) > 0 && toNumber(p.stock) <= LOW_STOCK_AT,
+    lowStock: door ? doorLowStock(p)
+                   : toNumber(p.stock) > 0 && toNumber(p.stock) <= LOW_STOCK_AT,
     // How many of this piece a customer's cart may hold. See cartCeiling
     // below: it is the stock count, but never more than CART_CEILING.
-    maxQty: cartCeiling(p.stock),
+    maxQty: door ? doorCeiling(p.maxQty) : cartCeiling(p.stock),
     // The price this piece used to be, IF the till happens to record one.
     // Some point of sale systems keep a "was" price beside the current one
     // and some do not; this passes it through when it is there so the shop
@@ -271,6 +331,26 @@ function cartCeiling(stock) {
   // A part-unit left over (0.5 of something sold by the metre) is still in
   // stock, and still one piece a customer can ask for.
   return Math.min(Math.max(1, Math.floor(n)), CART_CEILING);
+}
+
+// THE SAME THREE ANSWERS, FROM THE DOOR. The door works them out from the
+// stock by the rules above (CART_CEILING 99, "a few" at 3) and sends only the
+// answers. Taken as they come, and kept within those rules whatever arrives.
+function doorCeiling(m) {
+  const n = Math.floor(toNumber(m));
+  return n > 0 ? Math.min(n, CART_CEILING) : 0;
+}
+
+// The door answers "only a few left" at 3, this file's own figure unless
+// LOW_STOCK_AT says otherwise. When it does, the answer is worked out here
+// from the cart limit, which is the stock to the whole piece below it: exact
+// for anything counted in whole pieces, which is everything this shop sells
+// by the piece.
+const DOOR_LOW_AT = 3;
+function doorLowStock(p) {
+  if (p.available !== true) return false;
+  if (LOW_STOCK_AT === DOOR_LOW_AT) return p.lowStock === true;
+  return doorCeiling(p.maxQty) <= LOW_STOCK_AT;
 }
 
 // The feed WITHOUT the cart ceiling, for the fingerprint below. The ceiling
@@ -402,6 +482,32 @@ exports.handler = async function (event) {
   }
 
   try {
+    // The door first. Its pieces go through exactly the same steps as the
+    // ones read the old way below, so the answer is the same, field for
+    // field: the same filter, the same safe fields, the same fingerprint.
+    const door = await readDoor();
+    if (door) {
+      const fromDoor = door.products
+        .filter((p) => p && p.active === true)
+        .map((p) => toSafeProduct(p, true))
+        .filter(Boolean);
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          products: fromDoor,
+          count: fromDoor.length,
+          generatedAt: new Date().toISOString(),
+          version: fingerprint(withoutCeiling(fromDoor)),
+          // ADDED: which way this answer was read. "door" is the
+          // products-only door; "row" is the old way, with the secret key.
+          source: 'door',
+        }),
+      };
+    }
+
+    // THE OLD WAY, unchanged: the whole row, read with POS_KEY. Only reached
+    // when the door has not answered.
     const res = await fetch(
       `${POS_URL}/rest/v1/app_state?id=eq.${STATE_ROW}&select=*`,
       {
@@ -429,12 +535,34 @@ exports.handler = async function (event) {
     const rows = await res.json();
     const row = Array.isArray(rows) ? rows[0] : rows;
     const state = findStateObject(row);
-    const rawProducts =
-      state && Array.isArray(state.products) ? state.products : [];
+
+    // "I CANNOT SEE THE SHOP" IS NOT "THE SHOP HAS NO PRODUCTS".
+    //
+    // The lock on app_state does not make a refused read fail: it answers
+    // 200 with an empty list, exactly as for a row that does not exist. Read
+    // that way, the shop looked empty, and every open page went blank with
+    // it. Once the secret key has been deleted that is what the old way always
+    // gets, so if the door ever fails to answer, this says so instead: an
+    // error, which the storefront meets by keeping what is on screen.
+    if (!row || !state) {
+      return {
+        statusCode: 503,
+        headers: Object.assign({}, headers, { 'Cache-Control': 'no-store' }),
+        body: JSON.stringify({
+          error:
+            'The products could not be read just now. The catalogue is NOT ' +
+            'empty: neither the products-only door nor the old way answered.',
+          sourceUnreadable: true,
+          products: [],
+          count: 0,
+        }),
+      };
+    }
+    const rawProducts = Array.isArray(state.products) ? state.products : [];
 
     const products = rawProducts
       .filter((p) => p && p.active === true) // only products marked active
-      .map(toSafeProduct)
+      .map((p) => toSafeProduct(p))
       .filter(Boolean);
 
     return {
@@ -452,6 +580,7 @@ exports.handler = async function (event) {
         // actually changed, so a refresh triggered by a signal that turned out
         // to mean nothing costs one small request and no repaint at all.
         version: fingerprint(withoutCeiling(products)),
+        source: 'row',
       }),
     };
   } catch (err) {

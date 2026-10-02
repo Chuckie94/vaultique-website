@@ -24,6 +24,7 @@ vaultique-website/
 ├── supabase-chat-handover.sql run once: "Handed to" until the colleague replies
 ├── supabase-analytics-live.sql run once: live figures, instant "here now", the visitor map
 ├── supabase-analytics-sources.sql run once: where visitors came from
+├── supabase-rewards.sql      run once: Vaultique Rewards on the website (links, codes, promised points)
 ├── netlify.toml               Netlify config + /api/products redirect
 ├── netlify/
 │   └── functions/
@@ -56,6 +57,7 @@ to anybody: `netlify.toml` answers 404 to the whole folder.
 
 ```
 node tests/product-sync.test.cjs        the product feed and the pulse
+node tests/product-door.test.cjs        the feed and the pulse through the products-only door
 node tests/analytics.browser.cjs        what a visit records, in a real browser
 psql -d <scratch db> -f tests/analytics-fixture.sql \
                      -f supabase-analytics.sql \
@@ -87,6 +89,11 @@ node tests/analytics-live.browser.cjs     the Analytics page updates by itself, 
 node tests/motion.browser.cjs            fades, the cart confirmation, photos that swipe by themselves
 psql -d <scratch db> -f tests/analytics-fixture.sql -f supabase-analytics.sql \
      -f supabase-analytics-sources.sql -f tests/analytics-sources.sql   where visitors came from
+node tests/rewards-engine.test.cjs       the website's points match the till's, to the point
+node tests/rewards-function.test.cjs     linking, live points and promises; nothing about a customer said or kept
+node tests/rewards.browser.cjs           the account card and using points on a WhatsApp order
+node tests/admin-rewards.browser.cjs     Admin > Rewards
+psql -d <scratch db> -f tests/analytics-fixture.sql -f supabase-rewards.sql -f tests/rewards.sql   who may read and change what
 node tests/visit-where.test.cjs           where a visit came from: Netlify's place, no internet address
 psql -d <scratch db> -f tests/chat-jobs-fixture.sql -f tests/chat-realtime-fixture.sql \
      -f supabase-chat-realtime.sql -f tests/chat-realtime.sql   the shop typing reaches the customer live
@@ -148,9 +155,19 @@ netlify deploy --prod
 Either way, after deploy open `https://YOUR-SITE.netlify.app/api/products` — you
 should see product JSON. If you do, the live feed is working.
 
-### Optional hardening
-Move the POS read key into Netlify env vars (Site settings → Environment
-variables): `POS_SUPABASE_URL` and `POS_SUPABASE_KEY`.
+### The products-only door (website build 63)
+The product feed and its change bell no longer need the platform's secret
+key. They ask the platform's **products-only door** (`vbp_website_products`,
+created by the platform's `tools/vbp-website-door.sql`, build 454) with the
+publishable key, and get the shop window and nothing else. Until that SQL has
+been run they read the old way, so nothing stops in between.
+
+Check it at `https://YOUR-SITE.netlify.app/api/products`: near the end it says
+`"source":"door"`. `"source":"row"` means the old way is still in use.
+
+`POS_SUPABASE_KEY` still has to stay in Netlify for now: **Vaultique Rewards**
+(below, in SETUP.md) reads customers and sales with it. It can go once the
+rewards have a door of their own.
 
 ### The website's own Supabase, as seen by the functions
 `/robots.txt`, `/sitemap.xml` and the email sender run on Netlify rather than in

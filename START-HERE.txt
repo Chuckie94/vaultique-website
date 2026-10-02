@@ -1,18 +1,39 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD
-==================================================
-The whole site, cumulative. Upload this and you are up to date.
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 63
+====================================================
+The whole site, cumulative: your build 62 (with Vaultique Rewards) and the
+products-only door. Upload this and you are up to date.
 
-103 files. Your POS / Business Platform and its database are untouched.
+165 files. config.js is not in this folder, on purpose (see STEP 2).
 
 
 ================================================================
-STEP 1 — UPLOAD  (see HOW-TO-UPLOAD.txt beside this file)
+STEP 1 — RUN ONE SQL, IN THE PLATFORM'S SUPABASE
+================================================================
+Not this website's Supabase: the PLATFORM's, the project whose address
+is xbrchpxdmptwuvivdiqj.
+
+  Supabase > SQL Editor > New query > paste > Run
+
+The SQL is in the chat, and in the platform's build 454 as
+tools/vbp-website-door.sql. Its last result is one row:
+
+  read_from_row   102
+  the two counts  the same number
+
+Run in the wrong Supabase by mistake, it stops at once and creates
+nothing. Safe to run again.
+
+It does not matter whether this SQL or the upload comes first. Until the
+door exists the website reads the way it always has.
+
+
+================================================================
+STEP 2 — UPLOAD  (see HOW-TO-UPLOAD.txt beside this file)
 ================================================================
 GitHub Desktop: unzip, copy everything inside, paste into your repository
 folder, choose Replace, then Commit and Push. One commit.
 
-Browser: it goes in two drags, because GitHub takes 100 files at a time.
-HOW-TO-UPLOAD.txt has the steps.
+Browser: two drags, because GitHub takes 100 files at a time.
 
 config.js IS NOT IN THIS FOLDER, on purpose — it holds your Supabase keys
 and yours is the only correct copy. Pasting over your folder leaves it
@@ -20,137 +41,74 @@ exactly where it is.
 
 
 ================================================================
-STEP 2 — RE-RUN TWO SQL FILES
+STEP 3 — CHECK IT
 ================================================================
-Both changed in this round. Supabase > SQL Editor, paste, Run. Safe to run
-again whatever state you are in.
+Open your website's address with /api/products on the end, for example
 
-  supabase-chat-jobs.sql      the job filter, now catching what it missed
-  supabase-analytics.sql      "here now" clears in 2 minutes, and the new
-                              owner-only "start the count again"
+  https://YOUR-SITE.netlify.app/api/products
 
-Nothing else needs running. supabase-chat-realtime.sql is unchanged.
+Near the very end it says
+
+  "source":"door"     the products came through the door. Done.
+  "source":"row"      the old way is still in use: the SQL has not been
+                      run yet, or was run in the wrong Supabase.
+
+Then open the shop. Every piece should be there exactly as before.
+
+
+================================================================
+KEEP POS_SUPABASE_KEY IN NETLIFY, FOR NOW
+================================================================
+Do NOT delete it yet. Vaultique Rewards (build 62) reads customers and
+sales from the platform with it, to show a customer their points. Delete
+the key and the rewards stop working.
+
+The product feed and its change bell no longer use it. Once the rewards
+have a door of their own, the key can go.
 
 
 ================================================================
 WHAT CHANGED IN THIS ROUND
 ================================================================
-All seven of these came from you using the site on its first day.
+1. THE PRODUCT FEED ASKS THE PRODUCTS-ONLY DOOR
+   Until now it downloaded the whole business with the secret key, kept
+   the products and threw the rest away. Now it asks the platform's door,
+   with the public key, and the door hands out only the shop window:
+   active pieces, their names, prices, sizes, colours, details and the
+   "in stock" answers. Never a cost, a supplier, a customer or a sale.
 
-1. THE CHAT WINDOW WAS TOO SMALL TO READ
-   370x520 with 13.5px text. Now 412 wide, up to 640 tall, 14.5px text,
-   a shorter header and messages running wider before they wrap. A phone
-   was already full-screen and is unchanged.
+   What a shopper sees is exactly the same, piece for piece and field for
+   field. It was checked on more than 4,000 test pieces, including every
+   odd way a stock count or a name can be written.
 
-2. "Hello, any employment" REACHED THE DESK AS ORDINARY SUPPORT
-   "employment" was missing from the "any vacancies / any job / any
-   openings" list, and on its own it was one weak word against a
-   threshold of three.
+2. THE CHANGE BELL ASKS THE DOOR TOO
+   The pulse that tells open pages "something changed" now asks the door
+   when the products last changed, instead of reading the business with
+   the secret key.
 
-   Adding that one word would have fixed that one sentence. Instead
-   there is now a rule that catches by SHAPE: a short message that names
-   work and names nothing a customer would ask about. So the next
-   phrasing nobody thought of is caught too.
+3. "I CANNOT READ THE PRODUCTS" IS NO LONGER "THERE ARE NO PRODUCTS"
+   If neither the door nor the old way can read the products, the feed now
+   says so. Pages already open keep showing their pieces instead of going
+   empty.
 
-   Two more found while testing:
-     * "Any openings today?" in a boutique means "are you open today" —
-       the person is standing up to come in. No longer treated as a job
-       enquiry. "Any openings for a sales assistant" still is.
-     * "Piece work" is how casual labour is asked for here and was going
-       through. Now caught — while "a piece", which is what this shop
-       calls its products, still is not.
+Nothing else changed. Rewards, chat, analytics, payments and the admin
+are exactly as in build 62.
 
-3. THE SHOP WAS COUNTING ITSELF
-   The admin page was never tracked, but you walking through your own
-   shop front was — and you are the one browsing most days. Signing in
-   to the admin now marks that device and Analytics skips it.
-
-   Per browser, and it stays: a phone used to run the shop is a shop
-   phone. To count a device again, clear that browser's site data for
-   the website.
-
-   NOTE: it takes effect on a device the next time somebody signs in to
-   the admin there. Figures already recorded still include your visits.
-
-4. THE QUICK VIEW WAS NOT COUNTED AS LOOKING AT A PIECE
-   product_view only fired when a piece was opened on its own page.
-   Opening the quick view — which has a buy button in it — recorded
-   nothing. That is exactly why a piece showed "0 views, 1 to cart".
-
-5. "/" READ AS A STRAY MARK
-   Most viewed pages now says Home page, Shop, Policies, and
-   "Piece — SKU". Anything else is left exactly as recorded.
-
-6. SOMEBODY WHO LEFT LINGERED FOR FIVE MINUTES
-   A tab beats once a minute while it is being looked at, so the "here
-   now" count now clears two minutes after the last beat instead of
-   five. Nobody still reading is dropped; somebody who closed the tab is
-   gone in about two minutes.
-
-7. NOT CHANGED, AND WHY
-   * Duplicates: already correct. A visitor id lives in the browser and
-     a visit id lasts a session with a 30-minute idle window, so one
-     person reloading ten times is one visit and one visitor.
-   * Returning at 0%: correct. "Returning" means seen on an EARLIER day.
-     Recording is a day old, so everyone is legitimately new. Returning
-     visitors appear on their own from tomorrow.
+BUILD 62'S REWARDS, IF YOU HAVE NOT SET THEM UP YET: the steps are in
+SETUP.md, under "Vaultique Rewards on the website". Its SQL,
+supabase-rewards.sql, goes in THIS website's Supabase, not the
+platform's.
 
 
 ================================================================
-8. YOU CAN NOW START THE TRAFFIC COUNT AGAIN
-   Settings > System & Maintenance > "Start the traffic count again".
-   Throws away every visit the website has recorded, so the figures can
-   be real customers only after you have finished testing.
-
-   Offered to the SHOP OWNER alone, and the database refuses anybody
-   else even if the button were reached another way. You have to type
-   your password.
-
-   IT CLEARS TRAFFIC AND NOTHING ELSE. Your orders, customers,
-   subscribers, reviews and conversations are not analytics and are not
-   touched. Only the visit counts go, and it cannot be undone. Counting
-   starts again with the next visitor.
-
-   This is the one to use on your current figures, which still include
-   your own testing visits from before the change above.
-
-9. ADD TO CART WHEN A CUSTOMER REMOVES IT AGAIN
-   Left as it is, deliberately. It stays counted: nine people putting a
-   piece in a basket is a real signal about that piece even if four
-   later changed their minds. Say the word if you would rather see
-   added / removed / net.
-
-
+THE AUTOMATED CHECKS, IF YOU EVER WANT THEM
 ================================================================
-CHECKING IT WORKED
-================================================================
-  * Open the shop — the chat window should be noticeably larger and the
-    text easier to read.
-  * Ask the chat "Hello, any employment" — you should get the
-    recruitment reply once, and find it under Job enquiries.
-  * Ask it "are you open today" — that must reach you as an ordinary
-    customer.
-  * Sign in to the admin, then browse the shop front. Your visit should
-    NOT appear in Analytics.
-  * Open a piece from the shop grid without opening its full page. It
-    should now show a product view.
-
-The automated checks, if you ever want them:
       npm install playwright
-      node tests/dashboard.browser.cjs        152 checks
-      node tests/pwa-icons.cjs                 74 checks  (no browser)
-      node tests/analytics.browser.cjs         43 checks
-      node tests/product-sync.test.cjs         29 checks  (no browser)
-      node tests/logo-first-paint.browser.cjs  27 checks
+      node tests/product-door.test.cjs         36 checks  (no browser)
+      node tests/product-sync.test.cjs         41 checks  (no browser)
+      node tests/rewards-engine.test.cjs       11 checks  (no browser)
+      node tests/rewards-function.test.cjs     30 checks  (no browser)
+      node tests/payments.test.cjs             48 checks  (no browser)
+      node tests/dashboard.browser.cjs        155 checks
+      node tests/cart-stock.browser.cjs        23 checks
       node tests/live-update.browser.cjs       21 checks
-      node tests/chat.browser.cjs              18 checks
-      node tests/no-old-icon.browser.cjs       38 checks
-      node tests/collection-pictures.cjs       16 checks  (no browser)
-
-  The .sql files in tests/ check the database side and need a Postgres:
-      psql -d scratch -f tests/analytics-fixture.sql \
-                      -f supabase-analytics.sql \
-                      -f tests/analytics.sql            94 checks
-      psql -d scratch -f tests/chat-jobs-fixture.sql \
-                      -f supabase-chat-jobs.sql \
-                      -f tests/chat-jobs.sql            31 checks

@@ -713,6 +713,9 @@
     }
 
     host.appendChild(detailsCard(host));
+    /* Vaultique Rewards: the points live on the business platform and are
+       asked for as this customer, never kept here (assets/rewards.js). */
+    if (window.VBP_REWARDS && window.VBP_REWARDS.enabled) host.appendChild(window.VBP_REWARDS.card());
     if (api.settings.savedAddresses !== false) host.appendChild(addressCard());
     if (historyOn()) host.appendChild(ordersCard());
     if (api.settings.accountDeletion !== false) host.appendChild(dangerCard(host));

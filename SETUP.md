@@ -701,6 +701,45 @@ away, the order shows **Awaiting payment**. After three hours it is marked
 **Payment not completed** and cancelled, so it no longer counts as a sale. If the
 money arrives late after all, the order comes back as **Paid**.
 
+### Vaultique Rewards on the website
+
+The points live on the business platform, and only there. The website never
+keeps a customer's name, phone, email, balance or sales from the platform: it
+asks the platform about one verified customer at the moment it needs to, and
+shows them only their points and what they are worth.
+
+**Setting it up, once**
+1. Run **supabase-rewards.sql** in this website's Supabase SQL Editor (not the
+   platform's). Every line of its last result must say **OK**.
+2. In Netlify, **POS_SUPABASE_KEY** must be the platform's **secret** key
+   (`sb_secret_…`). A publishable key is refused for rewards on purpose.
+   **SUPABASE_SERVICE_ROLE_KEY** (this website's own) must be there too.
+3. **Settings > Notifications** must be able to send email: the code goes
+   by email.
+4. **Customer accounts** must be on (Settings > Customer Accounts).
+5. On the platform, set the **milestone** and its **value** (Settings > Sales >
+   Customer Loyalty). Until then points show but cannot be used.
+6. Turn on **Vaultique Rewards on the website** in **Settings > Shopping**.
+
+**For the customer**
+- In their account, they type their **customer number** (on their receipts)
+  and are sent a 6-digit code at the email on their platform record. The
+  website never shows that email, or says whether the number exists.
+- A number with no email on the platform, or on two records, goes to
+  **Admin > Rewards** for you to check on the platform and approve.
+- Not registered yet? They ask to join, and you register them on the platform.
+- Linked, they see their points, what they are worth and the milestone, and
+  can use them on a WhatsApp order. Points are not offered when paying online
+  yet.
+
+**For the team (Admin > Rewards)**
+- A WhatsApp order using points says *Rewards: customer number VB0007, use
+  60,000 points (−K30.00). Ref RW-ABC234.* Ring it up on the till **under that
+  customer** (not Online Customer), press **Redeem points**, then mark it
+  **Rung up on the till** here. Cancelled? **Release** the points.
+- Until then the website shows the customer their points less what is
+  promised, so the same points cannot be used twice.
+
 ### Settings > Homepage
 
 The announcement bar, the hero, your story, the core values, and which

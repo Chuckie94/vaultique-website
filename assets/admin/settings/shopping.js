@@ -53,6 +53,7 @@
     defaultSort: 'featured',
     photoAutoSwipe: false,
     photoSwipeSeconds: 4,
+    rewardsOnline: false,
 
     enquiries: true,
     wishlist: true,
@@ -118,6 +119,10 @@
               { type: 'toggle', name: 'wishlist', label: 'Wishlist',
                 hint: 'The heart on each piece, and the saved list behind it. Off also ' +
                       'removes the wishlist from the header.' },
+              { type: 'toggle', name: 'rewardsOnline', label: 'Vaultique Rewards on the website',
+                hint: 'Registered customers link their customer number in their account, see their points, and use ' +
+                      'them on WhatsApp orders. Needs customer accounts on, supabase-rewards.sql run, and ' +
+                      'POS_SUPABASE_KEY set to the platform\u2019s secret key in Netlify.' },
               { type: 'toggle', name: 'sharing', label: 'Product sharing',
                 hint: 'A share button on each piece. Opens the phone’s own share ' +
                       'sheet, and copies the link on a computer.' },
