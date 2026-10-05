@@ -55,6 +55,7 @@
     philosophyImage: '',
 
     sections: [],
+    newArrivalDays: 30,
 
     testimonials: [],
     lookImages: [],
@@ -274,6 +275,16 @@
                        previewOn: 'light', prefix: 'look/l' + n, maxSize: 700 * 1024,
                        half: true };
             })
+          },
+          {
+            title: 'New arrivals',
+            note: 'A piece shows under New Arrivals, with a New In badge, from the day you tick ' +
+                  'New on it in Products & Photos. After this many days it leaves on its own; ' +
+                  'you do not have to untick it. To show it as new again, untick and tick New.',
+            fields: [
+              { type: 'number', name: 'newArrivalDays', label: 'Days a piece stays new', min: 0, max: 365,
+                hint: '30 is a month. 0 keeps a piece new until you untick it.' }
+            ]
           },
           {
             title: 'Sections',

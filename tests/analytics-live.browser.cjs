@@ -186,7 +186,8 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
         said: card.querySelector('.an-places-said').textContent,
         countries: rows('.an-places-lists > div:first-child'),
         towns: rows('.an-places-lists > div:last-child'),
-        markers: card.querySelectorAll('.leaflet-interactive').length
+        markers: card.querySelectorAll('.an-pin').length,
+        widest: Math.max.apply(null, Array.from(card.querySelectorAll('.an-pin svg')).map(x => x.getBoundingClientRect().width).concat([0]))
       };
     });
     is(/12 of 14 visits placed/.test(pl.said), 'it says how many visits could be placed: 12 of 14', pl.said);
@@ -194,7 +195,9 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
     is(/🇿🇲/.test(pl.countries[0] || ''), 'with its flag');
     is(/Lusaka/.test(pl.towns[0] || '') && /Kitwe/.test(pl.towns[1] || ''), 'Lusaka, then Kitwe', pl.towns.join(' | '));
     if (LEAFLET) {
-      is(pl.markers === 3, 'one circle on the map for each town', pl.markers + ' circles');
+      is(pl.markers === 3, 'one pin on the map for each town', pl.markers + ' pins');
+      is(pl.widest > 0 && pl.widest <= 14, 'small pins: at most 14px wide, even for the busiest town', pl.widest + 'px');
+      if (process.env.SHOT) await page.locator('.an-places').screenshot({ path: process.env.SHOT });
       const lusaka = await page.evaluate(() => {
         let found = null;
         const m = document.querySelector('.an-map');

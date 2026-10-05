@@ -57,6 +57,16 @@ const CATALOGUE = [
   V({ name: 'Heritage Suede Belt', sku: 'AC-HESU-BK-L', category: 'Accessories',
       color: 'Black', size: 'L', price: 290, variantGroup: '' }),
 
+  /* The owner's own case: a bag in three colours where only the black is
+     flagged new, and the black has sold out. Grey and Brown are on the
+     shelf, so the piece is NOT sold out. */
+  V({ name: 'Crossbody Tote Sling', sku: 'BG-CRTO-BK-M', category: 'PU Leather Handbags',
+      color: 'Black', size: 'M', price: 642, variantGroup: '', available: false, is_new: true }),
+  V({ name: 'Crossbody Tote Sling', sku: 'BG-CRTO-GR-M', category: 'PU Leather Handbags',
+      color: 'Grey', size: 'M', price: 642, variantGroup: '', lowStock: true }),
+  V({ name: 'Crossbody Tote Sling', sku: 'BG-CRTO-BR-M', category: 'PU Leather Handbags',
+      color: 'Brown', size: 'M', price: 642, variantGroup: '' }),
+
   /* A piece on its own. It must not gain a picker it has no use for. */
   V({ name: 'Kudu Leather Satchel', sku: 'BG-KULE-BR-OS', category: 'Bags',
       color: 'Brown', size: 'One size', price: 3200, variantGroup: '' }),
@@ -205,6 +215,35 @@ const cardNames = page => page.evaluate(() =>
     is(after.Colour === 'Black',
        'and keeps the colour that was already chosen, rather than starting again',
        JSON.stringify(after));
+
+    console.log('\nOne colour sold out is not the piece sold out');
+    await page.goto(base + '/', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(600);
+    const newRow = await page.evaluate(() => Array.prototype.map.call(
+      document.querySelectorAll('#row-new .card, #row-new > *'), (c) => c.textContent.replace(/\s+/g, ' ')));
+    const tote = newRow.filter((t) => /Crossbody Tote Sling/.test(t));
+    is(tote.length === 1 && !/Sold Out/i.test(tote[0]),
+       'New Arrivals shows the tote in stock, though the colour flagged new is the one sold out', JSON.stringify(tote));
+    await page.goto(base + '/#/product/BG-CRTO-BK-M', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(500);
+    const opened = await page.evaluate(() => ({
+      url: location.href, on: (document.querySelector('#view-detail .opt-pick.on') || {}).textContent || '',
+      text: document.getElementById('view-detail').textContent.replace(/\s+/g, ' ')
+    }));
+    is(opened.on === 'Grey' && /BG-CRTO-GR-M/.test(opened.url) && !/sold out/i.test(opened.text),
+       'a link to the sold-out black opens the piece on a colour that is in stock', JSON.stringify({ on: opened.on, url: opened.url }));
+    await page.click('#view-detail .opt-pick:has-text("Black")');
+    await page.waitForTimeout(500);
+    const picked = await page.evaluate(() => ({
+      on: (document.querySelector('#view-detail .opt-pick.on') || {}).textContent || '',
+      text: document.getElementById('view-detail').textContent.replace(/\s+/g, ' ')
+    }));
+    is(picked.on === 'Black' && /sold out/i.test(picked.text),
+       'and tapping Black on the page shows that the black is sold out', picked.on);
+    await page.click('#view-detail .opt-pick:has-text("Brown")');
+    await page.waitForTimeout(500);
+    is(await page.evaluate(() => (document.querySelector('#view-detail .opt-pick.on') || {}).textContent) === 'Brown',
+       'then Brown opens the brown');
 
     console.log('\nAnd a piece with nothing to choose');
 

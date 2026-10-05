@@ -1,7 +1,27 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 65
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 67
 ====================================================
-The whole site, cumulative (includes everything in build 64).
+The whole site, cumulative (includes everything in build 66).
 Upload this and you are up to date.
+
+NEW IN 67 — RUN THESE TWO SQL FILES IN THE WEBSITE SUPABASE (SQL Editor):
+  1. supabase-new-arrivals.sql
+  2. supabase-sold-out.sql
+Every line of each check must say OK.
+
+  * New Arrivals: a piece stays for the days set in Settings > Homepage >
+    New arrivals (30 to start), counted from the day New is ticked, then
+    leaves by itself. Nothing new: the row hides.
+  * The homepage "Accessories" row is now "All Products".
+  * Sold out: Settings > Shopping > "Then hide them after (days)". The
+    homepage and search now also follow "Show pieces that are sold out".
+  * Smaller location pins on the Browsing location map.
+
+NEW IN 66:
+  * A piece with one colour or size sold out is no longer shown as sold
+    out. Cards (New Arrivals, Featured, the shop) show a variation that
+    is in stock, and its page opens on an in-stock colour. The sold-out
+    one is faded on the page and says "Currently sold out" only when the
+    customer taps it. A piece shows sold out only when every variation is.
 
 NEW IN 65 — RUN THESE TWO SQL FILES IN THE WEBSITE SUPABASE (SQL Editor):
   1. supabase-signup.sql    (new accounts: link sent by your own email)
@@ -19,7 +39,7 @@ Every line of each check must say OK.
     Contact > Business email) is told when a request is waiting.
   * Admin > Rewards shows staff why no code was emailed for a link.
 
-169 files. config.js is not in this folder, on purpose (see STEP 2).
+174 files. config.js is not in this folder, on purpose (see STEP 2).
 
 
 ================================================================

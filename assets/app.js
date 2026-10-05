@@ -57,7 +57,7 @@
   // Settings > Shopping. Defaults match the admin's, so the shop behaves the
   // same whether or not that section has ever been opened.
   var SHOP = {
-    showOutOfStock: true, showSku: true, showLowStock: true, showCategory: true,
+    showOutOfStock: true, soldOutDays: 0, showSku: true, showLowStock: true, showCategory: true,
     showBadges: true, showReviews: true, defaultSort: 'featured',
     photoAutoSwipe: false, photoSwipeSeconds: 4,
     rewardsOnline: false,
@@ -2900,6 +2900,22 @@
     if (isNaN(t)) return true;
     return (Date.now() - t) <= days * 86400000;
   }
+  /* How many days a piece stays a New Arrival (Settings > Homepage).
+     Not set: 30. 0: until it is unticked. A piece ticked before the
+     date was recorded (the SQL not run yet) stays new, as it always did. */
+  function newDays() {
+    var v = HOME && HOME.newArrivalDays;
+    if (v === undefined || v === null || v === '') return 30;
+    var n = Number(v);
+    return isFinite(n) && n > 0 ? n : 0;
+  }
+  function stillNew(since) {
+    var days = newDays();
+    if (!days || !since) return true;
+    var t = new Date(since).getTime();
+    if (isNaN(t)) return true;
+    return (Date.now() - t) <= days * 86400000;
+  }
   function mergeMeta() {
     PRODUCTS = PRODUCTS.map(function (p) {
       var m = META[p.sku];
@@ -2908,7 +2924,10 @@
         p.gallery = asArray(m.gallery);
         p.videos = asArray(m.videos);
         p.featured = !!m.featured;
-        p.is_new = !!m.is_new;
+        /* New for as long as Settings > Homepage says, counted from the
+           day it was ticked New in Products & Photos. */
+        p.new_since = m.new_since || '';
+        p.is_new = !!m.is_new && stillNew(m.new_since);
         p.best_seller = !!m.best_seller;
         p.hidden = !!m.hidden;
         if (m.description) p.customDesc = m.description;
@@ -3090,24 +3109,35 @@
   function buildHomeRows() {
     var featured = PRODUCTS.filter(function (p) { return p.featured; }).slice(0, 12);
     var best = PRODUCTS.filter(function (p) { return p.best_seller; }).slice(0, 12);
-    var newArrivals = PRODUCTS.filter(function (p) { return p.is_new; });
-    if (!newArrivals.length) newArrivals = PRODUCTS.slice(0, 10); else newArrivals = newArrivals.slice(0, 12);
+    /* Only what is ticked New and still within its days, newest first.
+       Nothing new: the row hides, rather than calling old pieces new. */
+    var newArrivals = PRODUCTS.filter(function (p) { return p.is_new; })
+      .sort(function (a, b) { return String(b.new_since || '').localeCompare(String(a.new_since || '')); });
     var women = rowFor(ROW_TEST.women, 10);
     var men = rowFor(ROW_TEST.men, 10);
-    var acc = rowFor(function (p) { return /access|bag|jewel|shoe|footwear/i.test(p.category); }, 10);
+    /* "All products": a look across the whole shop, in-stock pieces first.
+       It used to be "Accessories", which caught bags and shoes by their
+       category name and called them accessories. */
+    var all = collapseVariants(PRODUCTS.slice(), true)
+      .sort(function (a, b) { return (b.available ? 1 : 0) - (a.available ? 1 : 0); })
+      .slice(0, 12);
 
     fillRow('row-featured', 'sec-featured', featured, false);
-    fillRow('row-new', 'sec-new', newArrivals, true);
+    fillRow('row-new', 'sec-new', collapseVariants(newArrivals, true).slice(0, 12), true);
     fillRow('row-best', 'sec-best', best, false);
     fillRow('row-women', 'sec-women', women, false);
     fillRow('row-men', 'sec-men', men, false);
-    fillRow('row-acc', 'sec-acc', acc, false);
+    fillRow('row-acc', 'sec-acc', all, false);
   }
   function fillRow(trackId, secId, list, markNew) {
     /* BUILD 409. The rows on the home page group the same way the shop does.
        Collapsed here rather than at each caller, because a row that was missed
        would be the one place a jacket still appeared three times. */
-    list = collapseVariants(list || []);
+    /* The homepage follows the same rules as the shop: a piece sold out in
+       every colour and size is left off when Settings > Shopping says so. */
+    list = collapseVariants((list || []).filter(onShelf), true).filter(function (p) {
+      return p.available || SHOP.showOutOfStock;
+    });
     var track = document.getElementById(trackId);
     var sec = document.getElementById(secId);
     if (!track || !sec) return;
@@ -3845,7 +3875,7 @@
      The one kept is the first that can actually be bought. A card that opens on
      a sold-out Small while the Large is on the shelf reads as a shop with
      nothing in it, which is the opposite of true. */
-  function collapseVariants(list) {
+  function collapseVariants(list, wholeFamily) {
     var seen = {}, out = [];
     list.forEach(function (p) {
       var k = groupKey(p);
@@ -3854,10 +3884,57 @@
       var kin = list.filter(function (x) { return groupKey(x) === k; });
       var pick = null;
       for (var i = 0; i < kin.length; i++) { if (kin[i].available) { pick = kin[i]; break; } }
+      /* A row such as New Arrivals holds only the variations flagged for
+         it, and that may be the one colour that has sold out. One sold-out
+         colour is not a sold-out piece: the card shows a colour that is on
+         the shelf. Not where the shopper chose a colour or size to filter
+         by -- there they asked for that one. */
+      if (!pick && wholeFamily) pick = inStockSibling(kin[0]);
       out.push(pick || kin[0]);
     });
     return out;
   }
+
+  /* The piece itself if it can be bought, else the first of its variations
+     that can (same size first), else null. */
+  function inStockSibling(p) {
+    if (!p) return null;
+    if (p.available) return p;
+    var kin = variantsOf(p), i;
+    for (i = 0; i < kin.length; i++) { if (kin[i].available && (kin[i].size || '') === (p.size || '')) return kin[i]; }
+    for (i = 0; i < kin.length; i++) { if (kin[i].available) return kin[i]; }
+    return null;
+  }
+
+  /* WHETHER A PIECE IS ON THE SHELF AT ALL. A piece (all its colours and
+     sizes together) leaves the shop, the homepage and search when every
+     variation is sold out and either Settings > Shopping hides sold-out
+     pieces, or they have been sold out longer than its "hide after" days.
+     The date comes from the feed (soldOutSince); a piece without one is
+     kept, as before. Worked out once per product list. */
+  var GONE = null, GONE_FOR = null;
+  function goneGroups() {
+    if (GONE && GONE_FOR === PRODUCTS) return GONE;
+    var days = Number(SHOP.soldOutDays);
+    var cut = isFinite(days) && days > 0 ? Date.now() - days * 86400000 : 0;
+    var groups = {};
+    PRODUCTS.forEach(function (p) {
+      var k = groupKey(p);
+      var g = groups[k] || (groups[k] = { stock: false, latest: 0, undated: false });
+      if (p.available) { g.stock = true; return; }
+      var t = p.soldOutSince ? new Date(p.soldOutSince).getTime() : NaN;
+      if (isNaN(t)) g.undated = true; else if (t > g.latest) g.latest = t;
+    });
+    GONE = {}; GONE_FOR = PRODUCTS;
+    Object.keys(groups).forEach(function (k) {
+      var g = groups[k];
+      if (g.stock) return;
+      if (!SHOP.showOutOfStock) GONE[k] = 1;
+      else if (cut && !g.undated && g.latest && g.latest < cut) GONE[k] = 1;
+    });
+    return GONE;
+  }
+  function onShelf(p) { return !!p && !goneGroups()[groupKey(p)]; }
 
   /* The chips on a product page, which become a CHOICE the moment the piece has
      more than one variation. A shop with one Black Large still shows a plain
@@ -3929,6 +4006,7 @@
       if (filterSize !== 'All' && (p.size || '') !== filterSize) return false;
       if (inStockOnly && !p.available) return false;
       if (!SHOP.showOutOfStock && !p.available) return false;
+      if (!onShelf(p)) return false;
       var s = !term ||
         (p.name && p.name.toLowerCase().indexOf(term) > -1) ||
         (p.sku && p.sku.toLowerCase().indexOf(term) > -1) ||
@@ -3954,7 +4032,7 @@
     else if (sortBy === 'available') list.sort(function (a, b) { return (b.available ? 1 : 0) - (a.available ? 1 : 0); });
     /* Collapsed AFTER filtering and sorting, so a search for "black" still finds
        the piece and opens it on the black one. */
-    return collapseVariants(list);
+    return collapseVariants(list, mode !== 'wishlist' && filterColor === 'All' && filterSize === 'All');
   }
   function renderChips() {
     var host = $('#chips'); if (!host) return;
@@ -4069,9 +4147,18 @@
     if (recent.length > 10) recent = recent.slice(0, 10);
     saveRecent();
   }
+  /* The variation the shopper tapped on a product page. Only then does the
+     page show a sold-out colour; arriving from a card, a search or a shared
+     link, it opens on a colour that is in stock. */
+  var chosenSku = null;
   function renderDetail(sku) {
     var p = bySku(sku); var host = $('#view-detail');
     if (!p) { goShop('All'); return; }
+    if (!p.available && chosenSku !== sku) {
+      var alt = inStockSibling(p);
+      if (alt && alt !== p) { go('product/' + encodeURIComponent(alt.sku), true); return; }
+    }
+    chosenSku = null;
     pushRecent(sku);
     /* The traffic record cannot see which piece this is from the outside,
        so it is told. Guarded and ignored if analytics.js is not loaded. */
@@ -4093,8 +4180,8 @@
        though it were something else to look at is how a shop of four jackets
        reads as a shop of one. */
     var related = collapseVariants(
-      PRODUCTS.filter(function (x) { return x.category === p.category && groupKey(x) !== groupKey(p); })
-    ).slice(0, 4);
+      PRODUCTS.filter(function (x) { return x.category === p.category && groupKey(x) !== groupKey(p) && onShelf(x); }), true
+    ).filter(function (x) { return x.available || SHOP.showOutOfStock; }).slice(0, 4);
     var recentItems = recent.map(bySku).filter(function (x) { return x && x.sku !== p.sku; }).slice(0, 4);
     /* Three descriptions in order of who knows best. What the website's own
        admin wrote for this piece wins, because it was written for this page.
@@ -4172,7 +4259,7 @@
     Array.prototype.forEach.call(host.querySelectorAll('.opt-pick'), function (b) {
       b.addEventListener('click', function () {
         var target = b.getAttribute('data-vsku');
-        if (target && target !== p.sku) openProduct(target);
+        if (target && target !== p.sku) { chosenSku = target; openProduct(target); }
       });
     });
     /* These two are only drawn when their setting is on, so neither is
@@ -4630,10 +4717,11 @@
   function runOverlaySearch(term) {
     var host = $('#soResults'); var t = term.toLowerCase().trim();
     if (!t) { host.innerHTML = ''; return; }
-    var res = PRODUCTS.filter(function (p) {
+    var res = collapseVariants(PRODUCTS.filter(function (p) {
+      if (!onShelf(p)) return false;
       return p.name.toLowerCase().indexOf(t) > -1 || p.category.toLowerCase().indexOf(t) > -1 ||
         (p.sku && p.sku.toLowerCase().indexOf(t) > -1);
-    }).slice(0, 8);
+    }), true).filter(function (p) { return p.available || SHOP.showOutOfStock; }).slice(0, 8);
     host.innerHTML = '';
     if (!res.length) { host.innerHTML = '<div class="so-result"><span class="nm serif">No matches</span></div>'; return; }
     res.forEach(function (p) {

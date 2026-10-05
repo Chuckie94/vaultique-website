@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.39.0',
-  build: 65,
-  builtAt: '2026-10-02T16:48:32Z',
-  notes: 'New accounts: the website makes the account and emails the confirm link through the shop\'s own email (Settings > Notifications), with Send the link again. Rewards join asks for no phone, only the account email; customers are emailed when they join and when linked; Admin > Rewards shows why no code went. Needs supabase-signup.sql and the updated supabase-rewards.sql.'
+  version: '1.40.0',
+  build: 67,
+  builtAt: '2026-10-04T15:55:07Z',
+  notes: 'New Arrivals leave on their own after the days set in Settings > Homepage; the Accessories row is now All Products; sold-out pieces can leave after the days set in Settings > Shopping, and the homepage and search follow Show sold-out pieces; smaller pins on the Browsing location map. Needs supabase-new-arrivals.sql and supabase-sold-out.sql.'
 };

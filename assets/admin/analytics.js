@@ -621,11 +621,20 @@
             pts.push(ll);
             var where = (t.name || 'Somewhere in ' + (t.region || t.country_name || t.country)) +
                         (t.country_name ? ', ' + t.country_name : '');
-            L.circleMarker(ll, {
-              /* A dot, not a bubble: 4px for one visit, at most 11 for the
-                 busiest town, so a town never covers its neighbours. */
-              radius: 4 + Math.round(Math.sqrt(n / top) * 7),
-              color: '#0f2340', weight: 1, fillColor: '#c9a24a', fillOpacity: 0.85
+            /* A small location pin, its tip on the town: 10px wide for
+               one visit, at most 14 for the busiest, so towns close together
+               stay readable. The numbers are in the tooltip and the list. */
+            var w = 10 + Math.round(Math.sqrt(n / top) * 4), h = Math.round(w * 1.4);
+            L.marker(ll, {
+              icon: L.divIcon({
+                className: 'an-pin',
+                html: '<svg viewBox="0 0 20 28" width="' + w + '" height="' + h + '" aria-hidden="true">' +
+                      '<path d="M10 1C5 1 1 5 1 10c0 6.5 9 17 9 17s9-10.5 9-17c0-5-4-9-9-9z" ' +
+                      'fill="#c9a24a" stroke="#0f2340" stroke-width="1.6"/>' +
+                      '<circle cx="10" cy="10" r="3.2" fill="#0f2340"/></svg>',
+                iconSize: [w, h], iconAnchor: [w / 2, h], tooltipAnchor: [0, -h]
+              }),
+              keyboard: false
             }).bindTooltip(
               '<b>' + esc(where) + '</b><br>' + num(n) + ' visit' + (n === 1 ? '' : 's') +
               ' · ' + num(t.visitors || 0) + ' ' + ((t.visitors === 1) ? 'person' : 'people') +

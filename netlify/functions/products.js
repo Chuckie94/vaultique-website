@@ -446,6 +446,9 @@ function tryParse(s) {
    handing out its catalogue. The settings say whether it is, and the
    preview key is how the owner still sees it while testing. */
 const { settings } = require('./_seo-data');
+// ADDED: the day a piece sold out, noted in the website's own database, for
+// "hide sold-out pieces after so many days". Never holds up or breaks the feed.
+const { stampSoldOut } = require('./_sold-out');
 
 async function closedToThisCaller(event) {
   try {
@@ -487,10 +490,10 @@ exports.handler = async function (event) {
     // field: the same filter, the same safe fields, the same fingerprint.
     const door = await readDoor();
     if (door) {
-      const fromDoor = door.products
+      const fromDoor = await stampSoldOut(door.products
         .filter((p) => p && p.active === true)
         .map((p) => toSafeProduct(p, true))
-        .filter(Boolean);
+        .filter(Boolean));
       return {
         statusCode: 200,
         headers,
@@ -560,10 +563,10 @@ exports.handler = async function (event) {
     }
     const rawProducts = Array.isArray(state.products) ? state.products : [];
 
-    const products = rawProducts
+    const products = await stampSoldOut(rawProducts
       .filter((p) => p && p.active === true) // only products marked active
       .map((p) => toSafeProduct(p))
-      .filter(Boolean);
+      .filter(Boolean));
 
     return {
       statusCode: 200,

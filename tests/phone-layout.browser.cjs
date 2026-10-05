@@ -138,7 +138,7 @@ const settle = (page, ms) => page.waitForTimeout(ms || 500);
        'categories are two to a row', JSON.stringify(cols));
     is(cols.length === 2 && cols[0].h < 260, 'and each is well under half the height it was', JSON.stringify(cols));
     const strip = await page.evaluate(() => {
-      const t = document.querySelector('#row-new');
+      const t = document.querySelector('#row-acc');
       const c = Array.from(t.children).map(x => Math.round(x.getBoundingClientRect().top));
       return { sideways: t.scrollWidth > t.clientWidth, oneLine: c.every(y => y === c[0]) };
     });

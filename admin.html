@@ -1168,12 +1168,17 @@
       fetch('/api/products', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : { products: [] }; }).catch(function () { return { products: [] }; }),
       sb.from('product_meta').select('*'),
       window.VBP_ADMIN.store.load('pricing').catch(function () { return {}; }),
-      window.VBP_ADMIN.store.load('general').catch(function () { return {}; })
+      window.VBP_ADMIN.store.load('general').catch(function () { return {}; }),
+      window.VBP_ADMIN.store.load('homepage').catch(function () { return {}; })
     ]).then(function (res) {
+      homeSettings = res[4] || {};
       products = (res[0] && res[0].products) || [];
       metaMap = {};
       var rows = (res[1] && res[1].data) || [];
       rows.forEach(function (m) { if (m && m.sku) metaMap[m.sku] = m; });
+      /* supabase-new-arrivals.sql adds new_since; until it is run, never
+         send it, or every save would be refused. */
+      metaHasNewSince = rows.some(function (m) { return m && Object.prototype.hasOwnProperty.call(m, 'new_since'); });
       pricing = res[2] || {};
       generalSettings = res[3] || {};
       return watchPrices();
@@ -1419,7 +1424,15 @@
     // flags
     var flags = document.createElement('div'); flags.className = 'row';
     flags.appendChild(checkbox('Featured', !!m.featured, function (v) { m.featured = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
-    flags.appendChild(checkbox('New', !!m.is_new, function (v) { m.is_new = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
+    flags.appendChild(checkbox('New', !!m.is_new, function (v) {
+      m.is_new = v;
+      /* A fresh tick starts the count again; the database keeps the date. */
+      if (metaHasNewSince) m.new_since = v ? new Date().toISOString() : null;
+      metaMap[p.sku] = m; saveMeta(p.sku); newNote.textContent = newSays(m);
+    }));
+    var newNote = document.createElement('span'); newNote.className = 'hint'; newNote.style.margin = '0 8px 0 -4px';
+    newNote.textContent = newSays(m);
+    flags.appendChild(newNote);
     /* The POS knows what sells; the feed deliberately does not carry it, so
        Best Seller is a choice made here rather than a number decided there. */
     flags.appendChild(checkbox('Best seller', !!m.best_seller, function (v) { m.best_seller = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
@@ -1588,6 +1601,23 @@
     if (F) { var t = F.date(iso, generalSettings.dateFormat); if (t) return t; }
     var d = new Date(iso);
     return isNaN(d.getTime()) ? '' : d.toLocaleDateString();
+  }
+  /* "New since 4 Oct, until 3 Nov": how long Settings > Homepage keeps it
+     under New Arrivals. */
+  var homeSettings = {};
+  var metaHasNewSince = false;
+  function newSays(m) {
+    if (!m || !m.is_new) return '';
+    if (!m.new_since) return '';
+    var v = homeSettings.newArrivalDays;
+    var days = (v === undefined || v === null || v === '') ? 30 : Number(v);
+    var since = new Date(m.new_since);
+    if (isNaN(since.getTime())) return '';
+    var d = function (t) { return t.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }); };
+    if (!(days > 0)) return '(since ' + d(since) + ')';
+    var until = new Date(since.getTime() + days * 86400000);
+    return until < new Date() ? '(no longer shown as new: untick and tick to show it again)'
+                              : '(until ' + d(until) + ')';
   }
   function checkbox(label, val, on) {
     var l = document.createElement('label'); l.className = 'chk'; l.style.textTransform = 'none'; l.style.letterSpacing = '0'; l.style.margin = '0';

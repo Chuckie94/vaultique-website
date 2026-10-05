@@ -41,6 +41,7 @@
 
   var DEFAULTS = {
     showOutOfStock: true,
+    soldOutDays: 0,
     showSku: true,
     showLowStock: true,
     showCategory: true,
@@ -89,6 +90,12 @@
               { type: 'toggle', name: 'showOutOfStock', label: 'Show pieces that are sold out',
                 hint: 'Off hides them entirely. On shows them marked Sold Out, which lets ' +
                       'someone ask you to let them know when it is back.' },
+              { type: 'number', name: 'soldOutDays', label: 'Then hide them after (days)', min: 0, max: 365,
+                showIf: function (v) { return v.showOutOfStock !== false; },
+                hint: 'A piece shows as Sold Out for this many days, then leaves the shop, the homepage ' +
+                      'and search by itself. It comes back the moment it is in stock again. 0 keeps ' +
+                      'showing it. A piece with any colour or size still in stock never counts as sold out. ' +
+                      'Needs supabase-sold-out.sql.' },
               { type: 'toggle', name: 'showBadges', label: 'Show badges',
                 hint: 'The New In and In Stock marks on a photo.' },
               { type: 'toggle', name: 'showLowStock', label: 'Show low stock warning',
