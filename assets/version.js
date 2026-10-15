@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.40.0',
-  build: 67,
-  builtAt: '2026-10-04T15:55:07Z',
-  notes: 'New Arrivals leave on their own after the days set in Settings > Homepage; the Accessories row is now All Products; sold-out pieces can leave after the days set in Settings > Shopping, and the homepage and search follow Show sold-out pieces; smaller pins on the Browsing location map. Needs supabase-new-arrivals.sql and supabase-sold-out.sql.'
+  version: '1.40.1',
+  build: 68,
+  builtAt: '2026-10-14T22:16:16Z',
+  notes: 'Vaultique Rewards ask the platform\u2019s rewards door (its build 469) with POS_REWARDS_KEY, and read the old way only until the door is set up; /api/rewards-check says which way is in use. Needs the platform\u2019s tools/vbp-rewards-door.sql run in the platform\u2019s Supabase.'
 };

@@ -1,7 +1,19 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 67
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 68
 ====================================================
-The whole site, cumulative (includes everything in build 66).
+The whole site, cumulative (includes everything in build 67).
 Upload this and you are up to date.
+
+NEW IN 68 — THE REWARDS DOOR (goes with the platform's build 469)
+  * Vaultique Rewards no longer read the whole business with the
+    platform's secret key. They ask the platform's rewards door, which
+    answers one customer's points, or the email to send a code to, and
+    nothing else.
+  * Once /api/rewards-check says "door", POS_SUPABASE_KEY can be deleted
+    from Netlify (STEP 5). The website then holds no key that opens the
+    business.
+  * Until the door is set up, the rewards keep working the old way.
+  * Customers see exactly the same points and the same screens.
+  * No SQL in THIS website's Supabase this time.
 
 NEW IN 67 — RUN THESE TWO SQL FILES IN THE WEBSITE SUPABASE (SQL Editor):
   1. supabase-new-arrivals.sql
@@ -39,7 +51,7 @@ Every line of each check must say OK.
     Contact > Business email) is told when a request is waiting.
   * Admin > Rewards shows staff why no code was emailed for a link.
 
-174 files. config.js is not in this folder, on purpose (see STEP 2).
+176 files. config.js is not in this folder, on purpose (see STEP 3).
 
 
 ================================================================
@@ -50,21 +62,41 @@ is xbrchpxdmptwuvivdiqj.
 
   Supabase > SQL Editor > New query > paste > Run
 
-The SQL is in the chat, and in the platform's build 454 as
-tools/vbp-website-door.sql. Its last result is one row:
+If Supabase asks you to confirm because it sees the word "delete": that is
+the door clearing its own count of questions after a day. Nothing of the
+business is deleted. Confirm, and it runs.
 
-  read_from_row   102
-  the two counts  the same number
+The SQL is in the chat, and in the platform's build 469 as
+tools/vbp-rewards-door.sql. Its last result is one row:
 
-Run in the wrong Supabase by mistake, it stops at once and creates
-nothing. Safe to run again.
+  door_key_for_netlify   a long line of letters and figures: the key
+  sales_read_from        their own rows   (or: the Trading section)
+  registered_customers   about how many registered customers you have
+  sections_readable      true
 
-It does not matter whether this SQL or the upload comes first. Until the
-door exists the website reads the way it always has.
+COPY THE KEY NOW. It is shown this once: the database keeps only a
+fingerprint of it, so it cannot be read back out later. Run the SQL
+again and that box says "made before: use the one you saved".
+
+Lost it? The end of the SQL has a one-statement new key, under "IF THE
+KEY IS EVER LOST". Run in the wrong Supabase by mistake, the SQL stops
+at once and creates nothing.
 
 
 ================================================================
-STEP 2 — UPLOAD  (see HOW-TO-UPLOAD.txt beside this file)
+STEP 2 — PUT THE KEY IN NETLIFY
+================================================================
+Netlify > your website's site > Site configuration > Environment
+variables > Add a variable:
+
+  Key     POS_REWARDS_KEY
+  Value   the key from STEP 1
+
+Do NOT delete POS_SUPABASE_KEY yet. That is STEP 5.
+
+
+================================================================
+STEP 3 — UPLOAD  (see HOW-TO-UPLOAD.txt beside this file)
 ================================================================
 GitHub Desktop: unzip, copy everything inside, paste into your repository
 folder, choose Replace, then Commit and Push. One commit.
@@ -75,55 +107,112 @@ config.js IS NOT IN THIS FOLDER, on purpose — it holds your Supabase keys
 and yours is the only correct copy. Pasting over your folder leaves it
 exactly where it is.
 
-
-================================================================
-STEP 3 — CHECK IT
-================================================================
-Open your website's address with /api/products on the end, for example
-
-  https://YOUR-SITE.netlify.app/api/products
-
-Near the very end it says
-
-  "source":"door"     the products came through the door. Done.
-  "source":"row"      the old way is still in use: the SQL has not been
-                      run yet, or was run in the wrong Supabase.
-
-Then open the shop. Every piece should be there exactly as before.
+Netlify reads a new variable only when it deploys. Uploading after STEP 2
+deploys it. If you uploaded first: Netlify > Deploys > Trigger deploy >
+Deploy site.
 
 
 ================================================================
-KEEP POS_SUPABASE_KEY IN NETLIFY, FOR NOW
+STEP 4 — CHECK IT
 ================================================================
-Do NOT delete it yet. Vaultique Rewards (build 62) reads customers and
-sales from the platform with it, to show a customer their points. Delete
-the key and the rewards stop working.
+Open your website's address with /api/rewards-check on the end, for
+example
 
-The product feed and its change bell no longer use it. Once the rewards
-have a door of their own, the key can go.
+  https://YOUR-SITE.netlify.app/api/rewards-check
+
+  "source":"door"   the rewards go through the door. Go on to STEP 5.
+  "source":"row"    still the old way. "why" says what is missing: the
+                    SQL not run yet, or POS_REWARDS_KEY not set or not
+                    copied exactly.
+
+It says nothing about any customer, so it is safe to open anywhere.
+
+If you have a website account linked to a customer number, open it: the
+points are the same as the till shows (less any promised on a WhatsApp
+order that has not been rung up yet).
 
 
 ================================================================
-WHAT CHANGED IN THIS ROUND
+STEP 5 — THEN DELETE POS_SUPABASE_KEY FROM NETLIFY
+================================================================
+Only once STEP 4 says "door".
+
+  Netlify > Environment variables > POS_SUPABASE_KEY > Delete
+  then Netlify > Deploys > Trigger deploy > Deploy site
+
+The second line matters: until Netlify deploys again, the website still
+has the key.
+
+Then check again:
+  /api/rewards-check   "source":"door" and "secretKeyStillSet":false
+  /api/products        "source":"door" near the very end
+  the shop             every piece is there, exactly as before
+
+Changed your mind? Add POS_SUPABASE_KEY back (it is still in the
+platform's Supabase, Project Settings > API Keys) and deploy again.
+Nothing is lost either way: the website only ever reads the platform.
+
+Only the website's copy of the key goes. Do NOT delete or change the key
+in Supabase itself: the platform's own nightly jobs may use it.
+
+
+================================================================
+WHAT CHANGED IN 68
+================================================================
+1. THE REWARDS ASK THE REWARDS DOOR
+   Until now, to show one customer their points, the website downloaded
+   the whole business with the secret key: every customer, every sale,
+   and a key that could change them. Now it asks the platform's rewards
+   door, with the public key and the door's own key, about one customer
+   number at a time. The door hands back that customer's points and the
+   four rewards figures from Settings, and nothing else: no name, no
+   phone, no sale.
+
+   The points are worked out exactly as the till works them out. Checked
+   on more than 4,400 test customers, in shops laid out both ways the
+   platform keeps its sales: the same points, every one.
+
+2. THE CODE THAT LINKS AN ACCOUNT
+   The email on the customer's record is asked of the door only to send
+   the code, and is never shown or kept. A number already linked to
+   another account is not asked about at all.
+
+3. LIMITS THE WEBSITE CANNOT LIFT
+   The door answers at most 1,000 points questions an hour, and 20 emails
+   an hour (3 for any one number). They are the database's own limits, so
+   even somebody holding the door's key could not copy the customer list
+   out. Past them, the rewards say "cannot be reached just now" until the
+   hour is up. They never fall back to the old way because of a limit.
+
+4. /api/rewards-check
+   Says which way the rewards read the platform, and what to do next.
+
+5. SETTINGS > SHOPPING
+   The rewards line now names POS_REWARDS_KEY instead of the secret key.
+
+
+================================================================
+WHAT CHANGED IN 63
 ================================================================
 1. THE PRODUCT FEED ASKS THE PRODUCTS-ONLY DOOR
-   Until now it downloaded the whole business with the secret key, kept
+   Until then it downloaded the whole business with the secret key, kept
    the products and threw the rest away. Now it asks the platform's door,
    with the public key, and the door hands out only the shop window:
    active pieces, their names, prices, sizes, colours, details and the
    "in stock" answers. Never a cost, a supplier, a customer or a sale.
 
-   What a shopper sees is exactly the same, piece for piece and field for
-   field. It was checked on more than 4,000 test pieces, including every
-   odd way a stock count or a name can be written.
+   If /api/products does not say "door", the platform's products door
+   SQL has not been run: tools/vbp-website-door.sql, in the platform's
+   build 454 and every build since. Run it in the platform's Supabase
+   before STEP 5.
 
 2. THE CHANGE BELL ASKS THE DOOR TOO
-   The pulse that tells open pages "something changed" now asks the door
+   The pulse that tells open pages "something changed" asks the door
    when the products last changed, instead of reading the business with
    the secret key.
 
 3. "I CANNOT READ THE PRODUCTS" IS NO LONGER "THERE ARE NO PRODUCTS"
-   If neither the door nor the old way can read the products, the feed now
+   If neither the door nor the old way can read the products, the feed
    says so. Pages already open keep showing their pieces instead of going
    empty.
 
@@ -134,9 +223,7 @@ WHAT CHANGED IN THIS ROUND
 
 5. NEW REWARDS CUSTOMERS LINKED IN ONE STEP
    Admin > Rewards: register them on the platform, type the customer
-   number it gave them into their join request, press Link. Needs one
-   small SQL in THIS website's Supabase (rewards_join_done), given in
-   the chat; safe to run again.
+   number it gave them into their join request, press Link.
 
 BUILD 62'S REWARDS, IF YOU HAVE NOT SET THEM UP YET: the steps are in
 SETUP.md, under "Vaultique Rewards on the website". Its SQL,
@@ -148,10 +235,11 @@ platform's.
 THE AUTOMATED CHECKS, IF YOU EVER WANT THEM
 ================================================================
       npm install playwright
+      node tests/rewards-door.test.cjs         45 checks  (no browser)
       node tests/product-door.test.cjs         36 checks  (no browser)
       node tests/product-sync.test.cjs         41 checks  (no browser)
       node tests/rewards-engine.test.cjs       11 checks  (no browser)
-      node tests/rewards-function.test.cjs     30 checks  (no browser)
+      node tests/rewards-function.test.cjs     35 checks  (no browser)
       node tests/payments.test.cjs             48 checks  (no browser)
       node tests/dashboard.browser.cjs        155 checks
       node tests/cart-stock.browser.cjs        23 checks

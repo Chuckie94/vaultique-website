@@ -24,9 +24,16 @@
    the email is the customer's do they see their points -- and then only
    their points and what they are worth.
 
-   WHAT IT NEVER KEEPS. The platform is read for the moment of the answer
+   WHAT IT NEVER KEEPS. The platform is asked for the moment of the answer
    (netlify/functions/_rewards.js) and nothing it said is stored: not the
    balance, not the email, not the name.
+
+   HOW IT ASKS (build 68). Through the platform's rewards door, with the
+   door's own key, which answers one customer's points, or the email to
+   send a code to, and nothing else. The old way, the whole business read
+   with the secret key, is used only while the door is not set up, and
+   never once POS_SUPABASE_KEY has been deleted. /api/rewards-check says
+   which way is in use.
    ===================================================================== */
 'use strict';
 const crypto = require('crypto');
@@ -100,13 +107,14 @@ async function askTeam(userId, kind, extra) {
 }
 
 /* The customer's points, asked of the platform now, less what website
-   orders have already promised. Null when the number is no longer one
-   customer's on the platform. */
+   orders have already promised. `cust` is false when the number is no
+   longer one customer's on the platform. `settings` are the shop's rewards
+   figures, which is all a quote needs. Throws when neither the door nor
+   the old way can say. */
 async function standingOf(custNo) {
-  const state = await R.readPlatform();
-  const cust = R.customerByNumber(state, custNo);
-  if (!cust) return { state, cust: null, standing: null };
-  return { state, cust, standing: R.standing(state, cust, await promised(custNo)) };
+  const r = await R.standingFor(custNo, await promised(custNo));
+  if (!r.found) return { cust: false, standing: null, settings: r.settings || {} };
+  return { cust: true, standing: r.standing, settings: r.settings || {} };
 }
 
 const mail = require('./_mail').shopMail;
@@ -213,15 +221,23 @@ exports.handler = async function (event) {
          never said. Only what happens next differs, and only inside here. */
       /* Why no code went is written for the team only (Admin > Rewards),
          never for the person asking. */
+      /* A number already linked to another account is not asked about at
+         all: its email is never fetched for nothing. */
       let to = '', why = '';
       try {
-        const state = await R.readPlatform();
-        const cust = R.customerByNumber(state, number);
         const taken = await P.svc('GET', 'rewards_links?cust_no=eq.' + encodeURIComponent(number) + '&select=user_id');
-        if (!cust) why = 'This number is not on exactly one customer on the platform (not found, a Walk-in, or used twice).';
-        else if (taken && taken.length) why = 'This number is already linked to another website account.';
-        else if (!(to = R.emailOf(cust))) why = 'The customer record on the platform has no email address.';
-      } catch (e) { to = ''; why = 'The platform could not be read just now.'; }
+        if (taken && taken.length) why = 'This number is already linked to another website account.';
+        else {
+          const f = await R.emailFor(number);
+          if (!f.found) why = 'This number is not on exactly one customer on the platform (not found, a Walk-in, or used twice).';
+          else if (!(to = f.email)) why = 'The customer record on the platform has no email address.';
+        }
+      } catch (e) {
+        to = '';
+        why = (e && e.code === 'busy')
+          ? 'The platform\'s rewards door has been asked for as many emails as it allows this hour.'
+          : 'The platform could not be read just now.';
+      }
 
       const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
       let sent = false;
@@ -294,7 +310,7 @@ exports.handler = async function (event) {
       const due = Math.round((Number(body.due) || 0) * 100) / 100;
       const s = await standingOf(link.cust_no);
       if (!s.cust) return P.json(400, { error: 'Your rewards could not be found. Please ask us.' });
-      const q = R.redeemQuote(s.standing.points, due, s.state.settings || {});
+      const q = R.redeemQuote(s.standing.points, due, s.settings || {});
       if (!q || !(q.points > 0)) return P.json(200, { quote: null });
       if (action === 'quote') return P.json(200, { quote: q });
 

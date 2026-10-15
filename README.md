@@ -91,6 +91,7 @@ psql -d <scratch db> -f tests/analytics-fixture.sql -f supabase-analytics.sql \
      -f supabase-analytics-sources.sql -f tests/analytics-sources.sql   where visitors came from
 node tests/rewards-engine.test.cjs       the website's points match the till's, to the point
 node tests/rewards-function.test.cjs     linking, live points and promises; nothing about a customer said or kept
+node tests/rewards-door.test.cjs         the same, through the platform's rewards door; the old way only until it is set up
 node tests/rewards.browser.cjs           the account card and using points on a WhatsApp order
 node tests/admin-rewards.browser.cjs     Admin > Rewards
 psql -d <scratch db> -f tests/analytics-fixture.sql -f supabase-rewards.sql -f tests/rewards.sql   who may read and change what
@@ -165,9 +166,16 @@ been run they read the old way, so nothing stops in between.
 Check it at `https://YOUR-SITE.netlify.app/api/products`: near the end it says
 `"source":"door"`. `"source":"row"` means the old way is still in use.
 
-`POS_SUPABASE_KEY` still has to stay in Netlify for now: **Vaultique Rewards**
-(below, in SETUP.md) reads customers and sales with it. It can go once the
-rewards have a door of their own.
+### The rewards door (website build 68)
+**Vaultique Rewards** (SETUP.md) ask the platform's **rewards door**
+(`vbp_website_rewards` and `vbp_website_rewards_email`, created by the
+platform's `tools/vbp-rewards-door.sql`, build 469) with the publishable key
+and the door's own key, `POS_REWARDS_KEY`. Until the door is set up they read
+the old way, with `POS_SUPABASE_KEY`.
+
+Check it at `https://YOUR-SITE.netlify.app/api/rewards-check`: it says
+`"source":"door"` once the door is in use. Then `POS_SUPABASE_KEY` can be
+deleted from Netlify, and the website holds no key that opens the business.
 
 ### The website's own Supabase, as seen by the functions
 `/robots.txt`, `/sitemap.xml` and the email sender run on Netlify rather than in

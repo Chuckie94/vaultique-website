@@ -708,12 +708,24 @@ keeps a customer's name, phone, email, balance or sales from the platform: it
 asks the platform about one verified customer at the moment it needs to, and
 shows them only their points and what they are worth.
 
+It asks through the platform's **rewards door** (website build 68, the
+platform's build 469): one customer's points by their number, with the four
+rewards figures from Settings, or the email to send a code to, and nothing
+else. The door keeps its own limits (1,000 points questions and 20 emails an
+hour, 3 for any one number), so its key cannot be used to copy the customer
+list out.
+
 **Setting it up, once**
 1. Run **supabase-rewards.sql** in this website's Supabase SQL Editor (not the
    platform's). Every line of its last result must say **OK**.
-2. In Netlify, **POS_SUPABASE_KEY** must be the platform's **secret** key
-   (`sb_secret_…`). A publishable key is refused for rewards on purpose.
-   **SUPABASE_SERVICE_ROLE_KEY** (this website's own) must be there too.
+2. Run the platform's **tools/vbp-rewards-door.sql** (its build 469) in the
+   **platform's** Supabase, and put the key it shows once into Netlify as
+   **POS_REWARDS_KEY**. **SUPABASE_SERVICE_ROLE_KEY** (this website's own)
+   must be there too. Open `/api/rewards-check`: it should say
+   `"source":"door"`. Then **POS_SUPABASE_KEY** can be deleted from Netlify
+   (deploy again afterwards). Until the door is set up, the rewards read the
+   old way, with **POS_SUPABASE_KEY** as the platform's **secret** key
+   (`sb_secret_…`); a publishable key is refused for that on purpose.
 3. **Settings > Notifications** must be able to send email: the code goes
    by email.
 4. **Customer accounts** must be on (Settings > Customer Accounts).

@@ -54,6 +54,13 @@
   to = "/.netlify/functions/products"
   status = 200
 
+# Which way the rewards read the platform: through its rewards door, or the
+# old way with the secret key. Says nothing about any customer.
+[[redirects]]
+  from = "/api/rewards-check"
+  to = "/.netlify/functions/rewards-check"
+  status = 200
+
 # ---------------------------------------------------------------------
 # Real addresses for the storefront.
 #

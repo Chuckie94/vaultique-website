@@ -20,6 +20,23 @@
    business as one document with a careful conflict check; a second
    writer there is how a till's sale gets lost.
 
+   THROUGH THE REWARDS DOOR (the platform's build 469). The platform's
+   Supabase has a door that answers the two questions asked here, and
+   nothing else: one customer's points, by their number, with the shop's
+   four rewards figures; and, only to send the code, the email on that
+   customer's record. It is asked with the public key and the door's own
+   key (POS_REWARDS_KEY), never with the secret key, and it reads the
+   platform's sections and the sales' own rows, never row 100.
+
+   The old way, reading the whole business with the secret key
+   (POS_SUPABASE_KEY), is kept only for while the door is not set up: no
+   door key, or a door that does not answer, refuses the key, or cannot
+   read. Once POS_SUPABASE_KEY is deleted from Netlify there is no old way
+   at all, and anything the door cannot answer is "rewards cannot be
+   reached just now". A door that is busy (its own hourly limit) is never
+   answered the old way: that limit is there so nobody can copy the
+   customers out, and reading everything instead would undo it.
+
    THE FORMULA is the platform's own, js/services/loyaltyEngine.js at its
    build 453, copied function for function so the website and the till
    can never disagree. tests/rewards-engine.test.cjs runs the platform's
@@ -190,8 +207,12 @@ function customerByNumber(state, number) {
    the till has not rung up yet. */
 function standing(state, cust, promised) {
   const settings = state.settings || {};
+  return standingFrom(pointsBalance(cust, state.sales || [], settings, state.returns || []), settings, promised);
+}
+/* The same, from a balance already worked out (by the door). */
+function standingFrom(raw, settings, promised) {
+  settings = settings || {};
   const cfg = rewardsCfg(settings);
-  const raw = pointsBalance(cust, state.sales || [], settings, state.returns || []);
   const balance = Math.floor(raw - (Number(promised) || 0));
   return {
     points: balance,
@@ -210,6 +231,104 @@ function emailOf(cust) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : '';
 }
 
+/* ---------------- the rewards door (the platform's build 469) ------- */
+
+const DOOR = 'vbp_website_rewards';
+const DOOR_EMAIL = 'vbp_website_rewards_email';
+/* The platform's publishable key: public already, in every page the shop
+   serves. The door opens only with its own key besides. */
+function publicKey() {
+  return String(process.env.POS_PUBLIC_KEY || '').trim() || 'sb_publishable_wj1gGEwOnLu_HlBRkbeZvA_tCHEk1vR';
+}
+function doorKey() { return String(process.env.POS_REWARDS_KEY || '').trim(); }
+
+/* One question to one door. { asked: true, answer } when the door gave an
+   answer of its own shape; { asked: false, why } when it is not set up,
+   not there, or not answering. The secret key is never sent here. */
+async function askDoor(fn, number) {
+  const key = doorKey();
+  if (!key) return { asked: false, why: 'POS_REWARDS_KEY is not set in Netlify' };
+  let res;
+  try {
+    res = await fetch(platformUrl() + '/rest/v1/rpc/' + fn, {
+      method: 'POST',
+      headers: { apikey: publicKey(), Authorization: 'Bearer ' + publicKey(),
+                 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ p_key: key, p_number: String(number == null ? '' : number) })
+    });
+  } catch (e) { return { asked: false, why: 'the door could not be reached' }; }
+  if (!res.ok) {
+    return { asked: false, why: res.status === 404 ? 'the door is not in the platform\'s Supabase yet (its SQL has not been run)'
+                                                   : 'the door did not answer (' + res.status + ')' };
+  }
+  const a = await res.json().catch(() => null);
+  if (!a || typeof a !== 'object' || a.door !== fn || a.v !== 1 || typeof a.ok !== 'boolean') {
+    return { asked: false, why: 'the door gave an answer of another shape' };
+  }
+  if (!a.ok) {
+    const why = a.why === 'refused' ? 'the door refused POS_REWARDS_KEY'
+              : a.why === 'busy' ? 'the door has been asked as often as it allows this hour'
+              : 'the door could not read the platform just now';
+    return { asked: true, refused: a.why === 'refused', busy: a.why === 'busy', why, answer: a };
+  }
+  return { asked: true, answer: a };
+}
+
+/* Whether the old way may be used now: only while the secret key is still
+   in Netlify, and never because the door was busy. */
+function oldWayFor(d) { return !!platformKey() && !(d && d.busy); }
+function unreachable(why, code) { return Object.assign(new Error(why), { code: code || 'unreadable' }); }
+
+/* One customer's standing: { source, found, standing, settings }. Throws
+   (code 'unreadable', 'busy' or 'not-connected') when it cannot be said. */
+async function standingFor(number, promised) {
+  const d = await askDoor(DOOR, number);
+  if (d.asked && d.answer.ok) {
+    const a = d.answer;
+    if (!a.found) return { source: 'door', found: false, standing: null, settings: {} };
+    const points = Number(a.points);
+    if (!isFinite(points)) throw unreachable('the door gave points that are not a number');
+    const settings = (a.settings && typeof a.settings === 'object') ? a.settings : {};
+    return { source: 'door', found: true, standing: standingFrom(points, settings, promised), settings };
+  }
+  if (!oldWayFor(d)) throw unreachable(d.why, d.busy ? 'busy' : (doorKey() ? 'unreadable' : 'not-connected'));
+  const state = await readPlatform();
+  const cust = customerByNumber(state, number);
+  if (!cust) return { source: 'row', found: false, standing: null, settings: state.settings || {}, why: d.why };
+  return { source: 'row', found: true, standing: standing(state, cust, promised), settings: state.settings || {}, why: d.why };
+}
+
+/* For the code that proves a number is somebody's: { source, found,
+   email }. The email is used once, to send the code, and never returned
+   to anybody. Throws as standingFor does. */
+async function emailFor(number) {
+  const d = await askDoor(DOOR_EMAIL, number);
+  if (d.asked && d.answer.ok) {
+    const a = d.answer;
+    return { source: 'door', found: !!a.found, email: a.found ? emailOf({ email: a.email }) : '' };
+  }
+  if (!oldWayFor(d)) throw unreachable(d.why, d.busy ? 'busy' : (doorKey() ? 'unreadable' : 'not-connected'));
+  const state = await readPlatform();
+  const cust = customerByNumber(state, number);
+  return { source: 'row', found: !!cust, email: cust ? emailOf(cust) : '', why: d.why };
+}
+
+/* For /api/rewards-check: is the door set up and answering? Asks with a
+   number nobody could have, which the door answers at once without
+   reading anything or counting it. Says nothing about any customer. */
+async function doorCheck() {
+  const d = await askDoor(DOOR, '');
+  const secret = !!platformKey();
+  if (d.asked && d.answer.ok) {
+    return { source: 'door', doorKeySet: true, secretKeyStillSet: secret,
+             next: secret ? 'The door is working. You can now delete POS_SUPABASE_KEY from Netlify.'
+                          : 'The door is working, and the secret key is gone. Nothing more to do.' };
+  }
+  return { source: secret ? 'row' : 'none', doorKeySet: !!doorKey(), secretKeyStillSet: secret, why: d.why,
+           next: secret ? 'Rewards are still read the old way. Keep POS_SUPABASE_KEY until this says "door".'
+                        : 'Rewards cannot be read until the door is set up.' };
+}
+
 module.exports = {
   // the formula
   rewardsCfg, isMember, earnedOnSale, redeemedOnSale, pointsBalance, pointsWorth,
@@ -217,5 +336,7 @@ module.exports = {
   // numbers
   numberKey, plausibleNumber,
   // the platform
-  readPlatform, forget, findState, customerByNumber, standing, emailOf, platformKey
+  readPlatform, forget, findState, customerByNumber, standing, standingFrom, emailOf, platformKey,
+  // the door
+  standingFor, emailFor, doorCheck, askDoor, doorKey
 };
