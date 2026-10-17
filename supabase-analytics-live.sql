@@ -118,6 +118,12 @@ create table if not exists public.site_places (
   lon          numeric(6,2) check (lon between -180 and 180)
 );
 create index if not exists spl_at on public.site_places (at desc);
+-- Build 69: whether the visitor said this town (told) or it is Netlify's
+-- reading of the connection (connection). See supabase-browsing-towns.sql.
+alter table public.site_places add column if not exists how text not null default 'connection';
+do $$ begin
+  alter table public.site_places add constraint site_places_how check (how in ('connection', 'told'));
+exception when duplicate_object then null; end $$;
 
 comment on table public.site_places is
   'Country, province and town of a website visit, from Netlify''s reading of the connection. No internet address. Written by the visit-where function only.';
@@ -161,27 +167,34 @@ begin
      group by e.session
   ),
   placed as (
-    select v.*, p.country, p.country_name, p.region, p.city, p.lat, p.lon
+    select v.*, p.country, p.country_name, p.region, p.city, p.lat, p.lon,
+           coalesce(p.how, 'connection') as how
       from visits v left join public.site_places p on p.session = v.session
   )
   select json_build_object(
-    'visits',  (select count(*) from placed),
-    'located', (select count(*) from placed where country is not null),
+    'visits',        (select count(*) from placed),
+    'located',       (select count(*) from placed where country is not null),
+    'told',          (select count(*) from placed where how = 'told'),
+    'told_visitors', (select count(distinct visitor) from placed where how = 'told'),
     'countries', coalesce((
       select json_agg(c order by c.visits desc, c.name)
         from (select country as code, max(country_name) as name,
                      count(*) as visits, count(distinct visitor) as visitors,
-                     sum(pages) as page_views
+                     sum(pages) as page_views,
+                     count(*) filter (where how = 'told') as told,
+                     count(distinct visitor) filter (where how = 'told') as told_visitors
                 from placed where country is not null
                group by country) c), '[]'::json),
     'cities', coalesce((
       select json_agg(t order by t.visits desc, t.name)
-        from (select country, max(country_name) as country_name, region, city as name,
+        from (select country, max(country_name) as country_name, max(region) as region, city as name,
                      round(avg(lat), 2) as lat, round(avg(lon), 2) as lon,
                      count(*) as visits, count(distinct visitor) as visitors,
-                     sum(pages) as page_views
+                     sum(pages) as page_views,
+                     count(*) filter (where how = 'told') as told,
+                     count(distinct visitor) filter (where how = 'told') as told_visitors
                 from placed where country is not null
-               group by country, region, city
+               group by country, city, case when city is null then region end
                limit 300) t), '[]'::json)
   ) into v_out;
   return v_out;

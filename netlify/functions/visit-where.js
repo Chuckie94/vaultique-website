@@ -26,8 +26,17 @@
 
    IF ANYTHING IS MISSING -- no service key, no table, no geo header --
    it answers 204 and does nothing. The map simply has fewer places.
+
+   WHEN THE VISITOR SAYS (build 69). "Where are you browsing from?" sends
+   the id of the town the visitor picked, from the shop's own list of the
+   world's towns (_places.js). It is recorded for this visit in place of
+   Netlify's guess, marked how = 'told', so the map can tell the two
+   apart. Only an id on that list is accepted: a browser still cannot
+   write a place of its own. A visitor who picks nothing is recorded
+   exactly as before.
    ===================================================================== */
 const { readConfig } = require('./_seo-data');
+const { readGeo } = require('./_geo');
 
 function serviceKey() {
   return String(process.env.WEB_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
@@ -35,50 +44,29 @@ function serviceKey() {
 
 const quiet = () => ({ statusCode: 204, headers: { 'Cache-Control': 'no-store' }, body: '' });
 
-function text(v, max) {
-  const s = String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, '').trim();
-  return s ? s.slice(0, max) : null;
-}
-
-function coord(v, limit) {
-  const n = Number(v);
-  if (!Number.isFinite(n) || Math.abs(n) > limit) return null;
-  return Math.round(n * 100) / 100;          // about a kilometre: a town, not a house
-}
-
-/* Netlify's geo header, base64 JSON:
-   { city, country: { code, name }, subdivision: { code, name },
-     latitude, longitude, timezone } */
-function readGeo(headers) {
-  const h = headers || {};
-  let g = null;
-  const raw = h['x-nf-geo'] || h['X-Nf-Geo'];
-  if (raw) {
-    try { g = JSON.parse(Buffer.from(String(raw), 'base64').toString('utf8')); }
-    catch (e) { try { g = JSON.parse(String(raw)); } catch (x) { g = null; } }
-  }
-  g = g || {};
-  const country = g.country || {};
-  const code = text(country.code || h['x-country'], 2);
-  if (!code || !/^[A-Za-z]{2}$/.test(code)) return null;
-  return {
-    country: code.toUpperCase(),
-    country_name: text(country.name, 80),
-    region: text(g.subdivision && g.subdivision.name, 80),
-    city: text(g.city, 80),
-    lat: coord(g.latitude, 90),
-    lon: coord(g.longitude, 180),
-  };
+/* The town the visitor picked, or null. Loaded only when one was sent,
+   so an ordinary visit never reads the list at all. */
+function toldPlace(id) {
+  if (id == null || id === '') return null;
+  try { return require('./_places').byId(id); } catch (e) { return null; }
 }
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: '' };
 
-  let session = '';
-  try { session = String((JSON.parse(event.body || '{}') || {}).session || ''); } catch (e) {}
+  let session = '', chosen = null;
+  try {
+    const body = JSON.parse(event.body || '{}') || {};
+    session = String(body.session || '');
+    chosen = body.place;
+  } catch (e) {}
   if (!/^[A-Za-z0-9]{8,64}$/.test(session)) return quiet();
 
-  const place = readGeo(event.headers);
+  const told = toldPlace(chosen);
+  const place = told
+    ? { country: told.country, country_name: told.country_name, region: told.region,
+        city: told.city, lat: told.lat, lon: told.lon, how: 'told' }
+    : readGeo(event.headers);
   if (!place) return quiet();
 
   const url = String(readConfig().url || '').replace(/\/+$/, '');
@@ -98,11 +86,25 @@ exports.handler = async function (event) {
     const rows = await seen.json();
     if (!Array.isArray(rows) || !rows.length) return quiet();
 
-    const res = await fetch(url + '/rest/v1/site_places?on_conflict=session', {
+    /* Netlify's guess never replaces anything: the first place written for
+       a visit stands. What the visitor says replaces the guess. */
+    const write = (row) => fetch(url + '/rest/v1/site_places?on_conflict=session', {
       method: 'POST',
-      headers: Object.assign({ Prefer: 'resolution=ignore-duplicates,return=minimal' }, headers),
-      body: JSON.stringify([Object.assign({ session }, place)]),
+      headers: Object.assign({
+        Prefer: (told ? 'resolution=merge-duplicates' : 'resolution=ignore-duplicates') + ',return=minimal'
+      }, headers),
+      body: JSON.stringify([Object.assign({ session }, row)]),
     });
+    let res = await write(place);
+    /* A database from before build 69 has no "how" column. The place is
+       still worth keeping; it just cannot be marked as told. */
+    if (!res.ok && told && res.status === 400) {
+      const why = await res.text();
+      if (/\bhow\b/.test(why)) {
+        const plain = Object.assign({}, place); delete plain.how;
+        res = await write(plain);
+      } else { console.error('[visit-where] 400 ' + why.slice(0, 160)); return quiet(); }
+    }
     if (!res.ok) console.error('[visit-where] ' + res.status + ' ' + (await res.text()).slice(0, 160));
   } catch (e) {
     console.error('[visit-where]', e.message);

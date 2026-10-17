@@ -18,11 +18,18 @@ const geo = o => Buffer.from(JSON.stringify(o)).toString('base64');
 const LUSAKA = geo({ city: 'Lusaka', country: { code: 'ZM', name: 'Zambia' },
   subdivision: { code: '09', name: 'Lusaka Province' }, latitude: -15.4167, longitude: 28.2833, timezone: 'Africa/Lusaka' });
 
-let calls = [], recorded = true, written = [];
+let calls = [], recorded = true, written = [], noHowColumn = false;
 global.fetch = async (url, opts) => {
   calls.push({ url, opts });
   if (/site_events\?/.test(url)) return { ok: true, json: async () => (recorded ? [{ id: 1 }] : []) };
-  if (/site_places/.test(url)) { written.push(JSON.parse(opts.body)); return { ok: true, text: async () => '' }; }
+  if (/site_places/.test(url)) {
+    const rows = JSON.parse(opts.body);
+    /* A database from before build 69 refuses the column it does not have. */
+    if (noHowColumn && rows.some((r) => 'how' in r)) {
+      return { ok: false, status: 400, text: async () => '{"code":"PGRST204","message":"Could not find the \'how\' column of \'site_places\' in the schema cache"}' };
+    }
+    written.push(rows); return { ok: true, status: 201, text: async () => '' };
+  }
   return { ok: false, text: async () => '' };
 };
 const run = (body, headers) => fn.handler({ httpMethod: 'POST', body: JSON.stringify(body),
@@ -62,6 +69,38 @@ const run = (body, headers) => fn.handler({ httpMethod: 'POST', body: JSON.strin
   await run({ session: 'abcdef0123456789' }, { 'x-country': 'za' });
   const c = (written[0] || [])[0] || {};
   is(c.country === 'ZA' && c.city === null && c.lat === null, 'the country is written and the town left empty', JSON.stringify(c));
+
+  console.log('\nWhen the visitor says where they are (build 69)');
+  calls = []; written = [];
+  r = await run({ session: 'abcdef0123456789', place: '910111' }, { 'x-nf-geo': LUSAKA });
+  const told = (written[0] || [])[0] || {};
+  is(told.city === 'Livingstone' && told.region === 'Southern Province' && told.country === 'ZM' && told.how === 'told',
+     'a visitor in Livingstone on Lusaka\'s network is written in Livingstone, marked told', JSON.stringify(told));
+  is(told.lat === -17.84 && told.lon === 25.85, 'at Livingstone, from the shop\'s own list', told.lat + ',' + told.lon);
+  const putTold = calls.find(c => /site_places/.test(c.url)) || { opts: { headers: {} } };
+  is(/merge-duplicates/.test(putTold.opts.headers.Prefer), 'and it replaces the network\'s guess for that visit');
+  is(r.statusCode === 204 && !JSON.stringify(calls).includes('41.216.99.12'), 'still answers nothing, and the internet address still goes nowhere');
+  calls = []; written = [];
+  await run({ session: 'abcdef0123456789', place: 'p-ZM-07' }, { 'x-nf-geo': LUSAKA });
+  const prov = (written[0] || [])[0] || {};
+  is(prov.city === null && prov.region === 'Southern Province' && prov.how === 'told' && prov.lat === -16.7,
+     '"somewhere else in Southern Province" is written as the province', JSON.stringify(prov));
+  calls = []; written = [];
+  await run({ session: 'abcdef0123456789', place: 'Paris, really' }, { 'x-nf-geo': LUSAKA });
+  const junk = (written[0] || [])[0] || {};
+  is(junk.city === 'Lusaka' && !('how' in junk), 'a place that is not on the shop\'s list is ignored: the network\'s guess stands', JSON.stringify(junk));
+  calls = []; written = [];
+  await run({ session: 'abcdef0123456789', place: '910111' }, {});
+  is(((written[0] || [])[0] || {}).city === 'Livingstone', 'a named town is written even when Netlify cannot say where');
+  calls = []; written = []; recorded = false;
+  await run({ session: 'abcdef0123456789', place: '910111' }, { 'x-nf-geo': LUSAKA });
+  is(written.length === 0, 'but never for a visit the website did not record');
+  recorded = true;
+  calls = []; written = []; noHowColumn = true;
+  await run({ session: 'abcdef0123456789', place: '910111' }, { 'x-nf-geo': LUSAKA });
+  const old = (written[0] || [])[0] || {};
+  is(old.city === 'Livingstone' && !('how' in old), 'before supabase-browsing-towns.sql: the town is still written, without the mark', JSON.stringify(old));
+  noHowColumn = false;
 
   console.log('\nWithout a service key');
   delete process.env.WEB_SUPABASE_SERVICE_KEY; delete process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -1430,6 +1430,27 @@ shows anything finer than a town. It uses the service key already in Netlify,
 **SUPABASE_SERVICE_ROLE_KEY** (there if you set up staff logins) or
 **WEB_SUPABASE_SERVICE_KEY**, and counts visits from the day it is switched on.
 
+**Where visitors say they are (build 69).** A town cannot be read from a
+connection in Zambia: Airtel, MTN and Zamtel send every phone on mobile data
+through Lusaka, so somebody browsing in Livingstone is "Lusaka" to every website,
+Google and Netlify alike. So the website asks, once, after somebody has looked
+around for a little while: **"Where are you browsing from?"** at the bottom of
+the screen, with the largest towns of their country one tap away and
+**Somewhere else** for Country, then Province, then Town, for anywhere in the
+world. Nobody has to answer; × puts it away for sixty days. An answer is
+remembered on that phone, so every later visit from it counts in that town and
+nobody is asked twice. The shop's own devices, browsers that ask not to be
+tracked, and robots are never asked, and a visitor who does not answer is
+counted exactly as before. Switch it off, or change the wording, in **Settings >
+Shopping > Where visitors browse from**.
+
+Run **supabase-browsing-towns.sql** once (safe to repeat). The map then draws
+**gold pins** for towns visitors named and **grey pins** for the connection's
+guesses, and **Where visitors say they are** lists the named towns by the
+number of people: the truest picture of where the website is popular. The list
+of towns is GeoNames' (geonames.org, CC BY 4.0), held on the website itself;
+`tools/build-places.cjs` rebuilds it if it ever needs refreshing.
+
 **Where visitors came from.** Run **supabase-analytics-sources.sql** once. The
 card lists visits by source (Facebook, Instagram, WhatsApp, Google, other sites,
 and typed in or unknown) and adds Facebook and Instagram together, so you can hold

@@ -55,6 +55,9 @@
     photoAutoSwipe: false,
     photoSwipeSeconds: 4,
     rewardsOnline: false,
+    askWhere: true,
+    askWhereTitle: '',
+    askWhereNote: '',
 
     enquiries: true,
     wishlist: true,
@@ -116,6 +119,23 @@
                 min: 2, max: 15, suffix: 'seconds',
                 showIf: function (v) { return !!v.photoAutoSwipe; },
                 hint: 'Four is a comfortable pace.' }
+            ]
+          },
+          {
+            title: 'Where visitors browse from',
+            note: 'A visitor\u2019s town cannot be read from their connection: Zambia\u2019s mobile ' +
+                  'networks send everybody through Lusaka. So the website asks, once, after somebody ' +
+                  'has looked around for a little while: one tap on a town, or Country, Province and ' +
+                  'Town. The answer is remembered on their phone and puts them in the right place on ' +
+                  'the map in Analytics. Nobody has to answer, and the shop\u2019s own devices are never asked.',
+            fields: [
+              { type: 'toggle', name: 'askWhere', label: 'Ask visitors where they are browsing from' },
+              { type: 'text', name: 'askWhereTitle', label: 'The question', maxLength: 80,
+                placeholder: 'Where are you browsing from?',
+                showIf: function (v) { return v.askWhere !== false; } },
+              { type: 'text', name: 'askWhereNote', label: 'The line under it', maxLength: 200,
+                placeholder: 'One tap helps us know where our customers are. We will not ask again.',
+                showIf: function (v) { return v.askWhere !== false; } }
             ]
           },
           {

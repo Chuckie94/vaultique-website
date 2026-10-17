@@ -54,6 +54,12 @@
   to = "/.netlify/functions/products"
   status = 200
 
+# Towns for "Where are you browsing from?" (netlify/functions/places.js).
+[[redirects]]
+  from = "/api/places"
+  to = "/.netlify/functions/places"
+  status = 200
+
 # Which way the rewards read the platform: through its rewards door, or the
 # old way with the secret key. Says nothing about any customer.
 [[redirects]]

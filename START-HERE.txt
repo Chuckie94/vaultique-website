@@ -1,7 +1,22 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 68
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 69
 ====================================================
-The whole site, cumulative (includes everything in build 67).
+The whole site, cumulative (includes everything in build 68).
 Upload this and you are up to date.
+
+NEW IN 69 — RUN ONE SQL FILE IN THE WEBSITE SUPABASE (SQL Editor):
+  supabase-browsing-towns.sql   (safe to run again; both lines must say OK)
+
+  * "Where are you browsing from?" Zambia's mobile networks send every
+    phone through Lusaka, so the map could not see Livingstone and the
+    rest. Now the website asks, once, after somebody has looked around for
+    a little while: one tap on a town, or Country, then Province, then
+    Town, anywhere in the world. Remembered on the phone; never asked
+    twice; nobody has to answer. Settings > Shopping > Where visitors
+    browse from switches it off or changes the wording.
+  * Admin > Analytics > Browsing location: gold pins for towns visitors
+    named, grey pins for the connection's guess, and a new list, "Where
+    visitors say they are".
+  * Somebody who does not answer is counted exactly as before.
 
 NEW IN 68 — THE REWARDS DOOR (goes with the platform's build 469)
   * Vaultique Rewards no longer read the whole business with the
@@ -51,7 +66,7 @@ Every line of each check must say OK.
     Contact > Business email) is told when a request is waiting.
   * Admin > Rewards shows staff why no code was emailed for a link.
 
-176 files. config.js is not in this folder, on purpose (see STEP 3).
+186 files. config.js is not in this folder, on purpose (see STEP 3).
 
 
 ================================================================

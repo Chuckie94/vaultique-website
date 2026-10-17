@@ -1676,3 +1676,36 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
   .foot-col li{font-size:13px;margin-bottom:8px}
   .foot-bottom{padding:16px 0;font-size:11px}
 }
+
+/* ---- "Where are you browsing from?" (assets/where.js) ------------------
+   A card at the bottom of the screen, above the floating buttons on a
+   phone (they step up out of its way), at the bottom left on a computer. */
+.wq{position:fixed;left:12px;right:12px;bottom:12px;z-index:127;background:var(--surface);color:var(--ink);
+  border:1px solid rgba(var(--gold-rgb),.45);border-radius:16px;box-shadow:var(--shadow);padding:16px 16px 14px;
+  transform:translateY(calc(100% + 24px));opacity:0;transition:transform .45s var(--ease),opacity .3s}
+.wq.in{transform:none;opacity:1}
+.wq.in.wq-away{opacity:0;visibility:hidden}
+.wq-x{position:absolute;top:6px;right:6px;width:36px;height:36px;border:0;background:transparent;border-radius:50%;
+  font-size:22px;line-height:1;color:var(--muted)}
+.wq-x:hover,.wq-x:focus-visible{background:var(--cream);color:var(--navy)}
+.wq-t{margin:0 34px 4px 0;font-size:19px;line-height:1.25;color:var(--navy)}
+.wq-n{margin:0 0 12px;font-size:13px;line-height:1.45;color:var(--muted)}
+.wq-chips{display:flex;flex-wrap:wrap;gap:8px}
+.wq-chip{border:1px solid var(--line);background:var(--ivory);color:var(--navy);border-radius:999px;padding:8px 14px;
+  font-size:14px;line-height:1.2;transition:border-color .2s,background .2s}
+.wq-chip:hover,.wq-chip:focus-visible{border-color:var(--gold);background:var(--surface)}
+.wq-else{background:transparent;border-style:dashed}
+.wq-pick{display:grid;gap:6px}
+.wq-lbl{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+.wq-sel{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);
+  font-family:var(--font-body);font-size:15px;color:var(--ink)}
+.wq-sel:disabled{opacity:.55}
+.wq-msg{margin:2px 0 0;font-size:12.5px;color:#a33}
+.wq-msg:empty{display:none}
+.wq-back{justify-self:start;margin-top:4px;padding:6px 0;border:0;background:none;color:var(--gold-deep);font-size:13px}
+.wq-thanks{margin:2px 0;font-size:15px;color:var(--navy)}
+@media(min-width:700px){.wq{left:22px;right:auto;bottom:22px;width:420px}}
+@media(max-width:699px){
+  body.wq-on .fab,body.wq-on .chat-fab,body.wq-on .to-top{transform:translateY(calc(-1 * var(--wq-h, 0px)));transition:transform .45s var(--ease)}
+}
+@media(prefers-reduced-motion:reduce){.wq,body.wq-on .fab,body.wq-on .chat-fab,body.wq-on .to-top{transition:none}}

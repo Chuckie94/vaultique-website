@@ -24,6 +24,7 @@ vaultique-website/
 ├── supabase-chat-handover.sql run once: "Handed to" until the colleague replies
 ├── supabase-analytics-live.sql run once: live figures, instant "here now", the visitor map
 ├── supabase-analytics-sources.sql run once: where visitors came from
+├── supabase-browsing-towns.sql run once: the town a visitor names, beside the network's guess
 ├── supabase-rewards.sql      run once: Vaultique Rewards on the website (links, codes, promised points)
 ├── netlify.toml               Netlify config + /api/products redirect
 ├── netlify/
@@ -95,7 +96,11 @@ node tests/rewards-door.test.cjs         the same, through the platform's reward
 node tests/rewards.browser.cjs           the account card and using points on a WhatsApp order
 node tests/admin-rewards.browser.cjs     Admin > Rewards
 psql -d <scratch db> -f tests/analytics-fixture.sql -f supabase-rewards.sql -f tests/rewards.sql   who may read and change what
-node tests/visit-where.test.cjs           where a visit came from: Netlify's place, no internet address
+node tests/visit-where.test.cjs           where a visit came from: Netlify's place, no internet address, or the town the visitor named
+node tests/places.test.cjs                country, province, town: the lists behind "Where are you browsing from?"
+node tests/where-ask.browser.cjs          "Where are you browsing from?" as a visitor sees it
+psql -d <scratch db> -f tests/analytics-fixture.sql -f supabase-analytics.sql -f tests/analytics-live-fixture.sql \
+     -f supabase-analytics-live.sql -f supabase-browsing-towns.sql -f tests/browsing-towns.sql   told and guessed towns
 psql -d <scratch db> -f tests/chat-jobs-fixture.sql -f tests/chat-realtime-fixture.sql \
      -f supabase-chat-realtime.sql -f tests/chat-realtime.sql   the shop typing reaches the customer live
 psql -d <scratch db> -f tests/payments-fixture.sql -f supabase-payments.sql \

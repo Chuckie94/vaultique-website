@@ -13,6 +13,12 @@
    address and no browser string: the user agent is read once, turned
    into one of three words, and thrown away.
 
+   AND ONE THING A VISITOR CHOOSES TO SAY. If they answer "Where are you
+   browsing from?" (assets/where.js), the id of the town they picked from
+   the shop's list is remembered on their phone and sent with each visit,
+   so the map shows the town they named instead of the network's guess.
+   Somebody who does not answer is counted exactly as before.
+
    THE TWO TOKENS ARE NOT AN IDENTITY. They are random numbers made in
    this browser. They are not derived from anything about the person,
    they mean nothing on any other website, and they are never sent
@@ -383,11 +389,25 @@
   function whereFrom() {
     if (readStore(sessionStorage, WHERE_KEY) === session) return;
     writeStore(sessionStorage, WHERE_KEY, session);
+    sendWhere(chosenPlace());
+  }
+  /* The town this phone's visitor once picked in "Where are you browsing
+     from?", if they did: only its id on the shop's list. */
+  var PLACE_KEY = 'vbp_place';
+  function chosenPlace() {
+    try {
+      var v = JSON.parse(readStore(localStorage, PLACE_KEY) || 'null');
+      return v && v.id ? String(v.id).slice(0, 40) : '';
+    } catch (e) { return ''; }
+  }
+  function sendWhere(place) {
+    var body = { session: session };
+    if (place) body.place = place;
     try {
       fetch('/.netlify/functions/visit-where', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session: session }),
+        body: JSON.stringify(body),
         keepalive: true,
         credentials: 'omit'
       }).catch(function () {});
@@ -543,12 +563,14 @@
 
   var lastPath = null;
 
+  var pagesSeen = 0;
   function pageView() {
     var here = currentPath();
     /* The storefront rewrites an old #/ address into the real one as it
        routes, which is two changes and one page. */
     if (here === lastPath) return;
     lastPath = here;
+    pagesSeen++;
     /* Drawn first, counted after: the title is what names the page, and
        it is set while the page renders. */
     setTimeout(function () { record('page_view'); }, 0);
@@ -587,8 +609,24 @@
         if (kind !== 'product_view' && kind !== 'add_to_cart' && kind !== 'checkout_start') return;
         record(kind, detail || null);
       } catch (e) {}
+    },
+    pages: function () { return pagesSeen; },
+    /* The visitor has just picked a town (already remembered on the phone
+       by where.js). Sent now if this visit has been recorded; otherwise
+       it goes with the visit's first report, as a remembered town does. */
+    where: function (place) {
+      try { if (!stopped && readStore(sessionStorage, WHERE_KEY) === session) sendWhere(String(place || '').slice(0, 40)); } catch (e) {}
     }
   };
+
+  /* For "Where are you browsing from?" (assets/where.js). It asks only a
+     visitor this file is counting, so never the shop's own devices, a
+     browser that asked not to be tracked, or a robot -- and nobody once the
+     database has said it cannot take the visits (stopped), because then an
+     answer would have nowhere to go. */
+  try {
+    Object.defineProperty(window.VBP_TRACK, 'counting', { get: function () { return !stopped; } });
+  } catch (e) {}
 
   /* ---- start ---------------------------------------------------------- */
 

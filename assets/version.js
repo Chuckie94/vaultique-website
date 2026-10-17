@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.40.1',
-  build: 68,
-  builtAt: '2026-10-14T22:16:16Z',
-  notes: 'Vaultique Rewards ask the platform\u2019s rewards door (its build 469) with POS_REWARDS_KEY, and read the old way only until the door is set up; /api/rewards-check says which way is in use. Needs the platform\u2019s tools/vbp-rewards-door.sql run in the platform\u2019s Supabase.'
+  version: '1.41.0',
+  build: 69,
+  builtAt: '2026-10-17T08:20:39Z',
+  notes: 'Where are you browsing from? Visitors can name their town (one tap, or Country, Province, Town, anywhere in the world), once per phone; the map shows the towns they named in gold beside the connection\u2019s guesses in grey, and lists where visitors say they are. Needs supabase-browsing-towns.sql.'
 };

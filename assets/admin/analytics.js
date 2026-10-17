@@ -392,11 +392,15 @@
 
       /* ---- where they browsed from ---------------------------------------
          A map of the towns visits came from, with the countries and towns
-         listed under it. The place is Netlify's reading of the visitor's
-         connection, written by the visit-where function: the country is
-         very reliable, the town right for most visitors (a phone is
-         sometimes placed at its network's hub). Nothing finer than a town
-         is ever shown, because nothing finer is known. */
+         listed under it. Two kinds of place, told apart since build 69:
+         the town a visitor named in "Where are you browsing from?"
+         (assets/where.js), and otherwise Netlify's reading of the
+         connection. That reading gets the country right, but Zambia's
+         mobile networks send everybody through Lusaka, so on its own it
+         puts most phones there. "Where visitors say they are" lists only
+         the towns visitors named: the truest picture of where the website
+         is popular. Nothing finer than a town is ever shown, because
+         nothing finer is known. */
       var placeCard = el('div', 'card an-places');
       foldable(placeCard, 'location', 'Browsing location', function () {
         setTimeout(function () { try { if (map) map.invalidateSize(); } catch (e) {} }, 0);
@@ -405,6 +409,21 @@
       placeCard.appendChild(placeSaid);
       var mapBox = el('div', 'an-map');
       placeCard.appendChild(mapBox);
+      /* Build 69. Gold pins are towns visitors named themselves ("Where
+         are you browsing from?"); grey pins are only the connection's
+         guess, which puts most people on mobile data in Lusaka. */
+      var legend = el('div', 'an-legend hide');
+      legend.innerHTML = '<span><i class="an-key said"></i>Said by the visitor</span>' +
+                         '<span><i class="an-key guess"></i>Guessed from the connection</span>' +
+                         '<span class="an-src">Town names: <a href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0)</span>';
+      placeCard.appendChild(legend);
+      var saidBox = el('div', 'an-said hide');
+      saidBox.appendChild(el('h4', null, 'Where visitors say they are'));
+      var saidNote = el('p', 'an-note', '');
+      saidBox.appendChild(saidNote);
+      var saidRows = el('div', 'an-rows');
+      saidBox.appendChild(saidRows);
+      placeCard.appendChild(saidBox);
       var placeTwo = el('div', 'an-two an-places-lists');
       var countryBox = el('div');
       countryBox.appendChild(el('h4', null, 'Countries'));
@@ -621,6 +640,16 @@
             pts.push(ll);
             var where = (t.name || 'Somewhere in ' + (t.region || t.country_name || t.country)) +
                         (t.country_name ? ', ' + t.country_name : '');
+            /* Before supabase-browsing-towns.sql there is no "told" at all,
+               and every pin is drawn as it always was. */
+            var knows = t.told !== undefined && t.told !== null;
+            var told = Number(t.told) || 0;
+            var guessOnly = knows && told === 0;
+            var fill = guessOnly ? '#d5d9df' : '#c9a24a', ink = guessOnly ? '#6b7480' : '#0f2340';
+            var said = !knows ? ''
+              : told === n ? '<br>All said by the visitors themselves'
+              : told ? '<br>' + num(told) + ' said so, ' + num(n - told) + ' guessed from the connection'
+              : '<br>Guessed from the connection, not said by anybody';
             /* A small location pin, its tip on the town: 10px wide for
                one visit, at most 14 for the busiest, so towns close together
                stay readable. The numbers are in the tooltip and the list. */
@@ -630,15 +659,15 @@
                 className: 'an-pin',
                 html: '<svg viewBox="0 0 20 28" width="' + w + '" height="' + h + '" aria-hidden="true">' +
                       '<path d="M10 1C5 1 1 5 1 10c0 6.5 9 17 9 17s9-10.5 9-17c0-5-4-9-9-9z" ' +
-                      'fill="#c9a24a" stroke="#0f2340" stroke-width="1.6"/>' +
-                      '<circle cx="10" cy="10" r="3.2" fill="#0f2340"/></svg>',
+                      'fill="' + fill + '" stroke="' + ink + '" stroke-width="1.6"/>' +
+                      '<circle cx="10" cy="10" r="3.2" fill="' + ink + '"/></svg>',
                 iconSize: [w, h], iconAnchor: [w / 2, h], tooltipAnchor: [0, -h]
               }),
               keyboard: false
             }).bindTooltip(
               '<b>' + esc(where) + '</b><br>' + num(n) + ' visit' + (n === 1 ? '' : 's') +
               ' · ' + num(t.visitors || 0) + ' ' + ((t.visitors === 1) ? 'person' : 'people') +
-              ' · ' + num(t.page_views || 0) + ' page view' + (t.page_views === 1 ? '' : 's')
+              ' · ' + num(t.page_views || 0) + ' page view' + (t.page_views === 1 ? '' : 's') + said
             ).addTo(mapLayer);
           });
           if (pts.length > 1) map.fitBounds(pts, { padding: [30, 30], maxZoom: 8 });
@@ -659,16 +688,42 @@
           if (r.error) throw r.error;
           var d = r.data || {};
           var total = Number(d.visits) || 0, placed = Number(d.located) || 0;
+          var knows = d.told !== undefined && d.told !== null;
+          var told = Number(d.told) || 0, people = Number(d.told_visitors) || 0;
           placeSaid.textContent = !total ? 'Nothing recorded in this range.'
             : num(placed) + ' of ' + num(total) + ' visit' + (total === 1 ? '' : 's') + ' placed on the map.' +
-              (placed < total ? ' The rest came before the map was switched on, or could not be placed.' : '');
+              (placed < total ? ' The rest came before the map was switched on, or could not be placed.' : '') +
+              (!knows ? ''
+                : told ? ' ' + num(told) + ' of them in a town the visitor named; the rest are the connection\u2019s guess, ' +
+                         'which puts most people on mobile data in Lusaka.'
+                : ' None yet in a town the visitor named: the rest are the connection\u2019s guess, which puts most ' +
+                  'people on mobile data in Lusaka.');
+          legend.classList.toggle('hide', !knows || !placed);
+          saidBox.classList.toggle('hide', !knows);
+          if (knows) {
+            var said = (d.cities || []).filter(function (t) { return Number(t.told_visitors) > 0; })
+              .sort(function (a, b) { return (Number(b.told_visitors) || 0) - (Number(a.told_visitors) || 0); });
+            saidNote.textContent = people
+              ? 'The ' + num(people) + ' ' + (people === 1 ? 'visitor' : 'visitors') + ' who answered \u201cWhere are you browsing from?\u201d, ' +
+                'by town. The truest picture of where the website is popular.'
+              : 'Nobody has answered \u201cWhere are you browsing from?\u201d in this range yet. Visitors are asked once, ' +
+                'after they have looked around for a little while.';
+            paintRows(saidRows, said.slice(0, TOP).map(function (t) {
+              var k = Number(t.told_visitors) || 0;
+              return { label: t.name || ('Somewhere in ' + (t.region || t.country_name || t.country)),
+                       sub: [t.region, t.country_name].filter(Boolean).join(', '),
+                       n: k, note: Math.round((k / Math.max(1, people)) * 100) + '% of answers' };
+            }), 'person', 'person');
+          }
           paintRows(countryRows, (d.countries || []).map(function (c) {
             return { label: flag(c.code) + (c.name || c.code), n: Number(c.visits) || 0,
                      extra: Number(c.visitors) || 0 };
           }), 'visit', 'visitor');
           paintRows(townRows, (d.cities || []).slice(0, TOP).map(function (t) {
+            var k = Number(t.told) || 0;
             return { label: t.name || ('Somewhere in ' + (t.region || t.country_name || t.country)),
-                     sub: [t.region, t.country_name].filter(Boolean).join(', '),
+                     sub: [t.region, t.country_name].filter(Boolean).join(', ') +
+                          (k ? ' \u00b7 ' + num(k) + ' said so' : ''),
                      n: Number(t.visits) || 0, extra: Number(t.visitors) || 0 };
           }), 'visit', 'visitor');
           paintMap(d);
@@ -676,6 +731,7 @@
           if (mine !== asking) return;
           var msg = (e && e.message) || String(e || '');
           countryRows.innerHTML = ''; townRows.innerHTML = '';
+          legend.classList.add('hide'); saidBox.classList.add('hide');
           placeSaid.textContent = /site_places|could not find|does not exist|schema cache/i.test(msg)
             ? 'The map is not switched on yet: run supabase-analytics-live.sql in Supabase.'
             : 'The map could not be read just now.';
@@ -863,6 +919,7 @@
           head.appendChild(l);
           var n = el('div', 'an-row-n', num(r.n));
           if (r.cart != null) n.appendChild(el('small', null, num(r.cart) + ' to cart'));
+          else if (r.note != null) n.appendChild(el('small', null, r.note));
           else if (r.extra != null) {
             n.appendChild(el('small', null, num(r.extra) +
               ' ' + someone + (r.extra === 1 ? '' : 's')));

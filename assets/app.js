@@ -61,6 +61,7 @@
     showBadges: true, showReviews: true, defaultSort: 'featured',
     photoAutoSwipe: false, photoSwipeSeconds: 4,
     rewardsOnline: false,
+    askWhere: true, askWhereTitle: '', askWhereNote: '',
     enquiries: true, wishlist: true, sharing: true, customerReviews: true,
     whatsappCheckout: true,
     requireName: true, requirePhone: true, requireEmail: false, requireAddress: false,
@@ -2714,8 +2715,20 @@
       bindEmailIg();
       applyLocalBackgrounds();
       startAccounts();
+      startWhere();
       boot();
     });
+  }
+  /* "Where are you browsing from?" (assets/where.js), as Settings >
+     Shopping has it. It waits for the visitor to look around first, and
+     asks nobody the visit counter is not counting. */
+  function startWhere() {
+    var W = window.VBP_WHERE;
+    if (!W || typeof W.start !== 'function') return;
+    try {
+      W.configure({ enabled: SHOP.askWhere !== false, title: SHOP.askWhereTitle || '', note: SHOP.askWhereNote || '' });
+      W.start();
+    } catch (e) {}
   }
   // Hero and lookbook photos normally come from the admin. If the admin is not
   // connected, fall back to optional local files, but only then (no 404 probing

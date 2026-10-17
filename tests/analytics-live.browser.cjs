@@ -80,6 +80,17 @@ const PLACES = { data: { visits: 14, located: 12,
            { country: 'ZM', country_name: 'Zambia', region: 'Copperbelt', name: 'Kitwe', lat: -12.8, lon: 28.21, visits: 3, visitors: 3, page_views: 8 },
            { country: 'ZA', country_name: 'South Africa', region: 'Gauteng', name: 'Johannesburg', lat: -26.2, lon: 28.04, visits: 1, visitors: 1, page_views: 2 }] } };
 
+/* Build 69: the same report once visitors have started saying where they are.
+   Livingstone was invisible before -- everybody there on mobile data was
+   "Lusaka" -- and is now the town most people named. */
+const PLACES_TOLD = { data: { visits: 14, located: 12, told: 5, told_visitors: 4,
+  countries: [{ code: 'ZM', name: 'Zambia', visits: 11, visitors: 9, page_views: 30, told: 5, told_visitors: 4 },
+              { code: 'ZA', name: 'South Africa', visits: 1, visitors: 1, page_views: 2, told: 0, told_visitors: 0 }],
+  cities: [{ country: 'ZM', country_name: 'Zambia', region: 'Lusaka Province', name: 'Lusaka', lat: -15.42, lon: 28.28, visits: 6, visitors: 5, page_views: 16, told: 1, told_visitors: 1 },
+           { country: 'ZM', country_name: 'Zambia', region: 'Southern Province', name: 'Livingstone', lat: -17.84, lon: 25.85, visits: 3, visitors: 2, page_views: 9, told: 3, told_visitors: 2 },
+           { country: 'ZM', country_name: 'Zambia', region: 'Copperbelt Province', name: 'Kitwe', lat: -12.8, lon: 28.21, visits: 2, visitors: 2, page_views: 5, told: 1, told_visitors: 1 },
+           { country: 'ZA', country_name: 'South Africa', region: 'Gauteng', name: 'Johannesburg', lat: -26.2, lon: 28.04, visits: 1, visitors: 1, page_views: 2, told: 0, told_visitors: 0 }] } };
+
 let LEAFLET = null;
 try { LEAFLET = path.dirname(require.resolve('leaflet/dist/leaflet.js')); } catch (e) {
   const local = path.resolve(ROOT, '..', 'vendor', 'node_modules', 'leaflet', 'dist');
@@ -206,6 +217,42 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
       is(lusaka === true, 'on a real map');
     } else {
       console.log('  (the map drawing itself was skipped: no local copy of Leaflet)');
+    }
+    const old = await page.evaluate(() => {
+      const card = document.querySelector('.an-places');
+      return { legend: !card.querySelector('.an-legend').classList.contains('hide'),
+               said: !card.querySelector('.an-said').classList.contains('hide') };
+    });
+    is(!old.legend && !old.said, 'before supabase-browsing-towns.sql, the card is exactly as it was', JSON.stringify(old));
+    await page.close();
+
+    console.log('\nWhere visitors say they are (build 69)');
+    page = await open({ 'rpc:site_stats': stats(14), 'rpc:site_here': { data: [] }, 'rpc:site_places_report': PLACES_TOLD });
+    await page.waitForTimeout(900);
+    const st = await page.evaluate(() => {
+      const card = document.querySelector('.an-places');
+      const rows = (sel) => Array.from(card.querySelectorAll(sel + ' .an-row')).map((r) => r.textContent.replace(/\s+/g, ' ').trim());
+      return {
+        said: card.querySelector('.an-places-said').textContent,
+        legend: !card.querySelector('.an-legend').classList.contains('hide'),
+        note: card.querySelector('.an-said .an-note').textContent,
+        named: rows('.an-said'),
+        towns: rows('.an-places-lists > div:last-child'),
+        pins: Array.from(card.querySelectorAll('.an-pin path')).map((p) => p.getAttribute('fill'))
+      };
+    });
+    is(/5 of them in a town the visitor named/.test(st.said) && /mobile data in Lusaka/.test(st.said),
+       'the card says how many visits were in a town the visitor named, and why the rest lean on Lusaka', st.said);
+    is(st.legend, 'a key tells the two kinds of pin apart');
+    is(/The 4 visitors who answered/.test(st.note), 'the new list says whose answers it is built from', st.note);
+    is(/^Livingstone/.test(st.named[0] || '') && /2/.test(st.named[0] || '') && /50% of answers/.test(st.named[0] || ''),
+       'Livingstone leads "Where visitors say they are": 2 people, half the answers', st.named.join(' | '));
+    is(st.named.length === 3 && !st.named.some((r) => /Johannesburg/.test(r)), 'and only towns somebody named are in it', st.named.join(' | '));
+    is(st.towns.some((r) => /^Lusaka/.test(r) && /1 said so/.test(r)), 'the full town list marks how many said so', st.towns.join(' | '));
+    if (LEAFLET) {
+      is(st.pins.length === 4 && st.pins.filter((f) => f === '#c9a24a').length === 3 && st.pins.filter((f) => f === '#d5d9df').length === 1,
+         'gold pins where somebody named the town, a grey one where it is only a guess (Johannesburg)', JSON.stringify(st.pins));
+      await page.locator('.an-places').screenshot({ path: path.join(ROOT, '..', 'map-told.png') });
     }
     await page.close();
 
