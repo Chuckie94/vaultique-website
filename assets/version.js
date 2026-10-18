@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.41.0',
-  build: 69,
-  builtAt: '2026-10-17T08:20:39Z',
-  notes: 'Where are you browsing from? Visitors can name their town (one tap, or Country, Province, Town, anywhere in the world), once per phone; the map shows the towns they named in gold beside the connection\u2019s guesses in grey, and lists where visitors say they are. Needs supabase-browsing-towns.sql.'
+  version: '1.42.0',
+  build: 70,
+  builtAt: '2026-10-18T13:27:45Z',
+  notes: 'Chat notifications on time: phone pushes sent as urgent, one per conversation; the admin chimes and counts at once with Live Chats in the background, and on every other admin page. Analytics lists which pieces were added to carts. Needs supabase-cart-pieces.sql.'
 };

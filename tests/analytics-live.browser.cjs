@@ -256,6 +256,44 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
     }
     await page.close();
 
+    console.log('\nWhich pieces were added to carts (build 70)');
+    const CARTS = { data: [
+      { sku: 'BG-1', label: 'Crossbody Tote Sling', carts: 3, people: 2, views: 5, last_at: new Date().toISOString() },
+      { sku: 'AC-2', label: 'Heritage Suede Belt',  carts: 1, people: 1, views: 0, last_at: new Date().toISOString() }
+    ] };
+    page = await open({ 'rpc:site_stats': stats(14), 'rpc:site_here': { data: [] }, 'rpc:site_cart_products': CARTS });
+    await page.waitForTimeout(700);
+    const carts = await page.evaluate(() => {
+      const card = document.querySelector('.an-carts');
+      return { said: card.querySelector('.an-carts-said').textContent,
+               rows: Array.from(card.querySelectorAll('.an-row')).map((r) => r.textContent.replace(/\s+/g, ' ').trim()),
+               go: !!Array.from(document.querySelectorAll('.an-kpi')).find((k) => /Added to cart/.test(k.textContent) && k.querySelector('.an-kpi-go')) };
+    });
+    is(carts.go, 'the Added to cart number now leads to which pieces they were');
+    is(/2 pieces added to carts, 4 times in all/.test(carts.said), 'the card says how many pieces and how many times', carts.said);
+    is(/^Crossbody Tote Sling/.test(carts.rows[0] || '') && /3/.test(carts.rows[0]) && /2 people/.test(carts.rows[0]) && /viewed 5/.test(carts.rows[0]) && /last added/.test(carts.rows[0]),
+       'each piece by name: times added, by how many people, how often viewed, when last added', carts.rows.join(' | '));
+    is(/^Heritage Suede Belt/.test(carts.rows[1] || ''), 'including a piece added straight from the shop page', carts.rows.join(' | '));
+    await page.locator('.an-carts').screenshot({ path: path.join(ROOT, '..', 'carts-card.png') });
+    await page.locator('.an-kpis').screenshot({ path: path.join(ROOT, '..', 'carts-kpi.png') });
+    await page.evaluate(() => { const c = document.querySelector('.an-carts .an-fold'); if (c) c.click(); });
+    await page.click('.an-kpi-go');
+    await page.waitForTimeout(400);
+    is(await page.evaluate(() => !document.querySelector('.an-carts').classList.contains('is-folded')),
+       'and pressing it opens the list, even one that was folded away');
+    await page.close();
+    page = await open({ 'rpc:site_stats': stats(14), 'rpc:site_here': { data: [] },
+      'rpc:site_cart_products': { error: 'Could not find the function public.site_cart_products(p_from, p_limit, p_to, p_tz) in the schema cache' },
+      'rpc:site_top_products': { data: [
+        { sku: 'BG-1', label: 'Crossbody Tote Sling', views: 5, carts: 3, visitors: 3 },
+        { sku: 'AC-9', label: 'Silk Scarf', views: 9, carts: 0, visitors: 3 } ] } });
+    await page.waitForTimeout(700);
+    const noSql = await page.evaluate(() => ({ said: document.querySelector('.an-carts-said').textContent,
+      rows: Array.from(document.querySelectorAll('.an-carts .an-row')).map((r) => r.textContent.replace(/\s+/g, ' ').trim()) }));
+    is(noSql.rows.length === 1 && /^Crossbody Tote Sling/.test(noSql.rows[0]) && /supabase-cart-pieces\.sql/.test(noSql.said),
+       'before its SQL is run, the most viewed pieces that went to a cart, and it says so', JSON.stringify(noSql));
+    await page.close();
+
     console.log('\nLong lists, kept tidy');
     const many = { data: Array.from({ length: 20 }, (_, k) => ({ sku: 'SKU-' + k, label: 'Piece ' + k, views: 40 - k, carts: 0 })) };
     page = await open({ 'rpc:site_stats': stats(40), 'rpc:site_here': { data: [] }, 'rpc:site_top_products': many });

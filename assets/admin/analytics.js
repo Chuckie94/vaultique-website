@@ -322,6 +322,13 @@
         card.appendChild(n);
         card.appendChild(el('div', 'an-kpi-l', k.label));
         card.appendChild(el('div', 'an-kpi-s', k.note));
+        /* Build 70: the number, and the way to which pieces it was. */
+        if (k.key === 'add_to_cart') {
+          var see = el('button', 'an-kpi-go', 'See which pieces \u203a');
+          see.type = 'button';
+          see.addEventListener('click', function () { showCarts(); });
+          card.appendChild(see);
+        }
         kpiNums[k.key] = n;
         kpiBox.appendChild(card);
       });
@@ -454,6 +461,26 @@
       prodCard.appendChild(prodRows);
       two.appendChild(prodCard);
       wrap.appendChild(two);
+
+      /* ---- added to cart (build 70) -------------------------------------
+         Every piece added to a cart in the range, from the add-to-cart
+         records themselves: how many times, by how many people, how often
+         it was viewed, and when it was last added. Most added first. */
+      var cartCard = el('div', 'card an-carts');
+      foldable(cartCard, 'carts', 'Added to cart');
+      var cartSaid = el('p', 'an-note an-carts-said', '');
+      cartCard.appendChild(cartSaid);
+      var cartRows = el('div', 'an-rows');
+      cartRows.appendChild(el('p', 'count', 'Reading\u2026'));
+      cartCard.appendChild(cartRows);
+      wrap.appendChild(cartCard);
+      function showCarts() {
+        if (cartCard.classList.contains('is-folded')) {
+          var head = cartCard.querySelector('.an-fold');
+          if (head) head.click();
+        }
+        try { cartCard.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { cartCard.scrollIntoView(); }
+      }
 
       /* ---- devices, and who had been before ----------------------------- */
       var two2 = el('div', 'an-two');
@@ -857,6 +884,66 @@
             return { label: x.label || x.sku, sub: x.sku, n: x.views, cart: x.carts };
           }), 'view', 'viewer');
         }).catch(function (e) { if (mine === asking && !trouble(e)) paintRows(prodRows, [], 'view', 'viewer'); });
+
+        loadCarts(mine);
+      }
+
+      /* When a piece was last added, in the shop's own time. */
+      function whenAdded(iso) {
+        try {
+          return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: tz })
+            .format(new Date(iso));
+        } catch (e) {
+          try { return new Date(iso).toLocaleString(); } catch (x) { return ''; }
+        }
+      }
+      function paintCarts(list, whole) {
+        var times = list.reduce(function (a, x) { return a + (Number(x.carts) || 0); }, 0);
+        cartSaid.textContent = !list.length ? ''
+          : num(list.length) + ' piece' + (list.length === 1 ? '' : 's') + ' added to carts, ' + num(times) +
+            ' time' + (times === 1 ? '' : 's') + ' in all.' +
+            (whole ? '' : ' Only pieces among the most viewed are shown until supabase-cart-pieces.sql is run in Supabase.');
+        paintRows(cartRows, list.map(function (x) {
+          var people = Number(x.people) || 0, views = Number(x.views) || 0;
+          return {
+            label: x.label || x.sku,
+            sub: [x.sku, x.last_at ? 'last added ' + whenAdded(x.last_at) : ''].filter(Boolean).join(' \u00b7 '),
+            n: Number(x.carts) || 0,
+            note: x.people == null
+              ? (views ? 'viewed ' + num(views) : 'added')
+              : num(people) + ' ' + (people === 1 ? 'person' : 'people') + (views ? ' \u00b7 viewed ' + num(views) : '')
+          };
+        }), 'time', 'person', 'Nothing was added to a cart in this range.');
+      }
+      function loadCarts(mine) {
+        Promise.resolve(sb.rpc('site_cart_products', {
+          p_from: range.from, p_to: range.to, p_tz: tz, p_limit: TOP
+        })).then(function (r) {
+          if (mine !== asking) return;
+          if (r.error) throw r.error;
+          paintCarts(r.data || [], true);
+        }).catch(function (e) {
+          if (mine !== asking) return;
+          var msg = (e && e.message) || String(e || '');
+          if (!/site_cart_products|could not find|does not exist|schema cache/i.test(msg)) {
+            if (!trouble(e)) { cartSaid.textContent = ''; paintRows(cartRows, [], 'time', 'person', 'These could not be read just now.'); }
+            return;
+          }
+          /* Before supabase-cart-pieces.sql: the most viewed pieces, the
+             ones among them that were added to a cart. Something rather
+             than nothing, and said to be so. */
+          Promise.resolve(sb.rpc('site_top_products', {
+            p_from: range.from, p_to: range.to, p_tz: tz, p_limit: 40
+          })).then(function (r) {
+            if (mine !== asking) return;
+            if (r.error) throw r.error;
+            var list = (r.data || []).filter(function (x) { return (Number(x.carts) || 0) > 0; })
+              .sort(function (a, b) { return (Number(b.carts) || 0) - (Number(a.carts) || 0); })
+              .slice(0, TOP)
+              .map(function (x) { return { sku: x.sku, label: x.label, carts: x.carts, views: x.views }; });
+            paintCarts(list, false);
+          }).catch(function (e2) { if (mine === asking && !trouble(e2)) paintRows(cartRows, [], 'time', 'person', 'These could not be read just now.'); });
+        });
       }
 
       /* ---- painting -------------------------------------------------------- */
@@ -900,10 +987,10 @@
         });
       }
 
-      function paintRows(hostEl, rows, one, someone) {
+      function paintRows(hostEl, rows, one, someone, empty) {
         hostEl.innerHTML = '';
         if (!rows.length) {
-          hostEl.appendChild(el('p', 'count', 'Nothing recorded in this range.'));
+          hostEl.appendChild(el('p', 'count', empty || 'Nothing recorded in this range.'));
           return;
         }
         var top = rows[0].n || 1;

@@ -749,6 +749,17 @@ const stock = p => p.evaluate(() => {
        window.__asked.rpc.filter(r => r.name === 'site_top_products').length) === 1,
        'site_top_products was asked exactly once');
 
+    /* Build 70: with supabase-cart-pieces.sql run, Added to cart is read from
+       the add-to-cart records themselves, so a piece gathered without being
+       among the most viewed is there too. */
+    await render(page, Object.assign({}, BUSY, { 'rpc:site_cart_products': { data: [
+      { sku: 'D', label: 'Silk Scarf', carts: 4, people: 3, views: 1 },
+      { sku: 'B', label: 'Tote Bag',   carts: 3, people: 2, views: 19 }
+    ] } }));
+    list = await pickList(page, 'Added to cart');
+    is(list.length === 2 && /Silk Scarf/.test(list[0].l) && /^4/.test(list[0].n) && /3 people/.test(list[0].n),
+       'Added to cart lists every piece gathered, most first, even one not among the most viewed', JSON.stringify(list));
+    await render(page, BUSY);
     list = await pickList(page, 'Best selling');
     is(/Tote Bag/.test(list[0].l) && /^5/.test(list[0].n),
        'best selling counts quantity, not lines', JSON.stringify(list[0]));

@@ -276,6 +276,22 @@ A missed notification never costs a message. The nudge is wrapped so that if it
 fails for any reason at all, the customer's message is still saved and still
 appears in Live Chats — being told is a convenience, and the message is not.
 
+**If the buzz comes late** (build 70). Every notification is now sent marked
+**urgent**, which is what wakes a resting Android phone at once; before, it was
+"normal", and a phone saving its battery held it back and handed it over later.
+If a phone still buzzes late, it is the phone holding the browser back: on
+Android, **Settings > Apps > Chrome** (or the browser the admin was added from)
+**> Battery** set to **Unrestricted**, and its notifications allowed. One
+notification is kept per conversation, so a phone that was off shows the newest
+message rather than a pile.
+
+**At the desk.** With the admin open, a customer writing now chimes and puts the
+count in the tab title at once, on any page of the admin (Orders, Products,
+Settings) and with the admin behind other windows, with a note in the corner and
+the way to the chat. **Settings > Live Chat** still decides whether there is a
+sound and how loud. A browser only plays a sound after the admin has been
+clicked in once.
+
 ### A green dot while somebody is typing
 
 Run **supabase-chat-phase8.sql** once. After it, both sides show a small green
@@ -1405,6 +1421,13 @@ How many people came to the website, what they looked at, and on what.
 **Orders** and **Sales** come from the Orders tab. To remove a test order from
 these figures, open **Orders**, find it, and press **Delete** (or set its status
 to **Cancelled**; cancelled orders are not counted).
+
+**Added to cart** (build 70). Press **See which pieces** under the number, or
+open the **Added to cart** card: every piece added to a cart in the dates shown,
+how many times, by how many people, how often it was viewed and when it was last
+added. Run **supabase-cart-pieces.sql** once for the full list; until then it
+shows the most viewed pieces that went to a cart. The Dashboard's **Added to
+cart** list reads the same.
 
 **Page views, product views and Most viewed pieces.** Every page a visitor
 opens is counted, and every piece opened to read about counts as a product

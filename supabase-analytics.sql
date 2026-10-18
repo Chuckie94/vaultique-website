@@ -926,6 +926,57 @@ end;
 $$;
 
 
+-- Build 70: which pieces were added to carts (the same as
+-- supabase-cart-pieces.sql, which a shop that has run this file already
+-- runs on its own).
+create or replace function public.site_cart_products(p_from date, p_to date, p_tz text, p_limit integer default 20)
+returns json
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_start timestamptz;
+  v_end   timestamptz;
+  v_out   json;
+begin
+  if not public.may_see_analytics() then
+    raise exception 'You do not have permission to read the website analytics.';
+  end if;
+  if p_from is null or p_to is null then return '[]'::json; end if;
+  p_tz    := coalesce(nullif(p_tz, ''), 'UTC');
+  v_start := (p_from::timestamp) at time zone p_tz;
+  v_end   := ((p_to + 1)::timestamp) at time zone p_tz;
+
+  select json_agg(x order by x.carts desc, x.last_at desc)
+    into v_out
+    from (
+      select e.sku                                                         as sku,
+             coalesce(min(e.label) filter (where e.kind = 'add_to_cart'),
+                      min(e.label))                                        as label,
+             count(*) filter (where e.kind = 'add_to_cart')                as carts,
+             count(distinct e.visitor) filter (where e.kind = 'add_to_cart') as people,
+             count(*) filter (where e.kind = 'product_view')               as views,
+             max(e.at) filter (where e.kind = 'add_to_cart')               as last_at
+        from public.site_events e
+       where e.sku is not null
+         and e.kind in ('add_to_cart', 'product_view')
+         and e.at >= v_start and e.at < v_end
+       group by e.sku
+      having count(*) filter (where e.kind = 'add_to_cart') > 0
+       order by count(*) filter (where e.kind = 'add_to_cart') desc,
+                max(e.at) filter (where e.kind = 'add_to_cart') desc
+       limit greatest(coalesce(p_limit, 20), 1)
+    ) x;
+
+  return coalesce(v_out, '[]'::json);
+end;
+$$;
+revoke all on function public.site_cart_products(date, date, text, integer) from public, anon;
+grant execute on function public.site_cart_products(date, date, text, integer) to authenticated;
+
+
 -- ---------------------------------------------------------------------
 -- STEP 11. How many people are on the site now.
 --
@@ -1304,9 +1355,10 @@ select routine_name as installed
    and routine_name in ('may_see_analytics', 'site_beat', 'site_rollup',
                         'site_rollup_range', 'site_stats', 'site_series',
                         'site_top_pages', 'site_top_products', 'site_live',
-                        'site_prune', 'site_clear', 'site_gone', 'site_here')
+                        'site_prune', 'site_clear', 'site_gone', 'site_here',
+                        'site_cart_products')
  order by routine_name;
--- Expect thirteen rows.
+-- Expect fourteen rows.
 
 select role_key as role, role_def->'permissions'->>'analytics' as website_analytics
   from public.site_settings s, jsonb_each(s.data) as roles(role_key, role_def)

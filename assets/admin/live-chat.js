@@ -1864,14 +1864,22 @@
       var liveWire = { channel: null, ok: false, hit: null };
 
       /* A burst — a message, its counters, the conversation's own row —
-         is one refresh and not four. */
+         is one refresh and not four.
+
+         EVEN WITH THE PAGE IN THE BACKGROUND (build 70). The list used to
+         wait until somebody came back to the tab, and the chime and the
+         "(2)" in the tab title are worked out from the list -- so the one
+         moment they exist for, the panel open behind something else, they
+         never came at all, and the shop found the customer only after
+         looking. The list is fetched now whatever is on screen; only the
+         open conversation waits to be looked at, so nothing is marked as
+         read behind anybody's back. */
       function nudged(id) {
         if (liveWire.hit) clearTimeout(liveWire.hit);
         liveWire.hit = setTimeout(function () {
           liveWire.hit = null;
-          if (document.hidden) return;
           loadList();
-          if (openId && (!id || id === openId)) loadThread(openId);
+          if (!document.hidden && openId && (!id || id === openId)) loadThread(openId);
         }, 150);
       }
 
@@ -1942,12 +1950,29 @@
         liveWire.ok = false;
       }
 
+      /* In the background the list is still asked for, less often: the sure
+         way, for when the live channel has quietly dropped, so the chime
+         and the tab count never wait for somebody to come back. */
+      var HIDDEN_LIST_EVERY = 30000;
+      var hiddenAskedAt = 0;
       function beatList() {
         if (listTimer) clearInterval(listTimer);
         listTimer = setInterval(function () {
-          if (!document.hidden) { loadList(); checkMentions(); }
+          if (document.hidden) {
+            if (Date.now() - hiddenAskedAt < HIDDEN_LIST_EVERY) return;
+            hiddenAskedAt = Date.now();
+          }
+          loadList(); checkMentions();
         }, liveWire.ok ? LIVE_LIST_EVERY : LIST_EVERY);
       }
+      /* Coming back to the tab: straight to what is new, not after the
+         next beat. */
+      function onBack() {
+        if (document.hidden) return;
+        loadList();
+        if (openId) loadThread(openId);
+      }
+      document.addEventListener('visibilitychange', onBack);
 
       /* Mentions, asked for on the list's own beat as well as heard live.
          The live channel is the fast way; this is the sure way, for a
@@ -2135,6 +2160,7 @@
          Without this the timers would outlive the page and keep asking
          for conversations nobody is looking at. */
       function teardown() {
+        document.removeEventListener('visibilitychange', onBack);
         if (listTimer) clearInterval(listTimer);
         if (threadTimer) clearInterval(threadTimer);
         if (presenceTimer) clearInterval(presenceTimer);

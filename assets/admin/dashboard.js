@@ -1019,12 +1019,21 @@
           return;
         }
 
+        /* Build 70: Added to cart from the add-to-cart records themselves
+           (supabase-cart-pieces.sql), so a piece somebody gathered without
+           it being among the most viewed is not missed. Until that file is
+           run, the most viewed are re-sorted, as before. */
+        var cartAsk = Promise.resolve(sb.rpc('site_cart_products', {
+          p_from: shift(t, -6), p_to: t, p_tz: tz, p_limit: TOP
+        })).then(function (r) { return r; }, function () { return null; });
         Promise.resolve(sb.rpc('site_top_products', {
           p_from: shift(t, -6), p_to: t, p_tz: tz, p_limit: 40
         })).then(function (r) {
-          if (mine !== asking) return;
           if (r.error) throw r.error;
-          var rows = r.data || [];
+          return cartAsk.then(function (c) { return { r: r, c: c }; });
+        }).then(function (both) {
+          if (mine !== asking) return;
+          var rows = both.r.data || [];
           perf.viewed = rows
             .filter(function (x) { return (x.views || 0) > 0; })
             .sort(function (a, b) { return (b.views || 0) - (a.views || 0); })
@@ -1033,14 +1042,23 @@
               return { sku: x.sku, label: x.label || x.sku, n: x.views || 0,
                        extra: (x.carts || 0) + ' to cart' };
             });
-          perf.carted = rows
-            .filter(function (x) { return (x.carts || 0) > 0; })
-            .sort(function (a, b) { return (b.carts || 0) - (a.carts || 0); })
-            .slice(0, TOP)
-            .map(function (x) {
+          var c = both.c;
+          if (c && !c.error && Array.isArray(c.data)) {
+            perf.carted = c.data.slice(0, TOP).map(function (x) {
+              var people = Number(x.people) || 0;
               return { sku: x.sku, label: x.label || x.sku, n: x.carts || 0,
-                       extra: (x.views || 0) + ' viewed' };
+                       extra: people + ' ' + (people === 1 ? 'person' : 'people') };
             });
+          } else {
+            perf.carted = rows
+              .filter(function (x) { return (x.carts || 0) > 0; })
+              .sort(function (a, b) { return (b.carts || 0) - (a.carts || 0); })
+              .slice(0, TOP)
+              .map(function (x) {
+                return { sku: x.sku, label: x.label || x.sku, n: x.carts || 0,
+                         extra: (x.views || 0) + ' viewed' };
+              });
+          }
           paintPerf();
         }).catch(function (e) {
           if (mine !== asking) return;

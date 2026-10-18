@@ -698,6 +698,10 @@
   .an-legend .an-src{margin-left:auto;font-size:11px}
   .an-legend .an-src a{color:inherit}
   .an-said{margin-top:16px}
+  .an-kpi-go{margin-top:8px;padding:0;border:0;background:none;color:var(--gold-deep, #a9842f);font-size:12.5px;cursor:pointer;text-align:left}
+  .an-kpi-go:hover,.an-kpi-go:focus-visible{text-decoration:underline}
+  .an-carts .an-carts-said{margin:0 0 8px}
+  .an-carts .an-carts-said:empty{display:none}
   .an-said .an-note{margin:0 0 8px}
   .an-map .an-pin{background:none;border:0}
   .an-map .an-pin svg{display:block;filter:drop-shadow(0 1px 1px rgba(0,0,0,.35))}

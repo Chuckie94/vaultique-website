@@ -136,12 +136,28 @@ function vapidHeader(endpoint, keys) {
   return `vapid t=${head}.${claim}.${b64u(sig)}, k=${keys.vapidPublic}`;
 }
 
+/* RFC 8030 §5.4: the push service keeps only the newest undelivered push
+   with the same Topic. A phone that was off for an hour gets one line per
+   conversation, the latest, not every message in turn. At most 32
+   characters of the URL-safe alphabet, so the tag is hashed into one. */
+function topicFor(tag) {
+  return crypto.createHash('sha256').update(String(tag || 'chat')).digest('base64url').slice(0, 32);
+}
+
 async function pushOne(sub, payload, keys) {
   const body = encrypt(JSON.stringify(payload), sub);
   const res = await fetch(sub.endpoint, {
     method: 'POST',
     headers: {
       TTL: String(TTL),
+      /* RFC 8030 §5.3. Without it a push is "normal", and a resting
+         Android phone holds normal pushes back to save its battery and
+         hands them over in a batch later -- which is how a customer's
+         message came to buzz the shop's phone after the customer had
+         gone. A customer waiting in chat is what "high" is for: the
+         phone is woken now. */
+      Urgency: 'high',
+      Topic: topicFor(payload.tag),
       'Content-Encoding': 'aes128gcm',
       'Content-Type': 'application/octet-stream',
       'Content-Length': String(body.length),
@@ -189,13 +205,22 @@ exports.handler = async function (event) {
   if (!conversationId) return json(400, { error: 'bad request' });
 
   // ---- what to say -----------------------------------------------------
-  const convRes = await db(s.url, serviceKey,
-    `chat_conversations?id=eq.${encodeURIComponent(conversationId)}` +
-    '&select=id,name,phone,email,customer_id,assigned_to,shop_unread,status');
+  /* The conversation, the chat settings and the message itself do not
+     depend on one another, so they are asked for together: one wait on
+     the database instead of three, before the phone is told. */
+  const wantsBody = body.kind !== 'mention' && body.kind !== 'handover' && body.message;
+  const [convRes, setRes, msgRes] = await Promise.all([
+    db(s.url, serviceKey,
+      `chat_conversations?id=eq.${encodeURIComponent(conversationId)}` +
+      '&select=id,name,phone,email,customer_id,assigned_to,shop_unread,status'),
+    db(s.url, serviceKey, 'site_settings?key=eq.chat&select=data'),
+    wantsBody
+      ? db(s.url, serviceKey, `chat_messages?id=eq.${encodeURIComponent(body.message)}&select=body`)
+      : Promise.resolve(null)
+  ]);
   const conv = convRes.ok ? (await convRes.json())[0] : null;
   if (!conv) return json(200, { sent: 0, why: 'no such conversation' });
 
-  const setRes = await db(s.url, serviceKey, 'site_settings?key=eq.chat&select=data');
   const chatSet = (setRes.ok ? ((await setRes.json())[0] || {}).data : null) || {};
   const showPreview = chatSet.pushPreview !== false;
   const tellEveryone = chatSet.pushAll !== false;
@@ -233,10 +258,8 @@ exports.handler = async function (event) {
   } else {
     title = who + ' wrote to the shop';
     text = 'Tap to answer.';
-    if (showPreview && body.message) {
-      const mRes = await db(s.url, serviceKey,
-        `chat_messages?id=eq.${encodeURIComponent(body.message)}&select=body`);
-      const m = mRes.ok ? (await mRes.json())[0] : null;
+    if (showPreview && msgRes && msgRes.ok) {
+      const m = (await msgRes.json())[0];
       const said = String((m && m.body) || '').trim();
       if (said) text = said.length > 120 ? said.slice(0, 117) + '…' : said;
     }
@@ -322,4 +345,4 @@ exports.handler = async function (event) {
 };
 
 /* For the tests. Nothing else reads this. */
-exports._internals = { hkdf, encrypt, vapidHeader, label, b64u, unb64u };
+exports._internals = { hkdf, encrypt, vapidHeader, label, b64u, unb64u, topicFor };

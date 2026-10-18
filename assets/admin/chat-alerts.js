@@ -367,5 +367,97 @@
     API._mentionTimer = setInterval(look, 30000);
   };
 
+  /* -------------------------------------- a customer writing, anywhere
+     Build 70. On the Live Chats page the panel chimes and counts for
+     itself. Everywhere else in the admin (Orders, Products, Settings) a
+     customer writing used to make no sound and no mark at all, so a shop
+     working through orders found the chat only when it next looked, often
+     after the customer had gone. This does what the panel does, from any
+     page: the chime (Settings > Live Chat > desk sound and volume), the
+     count in the tab title, and a note in the corner with the way to the
+     chat. Live through Realtime; checked every half minute as well, page
+     in the background or not, for when the live channel has dropped. */
+  API.watchChats = function (sb) {
+    if (!sb || API._chatTimer) return;
+    var chatSet = {};
+    var seen = null;             // customer messages waiting, at the last look
+    var askKind = true;          // supabase-chat-jobs.sql: job enquiries are not waiting customers
+    var busy = false, again = false;
+    function onChats() { return /^#\/chats/.test(location.hash || ''); }
+
+    Promise.resolve(sb.from('site_settings').select('data').eq('key', 'chat')).then(function (r) {
+      chatSet = (r && r.data && r.data[0] && r.data[0].data) || {};
+    }, function () {});
+
+    function toast(c) {
+      var old = document.querySelector('.lc-chat-toast');
+      if (old) old.remove();
+      var box = document.createElement('div');
+      box.className = 'lc-mention-toast lc-chat-toast';
+      var b = document.createElement('b');
+      b.textContent = (c && (c.name || c.phone || c.email)) ? (c.name || c.phone || c.email) + ' wrote in the chat'
+                                                            : 'A customer wrote in the chat';
+      var t = document.createElement('span');
+      t.textContent = 'They are waiting for an answer.';
+      var go = document.createElement('a');
+      go.className = 'btn btn-gold btn-sm';
+      go.href = '#/chats' + (c && c.id ? '/' + c.id : '');
+      go.textContent = 'Open the chat';
+      go.addEventListener('click', function () { box.remove(); });
+      var shut = document.createElement('button');
+      shut.type = 'button'; shut.className = 'btn btn-out btn-sm'; shut.textContent = 'Later';
+      shut.addEventListener('click', function () { box.remove(); });
+      var row = document.createElement('div'); row.className = 'lc-toast-acts';
+      row.appendChild(go); row.appendChild(shut);
+      box.appendChild(b); box.appendChild(t); box.appendChild(row);
+      document.body.appendChild(box);
+      setTimeout(function () { if (box.parentNode) box.remove(); }, 60000);
+    }
+
+    function look() {
+      if (onChats()) { seen = null; return; }      // the Live Chats page tells them itself
+      if (busy) { again = true; return; }
+      busy = true;
+      var q = sb.from('chat_conversations')
+        .select('id,name,phone,email,shop_unread,last_message_at')
+        .eq('status', 'open').gt('shop_unread', 0)
+        .order('last_message_at', { ascending: false }).limit(50);
+      if (askKind) q = q.is('kind', null);
+      Promise.resolve(q).then(function (r) {
+        busy = false;
+        if (r && r.error) {
+          if (askKind && /kind/.test(r.error.message || '')) { askKind = false; return look(); }
+          return;
+        }
+        var rows = (r && r.data) || [];
+        var n = rows.reduce(function (a, c) { return a + (Number(c.shop_unread) || 0); }, 0);
+        /* The first look, and the first after leaving Live Chats, only
+           takes the count: a backlog is not news. */
+        if (seen !== null && n > seen && !onChats()) {
+          if (chatSet.deskSound !== false) {
+            var v = Number(chatSet.deskVolume);
+            API.ding(isFinite(v) && v > 0 ? Math.min(10, v) / 10 : 0.4);
+          }
+          toast(rows[0]);
+        }
+        seen = n;
+        if (!onChats()) API.badge(n);
+        if (again) { again = false; look(); }
+      }, function () { busy = false; });
+    }
+
+    try {
+      API._chatChannel = sb.channel('vbp-admin-chat-alerts')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: 'sender=eq.customer' },
+            function () { look(); })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_conversations' },
+            function () { look(); })
+        .subscribe();
+    } catch (e) { /* no Realtime: the half-minute look below is enough */ }
+    window.addEventListener('hashchange', function () { if (!onChats()) look(); });
+    API._chatTimer = setInterval(look, 30000);
+    look();
+  };
+
   window.VBP_CHAT_ALERTS = API;
 })();
