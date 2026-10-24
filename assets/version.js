@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.42.1',
-  build: 71,
-  builtAt: '2026-10-24T12:12:59Z',
-  notes: 'Analytics: the Traffic chart\'s legend sits level under the chart again, no longer over the dates, and the scale counts in whole numbers. Live chat: outside chat hours, a chat somebody is answering shows the usual line, not the closed message. No SQL.'
+  version: '1.43.0',
+  build: 72,
+  builtAt: '2026-10-24T12:34:57Z',
+  notes: 'Analytics: Last 3, 6 and 9 months ranges; the range line names the weekdays, so This week (from Monday) and Last 7 days can be told apart; the dates under the Traffic chart no longer run into each other or off the edge on a phone. No SQL.'
 };

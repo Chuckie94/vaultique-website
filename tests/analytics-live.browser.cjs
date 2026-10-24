@@ -165,7 +165,10 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
       is(lay.labels > 0 && lay.below >= 0 && lay.clash === 0, 'below the chart, touching none of its dates or numbers', JSON.stringify(lay));
       const scale = await tp.evaluate(() => {
         const card = Array.from(document.querySelectorAll('.card')).find((c) => /Traffic/.test((c.querySelector('h3') || {}).textContent || ''));
-        return Array.from(card.querySelectorAll('.an-plot svg text[text-anchor="end"]')).map((x) => x.textContent);
+        /* The numbers up the left; the last date, along the bottom, is
+           right-aligned too so that it stays inside the chart. */
+        return Array.from(card.querySelectorAll('.an-plot svg text[text-anchor="end"]'))
+          .filter((x) => +x.getAttribute('y') < 220).map((x) => x.textContent);
       });
       is(scale.join(',') === '0,2,4,6,8,10', 'the scale counts in whole numbers, 0 to 10 in twos, not "3" and "8" for 2.5 and 7.5', scale.join(','));
       await tp.locator('.card:has(.an-plot)').screenshot({ path: path.join(ROOT, '..', 'traffic-legend.png') });

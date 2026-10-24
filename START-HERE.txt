@@ -1,7 +1,19 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 71
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 72
 ====================================================
-The whole site, cumulative (includes everything in build 70).
+The whole site, cumulative (includes everything in build 71).
 Upload this and you are up to date.
+
+NEW IN 72 — NO SQL. Just upload.
+
+  * Admin > Analytics: three new ranges, Last 3 months, Last 6 months and
+    Last 9 months. Like Last 7 days they slide: today and back exactly
+    that many months (on 24 October, Last 3 months is 25 July to today).
+  * The line under the range buttons now names the weekdays, for example
+    "Mon 19 Oct to Sat 24 Oct 2026 · 6 days". This week always starts on
+    Monday; Last 7 days is always today and the six days before. They are
+    the same only on a Sunday.
+  * The dates under the Traffic chart no longer run into each other on a
+    phone, and the last date is no longer cut off at the edge.
 
 NEW IN 71 — NO SQL. Just upload.
   If you have not run build 70's supabase-cart-pieces.sql yet, run that.
@@ -94,7 +106,7 @@ Every line of each check must say OK.
     Contact > Business email) is told when a request is waiting.
   * Admin > Rewards shows staff why no code was emailed for a link.
 
-190 files. config.js is not in this folder, on purpose (see STEP 3).
+191 files. config.js is not in this folder, on purpose (see STEP 3).
 
 
 ================================================================

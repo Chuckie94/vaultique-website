@@ -120,6 +120,14 @@
     var day = new Date(Date.UTC(b.y, b.m - 1, b.d)).getUTCDay();  // 0 = Sunday
     return shift(stamp, -((day + 6) % 7));
   }
+  /* The same date n months earlier, or the last day of that month when it
+     is shorter: three months before 31 May is 28 February, not 3 March. */
+  function monthsBack(stamp, n) {
+    var b = parts(stamp), y = b.y, m = b.m - n;
+    while (m < 1) { m += 12; y--; }
+    var last = new Date(Date.UTC(y, m, 0)).getUTCDate();   // days in month m
+    return stampOf(y, m, Math.min(b.d, last));
+  }
   function today(tz) {
     var F = window.VBP_FORMAT;
     if (F && F.dayStampInZone) return F.dayStampInZone(tz);
@@ -135,8 +143,15 @@
       /* Seven days INCLUDING today, which is what everybody means by it
          and what makes the number comparable week to week. */
       case 'last7':     return { from: shift(t, -6), to: t };
+      /* From Monday, so it grows a day at a time and starts again each
+         Monday. Only on a Sunday is it the same as the last seven days. */
       case 'week':      return { from: weekStart(t), to: t };
       case 'month':     return { from: stampOf(b.y, b.m, 1), to: t };
+      /* Sliding like the last seven days: today and back exactly that many
+         months, from the day after the same date then. */
+      case 'last3m':    return { from: shift(monthsBack(t, 3), 1), to: t };
+      case 'last6m':    return { from: shift(monthsBack(t, 6), 1), to: t };
+      case 'last9m':    return { from: shift(monthsBack(t, 9), 1), to: t };
       case 'year':      return { from: stampOf(b.y, 1, 1), to: t };
       default:          return { from: t, to: t };
     }
@@ -148,6 +163,9 @@
     { key: 'last7',     label: 'Last 7 days' },
     { key: 'week',      label: 'This week' },
     { key: 'month',     label: 'This month' },
+    { key: 'last3m',    label: 'Last 3 months' },
+    { key: 'last6m',    label: 'Last 6 months' },
+    { key: 'last9m',    label: 'Last 9 months' },
     { key: 'year',      label: 'This year' }
   ];
 
@@ -227,6 +245,17 @@
     if (grain === 'month') return MON[b.m - 1] + ' ' + b.y;
     if (grain === 'week')  return 'Week of ' + b.d + ' ' + MON[b.m - 1].slice(0, 3);
     return b.d + ' ' + MON[b.m - 1].slice(0, 3) + ' ' + b.y;
+  }
+
+  /* "Mon 19 Oct", with the year when it is wanted. The weekday is what
+     tells "This week", which starts on a Monday, from "Last 7 days". */
+  function dayFull(stamp, withYear) {
+    var b = parts(stamp);
+    var DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return DAY[new Date(Date.UTC(b.y, b.m - 1, b.d)).getUTCDay()] + ' ' +
+           b.d + ' ' + MON[b.m - 1] + (withYear ? ' ' + b.y : '');
   }
 
   /* ---- the page ------------------------------------------------------- */
@@ -948,11 +977,13 @@
 
       /* ---- painting -------------------------------------------------------- */
 
+      /* "Mon 19 Oct to Sat 24 Oct 2026 · 6 days": the year once, unless
+         the range crosses into a new one. */
       function saidRange() {
         var n = spanDays(range.from, range.to);
-        if (n === 1) return bucketFull(range.from, 'day');
-        return bucketFull(range.from, 'day') + ' to ' + bucketFull(range.to, 'day') +
-               ' · ' + n + ' days';
+        if (n === 1) return dayFull(range.from, true);
+        return dayFull(range.from, parts(range.from).y !== parts(range.to).y) + ' to ' +
+               dayFull(range.to, true) + ' · ' + n + ' days';
       }
 
       /* Money is written the way the rest of the admin writes it, and
@@ -1151,6 +1182,8 @@
           role: 'img',
           'aria-label': 'Visits and unique visitors, ' + saidRange()
         });
+        /* In the page from the start, so the dates can be measured. */
+        plot.appendChild(svg);
 
         function x(i) {
           return series.length === 1
@@ -1181,19 +1214,48 @@
           svg.appendChild(lab);
         }
 
-        /* Enough labels to read the axis and no more: past about eight
-           they start touching, and a label you cannot read is worse than
-           one that is not there. */
-        var every = Math.max(1, Math.ceil(series.length / 8));
-        series.forEach(function (r, i) {
-          if (i % every !== 0 && i !== series.length - 1) return;
+        /* Enough dates to read the axis and no more: past about eight they
+           start touching, and a date you cannot read is worse than one that
+           is not there. Spaced by how wide they are, too: eight fitted a
+           computer, but on a phone they ran into each other, and the last
+           date, which is always shown, sat on the one before it and ran off
+           the end of the chart. */
+        var GAP = 8;
+        var lastI = series.length - 1;
+        function dateAt(i) {
           var t = svgEl('text', {
             x: x(i), y: HEIGHT - 8, 'text-anchor': 'middle',
             'font-size': 11, fill: 'var(--muted)', 'font-family': 'Jost, sans-serif'
           });
-          t.textContent = bucketLabel(r.bucket, grain);
+          t.textContent = bucketLabel(series[i].bucket, grain);
           svg.appendChild(t);
-        });
+          var w = 0;
+          try { w = t.getComputedTextLength(); } catch (e) {}
+          if (!w) w = t.textContent.length * 6.6;   // not laid out yet: near enough
+          return { t: t, w: w, l: x(i) - w / 2, r: x(i) + w / 2 };
+        }
+        var lastDate = dateAt(lastI);
+        if (lastDate.r > W - 1) {                   // ends at the edge, not past it
+          lastDate.t.setAttribute('text-anchor', 'end');
+          lastDate.t.setAttribute('x', W - 1);
+          lastDate.l = W - 1 - lastDate.w;
+          lastDate.r = W - 1;
+        }
+        var longest = series.reduce(function (n, r) {
+          return Math.max(n, bucketLabel(r.bucket, grain).length);
+        }, 1);
+        var wide = Math.max(lastDate.w,
+          longest * lastDate.w / Math.max(1, lastDate.t.textContent.length));
+        var step = lastI ? innerW / lastI : innerW;
+        var every = Math.max(1, Math.ceil(series.length / 8), Math.ceil((wide + GAP) / step));
+        var dates = [];
+        for (var di = 0; di < lastI; di += every) dates.push(dateAt(di));
+        /* From the right, each makes way for the one after it. */
+        var after = lastDate;
+        for (var dj = dates.length - 1; dj >= 0; dj--) {
+          if (dates[dj].r + GAP > after.l) { svg.removeChild(dates[dj].t); continue; }
+          after = dates[dj];
+        }
 
         function path(key) {
           var d = '';
@@ -1290,8 +1352,6 @@
         /* A finger is a pointer that never leaves, so a tap outside puts
            the tooltip away rather than leaving it stranded. */
         svg.addEventListener('pointerdown', function (e) { showAt(nearest(e.clientX)); });
-
-        plot.appendChild(svg);
       }
 
       /* ---- who is here now ---------------------------------------------- */
