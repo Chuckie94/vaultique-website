@@ -30,7 +30,7 @@ const ROOT = path.resolve(__dirname, '..');
 let checks = 0, failures = 0;
 const ok   = m => { checks++; console.log('  ✓ ' + m); };
 const fail = m => { checks++; failures++; console.log('  ✗ ' + m); };
-const is   = (c, m) => c ? ok(m) : fail(m);
+const is   = (c, m, x) => c ? ok(m) : fail(m + (x ? '\n      got: ' + x : ''));
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -175,6 +175,113 @@ const subLine = page => page.evaluate(() =>
       await page.waitForTimeout(1600);
       is((await subLine(page)) === 'Nobody in — leave a note',
          'with nobody there it says the shop\'s "away" line');
+      await ctx.close();
+    }
+
+    /* ==================================================================== */
+    /* THE OWNER: "if someone takes a chat outside working hours, it
+       shouldn't write that message, it should write the normal wording
+       used during operational hours." Their screenshot: a green dot, and
+       under it "Our team is currently unavailable". */
+    console.log('\nOutside chat hours, a chat somebody is answering says the usual line');
+    {
+      const SHUT = {
+        enabled: true, useHours: true, hideOutsideHours: false,
+        hereText: 'Chanda is here now', awayText: 'Nobody in — leave a note',
+        outsideHoursText: 'Our team is currently unavailable. Please leave your message.',
+        hours: { mon: { open: false }, tue: { open: false }, wed: { open: false },
+                 thu: { open: false }, fri: { open: false }, sat: { open: false },
+                 sun: { open: false } }
+      };
+      const at = () => new Date().toISOString();
+      const theirs = { id: 'm1', sender: 'customer', body: 'Is the black tote still available?', at: at() };
+      const write = async (page) => {
+        await page.click('#chatFab');
+        await page.fill('#chatInput', theirs.body);
+        await page.press('#chatInput', 'Enter');
+        await page.waitForTimeout(1600);
+      };
+      const dotOn = page => page.evaluate(() => {
+        const d = document.querySelector('#chatDot');
+        return !!d && !d.hidden && d.classList.contains('on');
+      });
+
+      /* The reported fault. */
+      let { ctx, page, errors } = await open(SHUT,
+        { status: 'open', unread: 0, named: true, seen: true, here: true, typing: false,
+          messages: [theirs] });
+      await write(page);
+      let line = await subLine(page);
+      is(line === 'Chanda is here now' && await dotOn(page),
+         'somebody at the desk in the evening: the green dot, and the shop\'s "here" line', line);
+      is(errors.length === 0, 'with no script error' + (errors.length ? ': ' + errors[0] : ''));
+      if (process.env.SHOT_HOURS) await page.locator('#chatPanel').screenshot({ path: process.env.SHOT_HOURS });
+      await ctx.close();
+
+      /* Nobody there and nobody has answered: closed is still the truth. */
+      ({ ctx, page } = await open(SHUT,
+        { status: 'open', unread: 0, named: true, seen: false, here: false, typing: false,
+          messages: [theirs] }));
+      await write(page);
+      line = await subLine(page);
+      is(line === SHUT.outsideHoursText,
+         'nobody at the desk and nobody has answered: still the outside-hours line', line);
+
+      /* The owner answers from a phone with the page in the background,
+         so the dot is grey; they have still taken the chat. */
+      POLL = Object.assign({}, POLL, { seen: true, messages: [theirs,
+        { id: 'm2', sender: 'shop', body: 'Yes — we have it in black and tan.', at: at() }] });
+      await page.waitForTimeout(3600);
+      line = await subLine(page);
+      is(line === 'Nobody in — leave a note',
+         'once the shop has replied: the usual line, the one the day shows with nobody at the desk', line);
+
+      POLL = Object.assign({}, POLL, { here: true });
+      await page.waitForTimeout(3600);
+      line = await subLine(page);
+      is(line === 'Chanda is here now' && await dotOn(page),
+         'and the "here" line when they come back to the desk', line);
+
+      /* The customer ends it: the replies went with it. */
+      POLL = Object.assign({}, POLL, { here: false });
+      await page.waitForTimeout(3600);
+      await page.click('#chatClose');
+      await page.click('.chat-confirm-yes');
+      await page.waitForTimeout(300);
+      line = await subLine(page);
+      is(line === SHUT.outsideHoursText,
+         'the customer ends the chat: the next one is nobody\'s yet, so the outside-hours line is back', line);
+      await ctx.close();
+
+      /* The shop closes it. */
+      ({ ctx, page } = await open(SHUT,
+        { status: 'open', unread: 0, named: true, seen: true, here: false, typing: false,
+          messages: [theirs, { id: 'm2', sender: 'shop', body: 'Anything else?', at: at() }] }));
+      await write(page);
+      line = await subLine(page);
+      is(line === 'Nobody in — leave a note', 'a conversation the shop has replied in: the usual line', line);
+      POLL = Object.assign({}, POLL, { status: 'closed' });
+      await page.waitForTimeout(3600);
+      line = await subLine(page);
+      is(line === SHUT.outsideHoursText,
+         'the shop closes the conversation: the outside-hours line again', line);
+      await ctx.close();
+
+      /* Writing to them counts; an automatic notice does not. */
+      ({ ctx, page } = await open(SHUT,
+        { status: 'open', unread: 0, named: true, seen: true, here: false, typing: true,
+          messages: [theirs] }));
+      await write(page);
+      line = await subLine(page);
+      is(line === 'Nobody in — leave a note', 'the shop writing to them counts as answering', line);
+      await ctx.close();
+      ({ ctx, page } = await open(SHUT,
+        { status: 'open', unread: 0, named: true, seen: false, here: false, typing: false,
+          messages: [theirs, { id: 'm2', sender: 'system', body: 'Thank you for your interest.', at: at() }] }));
+      await write(page);
+      line = await subLine(page);
+      is(line === SHUT.outsideHoursText,
+         'the automatic job notice is not somebody answering', line);
       await ctx.close();
     }
 

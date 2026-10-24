@@ -140,6 +140,38 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
     is(chans.indexOf('vbp-admin-presence') > -1 && chans.indexOf('vbp-admin-figures') > -1,
        'on two channels: who is here, and the figures, each on its own', chans.join(', '));
 
+    console.log('\nThe Traffic chart\'s legend');
+    {
+      /* Build 69's map key borrowed the chart legend's class names and tipped
+         the chart's "Visits" and "Unique visitors" over its dates. */
+      const day = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+      const tp = await open({ 'rpc:site_stats': stats(12), 'rpc:site_here': { data: [] },
+        'rpc:site_series': { data: [0, 1, 2, 3, 4, 5, 6].map((n) => ({ bucket: day(n), visits: 7 - n, visitors: 6 - n, page_views: 9 })) } });
+      const lay = await tp.evaluate(() => {
+        const card = Array.from(document.querySelectorAll('.card')).find((c) => /Traffic/.test((c.querySelector('h3') || {}).textContent || ''));
+        const keys = Array.from(card.querySelectorAll('.an-legend .an-key'));
+        const plot = card.querySelector('.an-plot').getBoundingClientRect();
+        const labels = Array.from(card.querySelectorAll('.an-plot svg text')).map((x) => x.getBoundingClientRect());
+        const leg = card.querySelector('.an-legend').getBoundingClientRect();
+        return {
+          keys: keys.map((k) => ({ t: k.textContent.trim(), turn: getComputedStyle(k).transform, w: Math.round(k.getBoundingClientRect().width), h: Math.round(k.getBoundingClientRect().height) })),
+          below: Math.round(leg.top - plot.bottom),
+          clash: labels.filter((r) => r.bottom > leg.top && r.top < leg.bottom && r.right > leg.left && r.left < leg.right).length,
+          labels: labels.length
+        };
+      });
+      is(lay.keys.length === 2 && lay.keys.every((k) => k.turn === 'none' && k.w > k.h),
+         'Visits and Unique visitors sit level, each a swatch and its word side by side', JSON.stringify(lay.keys));
+      is(lay.labels > 0 && lay.below >= 0 && lay.clash === 0, 'below the chart, touching none of its dates or numbers', JSON.stringify(lay));
+      const scale = await tp.evaluate(() => {
+        const card = Array.from(document.querySelectorAll('.card')).find((c) => /Traffic/.test((c.querySelector('h3') || {}).textContent || ''));
+        return Array.from(card.querySelectorAll('.an-plot svg text[text-anchor="end"]')).map((x) => x.textContent);
+      });
+      is(scale.join(',') === '0,2,4,6,8,10', 'the scale counts in whole numbers, 0 to 10 in twos, not "3" and "8" for 2.5 and 7.5', scale.join(','));
+      await tp.locator('.card:has(.an-plot)').screenshot({ path: path.join(ROOT, '..', 'traffic-legend.png') });
+      await tp.close();
+    }
+
     console.log('\nSomebody opens a page on the website');
     await page.evaluate(p => { window.PLAN['rpc:site_stats'] = p; }, stats(13));
     await page.evaluate(() => window.__heard.site_events({ eventType: 'INSERT', new: { kind: 'page_view' } }));
@@ -220,7 +252,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
     }
     const old = await page.evaluate(() => {
       const card = document.querySelector('.an-places');
-      return { legend: !card.querySelector('.an-legend').classList.contains('hide'),
+      return { legend: !card.querySelector('.an-mapkey').classList.contains('hide'),
                said: !card.querySelector('.an-said').classList.contains('hide') };
     });
     is(!old.legend && !old.said, 'before supabase-browsing-towns.sql, the card is exactly as it was', JSON.stringify(old));
@@ -234,7 +266,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
       const rows = (sel) => Array.from(card.querySelectorAll(sel + ' .an-row')).map((r) => r.textContent.replace(/\s+/g, ' ').trim());
       return {
         said: card.querySelector('.an-places-said').textContent,
-        legend: !card.querySelector('.an-legend').classList.contains('hide'),
+        legend: !card.querySelector('.an-mapkey').classList.contains('hide'),
         note: card.querySelector('.an-said .an-note').textContent,
         named: rows('.an-said'),
         towns: rows('.an-places-lists > div:last-child'),

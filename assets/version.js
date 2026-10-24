@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.42.0',
-  build: 70,
-  builtAt: '2026-10-18T13:27:45Z',
-  notes: 'Chat notifications on time: phone pushes sent as urgent, one per conversation; the admin chimes and counts at once with Live Chats in the background, and on every other admin page. Analytics lists which pieces were added to carts. Needs supabase-cart-pieces.sql.'
+  version: '1.42.1',
+  build: 71,
+  builtAt: '2026-10-24T12:12:59Z',
+  notes: 'Analytics: the Traffic chart\'s legend sits level under the chart again, no longer over the dates, and the scale counts in whole numbers. Live chat: outside chat hours, a chat somebody is answering shows the usual line, not the closed message. No SQL.'
 };

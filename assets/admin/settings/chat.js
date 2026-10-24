@@ -191,6 +191,9 @@
                 showIf: function (v) { return !!v.enabled && !!v.useHours; } },
               { type: 'text', name: 'outsideHoursText', label: 'What it says outside them',
                 maxLength: 120,
+                hint: 'Only while nobody is answering. Once somebody is at the desk, or has ' +
+                      'replied to the customer, the window says its usual line, whatever ' +
+                      'the time.',
                 showIf: function (v) { return !!v.enabled && !!v.useHours && !v.hideOutsideHours; } }
             ]
           },

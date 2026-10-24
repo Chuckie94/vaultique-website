@@ -1,7 +1,20 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 70
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 71
 ====================================================
-The whole site, cumulative (includes everything in build 69).
+The whole site, cumulative (includes everything in build 70).
 Upload this and you are up to date.
+
+NEW IN 71 — NO SQL. Just upload.
+  If you have not run build 70's supabase-cart-pieces.sql yet, run that.
+
+  * Admin > Analytics: the Traffic chart's "Visits" and "Unique visitors"
+    sit level under the chart again, no longer tipped over the dates. The
+    map's key (said / guessed) had borrowed the chart's styling and bent
+    it. The chart's scale now counts in whole numbers.
+  * Live chat outside chat hours: the closed message ("Our team is
+    currently unavailable...") shows only while nobody is answering. When
+    somebody is at the desk, or has replied to that customer, the window
+    shows the usual daytime line instead. When the chat ends, the next
+    one starts with the closed message again.
 
 NEW IN 70 — RUN ONE SQL FILE IN THE WEBSITE SUPABASE (SQL Editor):
   supabase-cart-pieces.sql   (safe to run again; the line must say OK)

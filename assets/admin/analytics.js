@@ -419,9 +419,9 @@
       /* Build 69. Gold pins are towns visitors named themselves ("Where
          are you browsing from?"); grey pins are only the connection's
          guess, which puts most people on mobile data in Lusaka. */
-      var legend = el('div', 'an-legend hide');
-      legend.innerHTML = '<span><i class="an-key said"></i>Said by the visitor</span>' +
-                         '<span><i class="an-key guess"></i>Guessed from the connection</span>' +
+      var legend = el('div', 'an-mapkey hide');
+      legend.innerHTML = '<span><i class="an-pin-key said"></i>Said by the visitor</span>' +
+                         '<span><i class="an-pin-key guess"></i>Guessed from the connection</span>' +
                          '<span class="an-src">Town names: <a href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a> (CC BY 4.0)</span>';
       placeCard.appendChild(legend);
       var saidBox = el('div', 'an-said hide');
@@ -1161,7 +1161,11 @@
 
         /* The grid, kept well back: it is there to be measured against,
            not to be looked at. */
+        /* Whole numbers only: four steps of a top of 10 are 2.5 apart, and
+           were shown as "3" and "8". Five steps when that divides evenly
+           (0, 2, 4 ... 10), fewer when even that does not. */
         var lines = 4;
+        if ((top / lines) % 1) lines = top % 5 === 0 ? 5 : (top % 2 === 0 ? 2 : 1);
         for (var g = 0; g <= lines; g++) {
           var v = (top / lines) * g;
           var gy = y(v);

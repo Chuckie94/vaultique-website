@@ -356,11 +356,32 @@
 
      `known` is what separates "nobody is there" from "we have not asked
      yet". Without it a window that had not asked anything looked exactly
-     like a shop with nobody in it. */
+     like a shop with nobody in it.
+
+     The outside-hours line is for a customer nobody is answering. It used
+     to win whatever was happening, so somebody who took a chat in the
+     evening was answering a customer whose window said the team was
+     unavailable, under a green dot. */
   function subLine() {
-    if (SET.useHours && !withinHours()) return SET.outsideHoursText;
+    if (SET.useHours && !withinHours() && !answering()) return SET.outsideHoursText;
     if (!presenceKnown) return SET.openingText;
     return here ? SET.hereText : SET.awayText;
+  }
+
+  /* Somebody at the shop is answering this customer, whatever the clock
+     says: at the desk, writing to them, or has already replied in this
+     conversation. Any of those and the window says what it says in the
+     day. A conversation the shop has closed is finished with, so a reply
+     in it no longer counts; the next one starts unanswered. */
+  function answering() {
+    if (!presenceKnown) return false;
+    if (here) return true;
+    if (status === 'closed') return false;
+    if (typing) return true;
+    for (var i = 0; i < msgs.length; i++) {
+      if (msgs[i].sender === 'shop') return true;
+    }
+    return false;
   }
 
   function paintPresence() {
@@ -718,7 +739,9 @@
     rpc('chat_end', { p_token: t }).catch(function () {});
     token = null; memoSet(null); msgs = []; lastAt = null;
     unread = 0; started = false; seen = false; status = 'open';
-    paintBadge(); paint();
+    /* The replies went with it, so outside chat hours the next chat
+       starts as nobody's again. */
+    paintBadge(); paint(); paintPresence();
     close();
   }
 
@@ -935,7 +958,7 @@
       .then(function (r) {
         if (!r) {                       // the shop deleted it: start clean
           token = null; memoSet(null); msgs = []; lastAt = null; unread = 0;
-          started = false; paintBadge(); paint();
+          started = false; paintBadge(); paint(); paintPresence();
           dropChannel();
           return;
         }
@@ -983,7 +1006,11 @@
         }
         /* After the messages are merged, never before: whether to offer
            the name box depends on whether anything has been said, and
-           asking that question too early answers it wrongly. */
+           asking that question too early answers it wrongly. The line
+           under the title is drawn again for the same reason: outside
+           chat hours, the shop's first reply is what tells it somebody
+           is answering. */
+        paintPresence();
         paintAsk();
         unread = open ? 0 : Number(r.unread) || 0;
         paintBadge();
