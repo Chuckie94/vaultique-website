@@ -394,6 +394,22 @@ header.site.solid .brand .v{color:var(--navy)}
 .detail-info h1{font-family:var(--font-head);font-weight:600;font-size:clamp(30px,4.6vw,50px);color:var(--navy);line-height:1.06;margin:8px 0 12px}
 .detail-price{font-family:var(--font-head);font-size:32px;font-weight:600;color:var(--navy)}
 .detail-vat{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+/* The layby estimate under the price (Settings > Payments): the monthly
+   figure in a two-part tag, the arithmetic under it, then the terms. In
+   the theme's own colours, so it follows whatever the shop picks. */
+.layby{margin:14px 0 2px;max-width:400px}
+.layby-pill{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:var(--radius-md);overflow:hidden;font-size:14px;line-height:1.35;background:var(--surface)}
+.layby-from{background:var(--cream);color:var(--navy);padding:8px 14px}
+.layby-from b{font-weight:600}
+.layby-over{color:var(--ink);padding:8px 14px}
+.layby-rows{margin:10px 0 0;font-size:13px;line-height:1.4}
+.layby-rows div{display:flex;justify-content:space-between;gap:16px;padding:4px 0;border-bottom:1px solid var(--line-2)}
+.layby-rows div:last-child{border-bottom:0}
+.layby-rows dt{color:var(--muted)}
+.layby-rows dd{margin:0;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.layby-note{margin:6px 0 0;font-size:12px;line-height:1.5;color:var(--muted)}
+.layby-terms{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.layby-terms:hover{color:var(--navy)}
 /* Prices that have come down. --accent-strong is the theme's darkened
    accent, already used for every other small piece of emphasis on a pale
    ground, so the percentage stays readable whatever the palette. */
@@ -1591,6 +1607,10 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
   .detail-price{font-size:24px}
   .detail-price .px-was{font-size:15px}
   .detail-price .px-off{font-size:11px}
+  .layby{margin:10px 0 2px;max-width:none}
+  .layby-pill{font-size:13px}
+  .layby-from,.layby-over{padding:7px 11px}
+  .layby-rows{font-size:12.5px}
   .desc{font-size:14px;line-height:1.7;margin:14px 0}
   .opt-block{margin:12px 0}
   .opt-chip{padding:7px 12px;font-size:12px;margin-right:6px}

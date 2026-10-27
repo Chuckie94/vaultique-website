@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.43.0',
-  build: 72,
-  builtAt: '2026-10-24T12:34:57Z',
-  notes: 'Analytics: Last 3, 6 and 9 months ranges; the range line names the weekdays, so This week (from Monday) and Last 7 days can be told apart; the dates under the Traffic chart no longer run into each other or off the edge on a phone. No SQL.'
+  version: '1.44.0',
+  build: 73,
+  builtAt: '2026-10-27T19:51:44Z',
+  notes: 'Layby estimate under the price on product pages: deposit, remaining balance and from what a month, from Settings > Payments > Layby estimate (deposit percentage, default 30%, and payment duration in months). Display only, with a link to the Lay-by Policy. No SQL.'
 };

@@ -251,6 +251,52 @@
     var t = FMT && FMT.taxLine ? FMT.taxLine(PRICING) : '';
     return t ? '<div class="detail-vat">' + esc(t) + '</div>' : '';
   }
+  /* What the piece comes to on layby: the deposit, the balance and each
+     month, from its selling price and Settings > Payments. On the product
+     page only, and only where the piece can be had with its price on
+     show. Display only: nothing here starts a layby, takes a deposit or
+     holds the piece back. */
+  function laybyHtml(p) {
+    var L = window.VBP_LAYBY;
+    if (!L || !p || !p.available || onRequest(p)) return '';
+    var t = L.terms(PAY);
+    var e = t ? L.estimate(priceOf(p).now, t.deposit, t.months) : null;
+    if (!e) return '';
+    return '<div class="layby" role="group" aria-label="Layby estimate">' +
+      (e.balance > 0
+        ? '<div class="layby-pill"><span class="layby-from">From <b>' + esc(money2(e.monthly)) +
+          '</b> per month</span> <span class="layby-over">over ' + e.months +
+          (e.months === 1 ? ' month' : ' months') + '</span></div>'
+        : '') +
+      '<dl class="layby-rows">' +
+        '<div><dt>Product price</dt><dd>' + esc(money2(e.price)) + '</dd></div>' +
+        '<div><dt>Deposit (' + esc(String(e.percent)) + '%)</dt><dd>' + esc(money2(e.deposit)) + '</dd></div>' +
+        '<div><dt>Remaining balance</dt><dd>' + esc(money2(e.balance)) + '</dd></div>' +
+      '</dl>' +
+      '<p class="layby-note"><a class="layby-terms" href="' + esc(laybyTermsHref()) + '">' +
+        'Layby Terms &amp; Conditions</a> apply. This is an estimate only.</p>' +
+      '</div>';
+  }
+  /* Money to the ngwee, always: the estimate's figures have to be seen to
+     add up, which K499 beside K149.70 would not. The shop's own symbol,
+     side and separators otherwise. */
+  function money2(n) {
+    var st = moneyStyle();
+    if (FMT && st) {
+      var two = {}, k;
+      for (k in st) if (Object.prototype.hasOwnProperty.call(st, k)) two[k] = st[k];
+      two.decimals = 2;
+      return FMT.money(n, two);
+    }
+    return 'K' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  /* The shop's own lay-by policy, opened at it on the Policies page. Found
+     by its title, so one renamed in Admin > Policies is still found; with
+     none at all, the Policies page itself. */
+  function laybyTermsHref() {
+    var p = (POLICIES || []).filter(function (x) { return x && /lay[\s-]?by/i.test(x.title || ''); })[0];
+    return pathFor('policies' + (p ? '/' + slug(p.title) : ''));
+  }
   /* A piece with no price shown cannot be bought, only asked about: nobody
      can agree to a figure they have not seen. */
   function sortPrice(p, whenHidden) {
@@ -4215,6 +4261,7 @@
       '<h1 class="serif">' + esc(p.name) + '</h1>' +
       priceHtml(p, 'detail-price serif') +
       taxHtml() +
+      laybyHtml(p) +
       ((ratingsShown() && prList.length) ? '<div class="detail-rating">' + starsHtml(avgRating(prList)) + ' <a class="rating-link" id="ratingLink">' + avgRating(prList).toFixed(1) + ' (' + prList.length + ' review' + (prList.length > 1 ? 's' : '') + ')</a></div>' : '') +
       '<p class="desc">' + esc(desc) + '</p>' +
       variantOptionsHtml(p) +

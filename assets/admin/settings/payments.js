@@ -30,6 +30,13 @@
    Because instructions are public, the section checks them for anything
    that looks like an account number and says so, since that would put
    back exactly what the private table is for.
+
+   The layby estimate
+   ------------------
+   A deposit percentage and a number of months, public because the
+   product page reads them to show an estimate under the price
+   (assets/layby.js). Display only: nothing on the website starts a
+   layby, and layby itself is still arranged with the shop.
    ===================================================================== */
 (function () {
   'use strict';
@@ -74,6 +81,11 @@
     codName: 'Payment on Delivery',
     codInstructions: 'Pay the courier when your order arrives.',
 
+    // The layby estimate under the price on each product page. Display
+    // only: assets/layby.js does the arithmetic and nothing else.
+    laybyDeposit: 30,
+    laybyMonths: 6,
+
     // kept out of the website's reach
     bankAccountBank: '',
     bankAccountName: '',
@@ -115,6 +127,26 @@
   }
   function on(prefix) {
     return function (v) { return !!v[prefix + 'Enabled']; };
+  }
+
+  /* More than nothing and no more than the whole price, to a hundredth of
+     a percent: 12.5% is a deposit, 12.555% is a slip of the finger. */
+  function depositOk(v) {
+    if (v === '' || v === null || v === undefined) return '';   // "required" says so
+    var n = Number(v);
+    if (!isFinite(n)) return 'Enter a percentage, for example 30.';
+    if (n <= 0) return 'The deposit must be more than 0%.';
+    if (n > 100) return 'The deposit cannot be more than 100%.';
+    if (Math.abs(n * 100 - Math.round(n * 100)) > 1e-6) return 'Use at most two decimal places.';
+    return '';
+  }
+  /* Whole months only: a layby is paid month by month. */
+  function monthsOk(v) {
+    if (v === '' || v === null || v === undefined) return '';
+    var n = Number(v);
+    if (!isFinite(n) || n < 1 || Math.floor(n) !== n) return 'Enter a whole number of months, 1 or more.';
+    if (n > 120) return 'Cannot be more than 120 months.';
+    return '';
   }
 
   A.registerSetting({
@@ -178,6 +210,24 @@
               method('card', 'Card payment', 'Only if you have a card machine or a payment link.'),
               method('cod', 'Payment on delivery', 'Paying whoever brings the order, which is not the same as cash at the shop.')
             )
+          },
+          {
+            title: 'Layby estimate',
+            note: 'Shown under the price on each product page: the deposit, the balance ' +
+                  'and what that comes to each month (not on sold-out pieces or prices on ' +
+                  'request). It is an estimate only. Viewing it does not start a layby, take ' +
+                  'a deposit or hold the piece; laybys are still arranged with you. Set these ' +
+                  'to match your layby terms.',
+            fields: [
+              { type: 'number', name: 'laybyDeposit', label: 'Layby deposit percentage',
+                suffix: '%', half: true, required: true, placeholder: '30',
+                hint: 'Paid to start a layby, as a share of the price.',
+                validate: depositOk },
+              { type: 'number', name: 'laybyMonths', label: 'Layby payment duration',
+                suffix: 'months', half: true, required: true, placeholder: '6',
+                hint: 'How many monthly payments the rest is spread over.',
+                validate: monthsOk }
+            ]
           },
           {
             title: 'Bank details',
