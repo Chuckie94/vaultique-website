@@ -648,8 +648,8 @@
 
       /* ---- the map ----------------------------------------------------------- */
 
-      var LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
-      var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+      var LEAFLET_JS = '/assets/vendor/leaflet-1.9.4/leaflet.js';     // assets/vendor/README.txt
+      var LEAFLET_CSS = '/assets/vendor/leaflet-1.9.4/leaflet.css';
       var leafletAsked = null;
       function leaflet() {
         if (window.L && window.L.map) return Promise.resolve(window.L);

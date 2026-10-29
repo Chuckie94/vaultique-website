@@ -19,11 +19,16 @@ A. GITHUB DESKTOP  (easiest, one commit)
   appear.
 
 
-B. THE BROWSER  (two drags, because GitHub takes 100 files at a time)
-----------------------------------------------------------------------
-  Drag 1 — the five FOLDERS together:
-             assets   images   netlify   tests   tools
-  Drag 2 — every loose file at the top level
+B. THE BROWSER  (three drags, because GitHub takes 100 files at a time)
+------------------------------------------------------------------------
+  Add file > Upload files, drag, then Commit changes. Three times:
+
+  Drag 1 — two FOLDERS together:     assets   netlify          (91 files)
+  Drag 2 — three FOLDERS together:   tests   images   tools    (82 files)
+  Drag 3 — every loose file at the top level                   (39 files)
+
+  (Until build 75 this said two drags, with all five folders in the
+  first. That was already more than 100 files, and build 75 adds more.)
 
   DRAG FOLDERS, NOT WHAT IS INSIDE THEM. GitHub keeps a folder's
   structure when you drag the folder itself; open it first and the files
@@ -35,6 +40,19 @@ YOUR config.js
 Not in this folder, on purpose. It holds your Supabase address and key
 and yours is the only correct copy. Pasting over your folder, or
 uploading only what is here, leaves it exactly where it is.
+
+
+NETLIFY'S BUILD STEP  (since build 75)
+--------------------------------------
+Before publishing, Netlify now runs tools/build-site.cjs, which copies
+the website, and only the website, into a folder called dist/. Netlify
+publishes that folder and nothing else. You upload exactly as before;
+never upload a folder called dist yourself.
+
+If a deploy ever says Failed: open it in Netlify > Deploys. The last
+lines of its log begin "BUILD STOPPED:" and say why, and the site that
+was live before stays live. Most likely config.js is missing from the
+repository.
 
 
 AFTER UPLOADING

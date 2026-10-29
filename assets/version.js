@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.44.1',
-  build: 74,
-  builtAt: '2026-10-29T11:29:52Z',
-  notes: 'Safety work, part 1: supabase-safety-check.sql gives the chat notifications a new secret and reports what needs attention; the five setup files and the functions\' source code are no longer served; the Business Platform\'s working notes are out of the folder; tools/live-check.cjs checks the live site from outside. Nothing a customer sees changes.'
+  version: '1.45.0',
+  build: 75,
+  builtAt: '2026-10-29T12:32:15Z',
+  notes: 'Safety work, part 2: Netlify now publishes only the website (index.html, admin.html, config.js, sw.js, the manifest, assets/ and images/), through a build step that refuses to deploy without a real config.js; safety headers on every page; a Content Security Policy in report-only mode, reporting to the csp-report function; supabase-js 2.118.0 and Leaflet 1.9.4 kept in assets/vendor/ instead of a public CDN; the admin\'s main script moved into assets/admin/shell.js; script addresses carry a fingerprint so a deploy reaches browsers at once. Nothing a customer sees changes.'
 };

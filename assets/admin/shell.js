@@ -1,0 +1,2077 @@
+/* =====================================================================
+   Vaultique Boutique Point — the admin's shell, routing and older tabs
+   ---------------------------------------------------------------------
+   Moved out of admin.html unchanged in build 75, where it sat as one
+   inline <script>. As its own file it can be cached, and the page needs
+   no exception in its Content-Security-Policy for code written into it.
+   It still runs at the same moment: last, after every other admin
+   script and supabase-js, exactly where the inline block was.
+   ===================================================================== */
+(function () {
+  'use strict';
+  var cfg = window.VBP_CONFIG || {};
+  var BUCKET = cfg.IMAGE_BUCKET || 'product-images';
+  var $ = function (id) { return document.getElementById(id); };
+  function show(id, on) { var e = $(id); if (e) e.classList[on ? 'remove' : 'add']('hide'); }
+
+  if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) { show('needConfig', true); return; }
+  if (!window.supabase || !window.supabase.createClient) { show('needConfig', true); return; }
+
+  /* The session is kept wherever Settings > Security says: localStorage
+     when the owner asked to stay signed in, sessionStorage when they did
+     not, so closing the browser really does sign them out. */
+  var SEC = (window.VBP_ADMIN || {}).security || null;
+  /* Back from a "reset your password" email. Read before the client is
+     made, because the client tidies its own part of the address away as
+     it signs them in. ?reset=1 is ours (see sendReset); type=recovery is
+     Supabase's, for a link sent from anywhere else. */
+  var recovering = /[?&]reset=1(&|$)/.test(location.search) ||
+                   /(^#|&)type=recovery(&|$)/.test(location.hash);
+  var sb = SEC
+    ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY,
+        { auth: { storage: SEC.sessionStore(), persistSession: true } })
+    : window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  // The settings store and form kit reach the database through here.
+  window.VBP_ADMIN = window.VBP_ADMIN || {};
+  window.VBP_ADMIN.sb = sb;
+  var metaMap = {};       // sku -> meta row
+  /* The same rows as they last stood in the database. Every control on a
+     product card edits metaMap in place and then saves, so by the time
+     the save runs there is nothing left to compare against — which is why
+     the log used to record "presentation: updated" and no more. This is
+     the copy that makes a real before-and-after possible. */
+  var metaSaved = {};     // sku -> meta row, as last written
+  var pricing = {};       // Settings > Pricing, for the price watch and the boxes below
+  var generalSettings = {};  // Settings > General, for the currency behind them
+  var products = [];      // POS products
+
+  // ---------- auth ----------
+  /* Settings > Security, read before anyone signs in. site_settings is
+     readable without a session, so the sign-in panel can honour the
+     owner's choices before there is an owner to ask. */
+  var secSettings = null;
+  var idle = null;
+  var TIMED_OUT = 'vbp_timed_out';
+
+  function securitySettings() {
+    if (secSettings) return Promise.resolve(secSettings);
+    var reg = window.VBP_ADMIN || {};
+    if (!reg.store) return Promise.resolve({});
+    return reg.store.load('security')
+      .then(function (v) { secSettings = v || {}; return secSettings; })
+      .catch(function () { secSettings = {}; return secSettings; });
+  }
+
+  function waitWord(seconds) {
+    if (seconds >= 90) return 'about ' + Math.ceil(seconds / 60) + ' minutes';
+    return seconds + ' seconds';
+  }
+
+  securitySettings().then(function (s) {
+    if (s.offerRememberMe !== false) {
+      show('rememberRow', true);
+      var box = $('rememberMe');
+      if (box && SEC) box.checked = SEC.remembering();
+    } else if (SEC) {
+      /* The shop has turned the option off, so the session must not
+         outlive the browser regardless of what was chosen before. */
+      SEC.remember(false);
+    }
+  });
+
+  /* Say why, rather than dropping the owner on a login screen with no
+     explanation. */
+  try {
+    if (sessionStorage.getItem(TIMED_OUT) === '1') {
+      sessionStorage.removeItem(TIMED_OUT);
+      var tmsg = $('loginMsg');
+      tmsg.textContent = 'You were signed out because the admin was left idle.';
+      tmsg.className = 'msg';
+    }
+  } catch (e) {}
+
+  try {
+    sb.auth.onAuthStateChange(function (event) {
+      if (event === 'PASSWORD_RECOVERY') recovering = true;
+    });
+  } catch (e) {}
+
+  sb.auth.getSession().then(function (res) {
+    if (res.data && res.data.session) return afterPassword();
+    show('login', true);
+    /* A reset link that has run out, or was already used, lands here
+       with no session. Say so, rather than showing a bare sign-in. */
+    if (recovering) {
+      var m = $('loginMsg');
+      m.textContent = 'That reset link has expired or was already used. Ask for a new one below.';
+      m.className = 'msg err';
+      recovering = false;
+      try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    }
+  });
+
+  /* The password is only the first half.
+
+     Supabase hands back a session the moment the password is right, and
+     that session sits at assurance level 1. An account with an
+     authenticator set up needs level 2, which only a code can reach. If
+     nothing checked, enrolling would change nothing about signing in -
+     the whole feature would be decoration. This is that check, and it
+     runs on a returning session as well as a fresh sign in, so closing
+     the tab and coming back cannot walk around it. */
+  /* Whether this account belongs in here at all.
+
+     Signing in proves who somebody is. It does not say they are the
+     shop. A customer who registered on the storefront is a row in
+     auth.users like any other, and their email and password opened this
+     page. Every rule in the database still refused them everything, so
+     nothing of the shop's was ever readable — but they arrived in the
+     back office and watched it throw errors, which is a boundary that
+     was simply not there.
+
+     Asked of the admins table, because that table is the one every other
+     rule asks. Its own read rule is is_admin(), so the answer comes back
+     as a row for an administrator and no rows for anybody else, and no
+     separate permission is needed to ask the question. is_admin() itself
+     is tried second, in case a project's grants differ.
+
+     A question that could not be reached is not an answer. A network
+     that failed says nothing about who this is, and shutting an owner
+     out of their own shop over it would be the worse mistake by far, so
+     that case leaves the session alone and asks them to try again. */
+  function adminVerdict() {
+    return Promise.resolve(sb.from('admins').select('id').limit(1))
+      .then(function (r) {
+        if (r && !r.error && r.data) return r.data.length ? 'yes' : 'no';
+        return viaFunction();
+      }, viaFunction);
+  }
+  function viaFunction() {
+    return Promise.resolve(sb.rpc('is_admin'))
+      .then(function (r) {
+        if (r && !r.error && typeof r.data === 'boolean') return r.data ? 'yes' : 'no';
+        return 'unknown';
+      }, function () { return 'unknown'; });
+  }
+
+  /* Their account is real and was working here until somebody switched
+     it off. "You are not an administrator" is true and is not the answer
+     to what they are asking. */
+  function refuseSwitchedOff() {
+    show('mfa', false); show('newpw', false); show('topbar', false); show('admin', false);
+    return Promise.resolve(sb.auth.signOut()).catch(function () {}).then(function () {
+      show('login', true);
+      var msg = $('loginMsg');
+      if (msg) {
+        msg.textContent = 'This account has been switched off. ' +
+                          'Ask the shop owner to switch it back on.';
+        msg.className = 'msg err';
+      }
+    });
+  }
+
+  function refuseAdmin(verdict) {
+    show('mfa', false); show('topbar', false); show('admin', false);
+    var msg = $('loginMsg');
+    function say(text) {
+      show('login', true);
+      if (msg) { msg.textContent = text; msg.className = 'msg err'; }
+    }
+    if (verdict !== 'no') {
+      /* Left signed in on purpose: nothing has been decided about this
+         account, and the session is not the thing at fault. */
+      say('Could not check whether this account may use the admin. ' +
+          'Check your connection and try again.');
+      return Promise.resolve();
+    }
+    return Promise.resolve(sb.auth.signOut()).catch(function () {}).then(function () {
+      say('This account is not an administrator. A customer account signs in ' +
+          'on the shop itself, not here.');
+    });
+  }
+
+  /* What this person may do.
+     ---------------------------------------------------------------
+     Everybody who works here signs in on this page. What they get is
+     decided by their role, and a role is a set of ticks the owner keeps
+     in Settings > Users & Roles. One question answers all of it.
+
+     The page hiding a tab is a courtesy; the database refusing the
+     table is the rule. Answering chats and deleting a conversation are
+     asked of the database too, so those two cannot be got round by a
+     page rewritten in a browser. */
+  var perms = null;                  // null until my_access() has answered
+  var iAmOwner = false;
+  var mustChangePassword = false;
+
+  function may(what) {
+    /* Rewards go with Orders: the points promised are on orders. */
+    if (what === 'rewards') what = 'orders';
+    if (iAmOwner) return true;
+    if (!perms) return true;         // question never answered: nothing is hidden
+    return perms[what] === true;
+  }
+
+  /* A shop that has not run phase 10 has no such function. That error is
+     not "you may do nothing" — it is "nobody has said" — so it leaves
+     perms null and the admin opens exactly as it did before. */
+  function loadAccess() {
+    return Promise.resolve(sb.rpc('my_access')).then(function (r) {
+      if (!r || r.error || !r.data) return null;
+      return r.data;
+    }, function () { return null; });
+  }
+
+  function afterPassword() {
+    show('login', false);
+    return adminVerdict().then(function (verdict) {
+      if (verdict !== 'yes') return refuseAdmin(verdict);
+      return loadAccess().then(function (me) {
+        /* Switched off is not the same as never allowed, and saying the
+           wrong one of those sends somebody to the wrong person for
+           help. */
+        if (me && me.is_admin && me.active === false) return refuseSwitchedOff();
+        if (me) {
+          iAmOwner = !!me.is_owner;
+          perms = me.permissions || null;
+        }
+        /* Asked of everybody, because the owner can make an account and
+           hand over a password — and a password somebody else knows is
+           nobody's. This branch used to go straight past it, so a new
+           administrator was never asked at all and the flag sat on their
+           row for ever, asking on every OTHER device they signed in on. */
+        mustChangePassword = !!(me && me.must_change_password);
+        return continueAsAdmin();
+      });
+    });
+  }
+
+  function continueAsAdmin() {
+    /* The password they were handed is known to whoever handed it over,
+       so it is good for exactly this one arrival. Asked before the admin
+       is built, not after: there is nothing to see until it is done. */
+    if (mustChangePassword && !recovering) { askForNewPassword(); return; }
+    /* Back from a reset email: the authenticator code first, if the
+       account has one, so an email inbox alone is never enough to take
+       over an account that has two factor switched on. Then the new
+       password. Then in. */
+    if (!SEC) { if (recovering) { askForNewPassword(); return; } enterAdmin(); return; }
+    return SEC.codeOwed(sb).then(function (owed) {
+      if (!owed) {
+        show('mfa', false);
+        if (recovering) { askForNewPassword(); return; }
+        enterAdmin(); return;
+      }
+      show('mfa', true);
+      var box = $('mfaCode');
+      if (box) { box.value = ''; box.focus(); }
+    });
+  }
+
+  function askForNewPassword() {
+    show('mfa', false); show('topbar', false); show('admin', false);
+    $('pwHead').textContent = recovering ? 'Choose a new password' : 'Choose your own password';
+    $('pwLead').textContent = recovering
+      ? 'You asked to reset your password. Choose a new one to finish signing in.'
+      : 'You signed in with a password somebody gave you. Pick one only you know before ' +
+        'you start answering.';
+    show('newpw', true);
+    var a = $('pw1'), b = $('pw2'), msg = $('pwMsg');
+    if (a) { a.value = ''; a.focus(); }
+    if (b) b.value = '';
+    if (msg) { msg.textContent = ''; msg.className = 'msg'; }
+  }
+
+  function saveNewPassword() {
+    var a = $('pw1'), b = $('pw2'), msg = $('pwMsg'), btn = $('pwBtn');
+    function say(text, kind) { msg.textContent = text; msg.className = 'msg' + (kind ? ' ' + kind : ''); }
+    var pw = a.value || '';
+    if (pw.length < 8) { say('At least eight characters, please.', 'err'); a.focus(); return; }
+    if (pw !== (b.value || '')) { say('Those two are not the same.', 'err'); b.focus(); return; }
+
+    btn.disabled = true;
+    say('Saving…', 'busy');
+    Promise.resolve(sb.auth.updateUser({ password: pw }))
+      .then(function (r) {
+        if (r && r.error) throw r.error;
+        /* Told afterwards, never before: the flag says "they have chosen
+           one", and saying so before they had would be a lie the next
+           sign-in would act on. */
+        /* And the answer is looked at. This used to fire and move on
+           without reading it, so a clear that failed looked exactly like
+           one that worked — the password really had changed, the flag
+           really had not, and every other device the person owned went
+           on asking them to change it again. */
+        return Promise.resolve(sb.rpc('admin_password_changed'))
+          .then(function (r) { return !(r && r.error); }, function () { return false; })
+          .then(function (done) {
+            /* The password is changed either way — that part is
+               Supabase's and it succeeded. Only the "stop asking me"
+               flag is in doubt, so they are let through and told, rather
+               than held at a door they have already opened. */
+            if (!done) {
+              say('Your password is changed. This device may still ask again — ' +
+                  'tell the shop owner the flag could not be cleared.', 'err');
+            }
+          });
+      })
+      .then(function () {
+        mustChangePassword = false;
+        if (recovering) {
+          recovering = false;
+          try { history.replaceState(null, '', location.pathname); } catch (e) {}
+        }
+        btn.disabled = false;
+        show('newpw', false);
+        return continueAsAdmin();
+      })
+      .catch(function (e) {
+        btn.disabled = false;
+        say('That could not be saved: ' + ((e && e.message) || e), 'err');
+      });
+  }
+
+  /* An eye beside anything that hides what is typed.
+
+     A password nobody can see is a password typed twice as often and
+     wrong half the time, and the shop signs in from a phone. The input
+     is wrapped rather than replaced, so it keeps its id, its
+     autocomplete and every listener already on it. */
+  var EYE_ON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12z"/>' +
+    '<circle cx="12" cy="12" r="3.2"/></svg>';
+  var EYE_OFF =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M1.5 12S5 5.5 12 5.5c1.6 0 3 .34 4.2.87M22.5 12s-3.5 6.5-10.5 6.5c-1.6 0-3-.34-4.2-.87"/>' +
+    '<path d="M9.9 9.9a3.2 3.2 0 004.2 4.2"/><path d="M3 3l18 18"/></svg>';
+
+  function revealPassword(input) {
+    if (!input || !input.parentNode || input.parentNode.classList.contains('pw-box')) return;
+    var box = document.createElement('div');
+    box.className = 'pw-box';
+    input.parentNode.insertBefore(box, input);
+    box.appendChild(input);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pw-eye';
+    box.appendChild(btn);
+
+    function paint() {
+      var shown = input.type === 'text';
+      btn.innerHTML = shown ? EYE_OFF : EYE_ON;
+      /* Named for what pressing it does, not for the state it is in. */
+      btn.setAttribute('aria-label', shown ? 'Hide password' : 'Show password');
+      btn.setAttribute('title', shown ? 'Hide password' : 'Show password');
+      btn.setAttribute('aria-pressed', shown ? 'true' : 'false');
+    }
+    btn.addEventListener('click', function () {
+      var at = input.selectionStart, to = input.selectionEnd;
+      input.type = input.type === 'password' ? 'text' : 'password';
+      paint();
+      try { input.focus(); input.setSelectionRange(at, to); } catch (e) { input.focus(); }
+    });
+    paint();
+  }
+  revealPassword($('password'));
+  revealPassword($('pw1'));
+  revealPassword($('pw2'));
+
+  $('pwBtn').addEventListener('click', saveNewPassword);
+  $('pw2').addEventListener('keydown', function (e) { if (e.key === 'Enter') saveNewPassword(); });
+  $('pwCancel').addEventListener('click', function () {
+    Promise.resolve(sb.auth.signOut()).catch(function () {}).then(function () {
+      show('newpw', false); show('login', true);
+    });
+  });
+
+  /* Forgot your password. Supabase sends the email, through whatever
+     mail service the project is set up with (SETUP.md: Password reset).
+     The answer is the same whether or not the address has an account,
+     so this page cannot be used to find out who works here. */
+  $('forgotBtn').addEventListener('click', sendReset);
+  function sendReset() {
+    var msg = $('loginMsg');
+    var email = $('email').value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      msg.textContent = 'Type your email address above, then press "Forgot your password?".';
+      msg.className = 'msg err';
+      $('email').focus();
+      return;
+    }
+    var btn = $('forgotBtn');
+    btn.disabled = true;
+    msg.textContent = 'Sending…'; msg.className = 'msg';
+    Promise.resolve(sb.auth.resetPasswordForEmail(email, {
+      redirectTo: location.origin + location.pathname + '?reset=1'
+    })).then(function (r) {
+      var e = r && r.error;
+      if (e && (e.status === 429 || /rate|seconds|too many/i.test(e.message || ''))) {
+        msg.textContent = 'A reset email was sent a moment ago. Please wait a minute before asking again.';
+        msg.className = 'msg err';
+        return;
+      }
+      /* The mail service itself failing says nothing about who has an
+         account, and pretending the email went would leave the owner
+         waiting for one that never comes. */
+      if (e && (e.status >= 500 || /sending|smtp|email/i.test(e.message || ''))) {
+        msg.textContent = 'The email could not be sent. The mail settings in Supabase may need ' +
+                          'checking (SETUP.md: Password reset).';
+        msg.className = 'msg err';
+        return;
+      }
+      msg.textContent = 'If ' + email + ' belongs to an admin account, a link to set a new ' +
+                        'password is on its way. Check your inbox, and the spam folder.';
+      msg.className = 'msg';
+    }, function () {
+      msg.textContent = 'That could not be sent. Check your connection and try again.';
+      msg.className = 'msg err';
+    }).then(function () {
+      setTimeout(function () { btn.disabled = false; }, 30000);
+    });
+  }
+
+  $('loginBtn').addEventListener('click', doLogin);
+  $('password').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+
+  function doLogin() {
+    var msg = $('loginMsg');
+    var email = $('email').value.trim();
+
+    return securitySettings().then(function (s) {
+      /* Recorded before signing in, because the session is written the
+         moment the password is accepted and the store reads this to
+         decide where it goes. */
+      var box = $('rememberMe');
+      if (SEC) {
+        /* With the option switched off for the shop, the session must not
+           outlive the browser whatever the box happens to say. */
+        SEC.remember(s.offerRememberMe === false ? false : (box ? box.checked : true));
+      }
+
+      var wait = SEC ? SEC.lockedFor(email, s) : 0;
+      if (wait > 0) {
+        msg.textContent = 'Too many wrong passwords on this device. Try again in ' +
+                          waitWord(wait) + '.';
+        msg.className = 'msg err';
+        return;
+      }
+
+      msg.textContent = 'Signing in…'; msg.className = 'msg';
+      return sb.auth.signInWithPassword({ email: email, password: $('password').value })
+        .then(function (r) {
+          if (r.error) {
+            if (SEC) SEC.noteFailure(email, s);
+            var again = SEC ? SEC.lockedFor(email, s) : 0;
+            msg.textContent = again > 0
+              ? 'Too many wrong passwords on this device. Try again in ' + waitWord(again) + '.'
+              : r.error.message;
+            msg.className = 'msg err';
+            return;
+          }
+          if (SEC) SEC.clearFailures(email);
+          msg.textContent = '';
+          $('password').value = '';
+          return afterPassword();
+        });
+    });
+  }
+
+  $('mfaBtn').addEventListener('click', doCode);
+  $('mfaCode').addEventListener('keydown', function (e) { if (e.key === 'Enter') doCode(); });
+  $('mfaCancel').addEventListener('click', function () {
+    sb.auth.signOut().then(function () { location.reload(); });
+  });
+
+  function doCode() {
+    var msg = $('mfaMsg');
+    var typed = String($('mfaCode').value || '').replace(/\s/g, '');
+    if (!/^\d{6}$/.test(typed)) {
+      msg.textContent = 'The code is six digits.'; msg.className = 'msg err'; return;
+    }
+    msg.textContent = 'Checking…'; msg.className = 'msg';
+    SEC.submitCode(sb, typed).then(function () {
+      msg.textContent = '';
+      $('mfaCode').value = '';
+      show('mfa', false);
+      if (recovering) { askForNewPassword(); return; }
+      enterAdmin();
+    }).catch(function (e) {
+      msg.textContent = (e && e.message) || 'That code was not accepted.';
+      msg.className = 'msg err';
+    });
+  }
+
+  $('logoutBtn').addEventListener('click', function () { sb.auth.signOut().then(function () { location.reload(); }); });
+
+  /* Sign out after a stretch of no activity, if the shop asked for it.
+     Real, in the sense that matters here: the session in this browser is
+     genuinely ended, not merely hidden behind a screen. */
+  function startIdleTimer() {
+    if (!SEC) return;
+    securitySettings().then(function (s) {
+      var mins = Number(s.sessionTimeout);
+      if (idle) { idle.stop(); idle = null; }
+      if (!mins) return;
+      idle = SEC.idleTimer(mins, function () {
+        try { sessionStorage.setItem(TIMED_OUT, '1'); } catch (e) {}
+        sb.auth.signOut({ scope: 'local' }).then(function () { location.reload(); });
+      });
+    });
+  }
+
+  var adminReady = false;
+  /* The picture on the browser tab, and only that.
+
+     It used to point at a file that ships with the folder, which is the
+     logo the site was built with — so a shop that uploaded a new one in
+     Settings > Branding was still looking at the old one across the top
+     of its own admin, in the last place anybody would think to look for
+     a stale file. So it is swapped here once the branding is known.
+
+     THE HOME SCREEN ICON IS NOT SWAPPED WITH IT, though it used to be.
+     apple-touch-icon is the installed app's icon on an iPhone — Safari's
+     half of the job manifest.webmanifest does on Android — and pointing
+     it at a website logo had the same three faults it had in the
+     manifest: the logo is a wide mark on a transparent background drawn
+     for a header rather than a square tile, iOS crops and mats it to
+     whatever it likes, and it is read once at install and never again,
+     so the swap was never reaching an installed app anyway. The website
+     logo is the website's; the app keeps the tile drawn for it.
+
+     Quiet throughout. An icon is not worth an error, and a shop that has
+     uploaded nothing keeps the mark that ships with the folder. */
+  function useTheShopsLogo() {
+    var store = window.VBP_ADMIN && window.VBP_ADMIN.store;
+    if (!store) return;
+    store.load('branding').then(function (b) {
+      var src = (b && (b.logoMobile || b.logoMain)) || '';
+      if (!src) return;
+      var icon = document.querySelector('link[rel="icon"]');
+      if (icon) icon.href = src;
+    }, function () {});
+  }
+
+  function enterAdmin() {
+    show('topbar', true); show('admin', true);
+    adminReady = true;
+    /* A colleague mentioning this person in a chat's notes, wherever in
+       the admin they are (assets/admin/chat-alerts.js). */
+    try { if (window.VBP_CHAT_ALERTS && window.VBP_CHAT_ALERTS.watchMentions) window.VBP_CHAT_ALERTS.watchMentions(sb); } catch (e) {}
+    /* A customer writing, wherever in the admin they are: the chime, the
+       count in the tab title and a note in the corner. Only for somebody
+       who may answer chats. */
+    try { if (may('chats') && window.VBP_CHAT_ALERTS && window.VBP_CHAT_ALERTS.watchChats) window.VBP_CHAT_ALERTS.watchChats(sb); } catch (e) {}
+    /* This device belongs to the shop, so its trips through the shop
+       front are not customer visits and Website Analytics ignores them
+       from here on. See isTheShop() in assets/analytics.js. Left rather
+       than cleared on logout: a till that is signed out at closing time
+       is still the shop's till in the morning. */
+    try { localStorage.setItem('vbp_staff', '1'); } catch (e) {}
+    useTheShopsLogo();
+    if (!narrowTabs()) { startIdleTimer(); return; }
+    /* Only if they can open it. The rules refuse product_meta to a role
+       without it, and asking would spend a request to be told no. */
+    if (may('products')) loadProducts();
+    applyRoute();
+    /* Note the build that is running, so System & Maintenance can say
+       when it went live. Costs one read per new build and nothing after
+       that, and a failure here is silent by design: the deployment
+       history is never worth keeping an owner out of their shop for. */
+    var sys = (window.VBP_ADMIN || {}).system;
+    if (may('settings') && sys && sys.record) { try { sys.record(); } catch (e) {} }
+    startIdleTimer();
+  }
+
+  // ---------- navigation ----------
+  // Routes are hash based: #/policies, #/settings, #/settings/general.
+  // With no hash the admin opens on Products & Photos, as it always has.
+  var TABS = ['dashboard', 'analytics', 'products', 'orders', 'rewards', 'chats', 'reviews', 'subscribers', 'policies', 'settings', 'activity'];
+  var pageCtx = null;
+  var setIndexBuilt = false;
+
+  function ctx() {
+    if (!pageCtx) {
+      var reg = window.VBP_ADMIN || {};
+      pageCtx = { sb: sb, cfg: cfg, esc: escapeHtml, navigate: navigate, ui: reg.ui,
+                  store: reg.store, ask: ask, tell: tell };
+    }
+    return pageCtx;
+  }
+
+  /* A page holding unsaved edits gets to interrupt before we leave it.
+
+     This used to be window.confirm(), which is the one place the admin
+     still spoke in the browser's voice — and the only kind of question
+     that can be answered without waiting. ask() cannot: it resolves
+     later. So leaving is no longer something to permit or refuse on the
+     spot; it is something to do once the answer arrives. */
+  function dirtyForm() {
+    var f = (window.VBP_ADMIN || {}).activeForm;
+    return (f && f.isDirty && f.isDirty()) ? f : null;
+  }
+  function askLeave(f) {
+    return ask('Your changes on this page have not been saved.', {
+      title: 'Leave without saving?',
+      okText: 'Leave', cancelText: 'Stay here', danger: true
+    }).then(function (yes) { if (yes) f.release(); return yes; });
+  }
+  /* Run `go` now, or after the owner says the unsaved work can go. */
+  function guarded(go) {
+    var f = dirtyForm();
+    if (!f) { go(); return; }
+    askLeave(f).then(function (yes) { if (yes) go(); });
+  }
+  function navigate(tab, sub) {
+    guarded(function () {
+      var want = '#/' + tab + (sub ? '/' + sub : '');
+      if (location.hash === want) applyRoute(); else location.hash = want;
+    });
+  }
+  function applyRoute() {
+    var parts = (location.hash || '').replace(/^#\/?/, '').split('/').filter(Boolean);
+    openTab(parts[0] || 'products', parts[1] || '');
+  }
+  // Back and forward do not go through navigate(), so they are guarded
+  // here instead. Declining puts the old address back, and the flag stops
+  // that second hashchange from asking all over again.
+  var lastHash = location.hash;
+  var reverting = false;
+  window.addEventListener('hashchange', function () {
+    if (reverting) { reverting = false; lastHash = location.hash; return; }
+    if (!adminReady) { lastHash = location.hash; return; }
+    var f = dirtyForm();
+    if (!f) { lastHash = location.hash; applyRoute(); return; }
+    /* The address bar has already moved and the question takes a moment,
+       so put it back while we ask, and move again if the answer is yes. */
+    var want = location.hash;
+    reverting = true;
+    location.hash = lastHash;
+    askLeave(f).then(function (yes) {
+      if (yes) location.hash = want;      // no dirty form now, so this passes
+    });
+  });
+  window.addEventListener('beforeunload', function (e) {
+    var f = (window.VBP_ADMIN || {}).activeForm;
+    if (f && f.isDirty()) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  function openTab(which, sub) {
+    if (TABS.indexOf(which) < 0) { which = firstTab(); sub = ''; }
+    if (!may(which)) { which = firstTab(); sub = ''; }
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (x) {
+      x.classList[x.getAttribute('data-tab') === which ? 'add' : 'remove']('active');
+    });
+    TABS.forEach(function (t) { show('tab-' + t, t === which); });
+    /* Live Chats polls while it is open and stops itself when its host
+       is emptied. Hiding a tab does not empty it, so the shell does it
+       here: otherwise the timers would run on behind another page and
+       the operator would still read as being at the desk after they had
+       left it. Every other page is rebuilt on open, so nothing is lost. */
+    if (which !== 'chats') { var chatHost = $('tab-chats'); if (chatHost) chatHost.innerHTML = ''; }
+    if (which === 'orders') loadOrders();
+    if (which === 'reviews') loadReviews();
+    if (which === 'subscribers') loadSubscribers();
+    if (which === 'policies') loadPolicies();
+    if (which === 'dashboard') renderPage('dashboard', 'tab-dashboard');
+    if (which === 'analytics') renderPage('analytics', 'tab-analytics');
+    if (which === 'rewards') renderPage('rewards', 'tab-rewards');
+    if (which === 'activity') renderPage('activity', 'tab-activity');
+    if (which === 'chats') renderPage('chats', 'tab-chats');
+    if (which === 'settings') renderSettings(sub);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
+    t.addEventListener('click', function () { navigate(t.getAttribute('data-tab'), ''); });
+  });
+
+  /* Somebody who only answers chats is shown only that. The tabs are
+     removed rather than hidden: a hidden tab is one CSS rule away from
+     being pressed, and the address bar is one word away from opening
+     what is behind it. openTab refuses the rest as well, and the
+     database refuses the tables underneath — three answers to the same
+     question, because the first two are conveniences and only the last
+     is a rule. */
+  /* Take away the tabs this role was not given. Removed rather than
+     hidden, so there is nothing to unhide and nothing to explain: an
+     agent sees the chats and that is the whole of the page to them.
+
+     The owner keeps everything, whatever the ticks say, so no edit in
+     Settings can lock the shop out of its own admin. */
+  function narrowTabs() {
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
+      if (!may(t.getAttribute('data-tab'))) t.remove();
+    });
+    /* A role with nothing ticked. Say so, rather than open a page they
+       will be refused by the database a moment later. */
+    if (!document.querySelector('.tab')) {
+      var host = $('tab-products');
+      if (host) {
+        host.innerHTML = '';
+        var p = document.createElement('p');
+        p.className = 'count';
+        p.textContent = 'This account has not been given anything to open yet. ' +
+                        'Ask the shop owner to tick something for your role.';
+        host.appendChild(p);
+        show('tab-products', true);
+      }
+      return false;
+    }
+    return true;
+  }
+
+  /* The first tab they actually have, so an address they cannot open
+     lands somewhere real instead of on an empty page. */
+  function firstTab() {
+    for (var i = 0; i < TABS.length; i++) if (may(TABS[i])) return TABS[i];
+    return 'products';
+  }
+
+  // ---------- page shell ----------
+  function pageHead(title, summary) {
+    var d = document.createElement('div'); d.className = 'page-head';
+    var h = document.createElement('h2'); h.textContent = title; d.appendChild(h);
+    if (summary) { var p = document.createElement('p'); p.textContent = summary; d.appendChild(p); }
+    return d;
+  }
+  function crumbBack(label, tab) {
+    var d = document.createElement('div'); d.className = 'crumb';
+    var b = document.createElement('button'); b.type = 'button'; b.textContent = '\u2039 ' + label;
+    b.addEventListener('click', function () { navigate(tab, ''); });
+    d.appendChild(b);
+    return d;
+  }
+  // Hands each page module an empty body to build itself into.
+  function renderInto(host, def) {
+    // The outgoing page is gone; whatever it registered goes with it.
+    if (window.VBP_ADMIN) window.VBP_ADMIN.activeForm = null;
+    var body = document.createElement('div'); body.className = 'page-body';
+    host.appendChild(body);
+    try { if (def && typeof def.render === 'function') def.render(body, ctx()); }
+    catch (e) {
+      body.innerHTML = '<p class="count">This section could not be opened: ' +
+        escapeHtml(e && e.message ? e.message : e) + '</p>';
+    }
+  }
+  function renderPage(key, hostId) {
+    var host = $(hostId); if (!host) return;
+    var def = ((window.VBP_ADMIN || {}).pages || {})[key];
+    host.innerHTML = '';
+    if (!def) { host.innerHTML = '<p class="count">This page did not load. Check that its script file is present.</p>'; return; }
+    host.appendChild(pageHead(def.title, def.summary));
+    renderInto(host, def);
+  }
+
+  // ---------- settings ----------
+  function buildSettingsIndex() {
+    var host = $('setGrid'); if (!host) return;
+    var list = (window.VBP_ADMIN && window.VBP_ADMIN.settings) || [];
+    host.innerHTML = '';
+    if (!list.length) {
+      host.innerHTML = '<p class="count">No settings sections loaded. Check that the scripts in assets/admin/settings/ are present.</p>';
+      return;
+    }
+    list.forEach(function (def) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'set-item';
+      var t = document.createElement('div'); t.className = 't'; t.textContent = def.title; b.appendChild(t);
+      if (def.summary) { var s = document.createElement('div'); s.className = 'd'; s.textContent = def.summary; b.appendChild(s); }
+      b.addEventListener('click', function () { navigate('settings', def.key); });
+      host.appendChild(b);
+    });
+    setIndexBuilt = true;
+  }
+  function renderSettings(key) {
+    var reg = window.VBP_ADMIN || {};
+    var def = (key && reg.setting) ? reg.setting(key) : null;
+    if (!def) {
+      if (key) { navigate('settings', ''); return; }   // unknown section, fall back to the menu
+      if (!setIndexBuilt) buildSettingsIndex();
+      show('setPage', false); show('setIndex', true);
+      return;
+    }
+    show('setIndex', false); show('setPage', true);
+    var host = $('setPage'); host.innerHTML = '';
+    host.appendChild(crumbBack('Settings', 'settings'));
+    host.appendChild(pageHead(def.title, def.summary));
+    renderInto(host, def);
+  }
+
+  // ---------- helpers ----------
+  function placeholder() {
+    return "data:image/svg+xml;charset=utf-8," +
+      "<svg xmlns='http://www.w3.org/2000/svg' width='120' height='150'><rect width='100%' height='100%' fill='%230B1F3A'/>" +
+      "<text x='50%' y='54%' fill='%23C8A24A' font-family='Georgia' font-size='30' text-anchor='middle'>VB</text></svg>";
+  }
+  function extOf(name) { var p = (name || '').split('.'); return (p.length > 1 ? p.pop() : 'jpg').toLowerCase(); }
+  /* Every photo is shrunk to screen size first (assets/image-shrink.js),
+     so visitors download a few hundred KB rather than the phone's original.
+     A path is never reused -- each upload gets a new one -- so the file can
+     be kept by browsers for a year: a changed photo is a new address. */
+  function uploadImage(file, prefix) {
+    var S = window.VBP_SHRINK;
+    var ready = (S && typeof S.shrink === 'function') ? S.shrink(file) : Promise.resolve(null);
+    return ready.then(function (small) {
+      var body = small || file;
+      var path = prefix + '-' + Date.now() + '.' + (small ? 'jpg' : extOf(file.name));
+      return sb.storage.from(BUCKET).upload(path, body,
+        { upsert: true, cacheControl: '31536000', contentType: body.type || undefined })
+        .then(function (r) { return { r: r, path: path }; });
+    })
+      .then(function (x) {
+        var r = x.r, path = x.path;
+        if (r.error) throw r.error;
+        return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+      });
+  }
+  /* The path inside the bucket, recovered from the public address the row
+     actually holds. Anything that is not ours — an address typed in from
+     somewhere else, or another bucket — comes back null, and null is
+     never deleted. */
+  function storagePathOf(url, bucket) {
+    var marker = '/storage/v1/object/public/' + (bucket || BUCKET) + '/';
+    var s = String(url || '');
+    var at = s.indexOf(marker);
+    if (at < 0) return null;
+    var path = s.slice(at + marker.length).split('?')[0].split('#')[0];
+    try { path = decodeURIComponent(path); } catch (e) {}
+    return path || null;
+  }
+
+  /* Taking the photo out of the bucket, not merely out of the row.
+     uploadImage writes a fresh path every time, so a photo replaced or
+     removed used to stay there being paid for, with nothing left
+     pointing at it.
+
+     Always AFTER the row has been saved, never before. If this fails the
+     shop has one file it is not using, which System & Maintenance lists;
+     if it ran first and the save then failed, the shop would have a
+     product showing a photo that is already gone. The first is an
+     expense and the second is a broken shop.
+
+     A failure is not put in front of the owner: there is nothing they
+     could do about it, and nothing of theirs has been lost. */
+  function dropFromStorage(urls, bucket) {
+    var paths = (Array.isArray(urls) ? urls : [urls])
+      .map(function (u) { return storagePathOf(u, bucket); })
+      .filter(function (x) { return !!x; });
+    if (!paths.length) return Promise.resolve();
+    return Promise.resolve(sb.storage.from(bucket || BUCKET).remove(paths))
+      .catch(function () {});
+  }
+
+  // The settings form kit uses this for its image fields, so photos land in
+  // the same bucket, with the same naming, as everything else. Its
+  // counterpart goes with it: a section that uploads through here should
+  // be able to clear up after itself through here too.
+  window.VBP_ADMIN.uploadImage = uploadImage;
+  window.VBP_ADMIN.dropFromStorage = dropFromStorage;
+  window.VBP_ADMIN.storagePathOf = storagePathOf;
+
+  /* Settings sections live in their own files and cannot reach in here, so
+     the dialog is shared the same way the uploader is. One way of asking
+     across the whole admin, in the shop's voice rather than the browser's. */
+  window.VBP_ADMIN.ask = ask;
+  window.VBP_ADMIN.tell = tell;
+
+  /* The activity log. Fetched each time rather than held, because it is
+     allowed not to be there: a shop that has not run the newest setup
+     file yet must still be able to work. */
+  var AUDIT = function () { return (window.VBP_ADMIN || {}).audit; };
+
+  /* What each column is called where a person reads it. The settings log
+     shows form field names because that is what the owner sees on the
+     form; these are database columns, which nobody sees anywhere. */
+  var META_LABELS = {
+    image_url: 'main photo', gallery: 'photos', videos: 'videos',
+    featured: 'featured', is_new: 'new', best_seller: 'best seller',
+    hidden: 'hidden from the site', description: 'description',
+    price_override: 'website price', on_request: 'price on request'
+  };
+  /* Bookkeeping the price watch does on its own. It is the machine
+     remembering a till price, not a person changing anything, and a log
+     full of it would bury the lines that matter. */
+  var META_QUIET = { sku: true, updated_at: true, ref_price: true, ref_price_at: true };
+
+  function copyMeta(m) { try { return JSON.parse(JSON.stringify(m || {})); } catch (e) { return {}; } }
+  function snapshotMeta() {
+    metaSaved = {};
+    for (var k in metaMap) {
+      if (Object.prototype.hasOwnProperty.call(metaMap, k)) metaSaved[k] = copyMeta(metaMap[k]);
+    }
+  }
+  /* Named, and in the shop's words. "Hiding a product, featuring it and
+     overriding its price" used to be one indistinguishable line. */
+  function metaChanges(before, after) {
+    var a = AUDIT();
+    if (!a || !a.diff) return null;
+    var lines = a.diff(before || {}, after || {}, 'product')
+      .filter(function (c) { return !META_QUIET[c.field]; });
+    if (!lines.length) return null;
+    lines.forEach(function (c) { c.field = META_LABELS[c.field] || c.field; });
+    return lines;
+  }
+
+  function saveMeta(sku) {
+    var m = metaMap[sku] || { sku: sku };
+    m.sku = sku; m.updated_at = new Date().toISOString();
+    metaMap[sku] = m;
+    var changes = metaChanges(metaSaved[sku], m);
+    var known = !!(products || []).length;
+    return sb.from('product_meta').upsert(m, { onConflict: 'sku' }).then(function (r) {
+      if (r.error) throw r.error;
+      metaSaved[sku] = copyMeta(m);
+      var a = AUDIT();
+      /* No line at all when nothing moved. A save that changed nothing is
+         not a change, and recording it as one makes the log harder to
+         read for no gain. */
+      if (a && changes) a.record({ action: 'changed', module: 'Products & Photos',
+                                   record: sku, changes: changes });
+      return r;
+    });
+  }
+
+  // ---------- products ----------
+  function loadProducts() {
+    Promise.all([
+      fetch('/api/products', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : { products: [] }; }).catch(function () { return { products: [] }; }),
+      sb.from('product_meta').select('*'),
+      window.VBP_ADMIN.store.load('pricing').catch(function () { return {}; }),
+      window.VBP_ADMIN.store.load('general').catch(function () { return {}; }),
+      window.VBP_ADMIN.store.load('homepage').catch(function () { return {}; })
+    ]).then(function (res) {
+      homeSettings = res[4] || {};
+      products = (res[0] && res[0].products) || [];
+      metaMap = {};
+      var rows = (res[1] && res[1].data) || [];
+      rows.forEach(function (m) { if (m && m.sku) metaMap[m.sku] = m; });
+      /* supabase-new-arrivals.sql adds new_since; until it is run, never
+         send it, or every save would be refused. */
+      metaHasNewSince = rows.some(function (m) { return m && Object.prototype.hasOwnProperty.call(m, 'new_since'); });
+      pricing = res[2] || {};
+      generalSettings = res[3] || {};
+      return watchPrices();
+    }).then(function () {
+      /* After the watch, not before: the remembered till price it writes
+         is the machine's own bookkeeping, and taking the snapshot first
+         would put it in the log under the next thing a person changed. */
+      snapshotMeta();
+      renderProducts();
+    });
+  }
+
+  /* ---------- the price watch ------------------------------------------
+     Sale prices come from the POS. The POS sends one number per piece and
+     no history, so on its own the website can show a reduced price but
+     cannot know it was ever higher — no strike through, no percentage,
+     nothing to say a piece is on sale.
+
+     So the admin remembers. Against each piece it keeps the highest price
+     it has recently seen. When the POS comes in lower, that remembered
+     figure is the "was". When the POS comes in higher, the memory moves up
+     with it and the piece is simply not on sale.
+
+     This runs whenever the Products tab loads. A shop that never opens the
+     admin still shows correct prices; it just does not advertise the
+     reduction, which is the safe way round. */
+  function watchPrices() {
+    var changes = [];
+    products.forEach(function (p) {
+      var now = Number(p.price);
+      if (!isFinite(now) || now <= 0) return;
+
+      var m = metaMap[p.sku] || { sku: p.sku };
+      var ref = Number(m.ref_price);
+
+      /* Nothing recorded yet, or the till has gone above what we remember:
+         this is the piece's ordinary price, and there is no sale. */
+      if (!isFinite(ref) || ref <= 0 || now >= ref) {
+        if (ref === now) return;                 // already exactly right
+        m.ref_price = now;
+        m.ref_price_at = new Date().toISOString();
+        m.sku = p.sku;
+        metaMap[p.sku] = m;
+        changes.push(m);
+      }
+      /* Below what we remember: leave the memory alone. It is the "was". */
+    });
+    if (!changes.length) return Promise.resolve();
+    changes.forEach(function (m) { m.updated_at = new Date().toISOString(); });
+    return sb.from('product_meta').upsert(changes, { onConflict: 'sku' })
+      .then(function () {}, function () {});     // a failed watch must never block the tab
+  }
+
+  /* What the storefront would show for this piece, worked out with the
+     same code the storefront uses, so the admin cannot disagree with it. */
+  function priceViewOf(p) {
+    var m = metaMap[p.sku] || {};
+    var item = {
+      price: Number(p.price) || 0,
+      category: p.category,
+      priceOnRequest: !!m.on_request,
+      priceOverride: m.price_override,
+      /* Same order as the storefront: the till's own former price first,
+         the remembered one only where the till keeps none. */
+      wasPrice: Number(p.wasPrice) > 0 ? Number(p.wasPrice)
+              : (freshRef(m) ? Number(m.ref_price) : 0)
+    };
+    var F = window.VBP_FORMAT;
+    if (!F || !F.priceView) return { nowText: String(item.price), wasText: '', offText: '' };
+    return F.priceView(item, pricing, F.moneyStyle(generalSettings, pricing));
+  }
+  /* A reduction the shop has stopped calling recent. Mirrors the rule the
+     storefront applies, so both stop advertising a sale on the same day. */
+  function freshRef(m) {
+    if (pricing.trackReductions === false) return false;
+    var days = Number(pricing.reductionDays);
+    if (!isFinite(days) || days <= 0) return true;
+    if (!m.ref_price_at) return true;
+    var t = new Date(m.ref_price_at).getTime();
+    if (isNaN(t)) return true;
+    return (Date.now() - t) <= days * 86400000;
+  }
+  function renderProducts() {
+    var term = ($('prodSearch').value || '').toLowerCase().trim();
+    var list = products.filter(function (p) {
+      return !term || (p.name && p.name.toLowerCase().indexOf(term) > -1) || (p.sku && p.sku.toLowerCase().indexOf(term) > -1);
+    });
+    $('prodCount').textContent = products.length + ' products from POS';
+    var host = $('prodList'); host.innerHTML = '';
+    if (!products.length) { host.innerHTML = '<p class="count">No products returned from the POS. Open this admin on your live site (the product feed must be reachable).</p>'; return; }
+    list.forEach(function (p) { host.appendChild(productRow(p)); });
+  }
+  function gallery(sku) { var m = metaMap[sku]; var g = m && m.gallery; return Array.isArray(g) ? g : []; }
+  function videosOf(sku) { var m = metaMap[sku]; var v = m && m.videos; return Array.isArray(v) ? v : []; }
+  var MAX_PHOTOS = 10, MAX_VIDEOS = 2;
+
+  function productRow(p) {
+    var m = metaMap[p.sku] || { sku: p.sku };
+    var wrap = document.createElement('div'); wrap.className = 'prod';
+
+    var thumb = document.createElement('div'); thumb.className = 'thumb';
+    var img = document.createElement('img'); img.src = m.image_url || placeholder(); img.alt = p.name;
+    thumb.appendChild(img); wrap.appendChild(thumb);
+
+    var body = document.createElement('div');
+    body.innerHTML = '<div class="nm">' + escapeHtml(p.name) + '</div><div class="sku">' + escapeHtml(p.sku) +
+      /* The POS price, written the shop's way rather than with a K typed
+         in: a shop trading in dollars should not see kwacha in its own
+         product list. */
+      ' · ' + escapeHtml(fmtMoney(p.price)) + '</div>';
+
+    // main photo upload
+    var mainWrap = document.createElement('div'); mainWrap.className = 'row';
+    var mainLbl = document.createElement('label'); mainLbl.textContent = 'Main photo'; mainLbl.style.margin = '0 8px 0 0';
+    var mainIn = document.createElement('input'); mainIn.type = 'file'; mainIn.accept = 'image/*'; mainIn.className = 'file';
+    var mainDel = document.createElement('button'); mainDel.className = 'btn btn-out btn-sm'; mainDel.textContent = 'Remove'; mainDel.style.display = m.image_url ? '' : 'none';
+    var mainStat = document.createElement('span'); mainStat.className = 'stat';
+    mainIn.addEventListener('change', function () {
+      if (!mainIn.files[0]) return;
+      mainStat.textContent = 'Uploading…'; mainStat.className = 'stat busy';
+      var replaced = m.image_url;          // the one about to stop being used
+      uploadImage(mainIn.files[0], p.sku + '/main').then(function (url) {
+        m.image_url = url; metaMap[p.sku] = m; img.src = url; mainDel.style.display = '';
+        return saveMeta(p.sku);
+      }).then(function () {
+        mainStat.textContent = 'Saved ✓'; mainStat.className = 'stat ok';
+        if (replaced && replaced !== m.image_url) dropFromStorage(replaced);
+      })
+        .catch(function (e) { mainStat.textContent = 'Error: ' + (e.message || e); mainStat.className = 'stat err'; });
+    });
+    mainDel.addEventListener('click', function () {
+      ask('Remove the main photo for ' + p.name + '?',
+          { danger: true, okText: 'Remove',
+            note: 'The other photos stay. You can upload a new one at any time.' })
+      .then(function (yes) {
+      if (!yes) return;
+      var removed = m.image_url;
+      m.image_url = ''; metaMap[p.sku] = m; img.src = placeholder();
+      mainStat.textContent = 'Removing…'; mainStat.className = 'stat busy';
+      saveMeta(p.sku).then(function () {
+        mainStat.textContent = 'Removed'; mainStat.className = 'stat ok';
+        mainDel.style.display = 'none'; mainIn.value = '';
+        dropFromStorage(removed);
+      })
+        .catch(function (e) { mainStat.textContent = 'Error: ' + (e.message || e); mainStat.className = 'stat err'; });
+      });
+    });
+    mainWrap.appendChild(mainLbl); mainWrap.appendChild(mainIn); mainWrap.appendChild(mainDel); mainWrap.appendChild(mainStat);
+    body.appendChild(mainWrap);
+
+    // gallery
+    var galWrap = document.createElement('div');
+    var galRow = document.createElement('div'); galRow.className = 'gal';
+    function drawGallery() {
+      galRow.innerHTML = '';
+      gallery(p.sku).forEach(function (u, idx) {
+        var g = document.createElement('div'); g.className = 'g';
+        g.innerHTML = '<img src="' + u + '" alt="">';
+        var x = document.createElement('button'); x.textContent = '×'; x.title = 'Remove';
+        x.addEventListener('click', function () {
+          var arr = gallery(p.sku); var removed = arr[idx];
+          arr.splice(idx, 1); m.gallery = arr; metaMap[p.sku] = m;
+          saveMeta(p.sku).then(function () {
+            drawGallery();
+            dropFromStorage(removed);
+          });
+        });
+        g.appendChild(x); galRow.appendChild(g);
+      });
+    }
+    drawGallery();
+    var galCount = document.createElement('div'); galCount.className = 'hint'; galCount.style.margin = '6px 0 2px';
+    function updateCount() {
+      var total = 1 + gallery(p.sku).length; // main + extras
+      galCount.textContent = 'Photos: ' + total + ' / ' + MAX_PHOTOS + (total >= MAX_PHOTOS ? ' (maximum reached)' : '');
+    }
+    updateCount();
+    var addLbl = document.createElement('label'); addLbl.textContent = 'Add extra photo'; addLbl.style.margin = '8px 8px 0 0';
+    var addIn = document.createElement('input'); addIn.type = 'file'; addIn.accept = 'image/*'; addIn.className = 'file';
+    var addStat = document.createElement('span'); addStat.className = 'stat';
+    addIn.addEventListener('change', function () {
+      if (!addIn.files[0]) return;
+      if ((1 + gallery(p.sku).length) >= MAX_PHOTOS) { addStat.textContent = 'You already have ' + MAX_PHOTOS + ' photos.'; addStat.className = 'stat err'; addIn.value = ''; return; }
+      addStat.textContent = 'Uploading…'; addStat.className = 'stat busy';
+      uploadImage(addIn.files[0], p.sku + '/g').then(function (url) {
+        var arr = gallery(p.sku); arr.push(url); m.gallery = arr; metaMap[p.sku] = m;
+        return saveMeta(p.sku);
+      }).then(function () { addStat.textContent = 'Saved ✓'; addStat.className = 'stat ok'; addIn.value = ''; drawGallery(); updateCount(); })
+        .catch(function (e) { addStat.textContent = 'Error: ' + (e.message || e); addStat.className = 'stat err'; });
+    });
+    // redraw gallery should also refresh the count
+    var _origDraw = drawGallery;
+    drawGallery = function () { _origDraw(); updateCount(); };
+    galWrap.appendChild(galRow);
+    galWrap.appendChild(galCount);
+    var addRow = document.createElement('div'); addRow.className = 'row';
+    addRow.appendChild(addLbl); addRow.appendChild(addIn); addRow.appendChild(addStat);
+    galWrap.appendChild(addRow);
+    body.appendChild(galWrap);
+
+    // videos (up to 2)
+    var vidWrap = document.createElement('div'); vidWrap.style.marginTop = '10px';
+    var vidRow = document.createElement('div'); vidRow.className = 'gal';
+    function drawVideos() {
+      vidRow.innerHTML = '';
+      videosOf(p.sku).forEach(function (u, idx) {
+        var g = document.createElement('div'); g.className = 'g'; g.style.width = '74px'; g.style.height = '58px';
+        g.innerHTML = '<video src="' + u + '" muted style="width:100%;height:100%;object-fit:cover"></video>';
+        var x = document.createElement('button'); x.textContent = '×'; x.title = 'Remove';
+        x.addEventListener('click', function () {
+          var arr = videosOf(p.sku); var removed = arr[idx];
+          arr.splice(idx, 1); m.videos = arr; metaMap[p.sku] = m;
+          saveMeta(p.sku).then(function () {
+            drawVideos();
+            dropFromStorage(removed);
+          });
+        });
+        g.appendChild(x); vidRow.appendChild(g);
+      });
+    }
+    drawVideos();
+    var vLbl = document.createElement('label'); vLbl.textContent = 'Add video (max ' + MAX_VIDEOS + ')'; vLbl.style.margin = '8px 8px 0 0';
+    var vIn = document.createElement('input'); vIn.type = 'file'; vIn.accept = 'video/*'; vIn.className = 'file';
+    var vStat = document.createElement('span'); vStat.className = 'stat';
+    vIn.addEventListener('change', function () {
+      if (!vIn.files[0]) return;
+      if (videosOf(p.sku).length >= MAX_VIDEOS) { vStat.textContent = 'Limit is ' + MAX_VIDEOS + ' videos.'; vStat.className = 'stat err'; vIn.value = ''; return; }
+      vStat.textContent = 'Uploading… (videos can take a moment)'; vStat.className = 'stat busy';
+      uploadImage(vIn.files[0], p.sku + '/v').then(function (url) {
+        var arr = videosOf(p.sku); arr.push(url); m.videos = arr; metaMap[p.sku] = m;
+        return saveMeta(p.sku);
+      }).then(function () { vStat.textContent = 'Saved ✓'; vStat.className = 'stat ok'; vIn.value = ''; drawVideos(); })
+        .catch(function (e) { vStat.textContent = 'Error: ' + (e.message || e); vStat.className = 'stat err'; });
+    });
+    var vHint = document.createElement('div'); vHint.className = 'hint'; vHint.style.marginTop = '6px';
+    vHint.textContent = 'Short, compressed clips work best (keep each video small for fast loading).';
+    vidWrap.appendChild(vidRow);
+    var vAddRow = document.createElement('div'); vAddRow.className = 'row';
+    vAddRow.appendChild(vLbl); vAddRow.appendChild(vIn); vAddRow.appendChild(vStat);
+    vidWrap.appendChild(vAddRow); vidWrap.appendChild(vHint);
+    body.appendChild(vidWrap);
+
+    // flags
+    var flags = document.createElement('div'); flags.className = 'row';
+    flags.appendChild(checkbox('Featured', !!m.featured, function (v) { m.featured = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
+    flags.appendChild(checkbox('New', !!m.is_new, function (v) {
+      m.is_new = v;
+      /* A fresh tick starts the count again; the database keeps the date. */
+      if (metaHasNewSince) m.new_since = v ? new Date().toISOString() : null;
+      metaMap[p.sku] = m; saveMeta(p.sku); newNote.textContent = newSays(m);
+    }));
+    var newNote = document.createElement('span'); newNote.className = 'hint'; newNote.style.margin = '0 8px 0 -4px';
+    newNote.textContent = newSays(m);
+    flags.appendChild(newNote);
+    /* The POS knows what sells; the feed deliberately does not carry it, so
+       Best Seller is a choice made here rather than a number decided there. */
+    flags.appendChild(checkbox('Best seller', !!m.best_seller, function (v) { m.best_seller = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
+    flags.appendChild(checkbox('Hide from site', !!m.hidden, function (v) { m.hidden = v; metaMap[p.sku] = m; saveMeta(p.sku); }));
+    var flagStat = document.createElement('span'); flagStat.className = 'stat';
+    flags.appendChild(flagStat);
+    body.appendChild(flags);
+
+    // pricing
+    body.appendChild(priceBox(p, m));
+
+    // what the platform sent with this piece
+    /* The shop types these on Product Setup and could not see, from here,
+       whether any of them had arrived. Read-only on purpose: the platform is
+       where a piece is described, and two places to edit the same sentence
+       is how they come to disagree. */
+    if (p.details && p.details.length) {
+      var xWrap = document.createElement('div'); xWrap.className = 'field';
+      var xLbl = document.createElement('label'); xLbl.textContent = 'Details from the platform';
+      var xList = document.createElement('div'); xList.className = 'plat-details';
+      p.details.forEach(function (d) {
+        var row = document.createElement('div');
+        var b = document.createElement('b'); b.textContent = d.label + ': ';
+        row.appendChild(b);
+        row.appendChild(document.createTextNode(d.value));
+        xList.appendChild(row);
+      });
+      var xHint = document.createElement('div'); xHint.className = 'hint';
+      xHint.textContent = 'Typed on Product Setup in the platform, and shown on the product page. To change one, change it there.';
+      xWrap.appendChild(xLbl); xWrap.appendChild(xList); xWrap.appendChild(xHint);
+      body.appendChild(xWrap);
+    }
+
+    // description
+    var dWrap = document.createElement('div'); dWrap.className = 'field';
+    var dLbl = document.createElement('label'); dLbl.textContent = 'Custom description (optional)';
+    var dTa = document.createElement('textarea'); dTa.value = m.description || '';
+    /* The platform has a description box of its own and what is typed there
+       now reaches the website. Putting it in as the placeholder means the
+       shop can read what this piece will say without typing anything, and
+       can see that typing here replaces it. */
+    if (p.description) {
+      dTa.placeholder = p.description;
+      var dHint = document.createElement('div'); dHint.className = 'hint';
+      dHint.textContent = 'Left empty, the product page uses the description from the platform — the grey text in the box.';
+    }
+    var dStat = document.createElement('span'); dStat.className = 'stat';
+    var dBtn = document.createElement('button'); dBtn.className = 'btn btn-out btn-sm'; dBtn.textContent = 'Save description'; dBtn.style.marginTop = '6px';
+    dBtn.addEventListener('click', function () {
+      m.description = dTa.value; metaMap[p.sku] = m; dStat.textContent = 'Saving…'; dStat.className = 'stat busy';
+      saveMeta(p.sku).then(function () { dStat.textContent = 'Saved ✓'; dStat.className = 'stat ok'; })
+        .catch(function (e) { dStat.textContent = 'Error'; dStat.className = 'stat err'; });
+    });
+    dWrap.appendChild(dLbl); dWrap.appendChild(dTa);
+    if (dHint) dWrap.appendChild(dHint);
+    dWrap.appendChild(dBtn); dWrap.appendChild(dStat);
+    body.appendChild(dWrap);
+
+    wrap.appendChild(body);
+    return wrap;
+  }
+  /* What this piece costs on the website, and the two things the shop can
+     say about it that the POS cannot. The price itself is never edited
+     here: it belongs to the till. */
+  function priceBox(p, m) {
+    var box = document.createElement('div'); box.className = 'px-box';
+    var stat = document.createElement('span'); stat.className = 'stat';
+
+    var line = document.createElement('div'); line.className = 'px-now';
+    var hint = document.createElement('div'); hint.className = 'hint';
+
+    function redraw() {
+      var v = priceViewOf(p);
+      var html = '<b>' + escapeHtml(v.nowText) + '</b>';
+      if (v.wasText) html += '<span class="px-was">' + escapeHtml(v.wasText) + '</span>';
+      if (v.offText) html += '<span class="px-off">' + escapeHtml(v.offText) + '</span>';
+      line.innerHTML = 'On the website: ' + html;
+
+      var cur = metaMap[p.sku] || {};
+      var ref = Number(cur.ref_price);
+      var bits = [];
+      if (v.onRequest) {
+        bits.push('No figure is shown. The POS has it at ' + fmtMoney(p.price) +
+                  ', and the WhatsApp button asks rather than buys.');
+      } else if (v.overridden) {
+        bits.push('Overridden — the POS says ' + fmtMoney(p.price) + '.');
+      } else if (v.wasText) {
+        bits.push('Reduced in the POS from ' + fmtMoney(ref) +
+                  (cur.ref_price_at ? ' on ' + shortDate(cur.ref_price_at) : '') + '.');
+      } else if (isFinite(ref) && ref > 0 && ref > Number(p.price)) {
+        bits.push('Was ' + fmtMoney(ref) + ', but that is too old or too small a drop to ' +
+                  'advertise. Settings > Pricing decides both.');
+      } else {
+        bits.push('The POS price, shown as it is.');
+      }
+      hint.textContent = bits.join(' ');
+      clearBtn.style.display = (isFinite(ref) && ref > Number(p.price)) ? '' : 'none';
+    }
+
+    /* Clearing the memory is how a correction stops looking like a sale. */
+    var clearBtn = document.createElement('button');
+    clearBtn.className = 'btn btn-out btn-sm'; clearBtn.textContent = 'Not a sale';
+    clearBtn.title = 'Forget the older price. Use this when the price was corrected rather than reduced.';
+    clearBtn.addEventListener('click', function () {
+      var cur = metaMap[p.sku] || { sku: p.sku };
+      cur.ref_price = Number(p.price) || 0;
+      cur.ref_price_at = new Date().toISOString();
+      metaMap[p.sku] = cur;
+      stat.textContent = 'Saving…'; stat.className = 'stat busy';
+      saveMeta(p.sku).then(function () {
+        stat.textContent = 'Saved ✓'; stat.className = 'stat ok'; redraw();
+      }).catch(function () { stat.textContent = 'Error'; stat.className = 'stat err'; });
+    });
+
+    box.appendChild(line); box.appendChild(hint);
+
+    var row = document.createElement('div'); row.className = 'row';
+    row.appendChild(checkbox('Price on request', !!m.on_request, function (v) {
+      m.on_request = v; metaMap[p.sku] = m;
+      saveMeta(p.sku).then(redraw);
+    }));
+    row.appendChild(clearBtn);
+
+    /* The override box appears only where overrides are switched on, so a
+       shop running straight off the POS never sees a place to diverge. */
+    if (pricing.overridesEnabled) {
+      var oLbl = document.createElement('label');
+      oLbl.textContent = 'Website price'; oLbl.style.cssText = 'margin:0 6px 0 0;text-transform:none;letter-spacing:0';
+      var oIn = document.createElement('input');
+      oIn.type = 'text'; oIn.className = 'px-in'; oIn.inputMode = 'decimal';
+      oIn.placeholder = String(Number(p.price) || 0);
+      oIn.value = (m.price_override === null || m.price_override === undefined) ? '' : String(m.price_override);
+      oIn.addEventListener('change', function () {
+        var raw = String(oIn.value || '').trim().replace(/,/g, '');
+        if (raw === '') { m.price_override = null; }
+        else {
+          var n = Number(raw);
+          if (!isFinite(n) || n <= 0) {
+            stat.textContent = 'Enter an amount above zero, or leave it empty.';
+            stat.className = 'stat err';
+            return;
+          }
+          m.price_override = n;
+        }
+        metaMap[p.sku] = m;
+        stat.textContent = 'Saving…'; stat.className = 'stat busy';
+        saveMeta(p.sku).then(function () {
+          stat.textContent = 'Saved ✓'; stat.className = 'stat ok'; redraw();
+        }).catch(function () { stat.textContent = 'Error'; stat.className = 'stat err'; });
+      });
+      row.appendChild(oLbl); row.appendChild(oIn);
+    }
+
+    row.appendChild(stat);
+    box.appendChild(row);
+    redraw();
+    return box;
+  }
+  function fmtMoney(n) {
+    var F = window.VBP_FORMAT;
+    if (!F) return String(n);
+    return F.money(n, F.moneyStyle(generalSettings, pricing));
+  }
+  function shortDate(iso) {
+    var F = window.VBP_FORMAT;
+    if (F) { var t = F.date(iso, generalSettings.dateFormat); if (t) return t; }
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString();
+  }
+  /* "New since 4 Oct, until 3 Nov": how long Settings > Homepage keeps it
+     under New Arrivals. */
+  var homeSettings = {};
+  var metaHasNewSince = false;
+  function newSays(m) {
+    if (!m || !m.is_new) return '';
+    if (!m.new_since) return '';
+    var v = homeSettings.newArrivalDays;
+    var days = (v === undefined || v === null || v === '') ? 30 : Number(v);
+    var since = new Date(m.new_since);
+    if (isNaN(since.getTime())) return '';
+    var d = function (t) { return t.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }); };
+    if (!(days > 0)) return '(since ' + d(since) + ')';
+    var until = new Date(since.getTime() + days * 86400000);
+    return until < new Date() ? '(no longer shown as new: untick and tick to show it again)'
+                              : '(until ' + d(until) + ')';
+  }
+  function checkbox(label, val, on) {
+    var l = document.createElement('label'); l.className = 'chk'; l.style.textTransform = 'none'; l.style.letterSpacing = '0'; l.style.margin = '0';
+    var c = document.createElement('input'); c.type = 'checkbox'; c.checked = val;
+    c.addEventListener('change', function () { on(c.checked); });
+    l.appendChild(c); l.appendChild(document.createTextNode(label));
+    return l;
+  }
+  $('prodSearch').addEventListener('input', renderProducts);
+
+  /* Site Content has been retired. Everything it held now lives in
+     Settings: the homepage in Settings > Homepage, contact details in
+     Contact & Social, payment methods in Payments, the tagline and hours
+     in General. The site_content row is left exactly as it is, so the
+     storefront keeps reading it as a fallback for a shop that has not
+     opened those sections yet. */
+
+  // ---------- orders ----------
+  /* What these rows are: a customer pressed Continue and the site wrote
+     down what they asked for. Nothing here is an agreement. The shop
+     confirms or cancels each one as the WhatsApp conversation settles it,
+     and the customer sees that status on their account page — which is
+     the only thing that makes the list worth showing them at all. */
+  /* Taken from the message engine rather than written out again, so a
+     status can never exist here with no message, or the other way
+     round. The legacy value is kept on the end: orders marked before
+     this list grew still have to read correctly rather than being
+     quietly rewritten to something they never were. */
+  var NOTIFY = window.VBP_NOTIFY || { FLOW: ['pending', 'confirmed', 'cancelled'], LEGACY: [], CHOICES: {} };
+  var STATUSES = NOTIFY.FLOW.concat(NOTIFY.LEGACY);
+  var notifySettings = null;
+
+  function loadOrders() {
+    var host = $('ordList');
+    host.innerHTML = '<p class="count">Loading…</p>';
+    /* Totals here are written in the shop's own money. Those settings are
+       normally fetched by the Products tab, so Orders fetches them too
+       rather than showing kwacha to a shop that trades in dollars. */
+    Promise.all([
+      window.VBP_ADMIN.store.load('general').catch(function () { return {}; }),
+      window.VBP_ADMIN.store.load('pricing').catch(function () { return {}; }),
+      window.VBP_ADMIN.store.load('notifications').catch(function () { return {}; })
+    ]).then(function (r) {
+      generalSettings = r[0] || generalSettings;
+      pricing = r[1] || pricing;
+      notifySettings = r[2] || {};
+      drawOrders();
+    });
+  }
+  /* Orders are read a page at a time, newest first, with a button for the
+     rest. It used to be one read of 200 with nothing after it: a shop
+     that took its two hundred and first order could not open it, could
+     not confirm it, and was given no sign that it existed. Which is worse
+     than it sounds, because the count underneath said "200 orders" as
+     though that were all of them. */
+  var ORD_PAGE = 50;
+  var ordRows = [];         // everything fetched so far, for the filter in force
+  var ordEnd = false;
+  var ordBusy = false;
+
+  function ordCountText(want) {
+    var n = ordRows.length;
+    if (!n) return '';
+    return n + (want ? ' ' + want : '') + ' order' + (n === 1 ? '' : 's') +
+           (ordEnd ? '' : ' so far');
+  }
+
+  function drawOrders(more) {
+    var host = $('ordList');
+    var want = $('ordFilter').value;
+    if (!more) { ordRows = []; ordEnd = false; host.innerHTML = '<p class="count">Loading…</p>'; }
+    if (ordBusy || (more && ordEnd)) return;
+    ordBusy = true;
+    $('ordMore').disabled = true;
+
+    var from = ordRows.length;
+    var q = sb.from('orders')
+      .select('*, order_items(sku, name, price, qty)')
+      .order('created_at', { ascending: false })
+      .range(from, from + ORD_PAGE - 1);
+    if (want) q = q.eq('status', want);
+
+    q.then(function (r) {
+      ordBusy = false;
+      $('ordMore').disabled = false;
+      if (r.error) { host.innerHTML = '<p class="count">Error: ' + escapeHtml(r.error.message) + '</p>'; return; }
+      var batch = r.data || [];
+      if (batch.length < ORD_PAGE) ordEnd = true;
+      ordRows = ordRows.concat(batch);
+      $('ordCount').textContent = ordCountText(want);
+      if (!ordRows.length) {
+        host.innerHTML = '<p class="count">Nothing here. Orders appear once customers ' +
+          'start checking out, and only while Order history is on in Settings &gt; Customer Accounts.</p>';
+        $('ordMoreRow').classList.add('hide');
+        return;
+      }
+      if (!more) host.innerHTML = '';
+      batch.forEach(function (o) { host.appendChild(orderRow(o)); });
+      $('ordMoreRow').classList[ordEnd ? 'add' : 'remove']('hide');
+    }, function (e) {
+      ordBusy = false;
+      $('ordMore').disabled = false;
+      host.innerHTML = '<p class="count">Error: ' + escapeHtml((e && e.message) || String(e)) + '</p>';
+    });
+  }
+  $('ordFilter').addEventListener('change', function () { drawOrders(false); });
+  $('ordMore').addEventListener('click', function () { drawOrders(true); });
+
+  /* Online payment, set only by the payment service (supabase-payments.sql
+     stops anybody else writing it). WhatsApp orders carry none and show none. */
+  function payBadge(o) {
+    if (o.payment_method !== 'online') return '';
+    var how = o.pay_channel === 'card' ? 'card' : (o.pay_channel ? 'mobile money' : '');
+    var map = {
+      paid:     ['pay-paid', 'Paid \u2713' + (how ? ' \u00b7 ' + how : '')],
+      awaiting: ['pay-wait', 'Awaiting payment'],
+      failed:   ['pay-fail', 'Payment failed'],
+      expired:  ['pay-fail', 'Payment not completed']
+    };
+    var b = map[o.payment_status] || ['pay-wait', 'Online payment'];
+    return '<div class="pay-badge ' + b[0] + '">' + escapeHtml(b[1]) + '</div>';
+  }
+  function orderRow(o) {
+    var d = document.createElement('div');
+    d.className = 'card';
+    d.style.padding = '16px';
+
+    var head = document.createElement('div');
+    head.className = 'row';
+    head.style.justifyContent = 'space-between';
+    var who = [o.name, o.phone].filter(Boolean).join(' · ') || 'No details given';
+    head.innerHTML =
+      '<div><b>' + escapeHtml(o.ref || '') + '</b> · ' + escapeHtml(who) +
+      '<div class="hint">' + escapeHtml(shortDate(o.created_at)) +
+      (o.customer_id ? ' · signed in' : ' · guest') +
+      ' · ' + escapeHtml(o.fulfilment === 'collection' ? 'collection' : 'delivery') + '</div></div>' +
+      '<div style="text-align:right"><b>' +
+      (o.total == null ? '—' : escapeHtml(fmtMoney(o.total))) + '</b>' + payBadge(o) + '</div>';
+    d.appendChild(head);
+
+    /* An order paid online: how the total breaks down. */
+    if (o.payment_method === 'online' && (Number(o.delivery_fee) || Number(o.tax_total))) {
+      var brk = document.createElement('div');
+      brk.className = 'hint';
+      brk.style.marginTop = '4px';
+      brk.textContent = 'Items ' + fmtMoney(o.goods_total) +
+        (Number(o.tax_total) ? ' · Tax ' + fmtMoney(o.tax_total) : '') +
+        (Number(o.delivery_fee) ? ' · Delivery ' + fmtMoney(o.delivery_fee) : '');
+      d.appendChild(brk);
+    }
+
+    var items = document.createElement('div');
+    items.className = 'hint';
+    items.style.marginTop = '8px';
+    items.innerHTML = (o.order_items || []).map(function (it) {
+      return escapeHtml((it.qty > 1 ? it.qty + ' × ' : '') + (it.name || it.sku || '')) +
+             (it.price == null ? '' : ' — ' + escapeHtml(fmtMoney(it.price)));
+    }).join('<br>') || 'No items recorded.';
+    d.appendChild(items);
+
+    [['Email', o.email], ['Address', o.address], ['Notes', o.notes]].forEach(function (pair) {
+      if (!pair[1]) return;
+      var e = document.createElement('div');
+      e.className = 'hint';
+      e.style.marginTop = '4px';
+      e.innerHTML = '<b>' + pair[0] + ':</b> ' + escapeHtml(pair[1]);
+      d.appendChild(e);
+    });
+
+    var row = document.createElement('div');
+    row.className = 'row';
+    row.style.marginTop = '10px';
+    var stat = document.createElement('span');
+    stat.className = 'stat';
+
+    var sel = document.createElement('select');
+    sel.style.minWidth = '150px';
+    STATUSES.forEach(function (v) {
+      var op = document.createElement('option');
+      op.value = v;
+      op.textContent = NOTIFY.CHOICES[v] || (v.charAt(0).toUpperCase() + v.slice(1));
+      if ((o.status || 'pending') === v) op.selected = true;
+      sel.appendChild(op);
+    });
+    sel.addEventListener('change', function () {
+      stat.textContent = 'Saving…'; stat.className = 'stat busy';
+      sb.from('orders')
+        .update({ status: sel.value, updated_at: new Date().toISOString() })
+        .eq('id', o.id)
+        .then(function (r) {
+          if (r.error) { stat.textContent = 'Error'; stat.className = 'stat err'; return; }
+          var wasStatus = o.status || 'pending';
+          o.status = sel.value;
+          stat.textContent = 'Saved ✓'; stat.className = 'stat ok';
+          var a = AUDIT();
+          if (a) a.record({ action: 'changed', module: 'Orders', record: o.ref || 'an order',
+                            changes: [{ field: 'status', from: wasStatus, to: sel.value }] });
+          paintWhatsApp();
+        });
+    });
+    row.appendChild(sel);
+
+    /* The message follows the status. Changing an order to Ready and
+       then tapping through to WhatsApp opens the customer's own thread
+       with the ready message already written - which is how every other
+       message on this site works, and the only way an owner will
+       actually send them.
+
+       Nothing is sent from here. The message is handed to WhatsApp and
+       the owner presses send, in the conversation the order came from. */
+    var wa = null;
+    if (o.phone) {
+      wa = document.createElement('a');
+      wa.className = 'btn btn-out btn-sm';
+      wa.target = '_blank'; wa.rel = 'noopener';
+      row.appendChild(wa);
+    }
+
+    function paintWhatsApp() {
+      if (!wa) return;
+      var status = o.status || 'pending';
+      var offer = NOTIFY.enabled && NOTIFY.enabled(status, notifySettings || {});
+      var text = offer && NOTIFY.messageFor
+        ? NOTIFY.messageFor(status, o, notifySettings || {}, {
+            business: generalSettings.businessName || 'us',
+            money: fmtMoney
+          })
+        : '';
+      var href = NOTIFY.link ? NOTIFY.link(o.phone, text) : '';
+      /* A number too short to be a real one gives no link at all, so the
+         button says so rather than opening WhatsApp on nothing. */
+      if (!href) {
+        wa.removeAttribute('href');
+        wa.className = 'btn btn-out btn-sm is-off';
+        wa.textContent = 'No usable number';
+        return;
+      }
+      wa.href = href;
+      wa.className = 'btn btn-out btn-sm';
+      wa.textContent = text ? 'Message about this order' : 'Open in WhatsApp';
+    }
+    paintWhatsApp();
+
+    var del = document.createElement('button');
+    del.className = 'btn btn-out btn-sm';
+    del.textContent = 'Delete';
+    del.addEventListener('click', function () {
+      ask('Delete order ' + (o.ref || '') + '?',
+          { danger: true, note: 'This removes the record entirely. To keep it but mark it ' +
+                                'off, set the status to Cancelled instead.' })
+        .then(function (yes) {
+          if (!yes) return;
+          sb.from('orders').delete().eq('id', o.id).then(function () {
+            var a = AUDIT();
+            if (a) a.record({ action: 'deleted', module: 'Orders', record: o.ref || 'an order' });
+            d.remove();
+          });
+        });
+    });
+    row.appendChild(del);
+    row.appendChild(stat);
+    d.appendChild(row);
+    return d;
+  }
+
+  // ---------- reviews ----------
+  function loadReviews() {
+    var host = $('revList'); host.innerHTML = '<p class="count">Loading…</p>';
+    sb.from('reviews').select('*').order('created_at', { ascending: false }).then(function (r) {
+      if (r.error) { host.innerHTML = '<p class="count">Error: ' + r.error.message + '</p>'; return; }
+      var rows = r.data || [];
+      $('revCount').textContent = rows.length + ' reviews';
+      if (!rows.length) { host.innerHTML = '<p class="count">No reviews yet.</p>'; return; }
+      host.innerHTML = '';
+      rows.forEach(function (rev) { host.appendChild(reviewRow(rev)); });
+    });
+  }
+  function reviewRow(rev) {
+    var d = document.createElement('div'); d.className = 'card'; d.style.padding = '14px';
+    var stars = ''; for (var i = 1; i <= 5; i++) stars += (i <= rev.rating ? '\u2605' : '\u2606');
+    d.innerHTML = '<div style="color:#C8A24A;letter-spacing:2px">' + stars + '</div>' +
+      '<div class="nm" style="font-size:18px">' + escapeHtml(rev.name) + '</div>' +
+      '<div class="sku">' + (rev.sku ? escapeHtml(rev.sku) : 'Whole shop') + ' · ' + new Date(rev.created_at).toLocaleDateString() + '</div>' +
+      '<p style="margin:8px 0;color:#15202e">' + escapeHtml(rev.comment || '') + '</p>';
+    var row = document.createElement('div'); row.className = 'row';
+    function reviewFlag(field, value) {
+      var was = field === 'verified' ? !!rev.verified : rev.approved !== false;
+      rev[field] = value;
+      sb.from('reviews').update((function () { var o = {}; o[field] = value; return o; })())
+        .eq('id', rev.id).then(function () {
+          var a = AUDIT();
+          if (a) a.record({ action: 'changed', module: 'Reviews',
+                            record: rev.name || 'a review',
+                            changes: [{ field: field, from: was ? 'on' : 'off',
+                                        to: value ? 'on' : 'off' }] });
+        });
+    }
+    row.appendChild(checkbox('Verified', !!rev.verified, function (v) { reviewFlag('verified', v); }));
+    row.appendChild(checkbox('Shown', rev.approved !== false, function (v) { reviewFlag('approved', v); }));
+    var del = document.createElement('button'); del.className = 'btn btn-out btn-sm'; del.textContent = 'Delete';
+    del.addEventListener('click', function () {
+      ask('Delete the review from ' + (rev.name || 'this customer') + '?',
+          { danger: true, note: 'This cannot be undone. To hide it instead, untick Shown.' })
+        .then(function (yes) {
+          if (!yes) return;
+          sb.from('reviews').delete().eq('id', rev.id).then(function () {
+            var a = AUDIT();
+            if (a) a.record({ action: 'deleted', module: 'Reviews',
+                              record: rev.name || 'a review' });
+            d.remove();
+          });
+        });
+    });
+    row.appendChild(del);
+    d.appendChild(row);
+    return d;
+  }
+
+  // ---------- subscribers ----------
+  /* The list, and the five things an owner needs to do with it. Two of
+     them matter more than they look.
+
+     Somebody who asks to come off the list is UNSUBSCRIBED rather than
+     deleted. Deleting them looks the same today and is not the same
+     thing: while the row is there, the address is still the primary key,
+     so no form on the site can quietly sign them up again. Delete is
+     kept for the other case - erasing somebody entirely because they
+     asked to be forgotten.
+
+     And everything that writes to people - copy, BCC, export - covers
+     only those still subscribed. Mailing somebody who left is exactly
+     what recording their leaving was for. */
+  var subRows = [];        // every row, newest first
+  var subEmails = [];      // the addresses still subscribed
+
+  function subActive(x) { return !x.unsubscribed_at; }
+
+  function loadSubscribers() {
+    var host = $('subList'); host.innerHTML = '<p class="count">Loading…</p>';
+    sb.from('subscribers').select('*').order('created_at', { ascending: false }).then(function (r) {
+      if (r.error) { host.innerHTML = '<p class="count">Error: ' + r.error.message + '</p>'; return; }
+      subRows = r.data || [];
+      drawSubscribers();
+    });
+  }
+
+  function drawSubscribers() {
+    var host = $('subList');
+    var q = ($('subSearch').value || '').trim().toLowerCase();
+    var shown = q ? subRows.filter(function (x) {
+      return String(x.email || '').toLowerCase().indexOf(q) > -1;
+    }) : subRows;
+
+    var active = subRows.filter(subActive);
+    subEmails = active.map(function (x) { return x.email; });
+    var gone = subRows.length - active.length;
+    $('subCount').textContent = active.length + (active.length === 1 ? ' subscriber' : ' subscribers') +
+      (gone ? ' · ' + gone + ' unsubscribed' : '') +
+      (q ? ' · showing ' + shown.length : '');
+
+    host.innerHTML = '';
+    if (!subRows.length) {
+      host.innerHTML = '<p class="count">No subscribers yet.</p>';
+      return;
+    }
+    if (!shown.length) {
+      host.innerHTML = '<p class="count">No address matches “' + escapeHtml(q) + '”.</p>';
+      return;
+    }
+
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.style.padding = '6px 14px';
+    shown.forEach(function (x) { card.appendChild(subscriberRow(x)); });
+    host.appendChild(card);
+  }
+
+  function subscriberRow(x) {
+    var row = document.createElement('div');
+    row.className = 'sub-row' + (subActive(x) ? '' : ' is-off');
+
+    var who = document.createElement('div');
+    who.className = 'sub-who';
+    var addr = document.createElement('span');
+    addr.className = 'sub-addr';
+    addr.textContent = x.email;
+    who.appendChild(addr);
+    var when = document.createElement('span');
+    when.className = 'sku';
+    when.textContent = subActive(x)
+      ? 'joined ' + shortDate(x.created_at)
+      : 'left ' + shortDate(x.unsubscribed_at);
+    who.appendChild(when);
+    row.appendChild(who);
+
+    var acts = document.createElement('div');
+    acts.className = 'sub-acts';
+
+    if (subActive(x)) {
+      var welcome = document.createElement('button');
+      welcome.className = 'btn btn-out btn-sm';
+      welcome.textContent = 'Send welcome';
+      welcome.addEventListener('click', function () { sendWelcome(x.email, welcome); });
+      acts.appendChild(welcome);
+
+      var off = document.createElement('button');
+      off.className = 'btn btn-out btn-sm';
+      off.textContent = 'Unsubscribe';
+      off.addEventListener('click', function () { setSubscribed(x, false); });
+      acts.appendChild(off);
+    } else {
+      var back = document.createElement('button');
+      back.className = 'btn btn-out btn-sm';
+      back.textContent = 'Put back on';
+      back.addEventListener('click', function () { setSubscribed(x, true); });
+      acts.appendChild(back);
+    }
+
+    var del = document.createElement('button');
+    del.className = 'btn btn-out btn-sm';
+    del.textContent = 'Delete';
+    del.addEventListener('click', function () { deleteSubscriber(x); });
+    acts.appendChild(del);
+
+    row.appendChild(acts);
+    return row;
+  }
+
+  function setSubscribed(x, on) {
+    var go = on
+      ? Promise.resolve(true)
+      : ask('Take ' + x.email + ' off the list? They stay recorded, which is what stops ' +
+            'any form on the site signing them up again.',
+            { title: 'Unsubscribe', okText: 'Take them off' });
+
+    go.then(function (yes) {
+      if (!yes) return;
+      return sb.from('subscribers')
+        .update({ unsubscribed_at: on ? null : new Date().toISOString() })
+        .eq('email', x.email)
+        .then(function (r) {
+          if (r.error) { tell(r.error.message, { title: 'That did not save' }); return; }
+          x.unsubscribed_at = on ? null : new Date().toISOString();
+          var a = AUDIT();
+          if (a) a.record({ action: 'changed', module: 'Subscribers', record: x.email,
+                            changes: [{ field: 'on the list', from: on ? 'off' : 'on',
+                                        to: on ? 'on' : 'off' }] });
+          drawSubscribers();
+          if (on) return;
+          /* The words the shop wrote for this, ready to send back. */
+          return window.VBP_ADMIN.store.load('newsletter').then(function (n) {
+            if (!n || !n.unsubscribeMessage) return;
+            return tell('', { title: 'Send them this', copyText: n.unsubscribeMessage });
+          }).catch(function () {});
+        });
+    });
+  }
+
+  function deleteSubscriber(x) {
+    ask('Delete ' + x.email + ' entirely?',
+        { danger: true,
+          note: 'This erases the record. Nothing then stops the address being added again ' +
+                'by any form on the site. To honour a request to stop hearing from you, ' +
+                'use Unsubscribe instead.' })
+      .then(function (yes) {
+        if (!yes) return;
+        sb.from('subscribers').delete().eq('email', x.email).then(function (r) {
+          if (r.error) { tell(r.error.message, { title: 'That did not work' }); return; }
+          subRows = subRows.filter(function (o) { return o.email !== x.email; });
+          var a = AUDIT();
+          if (a) a.record({ action: 'deleted', module: 'Subscribers', record: x.email });
+          drawSubscribers();
+        });
+      });
+  }
+
+  /* One person at a time, using the email account set up in Settings >
+     Notifications and the wording in Settings > Newsletter. */
+  function sendWelcome(email, btn) {
+    btn.disabled = true;
+    var was = btn.textContent;
+    btn.textContent = 'Sending…';
+    var reset = function () { btn.disabled = false; btn.textContent = was; };
+
+    Promise.all([
+      window.VBP_ADMIN.store.load('newsletter'),
+      window.VBP_ADMIN.store.load('notifications'),
+      window.VBP_ADMIN.store.loadPrivate('notifications'),
+      sb.auth.getSession()
+    ]).then(function (r) {
+      var news = r[0] || {}, mail = r[1] || {}, shut = r[2] || {};
+      var session = r[3] && r[3].data && r[3].data.session;
+      if (!mail.emailEnabled || !mail.smtpHost) {
+        throw new Error('Email is not set up yet. Settings > Notifications has the five ' +
+                        'details your provider gives you.');
+      }
+      if (!session) throw new Error('You are not signed in.');
+
+      var body = [news.welcomeEmail || '', mail.signature || '', news.footer || '']
+        .filter(function (part) { return String(part || '').trim(); })
+        .join('\n\n');
+
+      return fetch('/.netlify/functions/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+                   Authorization: 'Bearer ' + session.access_token },
+        body: JSON.stringify({
+          smtpHost: mail.smtpHost, smtpPort: mail.smtpPort, encryption: mail.encryption,
+          smtpUser: mail.smtpUser, smtpPassword: shut.smtpPassword,
+          senderName: mail.senderName, senderEmail: mail.senderEmail, replyTo: mail.replyTo,
+          to: email,
+          subject: news.welcomeSubject || 'Welcome',
+          text: body
+        })
+      });
+    }).then(function (res) {
+      return res.json().catch(function () { throw new Error('The sender did not answer properly.'); });
+    }).then(function (out) {
+      reset();
+      if (out.sent) { tell('Sent to ' + email + '.', { title: 'Welcome sent' }); return; }
+      tell(out.error || 'It did not send.', { title: 'That did not send' });
+    }).catch(function (e) {
+      reset();
+      tell((e && e.message) || String(e), { title: 'That did not send' });
+    });
+  }
+
+  $('subSearch').addEventListener('input', drawSubscribers);
+
+  $('subExport').addEventListener('click', function () {
+    if (!subEmails.length) { tell('No subscribers yet.', { title: 'Nothing to export' }); return; }
+    /* A spreadsheet reads a leading =, + or @ as a formula, so a crafted
+       address could run when the file is opened. Every field is quoted
+       and anything starting that way is nudged clear of it. */
+    var safe = function (v) {
+      var t = String(v == null ? '' : v);
+      if (/^[=+\-@\t\r]/.test(t)) t = "'" + t;
+      return '"' + t.replace(/"/g, '""') + '"';
+    };
+    var lines = ['Email,Joined'];
+    subRows.filter(subActive).forEach(function (x) {
+      lines.push(safe(x.email) + ',' + safe(shortDate(x.created_at)));
+    });
+    var blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var d = new Date();
+    a.href = url;
+    a.download = 'vaultique-subscribers-' + d.getFullYear() + '-' +
+      ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2) + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  });
+
+  $('subCopy').addEventListener('click', function () {
+    if (!subEmails.length) { tell('Nobody is on the list.', { title: 'Nothing to copy' }); return; }
+    var text = subEmails.join(', ');
+    /* Where the clipboard is unavailable the addresses are shown in a box
+       ready to select, rather than in a browser prompt that truncates a
+       long list and cannot be scrolled. */
+    function show() { tell('', { title: 'Copy these addresses', copyText: text }); }
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(
+        function () { tell('Copied ' + subEmails.length + ' addresses.', { title: 'Done' }); },
+        show);
+    } else show();
+  });
+
+  $('subEmail').addEventListener('click', function () {
+    if (!subEmails.length) { tell('Nobody is on the list.', { title: 'Nothing to send' }); return; }
+    var subject = encodeURIComponent('New arrivals at ' +
+      (generalSettings.businessName || 'Vaultique Boutique'));
+    var body = encodeURIComponent('Hello,\n\nWe have new pieces in store.\n\n' +
+      (generalSettings.businessName || 'Vaultique Boutique Point'));
+    window.location.href = 'mailto:?bcc=' + encodeURIComponent(subEmails.join(',')) +
+      '&subject=' + subject + '&body=' + body;
+  });
+
+  // ---------- policies ----------
+  function loadPolicies() {
+    var host = $('polList'); host.innerHTML = '<p class="count">Loading…</p>';
+    sb.from('policies').select('*').order('sort', { ascending: true }).then(function (r) {
+      if (r.error) { host.innerHTML = '<p class="count">Error: ' + r.error.message + '</p>'; return; }
+      var rows = r.data || [];
+      $('polCount').textContent = rows.length + ' policies';
+      host.innerHTML = '';
+      if (!rows.length) { host.innerHTML = '<p class="count">No policies yet. Click "Load starter policies" to add the ones from your manual, or "Add policy" to write your own.</p>'; return; }
+      rows.forEach(function (p) { host.appendChild(policyRow(p)); });
+    });
+  }
+  function policyRow(p) {
+    var d = document.createElement('div'); d.className = 'card'; d.style.padding = '16px';
+    d.innerHTML =
+      '<div class="grid2">' +
+        '<div class="field"><label>Section</label><input type="text" class="pl-section" value="' + escapeHtml(p.section || '') + '"></div>' +
+        '<div class="field"><label>Order</label><input type="text" class="pl-sort" value="' + (p.sort || 100) + '"></div>' +
+      '</div>' +
+      '<div class="field"><label>Title</label><input type="text" class="pl-title" value="' + escapeHtml(p.title || '') + '"></div>' +
+      '<div class="field"><label>Text</label><textarea class="pl-body" rows="7">' + escapeHtml(p.body || '') + '</textarea></div>';
+    var row = document.createElement('div'); row.className = 'row';
+    var save = document.createElement('button'); save.className = 'btn btn-gold btn-sm'; save.textContent = 'Save';
+    var stat = document.createElement('span'); stat.className = 'stat';
+    save.addEventListener('click', function () {
+      var upd = {
+        section: d.querySelector('.pl-section').value.trim(),
+        title: d.querySelector('.pl-title').value.trim(),
+        body: d.querySelector('.pl-body').value,
+        sort: parseInt(d.querySelector('.pl-sort').value, 10) || 100,
+        updated_at: new Date().toISOString()
+      };
+      if (!upd.title) { stat.textContent = 'Title required'; stat.className = 'stat err'; return; }
+      stat.textContent = 'Saving…'; stat.className = 'stat busy';
+      var was = { section: p.section, title: p.title, body: p.body, sort: p.sort };
+      sb.from('policies').update(upd).eq('id', p.id).then(function (r) {
+        if (r.error) { stat.textContent = 'Error'; stat.className = 'stat err'; return; }
+        stat.textContent = 'Saved ✓'; stat.className = 'stat ok';
+        p.section = upd.section; p.title = upd.title; p.body = upd.body; p.sort = upd.sort;
+        var a = AUDIT();
+        if (a) a.record({ action: 'changed', module: 'Policies', record: upd.title,
+                          changes: a.diff(was, { section: upd.section, title: upd.title,
+                                                 body: upd.body, sort: upd.sort }, 'policies') });
+      });
+    });
+    var del = document.createElement('button'); del.className = 'btn btn-out btn-sm'; del.textContent = 'Delete';
+    del.addEventListener('click', function () {
+      ask('Delete "' + (p.title || 'this policy') + '"?',
+          { danger: true, note: 'This cannot be undone. Customers will no longer see it on the policies page.' })
+        .then(function (yes) {
+          if (!yes) return;
+          sb.from('policies').delete().eq('id', p.id).then(function () {
+            var a = AUDIT();
+            if (a) a.record({ action: 'deleted', module: 'Policies', record: p.title || 'a policy' });
+            d.remove();
+          });
+        });
+    });
+    row.appendChild(save); row.appendChild(del); row.appendChild(stat);
+    d.appendChild(row);
+    return d;
+  }
+  $('polAdd').addEventListener('click', function () {
+    sb.from('policies').insert({ section: 'General', title: 'New policy', body: '', sort: 999 }).then(function (r) {
+      if (r.error) { tell(r.error.message, { title: 'That did not save' }); return; }
+      var a = AUDIT();
+      if (a) a.record({ action: 'added', module: 'Policies', record: 'New policy' });
+      loadPolicies();
+    });
+  });
+  $('polImport').addEventListener('click', function () {
+    var defs = window.VBP_DEFAULT_POLICIES || [];
+    if (!defs.length) { tell('No starter policies found.'); return; }
+    sb.from('policies').select('id').then(function (r) {
+      var have = (r.data || []).length;
+      var first = have
+        ? ask('Add the ' + defs.length + ' starter policies as well?',
+              { title: 'You already have ' + have,
+                okText: 'Add them',
+                note: 'They are added alongside what you have, not instead of it. ' +
+                      'You can delete any you do not want afterwards.' })
+        : Promise.resolve(true);
+      first.then(function (yes) {
+        if (!yes) return;
+        var rows = defs.map(function (p) { return { section: p.section, title: p.title, body: p.body, sort: p.sort }; });
+        $('polCount').textContent = 'Importing…';
+        sb.from('policies').insert(rows).then(function (r2) {
+          if (r2.error) { tell('Error: ' + r2.error.message, { title: 'That did not save' }); return; }
+          loadPolicies();
+        });
+      });
+    });
+  });
+
+  function escapeHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  /* ---------- asking, in the shop's own voice ---------------------------
+     Replaces confirm() and alert(). Those carry the browser's chrome and
+     the site's domain, which is a strange thing to be shown by your own
+     admin halfway through deleting a policy.
+
+       ask('Delete this policy?', { danger: true }) -> Promise<boolean>
+       tell('No subscribers yet.')                  -> Promise<true>
+
+     Escape cancels, Enter confirms, and focus goes back to whatever
+     opened it, so a keyboard never gets stranded. */
+  /* The two below live in assets/admin/dialogs.js, so any page in the
+     folder can ask a question in the same voice. Held under the same
+     names here, so every call site is unchanged. */
+  var ask = window.VBP_DIALOGS.ask, tell = window.VBP_DIALOGS.tell;
+})();

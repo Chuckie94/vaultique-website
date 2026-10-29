@@ -1069,7 +1069,7 @@
      in Postgres, so both work out the same name without either sending
      it. A browser too old to have crypto.subtle simply never subscribes
      and goes on asking, which is what it did before. */
-  var CLIENT_SRC = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+  var CLIENT_SRC = '/assets/vendor/supabase-js-2.118.0.js';   // assets/vendor/README.txt
   var LIVE = { client: null, channel: null, token: null, ok: false, tried: false };
 
   function sha256Hex(text) {
@@ -1095,8 +1095,8 @@
     return LIVE.client;
   }
 
-  /* The library, if the page has it or the CDN will give it. Asked for
-     once: a visitor who cannot reach the CDN is not asked again on every
+  /* The library, if the page has it or this site will give it. Asked
+     for once: a visitor who cannot load it is not asked again on every
      message, they simply keep the timer they already had. */
   function withClient(then) {
     if (window.supabase && window.supabase.createClient) { then(liveClient()); return; }

@@ -1,8 +1,29 @@
 # Vaultique Boutique Point — website (separate Netlify site, own setup)
 # This config does NOT touch the POS site or its Supabase project.
 
+# ---------------------------------------------------------------------
+# WHAT IS PUBLISHED: dist/, which tools/build-site.cjs makes on every
+# deploy from index.html, admin.html, config.js, sw.js,
+# manifest.webmanifest, assets/ and images/, and nothing else.
+#
+# Until build 75 this said publish = ".", the whole folder, and the only
+# thing between the setup files, notes and tests and anybody who asked
+# for them by name was a rule naming each one further down. Thirty-three
+# had no rule. Now a file that is not the website is not published at
+# all, whatever it is called; the rules below stay as a second lock.
+#
+# The same step stops the deploy if config.js is missing or still holds
+# the example's placeholders (the live site then stays as it was), puts
+# a fingerprint on every script address so a deploy reaches browsers at
+# once, and writes the Content Security Policy into dist/_headers. Its
+# own comments say how.
+#
+# The functions are not affected: Netlify bundles them from
+# netlify/functions as before, with config.js beside them.
+# ---------------------------------------------------------------------
 [build]
-  publish = "."
+  command = "node tools/build-site.cjs"
+  publish = "dist"
 
 [functions]
   directory = "netlify/functions"
@@ -136,9 +157,14 @@
 # ---------------------------------------------------------------------
 # Files that ship with the site but are nobody's business but the shop's.
 #
-# The publish directory is the whole folder, so the setup files and the
-# instructions sit at the site root and answer to anyone who asks for
-# them by name. There is nothing secret in them — no keys, no passwords —
+# SINCE BUILD 75 THESE ARE THE SECOND LOCK, not the first: dist/ (top of
+# this file) holds none of these files, so there is nothing for them to
+# block. They stay because they cost nothing, and because they would
+# protect the folder again if publish were ever set back to ".".
+#
+# Before build 75 the publish directory was the whole folder, so the
+# setup files and the instructions sat at the site root and answered to
+# anyone who asked for them by name. There is nothing secret in them — no keys, no passwords —
 # but they are the full table layout and every access rule the database
 # has, handed over for the asking, and there is no reason to hand it over.
 #
@@ -428,6 +454,15 @@
   status = 404
   force = true
 
+# dist/_headers, which tools/build-site.cjs writes for the security policy.
+# Nothing in it is secret (every page sends the policy anyway), but it is
+# a settings file, not part of the shop.
+[[redirects]]
+  from = "/_headers"
+  to = "/index.html"
+  status = 404
+  force = true
+
 # Crawlers only. Both are generated from Settings > SEO rather than kept
 # as files, so they follow the settings without anything to re-upload.
 [[redirects]]
@@ -445,6 +480,46 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# ---------------------------------------------------------------------
+# SAFETY HEADERS, on every address (build 75).
+#
+#   X-Content-Type-Options  a file is only ever run as what it says it is:
+#                           a picture or a JSON answer cannot be run as a
+#                           script, whatever is inside it.
+#   X-Frame-Options         no other website can show these pages inside a
+#                           frame of its own, which is how a visitor is
+#                           tricked into clicking something they cannot
+#                           see. Nothing frames this site; the only frame
+#                           it uses is the Google map, which is the other
+#                           way round and not affected.
+#   Referrer-Policy         other sites are told which site a visitor came
+#                           from, never which page: an order or a preview
+#                           key in an address stays here.
+#   Permissions-Policy      camera, microphone, location, payment sheet
+#                           and USB are refused to every page and to every
+#                           frame inside them. None is used; payment is a
+#                           move to Flutterwave's own page, not a request
+#                           from this one.
+#
+# The Content Security Policy is not here. It has to name this shop's own
+# Supabase address and the exact contents of index.html's small scripts,
+# so tools/build-site.cjs writes it into dist/_headers on every deploy.
+# No header is set both there and here, and none is set by two of the
+# rules in this file for the same address: where two rules match one
+# address Netlify can apply both, and the same header twice may be joined
+# into one value that no browser reads as meant.
+#
+# Strict-Transport-Security is not set here, deliberately: Netlify sends
+# its own on a site with HTTPS, and a second one could spoil it.
+# tools/live-check.cjs says whether it arrives.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 
 # ---------------------------------------------------------------------
 # The service worker must never be cached.
@@ -476,18 +551,20 @@
 # are most of the wait.
 #
 # AN HOUR, NOT A YEAR, AND THE REASON MATTERS. The usual advice is to
-# cache these for a year and put the build number in the address --
-# /assets/app.js?b=33 -- so a new build is a new address. That needs
-# something to write the build number into forty script tags at package
-# time, and this folder has no such step: it is uploaded as it stands.
-# A number nobody updates is worse than no number, which is exactly what
-# happened to assets/version.js.
+# cache these for a year and put a fingerprint in the address --
+# /assets/app.js?v=3f9c2a1b7e -- so a changed file is a new address.
+# Since build 75, tools/build-site.cjs does put one on every script and
+# stylesheet the two pages name, so those reach a browser the moment a
+# deploy is live, not within the hour. But a few files are fetched by the
+# scripts themselves (the Supabase library, the map, image-shrink.js),
+# by addresses written in the code and so without a fingerprint, and a
+# year would hold an old copy of those for a year. The hour stays.
 #
 # So: an hour. A customer reading five pages asks once instead of five
-# times, and a deploy reaches everybody within the hour without anybody
-# having to remember anything. stale-while-revalidate lets the next day's
-# first visit paint from the stored copy while the new one is fetched
-# behind it.
+# times, and anything without a fingerprint reaches everybody within the
+# hour without anybody having to remember anything.
+# stale-while-revalidate lets the next day's first visit paint from the
+# stored copy while the new one is fetched behind it.
 #
 # THE PAGES THEMSELVES ARE NOT CACHED, deliberately, and are not listed
 # here. index.html and admin.html keep Netlify's revalidate-every-time

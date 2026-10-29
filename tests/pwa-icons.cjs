@@ -322,6 +322,8 @@ const THE_THREE = [
   group('The desk keeps the app’s icon and the tab’s picture apart');
 
   const admin = fs.readFileSync(R('admin.html'), 'utf8');
+  /* Build 75 moved admin.html's script, unchanged, into assets/admin/shell.js. */
+  const adminCode = fs.readFileSync(R('assets/admin/shell.js'), 'utf8');
   const appleLinks = admin.match(/<link rel="apple-touch-icon"[^>]*>/g) || [];
   ok('the home-screen icon is declared once', appleLinks.length === 1, String(appleLinks.length));
   ok('and points at the tile drawn for it',
@@ -331,7 +333,7 @@ const THE_THREE = [
      it must not reach for the home-screen icon: that one is read at
      install and kept, so a logo written into it is a logo the shop is
      stuck with. */
-  const swapFn = (admin.match(/function useTheShopsLogo\(\)[\s\S]*?\n  \}/) || [''])[0];
+  const swapFn = (adminCode.match(/function useTheShopsLogo\(\)[\s\S]*?\n  \}/) || [''])[0];
   ok('there is still a function swapping the tab picture', swapFn.length > 0);
   ok('it sets the tab icon', /link\[rel="icon"\]/.test(swapFn));
   ok('and never touches apple-touch-icon', swapFn.indexOf('apple-touch-icon') === -1);

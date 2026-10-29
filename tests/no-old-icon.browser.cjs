@@ -116,6 +116,8 @@ async function visit(browser, opts) {
       JSON.stringify(JSON.stringify(opts.cache)) + ');}catch(e){}');
   }
   await page.route('**/cdn.jsdelivr.net/**', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: '/*x*/' }));
+  // Build 75 keeps supabase-js in assets/vendor/; stubbed there the same way.
+  await page.route('**/assets/vendor/supabase-js-*', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: '/*x*/' }));
   await page.route('**/fonts.googleapis.com/**', r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await page.route('**/*.supabase.co/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: '' }));
   await page.goto(opts.base + '/', { waitUntil: 'domcontentloaded' });

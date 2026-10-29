@@ -50,12 +50,27 @@ vaultique-website/
 │       ├── activity-log.js
 │       └── settings/          one file per Settings category
 ├── tests/                     checks that can be re-run against a later build
+├── tools/
+│   ├── build-site.cjs         what Netlify publishes: run on every deploy (build 75)
+│   └── live-check.cjs         checks the live site from outside, read only
 └── images/                    optional photos, named by SKU (see README there)
 ```
 
+**What is published (build 75 on).** Netlify runs `tools/build-site.cjs` on
+every deploy. It copies `index.html`, `admin.html`, `config.js`, `sw.js`,
+`manifest.webmanifest`, `assets/` and `images/` into `dist/` and Netlify
+publishes `dist/` alone, so nothing else in the folder can be served, whatever
+it is called. The same step stops the deploy if `config.js` is missing or still
+holds the example's placeholders, puts a fingerprint (`?v=…`) on every script
+and stylesheet address in the two pages, and writes the Content Security
+Policy (report-only for now) into `dist/_headers`. Reports go to
+`netlify/functions/csp-report.js`, readable in Netlify's function log. Never
+upload a `dist/` folder.
+
 `tests/` holds the checks that ship with the folder, so they can be re-run
-against any later change rather than being taken on trust. They are not served
-to anybody: `netlify.toml` answers 404 to the whole folder.
+against any later change rather than being taken on trust. They are not
+published (see above), and `netlify.toml` answers 404 to the whole folder as
+well.
 
 ```
 node tests/product-sync.test.cjs        the product feed and the pulse
@@ -160,8 +175,11 @@ function, so products would not load.
 ```
 npm install -g netlify-cli
 cd vaultique-website
-netlify deploy --prod
+netlify deploy --build --prod
 ```
+`--build` matters since build 75: Netlify publishes `dist/`, which
+`tools/build-site.cjs` makes on every deploy, so without it there is nothing
+to publish.
 
 Either way, after deploy open `https://YOUR-SITE.netlify.app/api/products` — you
 should see product JSON. If you do, the live feed is working.

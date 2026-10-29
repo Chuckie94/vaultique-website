@@ -87,7 +87,7 @@ const STATS = { data: { visits: 40, visitors: 31, page_views: 90, product_views:
     const page = await browser.newPage({ viewport: { width: width || 1200, height: 1400 } });
     page.on('pageerror', e => errors.push(String(e.message || e)));
     await page.clock.setFixedTime(new Date(day + 'T08:00:00Z'));
-    await page.route(/cdnjs\.cloudflare\.com|openstreetmap\.org/, route => route.abort());
+    await page.route(/cdnjs\.cloudflare\.com|openstreetmap\.org|\/assets\/vendor\/leaflet-/, route => route.abort());
     await page.goto('http://127.0.0.1:' + server.address().port + '/');
     await page.evaluate((plan) => {
       window.PLAN = plan;

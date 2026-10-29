@@ -274,7 +274,9 @@ const feed = async (products) => {
   /* ====================================================================== */
   hdr('And the admin shows the shop what arrived');
   {
-    const admin = fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8');
+    /* Build 75 moved admin.html's script, unchanged, into assets/admin/shell.js. */
+    const admin = fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8') +
+                  fs.readFileSync(path.join(ROOT, 'assets/admin/shell.js'), 'utf8');
     const css = fs.readFileSync(path.join(ROOT, 'assets/admin/admin.css'), 'utf8');
 
     is(/p\.details && p\.details\.length/.test(admin),

@@ -328,7 +328,7 @@ Nothing to switch on and nothing to set. Two things worth knowing:
 4. Save the file.
 
 ## 5. Redeploy the website
-Push the updated folder to your repo (or run `netlify deploy --prod`).
+Push the updated folder to your repo (or run `netlify deploy --build --prod`).
 
 ---
 

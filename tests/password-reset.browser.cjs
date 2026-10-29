@@ -121,6 +121,8 @@ const server = http.createServer((req, res) => {
       return r.fulfill({ status: 200, contentType: 'text/javascript', body: '' });
     });
     await ctx.route('**/fonts.googleapis.com/**', r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
+    // Build 75 keeps supabase-js and Leaflet in assets/vendor/; stubbed there the same way.
+    await ctx.route('**/assets/vendor/supabase-js-*', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: SUPA }));
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(String(e.message || e)));

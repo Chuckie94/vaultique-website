@@ -1,7 +1,94 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 74
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 75
 ====================================================
-The whole site, cumulative (includes everything in build 73).
+The whole site, cumulative (includes everything in builds 73 and 74).
 Upload this and you are up to date.
+
+NEW IN 75 — SAFETY WORK, PART 2: WHAT NETLIFY PUBLISHES. No SQL.
+  Nothing a customer sees changes. Upload, then check: about fifteen
+  minutes. If you have not done build 74's steps A to H yet (below),
+  do them as well; they matter more than this.
+
+  A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
+     browser it is now three drags, not two: the file says which.
+     From now on Netlify runs a short build step before it publishes:
+     tools/build-site.cjs copies the website, and only the website,
+     into a folder called dist/, and Netlify publishes that folder.
+     It happens on Netlify. You upload exactly as before.
+     Done when: Netlify > Deploys shows the new deploy as Published.
+     If it says Failed, open it. The log ends with "BUILD STOPPED:" and
+     the reason in plain words, and the site that was live before stays
+     live. The likely reason is that config.js is not in your
+     repository: put yours back beside index.html and upload again.
+
+  B. CHECK THE LIVE SITE FROM OUTSIDE, with Node 18 or later, from this
+     folder:
+        node tools/live-check.cjs https://YOUR-SITE
+     New since 74: part 2 now expects the safety headers and the
+     security policy on every page, and part 6 checks that Netlify ran
+     the build step.
+     Done when: it ends "nothing to fix". A "!" about
+     Strict-Transport-Security is worth telling me about, but it is not
+     urgent.
+
+  C. USE THE SHOP AND THE ADMIN ONCE, as you normally would: open a
+     product, add it to the cart, open Settings and Live Chats.
+     Everything should look and work exactly as before.
+
+  D. IN ABOUT A WEEK, LOOK AT WHAT THE SECURITY POLICY REPORTED:
+     Netlify > your site > Logs & metrics > Functions > csp-report.
+     Every line there is something the policy would have blocked if it
+     were switched on. For now it only reports; it blocks nothing.
+     Look two or three times during the week, because Netlify keeps
+     these logs for a limited time. Then send what you saw with your
+     request for the next build, or say the log was empty. That record
+     decides when the policy is switched on.
+     Done when: you have a copy, or know it was empty.
+
+  WHAT CHANGED
+    * WHAT IS PUBLISHED: index.html, admin.html, config.js, sw.js,
+      manifest.webmanifest, assets/ and images/, and nothing else. The
+      setup SQL, the notes, the tests, the tools and the functions'
+      source are no longer published at all, whatever they are called.
+      Build 74's 404 rules stay, as a second lock.
+    * SAFETY HEADERS on every page. No other website can show the shop
+      or the admin inside a frame of its own. A file only ever runs as
+      what it says it is. The camera, microphone, location, payment
+      sheet and USB are refused to every page (the site uses none).
+    * A SECURITY POLICY (Content Security Policy), report-only for now:
+      it lists where scripts, pictures and data may come from. Step D.
+    * THE SUPABASE LIBRARY AND THE MAP ARE KEPT IN THE SITE ITSELF
+      (assets/vendor/), at fixed versions, instead of being fetched
+      from a public CDN at whatever version was newest that day.
+    * THE ADMIN'S MAIN SCRIPT MOVED out of admin.html into
+      assets/admin/shell.js, unchanged, so the policy needs no
+      exception for it.
+    * AFTER A DEPLOY, a browser fetches a changed script at once
+      instead of up to an hour later: every script address in the two
+      pages now carries a fingerprint of the file.
+    * New: tools/build-site.cjs, netlify/functions/csp-report.js,
+      assets/vendor/ (supabase-js 2.118.0 and Leaflet 1.9.4, with
+      their licences), assets/admin/shell.js, and three tests.
+    * netlify.toml: the build step, the safety headers, and a 404 for
+      dist/_headers.
+    * assets/version.js says build 75.
+
+  NEVER UPLOAD A FOLDER CALLED dist. Netlify makes it on every deploy.
+  If you ever deploy with the Netlify command line instead of GitHub:
+        netlify deploy --build --prod
+  (--build runs the build step; without it there is nothing to publish.)
+
+  IF THE csp-report FUNCTION IS EVER CALLED MORE THAN YOU WANT TO PAY
+  FOR: Netlify > Environment variables > add CSP_REPORTS with the value
+  off, then Deploys > Trigger deploy. The policy stays; only the reports
+  stop.
+
+  WHAT IS NOT IN THIS BUILD, AND COMES NEXT
+    The database fixes for who can see what (two-factor, role ticks,
+    orders written straight into the table), test payments marked TEST,
+    and new push keys. Until then build 74's safeguards still apply:
+    Remove (not Switch off) anybody who should not have access, keep
+    online payment off or in Live, and keep every zip of the website
+    private, this one included.
 
 NEW IN 74 — SAFETY WORK, PART 1. Nothing a customer sees changes.
   One SQL file to run, four files to delete, and some checking: about
@@ -75,8 +162,8 @@ NEW IN 74 — SAFETY WORK, PART 1. Nothing a customer sees changes.
         node tools/live-check.cjs https://YOUR-SITE
      It only reads, the way any visitor's browser could. Once this build
      is live, part 1 should be all ✓: no setup file, note or function
-     source readable by anybody. Part 2 will list missing safety
-     headers: those come in the next build.
+     source readable by anybody. (Build 74 alone left part 2 listing
+     missing safety headers; with build 75 live, part 2 is all ✓ too.)
      Done when: it ends "nothing to fix".
 
   H. SUPABASE SECURITY ADVISOR, in the WEBSITE's project: Advisors >
@@ -223,7 +310,7 @@ Every line of each check must say OK.
     Contact > Business email) is told when a request is waiting.
   * Admin > Rewards shows staff why no code was emailed for a link.
 
-195 files. config.js is not in this folder, on purpose (see STEP 3).
+212 files. config.js is not in this folder, on purpose (see STEP 3).
 
 
 ================================================================
@@ -273,7 +360,8 @@ STEP 3 — UPLOAD  (see HOW-TO-UPLOAD.txt beside this file)
 GitHub Desktop: unzip, copy everything inside, paste into your repository
 folder, choose Replace, then Commit and Push. One commit.
 
-Browser: two drags, because GitHub takes 100 files at a time.
+Browser: three drags (HOW-TO-UPLOAD.txt), because GitHub takes 100 files
+at a time.
 
 config.js IS NOT IN THIS FOLDER, on purpose — it holds your Supabase keys
 and yours is the only correct copy. Pasting over your folder leaves it

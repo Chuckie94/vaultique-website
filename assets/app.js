@@ -1018,7 +1018,9 @@
   /* Fetches the Supabase client, but only for a shop that has accounts
      switched on. Everyone else never asks for it, so the library is not
      on the critical path of a page that would never use it. */
-  var CLIENT_SRC = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+  // Kept in this folder at a fixed version, not taken from a CDN as
+  // whatever release was newest that day: assets/vendor/README.txt.
+  var CLIENT_SRC = '/assets/vendor/supabase-js-2.118.0.js';
   function withClient(then) {
     if (!WEB || !ACCOUNTS.accountsEnabled) { then(null); return; }
     if (window.supabase && window.supabase.createClient) { then(webClient()); return; }
@@ -1026,7 +1028,7 @@
     tag.src = CLIENT_SRC;
     tag.async = true;
     tag.onload = function () { then(webClient()); };
-    /* A shop whose customers cannot reach the CDN still sells: the
+    /* A shop whose customers cannot load the library still sells: the
        account panel simply never appears, and guests carry on. */
     tag.onerror = function () { then(null); };
     document.head.appendChild(tag);
@@ -2675,8 +2677,8 @@
     tag.src = CLIENT_SRC;
     tag.async = true;
     tag.onload = function () { then(liveClient()); };
-    /* A visitor who cannot reach the CDN still sees a shop that updates,
-       just on the slower of the two routes. */
+    /* A visitor who cannot load the library still sees a shop that
+       updates, just on the slower of the two routes. */
     tag.onerror = function () { then(null); };
     document.head.appendChild(tag);
   }
@@ -5072,8 +5074,8 @@
        - none looked up yet (a shop that has not saved General since this
          build): Google's map, searching for the address as written, which
          still puts the pin on the shop rather than on the country. */
-  var LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
-  var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+  var LEAFLET_JS = '/assets/vendor/leaflet-1.9.4/leaflet.js';     // assets/vendor/README.txt
+  var LEAFLET_CSS = '/assets/vendor/leaflet-1.9.4/leaflet.css';
   function applyVisitMap(s) {
     var frame = $('#visitMap');
     if (!frame) return;

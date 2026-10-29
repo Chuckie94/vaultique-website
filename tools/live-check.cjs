@@ -11,11 +11,14 @@
         tests and tools, and the serverless functions' own source. Each
         must answer 404, or with the shop's own page. Anything else is
         the file itself, readable by anybody who guesses its name.
-     2. THE SAFETY HEADERS on the shop and the admin.
+     2. THE SAFETY HEADERS on the shop, the admin and a script, and the
+        security policy (report-only since build 75).
      3. HOW THE REWARDS AND THE PRODUCT FEED READ THE PLATFORM, and
         whether the platform's secret key is still in Netlify.
      4. WHICH PAYMENT KEYS NETLIFY HOLDS: yes or no, never the keys.
      5. WHETHER THE FUNCTIONS CAN READ config.js, through the sitemap.
+     6. WHETHER NETLIFY RAN THE BUILD STEP (build 75 on): the pages'
+        fingerprinted script addresses, and the csp-report function.
 
    READ ONLY. Ordinary GET requests to your own site; nothing is changed
    anywhere. The list of files comes from this folder, so it always checks
@@ -147,24 +150,41 @@ async function checkHeaders() {
   console.log('\n2. Safety headers');
   const wanted = [
     ['x-content-type-options', (v) => /nosniff/i.test(v)],
+    ['x-frame-options', (v) => /^\s*(deny|sameorigin)\s*$/i.test(v)],
     ['referrer-policy', (v) => !!v],
     ['permissions-policy', (v) => !!v],
-    ['strict-transport-security', (v) => /max-age=\d+/i.test(v)],
   ];
-  let missing = 0;
-  for (const p of ['/', '/admin.html']) {
+  let noHsts = 0, pagesHaveThem = 0;
+  for (const p of ['/', '/admin.html', '/shop']) {
     const r = await peek(p);
     if (!r.status) { fail(p + ' could not be reached: ' + r.error); continue; }
     const h = (k) => r.headers.get(k) || '';
-    const lacks = [];
-    wanted.forEach(([k, good]) => { if (!good(h(k))) lacks.push(k); });
-    const csp = h('content-security-policy') || h('content-security-policy-report-only');
-    if (!csp) lacks.push('content-security-policy');
-    if (!/frame-ancestors/i.test(csp) && !/deny|sameorigin/i.test(h('x-frame-options'))) lacks.push('x-frame-options (or frame-ancestors)');
-    if (lacks.length) { missing += lacks.length; note(p + ' does not send: ' + lacks.join(', ')); }
-    else ok(p + ' sends every safety header');
+    const lacks = wanted.filter(([k, good]) => !good(h(k))).map(([k]) => k);
+    if (lacks.length) fail(p + ' does not send: ' + lacks.join(', ') + ' (netlify.toml, the [[headers]] rule for "/*")');
+    else { ok(p + ' sends the four safety headers'); pagesHaveThem++; }
+
+    const enforced = h('content-security-policy');
+    const reportOnly = h('content-security-policy-report-only');
+    const policy = enforced || reportOnly;
+    if (!policy) fail(p + ' sends no security policy: dist/_headers is missing, so the build step did not run (part 6)');
+    else if ((policy.match(/default-src/g) || []).length > 1) fail(p + ' sends the security policy twice, joined into one');
+    else if (enforced) ok(p + ' enforces the security policy');
+    else ok(p + ' sends the security policy, report-only for now' + (/report-uri/.test(reportOnly) ? '' : ' (its reports are switched off)'));
+    if (!/max-age=\d+/i.test(h('strict-transport-security'))) noHsts++;
   }
-  if (missing) note('Phase 1 of the plan (the next build) adds these. Until then this is expected.');
+  if (noHsts) note('no Strict-Transport-Security on ' + noHsts + ' of 3 pages. Netlify sends it itself on a site with HTTPS: ' +
+                   'look at Domain management > HTTPS in Netlify.');
+
+  /* A script matches two rules, "/*" for the safety headers and
+     "/assets/*" for how long it is kept. Both have to arrive. */
+  const a = await peek('/assets/app.js');
+  if (!a.status) { note('/assets/app.js could not be reached: ' + a.error); return; }
+  const nosniff = /nosniff/i.test(a.headers.get('x-content-type-options') || '');
+  const kept = /max-age=3600/.test(a.headers.get('cache-control') || '');
+  if (nosniff && kept) ok('a script gets both its safety headers and its hour in the browser\'s store');
+  else if (!nosniff && !pagesHaveThem) fail('/assets/app.js has no safety headers either, like the pages above');
+  else fail('/assets/app.js is missing ' + [nosniff ? '' : 'its safety headers', kept ? '' : 'its Cache-Control']
+            .filter(Boolean).join(' and ') + ': Netlify applied only one of the two rules that match it');
 }
 
 async function checkPlatform() {
@@ -227,6 +247,24 @@ async function checkConfig() {
   }
 }
 
+async function checkBuild() {
+  console.log('\n6. Did Netlify run the build step?');
+  const r = await json('/');
+  const stamped = (r.text.match(/<script[^>]+src="\/assets\/[^"?]+\?v=[0-9a-f]{10}"/g) || []).length;
+  const plain = (r.text.match(/<script[^>]+src="\/assets\/[^"?]+"/g) || []).length;
+  if (stamped && !plain) ok('the shop\'s ' + stamped + ' script addresses carry their fingerprints, so dist/ is what is published');
+  else if (stamped) fail(plain + ' of the shop\'s script addresses have no fingerprint');
+  else fail('the shop\'s script addresses have no fingerprints: Netlify published the folder without running ' +
+            'tools/build-site.cjs. netlify.toml must say publish = "dist" and command = "node tools/build-site.cjs" ' +
+            '(and the Netlify command line deploys with: netlify deploy --build --prod)');
+
+  /* GET is the one thing it refuses: 405 means it is there. */
+  const c = await peek('/.netlify/functions/csp-report');
+  if (c.status === 405) ok('the csp-report function is there to receive the policy\'s reports');
+  else if (c.status === 404) fail('/.netlify/functions/csp-report is missing: netlify/functions/csp-report.js was not uploaded');
+  else note('/.netlify/functions/csp-report answered ' + (c.status || c.error));
+}
+
 (async () => {
   console.log('\nChecking ' + BASE + ' (read only)');
   const home = await peek('/');
@@ -240,6 +278,7 @@ async function checkConfig() {
   await checkPlatform();
   await checkPayments();
   await checkConfig();
+  await checkBuild();
   console.log('\n  ' + (fails ? fails + ' to fix' : 'nothing to fix') + (notes ? ', ' + notes + ' worth knowing' : '') + '\n');
   process.exit(fails ? 1 : 0);
 })();

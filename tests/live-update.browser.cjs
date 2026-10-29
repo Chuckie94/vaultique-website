@@ -242,9 +242,10 @@ async function pulse(page) {
     /* ------------------------------------------------------- the fallback */
     console.log('\nAnd it still works with no Realtime at all');
     const bare = await browser.newPage();
-    /* No stub this time: window.supabase never appears and the CDN is refused,
-       which is a visitor behind a firewall, or a Supabase outage. */
-    await bare.route('**/supabase-js@2**', r => r.abort());
+    /* No stub this time: window.supabase never appears and the library is
+       refused, which is a visitor behind a firewall, or a Supabase outage.
+       The pattern matches the old CDN address and build 75's own copy. */
+    await bare.route('**/supabase-js*', r => r.abort());
     await bare.addInitScript(() => { window.__noReload = 'alive'; });
     await bare.goto(base + '/shop', { waitUntil: 'networkidle' });
     await bare.waitForTimeout(800);
