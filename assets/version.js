@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.44.0',
-  build: 73,
-  builtAt: '2026-10-27T19:51:44Z',
-  notes: 'Layby estimate under the price on product pages: deposit, remaining balance and from what a month, from Settings > Payments > Layby estimate (deposit percentage, default 30%, and payment duration in months). Display only, with a link to the Lay-by Policy. No SQL.'
+  version: '1.44.1',
+  build: 74,
+  builtAt: '2026-10-29T11:29:52Z',
+  notes: 'Safety work, part 1: supabase-safety-check.sql gives the chat notifications a new secret and reports what needs attention; the five setup files and the functions\' source code are no longer served; the Business Platform\'s working notes are out of the folder; tools/live-check.cjs checks the live site from outside. Nothing a customer sees changes.'
 };

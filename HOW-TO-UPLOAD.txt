@@ -39,5 +39,7 @@ uploading only what is here, leaves it exactly where it is.
 
 AFTER UPLOADING
 ---------------
-Netlify rebuilds on its own, usually within a minute or two. Then run the
-two SQL files named in START-HERE.txt — uploading does not run them.
+Netlify rebuilds on its own, usually within a minute or two. Then follow
+the steps at the top of START-HERE.txt: uploading runs no SQL, and it never
+deletes a file. When a build takes a file away, START-HERE names it, and it
+has to be deleted from your repository by hand.

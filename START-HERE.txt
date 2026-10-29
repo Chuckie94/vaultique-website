@@ -1,7 +1,109 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 73
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 74
 ====================================================
-The whole site, cumulative (includes everything in build 72).
+The whole site, cumulative (includes everything in build 73).
 Upload this and you are up to date.
+
+NEW IN 74 — SAFETY WORK, PART 1. Nothing a customer sees changes.
+  One SQL file to run, four files to delete, and some checking: about
+  half an hour. This is the urgent first part of the plan that came out
+  of the build 73 audit; later builds do the rest. Do the steps in
+  order. Each one says how you know it is done.
+
+  A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Then DELETE these four
+     files from your website repository. They are the Business
+     Platform's own working notes and were never part of the website:
+        DEFECT-FIX-PLAN-342.md
+        DEFECTS-342-ADDENDUM.md
+        PHASE-0-DECISIONS-342.md
+        tools/phase-0-diagnose.cjs
+     Pasting a folder over yours never deletes anything, which is why
+     these have to go by hand. GitHub Desktop: delete them from the
+     repository folder, then Commit and Push. Browser: open each file
+     on GitHub, choose Delete file, and commit.
+     Done when: none of the four is in your repository.
+
+  B. RUN supabase-safety-check.sql in the WEBSITE's Supabase:
+     SQL Editor > New query > paste the whole file > Run.
+     It changes ONE thing: the chat notifications get a new secret,
+     because every old zip carries the old one. The phones keep
+     buzzing; nothing needs copying anywhere. Then it shows a list of
+     what needs your attention. Do what its last column says.
+     Done when: the first line says "REPLACED just now". It is safe to
+     run again at any time, as a check.
+
+  C. ONLINE PAYMENT. If the list says "ON · TEST MODE": today, turn
+     online payment off, or switch it to Live, in Settings > Payments.
+     In Test mode anybody can "pay" with the test cards Flutterwave
+     publishes, and the order shows Paid.
+     Done when: the list says OFF or ON · LIVE.
+
+  D. STAFF. The list shows everybody who can sign in to the admin.
+     Anybody marked SWITCHED OFF, and anybody who should not be there:
+     Settings > Users & Roles > Remove. Switch off only hides the admin
+     from them; it does not stop them reading the database. Remove
+     does. Then turn on two-factor for yourself: Settings > Security.
+     (Later builds make the database insist on it too.)
+     Done when: the list shows only people who work here, and
+     "two-factor ON" against you.
+
+  E. NETLIFY: your website's site > Site configuration > Environment
+     variables. These should be there:
+        SUPABASE_SERVICE_ROLE_KEY   this website's service_role key
+        WEB_SUPABASE_SERVICE_KEY    the same key again (the product
+                                    live update reads this name)
+        POS_REWARDS_KEY             from build 68
+        FLW_SECRET_KEY_LIVE and FLW_WEBHOOK_HASH, only if you take
+                                    payments online
+     And POS_SUPABASE_KEY should NOT be there once /api/rewards-check
+     says "door" (build 68, STEP 5 below). A changed variable needs a
+     redeploy: Deploys > Trigger deploy > Deploy site.
+     Done when: step G shows no ✗ in parts 3 and 4.
+
+  F. SUPABASE SIGN-IN SETTINGS, in the WEBSITE's project, under
+     Authentication (the names in Supabase's menus may differ a little):
+        If the list says customer accounts are OFF: turn OFF "Allow new
+        users to sign up". While it is on, anybody can make an account
+        through Supabase directly, whatever the website says.
+        If they are ON: leave sign-ups on, and make sure "Confirm email"
+        is on.
+        Multi-Factor: TOTP should be enabled (it usually is), or step D's
+        two-factor cannot be turned on.
+     Done when: the two match what the list says.
+
+  G. CHECK THE LIVE SITE FROM OUTSIDE. With Node 18 or later, from this
+     folder:
+        node tools/live-check.cjs https://YOUR-SITE
+     It only reads, the way any visitor's browser could. Once this build
+     is live, part 1 should be all ✓: no setup file, note or function
+     source readable by anybody. Part 2 will list missing safety
+     headers: those come in the next build.
+     Done when: it ends "nothing to fix".
+
+  H. SUPABASE SECURITY ADVISOR, in the WEBSITE's project: Advisors >
+     Security Advisor. Keep a copy of what it lists; the next builds
+     work through it.
+     Done when: you have the list.
+
+  WHAT CHANGED IN THE FOLDER
+    * New: supabase-safety-check.sql (step B) and tools/live-check.cjs
+      (step G).
+    * Gone: the four files in step A.
+    * netlify.toml: five setup files added in builds 65 to 70
+      (supabase-signup, -new-arrivals, -sold-out, -browsing-towns and
+      -cart-pieces) could be read by anybody who asked for them by
+      name, and so could the functions' source code under
+      /netlify/functions/. Both now answer 404. The functions themselves
+      run exactly as before.
+    * assets/version.js says build 74.
+
+  WHAT IS NOT IN THIS BUILD, AND COMES NEXT
+    The safety headers, the database fixes for who can see what, the
+    two-factor fix, test payments marked TEST, and new push keys. Until
+    then: Remove (not Switch off) anybody who should not have access,
+    keep online payment off or in Live, and keep every zip of the
+    website private, this one included: supabase-chat-phase7.sql still
+    holds the push keys until a later build replaces them. (Step B has
+    already made the old chat secret in it useless.)
 
 NEW IN 73 — NO SQL. Just upload.
 
@@ -121,7 +223,7 @@ Every line of each check must say OK.
     Contact > Business email) is told when a request is waiting.
   * Admin > Rewards shows staff why no code was emailed for a link.
 
-197 files. config.js is not in this folder, on purpose (see STEP 3).
+195 files. config.js is not in this folder, on purpose (see STEP 3).
 
 
 ================================================================
@@ -304,6 +406,7 @@ platform's.
 ================================================================
 THE AUTOMATED CHECKS, IF YOU EVER WANT THEM
 ================================================================
+      node tools/live-check.cjs https://YOUR-SITE   the live site, read only (Node 18+)
       npm install playwright
       node tests/rewards-door.test.cjs         45 checks  (no browser)
       node tests/product-door.test.cjs         36 checks  (no browser)

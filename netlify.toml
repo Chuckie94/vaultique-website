@@ -287,6 +287,48 @@
   status = 404
   force = true
 
+# The five setup files added since the list above was last brought up to
+# date (builds 65 to 70), and build 74's safety check. Each of the five
+# went out without its rule, and was served to anybody who asked: that is
+# the weakness of naming files one at a time, and the reason a later build
+# moves the website into a folder of its own, so that nothing outside it
+# can be handed out at all.
+[[redirects]]
+  from = "/supabase-signup.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-new-arrivals.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-sold-out.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-browsing-towns.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-cart-pieces.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-safety-check.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
 # The checks that prove the product feed and the live update work. They
 # ship with the folder so they can be re-run against any future change,
 # and like the setup files above there is no reason to serve them.
@@ -357,6 +399,17 @@
 
 [[redirects]]
   from = "/tools/*"
+  to = "/index.html"
+  status = 404
+  force = true
+
+# The serverless functions' own source code. Netlify RUNS them at
+# /.netlify/functions/ (with the dot), which this rule does not touch; but
+# the publish directory is the whole folder, so without it the same files
+# could also be read as text at /netlify/functions/, down to the
+# platform's address and the payment rules.
+[[redirects]]
+  from = "/netlify/*"
   to = "/index.html"
   status = 404
   force = true
