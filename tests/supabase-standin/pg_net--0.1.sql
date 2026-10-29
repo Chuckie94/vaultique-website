@@ -1,0 +1,3 @@
+-- A stand-in for pg_net, for tests only: the extension itself installs
+-- nothing; supabase-standin.sql makes net.http_post and net.http_get, which
+-- write each call to net.http_request_log instead of sending it.

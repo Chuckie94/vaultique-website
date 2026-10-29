@@ -39,7 +39,7 @@
     websiteStatus: 'live',
     maintenanceMode: false,
     maintenanceMessage: '',
-    previewKey: ''
+    previewKey: ''     // never filled since build 76: the key stays in the database
   };
   var FMT = window.VBP_FORMAT || null;
   var THEME = window.VBP_THEME || null;
@@ -965,13 +965,21 @@
       if (!WEB || !email) return Promise.resolve();
       return webRpc('subscribe_email', { p_email: email }).catch(function () {});
     };
-    /* Recording an order needs the database, and a shop with accounts
-       switched off never asks for the client. The Orders tab is the
-       shop's own record either way, so the call is offered here as well,
-       plainly. */
-    ACCT.hooks.placeOrder = function (payload) {
-      if (!WEB) return Promise.reject(new Error('not configured'));
-      return webRpc('place_order', payload);
+    /* Recording an order (build 76): the website's place-order function
+       prices it from the catalogue and writes it, so the Orders tab holds
+       the shop's prices, not this page's. The customer's own sign-in goes
+       with it when there is one, for the function to check. */
+    ACCT.hooks.placeOrder = function (payload, token) {
+      var headers = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = 'Bearer ' + token;
+      return fetch('/.netlify/functions/place-order', {
+        method: 'POST', headers: headers, body: JSON.stringify(payload)
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (b) {
+          if (!r.ok) throw new Error((b && b.error) || 'The order was not recorded.');
+          return b;
+        });
+      });
     };
     /* The database refuses an order while the shop is shut. This is what
        lets the owner place one anyway while they are testing. */
@@ -1859,12 +1867,10 @@
           name: d.name, phone: d.phone, email: d.email,
           address: d.address, notes: d.notes,
           fulfilment: d.how,
-          total: orderTotal(order),
-          currency: SETTINGS.currency,
+          /* Which pieces and how many. The prices and the total are the
+             server's to work out (build 76), from the same catalogue. */
           items: order.lines.map(function (l) {
-            var v = priceOf(l.product);
-            return { sku: l.product.sku, name: l.product.name,
-                     price: v.onRequest ? null : v.now, qty: l.qty };
+            return { sku: l.product.sku, name: l.product.name, qty: l.qty };
           })
         });
       }
@@ -2303,11 +2309,11 @@
      Held for the tab rather than carried in every link, so moving around
      the site does not need it repeated and closing the tab forgets it.
 
-     It is a door key, not a lock. It sits in the settings the storefront
-     already reads, so it is not a secret and is not meant to be one:
-     what it stops is a customer wandering in during an hour's work,
-     which is the thing that actually happens. Left empty, nobody walks
-     past the notice at all. */
+     Since build 76 it is kept in the private settings, where no visitor
+     can read it, and only the database says whether a key is right
+     (checkPreview below). What it stops is a customer wandering in during
+     an hour's work, which is the thing that actually happens. Left empty,
+     nobody walks past the notice at all. */
   var PREVIEW_MEMO = 'vbp_preview';
   function previewKey() {
     var given = '';
@@ -2320,13 +2326,22 @@
       return sessionStorage.getItem(PREVIEW_MEMO) || '';
     } catch (e) { return given; }
   }
-  /* Whether this browser may see the shop while it is shut. The database
-     asks the same question again of anything that writes, so a browser
-     saying yes to itself here buys nothing it should not have. */
-  function previewing() {
-    var want = String(SETTINGS.previewKey || '').trim();
-    return !!want && previewKey().trim() === want;
+  /* Whether this browser may see the shop while it is shut.
+
+     Asked of the database (build 76), once, while the settings load: the
+     key is no longer in the settings this page downloads, so there is
+     nothing here to compare it with, which is the point. On a database
+     from before supabase-hardening.sql, preview_ok still reads the public
+     settings, so the answer is the same either side of the upgrade. The
+     database asks the question again of anything that writes. */
+  var PREVIEW_OK = false;
+  function checkPreview() {
+    var k = previewKey().trim();
+    if (!k || !WEB) { PREVIEW_OK = false; return Promise.resolve(); }
+    return webRpc('preview_ok', { p_key: k })
+      .then(function (yes) { PREVIEW_OK = yes === true; }, function () { PREVIEW_OK = false; });
   }
+  function previewing() { return PREVIEW_OK; }
   window.VBP_PREVIEW = previewKey;      // the chat widget sends it too
 
   function gateReason() {
@@ -2735,7 +2750,12 @@
      this), and finishLoad waits for whichever is slower. */
   var WEB_DATA = null;
   function websiteData(cb) {
-    if (!WEB_DATA) WEB_DATA = new Promise(function (resolve) { loadWebsiteData(resolve); });
+    if (!WEB_DATA) {
+      WEB_DATA = Promise.all([
+        new Promise(function (resolve) { loadWebsiteData(resolve); }),
+        checkPreview()
+      ]);
+    }
     WEB_DATA.then(function () { cb(); });
   }
   function finishLoad() {
@@ -5464,7 +5484,14 @@
         }
         msg.className = 'rv-msg ok';
         setTimeout(closeReviewModal, live ? 1100 : 2200);
-      }).catch(function () { msg.textContent = 'Could not submit. Please try again.'; msg.className = 'rv-msg err'; });
+      }).catch(function (e) {
+        /* Since build 76 the database limits how many reviews one
+           connection can send in an hour; that is said as what it is. */
+        msg.textContent = /Too many/i.test(String((e && e.message) || ''))
+          ? 'Thank you, but that is a lot of reviews from here in a short time. Please try again later.'
+          : 'Could not submit. Please try again.';
+        msg.className = 'rv-msg err';
+      });
     });
     modal.classList.add('open'); document.body.style.overflow = 'hidden';
   }
@@ -5538,27 +5565,52 @@
         form.classList.add('hide');
         $('#nlSuccess').classList.add('show');
       };
-      /* Told the truth, both ways.
-      
-         This used to write straight at the table and count every answer
-         as a yes, so a visitor was thanked whether or not anything had
-         been written down — and somebody who had unsubscribed could
-         never get back on, because their row still holds the address and
-         the browser may only insert. The conflict read as success and
-         they stayed off the list.
-      
-         subscribe_email settles both. An address already on the list is
-         still a success, and still says nothing about who is on it; a
-         person typing their own address into this form is asking to
-         rejoin, so p_rejoin is set here and nowhere else; and a real
-         failure now reaches the person who can do something about it. */
-      var failed = function () {
+      /* Told the truth, both ways, and nobody put back on the list but
+         by themselves.
+
+         Build 76: the website's newsletter function decides. A new
+         address joins at once, and one already on the list is still a
+         plain "you are on the list", which says nothing about who is on
+         it. An address that unsubscribed earlier is no longer put back
+         by being typed here: a link goes to that inbox, and following it
+         is what puts it back, so a stranger cannot undo somebody's "stop
+         sending me these". A real failure reaches the person who can do
+         something about it. Before supabase-hardening.sql has been run
+         the function joins the old way, and without the function at all
+         (no service key in Netlify) the form does. */
+      var failed = function (msg) {
         if (!err) return;
-        err.textContent = 'That did not go through. Please check your connection and try again.';
+        err.textContent = msg || 'That did not go through. Please check your connection and try again.';
         err.classList.add('show');
       };
+      var said = function (text) {
+        done();
+        if (text) $('#nlSuccess').textContent = text;
+      };
+      var oldWay = function () {
+        webRpc('subscribe_email', { p_email: email, p_rejoin: true }).then(function () { done(); }, function () { failed(); });
+      };
       if (!WEB) { done(); return; }
-      webRpc('subscribe_email', { p_email: email, p_rejoin: true }).then(done, failed);
+      fetch('/.netlify/functions/newsletter', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email })
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (b) {
+          if (r.status === 503 && b && b.fallback) return oldWay();
+          if (r.status === 404) return oldWay();     // the function is not there
+          if (!r.ok) return failed(b && b.error);
+          if (b.state === 'confirm') {
+            return said('Nearly done: we have emailed a link to ' + email + '. Open it to confirm, and check the spam or junk folder if it is not there in a few minutes.');
+          }
+          if (b.state === 'wait') {
+            return said('We emailed a link to ' + email + ' a little while ago. Open it to confirm, and check the spam or junk folder.');
+          }
+          if (b.state === 'contact') {
+            return failed('We could not send the email to confirm that address just now. Please try again later, or contact us.');
+          }
+          done();
+        });
+      }, function () { failed(); });
     });
   }
 

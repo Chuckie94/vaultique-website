@@ -54,6 +54,29 @@
 -- ordinary one from now on, so nothing that reads this table sees any
 -- difference unless it asks.
 -- ---------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------
+-- NOT AFTER BUILD 76'S HARDENING. Once supabase-hardening.sql has been
+-- run on this project it holds the newer version of everything this
+-- file sets up, and running this one again would quietly put back an
+-- older, weaker one. So it stops here, before changing anything.
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_done boolean := false;
+begin
+  -- Asked through EXECUTE because on a project that has never run the
+  -- hardening the table does not exist, and a plain query naming it
+  -- would stop this file before it started.
+  if to_regclass('public.schema_migrations') is not null then
+    execute 'select exists (select 1 from public.schema_migrations where version >= ''076'')' into v_done;
+  end if;
+  if v_done then
+    raise exception using
+      message = 'Not run, and nothing was changed: supabase-hardening.sql (build 76) has already been run on this project and replaces this file. If you were running this file again because older instructions said it was safe to, you do not need to: run supabase-hardening.sql again instead.',
+      hint = 'Only if this file has never been run on this project and you need it: run  delete from public.schema_migrations where version = ''076-hardening'';  then this file, then supabase-hardening.sql again.';
+  end if;
+end $$;
 alter table public.chat_conversations
   add column if not exists kind text;
 

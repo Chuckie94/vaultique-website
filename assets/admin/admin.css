@@ -930,6 +930,7 @@
 .pay-paid{background:#e3f4ea;color:#1e7d46}
 .pay-wait{background:#fdf3dc;color:#8a5a00}
 .pay-fail{background:#fbe4e2;color:#b3261e}
+.pay-test{background:#ece6fb;color:#4a2c9e;margin-left:6px}
 
 /* Analytics > How orders were paid */
 .an-pay{margin-bottom:14px}

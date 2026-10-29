@@ -521,8 +521,9 @@
             return {
               id: o.id, ref: o.ref,
               /* An order sent to pay online and not paid is not a sale, and
-                 is treated here exactly like a cancelled one. */
-              status: (o.payment_method === 'online' && o.payment_status !== 'paid')
+                 is treated here exactly like a cancelled one. So is one
+                 "paid" in Test mode (build 76): no money moved. */
+              status: (o.payment_method === 'online' && (o.payment_status !== 'paid' || o.pay_mode === 'test'))
                 ? 'cancelled' : o.status,
               total: Number(o.total) || 0,
               at: o.created_at,

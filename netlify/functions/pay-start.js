@@ -6,27 +6,14 @@
 // POST { items, buyer: { name, phone, email, address, notes }, fulfilment, town, preview }
 // Authorization: the signed-in customer's own token, when there is one,
 // so the order lands in their account exactly as a WhatsApp order does.
+// Since build 76 the token is checked with Supabase here and the order is
+// written with the service key (P.recordOrder), the only key place_order
+// now answers.
 const P = require('./_pay');
-const { readConfig } = require('./_seo-data');
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function cut(v, n) { return String(v == null ? '' : v).trim().slice(0, n); }
-
-async function placeOrder(order, items, preview, bearer) {
-  const { url, key } = readConfig();
-  const call = (auth) => fetch(url.replace(/\/+$/, '') + '/rest/v1/rpc/place_order', {
-    method: 'POST',
-    headers: { apikey: key, Authorization: 'Bearer ' + auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ p_order: order, p_items: items, p_preview: preview || null }),
-  });
-  let res = await call(bearer || key);
-  // A stale sign-in is not a reason to lose the sale: file it as a guest.
-  if (!res.ok && bearer && (res.status === 401 || res.status === 403)) res = await call(key);
-  const text = await res.text();
-  if (!res.ok) throw new Error(text.slice(0, 200) || 'the order could not be recorded');
-  return JSON.parse(text);
-}
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return P.json(405, { error: 'Use POST.' });
@@ -47,7 +34,7 @@ exports.handler = async function (event) {
   try {
     const s = await P.shopSettings();
     if (!P.onlineOn(s)) return P.json(403, { error: 'Online payment is switched off.', off: true });
-    if (P.shopClosed(s.general, body.preview)) return P.json(403, { error: 'The shop is not taking orders at the moment.' });
+    if (await P.closedFor(s.general, body.preview)) return P.json(403, { error: 'The shop is not taking orders at the moment.' });
     const mode = s.pay.onlineMode === 'live' ? 'live' : 'test';
     if (!P.flwKey(mode) || !P.serviceKey()) {
       return P.json(503, { error: 'Online payment is not ready yet. Please order on WhatsApp for now.' });
@@ -74,18 +61,21 @@ exports.handler = async function (event) {
       buyer.address = (buyer.address + ', ' + q.town).slice(0, 400);
     }
 
-    const auth = (event.headers && (event.headers.authorization || event.headers.Authorization)) || '';
-    const bearer = auth.replace(/^Bearer\s+/i, '').trim();
-    const placed = await placeOrder(
+    const placed = await P.recordOrder(
       Object.assign({}, buyer, { fulfilment, total: q.total, currency: q.currency }),
       q.lines.map((l) => ({ sku: l.sku, name: l.name, price: l.unit, qty: l.qty })),
-      body.preview, bearer);
+      body.preview, await P.customerFrom(event), P.clientAddr(event));
 
     const txRef = P.newTxRef(placed.ref);
     await P.svc('PATCH', 'orders?id=eq.' + placed.id, {
       payment_method: 'online', payment_status: 'awaiting', pay_ref: txRef,
       goods_total: q.goods, delivery_fee: q.delivery, tax_total: q.tax,
     }, 'return=minimal');
+    /* Build 76: the mode goes on the order itself, so a test payment can
+       never pass for a real one in the Orders tab. Before
+       supabase-hardening.sql has been run the column is not there, and
+       that is no reason to stop a payment. */
+    await P.svc('PATCH', 'orders?id=eq.' + placed.id, { pay_mode: mode }, 'return=minimal').catch(() => {});
     const pay = (await P.svc('POST', 'payments', {
       order_id: placed.id, tx_ref: txRef, mode, amount: q.total, currency: q.currency, phone: digits,
     }))[0];
@@ -111,6 +101,7 @@ exports.handler = async function (event) {
   } catch (e) {
     const m = String(e && e.message || '');
     if (/not taking orders/.test(m)) return P.json(403, { error: 'The shop is not taking orders at the moment.' });
+    if (/Too many/.test(m)) return P.json(429, { error: 'There have been a lot of orders just now. Please wait a little and try again.' });
     return P.json(502, { error: 'Something went wrong starting the payment. Nothing has been charged. Please try again.' });
   }
 };

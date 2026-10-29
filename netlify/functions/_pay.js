@@ -28,7 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
-const { settings, readConfig, rows } = require('./_seo-data');
+const { settings, readConfig, rows, previewOk } = require('./_seo-data');
 
 const MAX_LINES = 50;
 const MAX_QTY = 99;
@@ -116,14 +116,6 @@ async function shopSettings() {
     delivery: over(DELIVERY_DEFAULTS, delivery),
     contact: contact || {},
   };
-}
-
-function shopClosed(general, preview) {
-  const closed = general.maintenanceMode === true ||
-    ['closed', 'coming-soon'].indexOf(general.websiteStatus || 'live') > -1;
-  if (!closed) return false;
-  const key = String(general.previewKey || '').trim();
-  return !(key && String(preview || '').trim() === key);
 }
 
 function onlineOn(s) {
@@ -491,6 +483,102 @@ async function confirmByEmail(s, orderId) {
   }
 }
 
+// ---- build 76: the things the database now decides ----------------------
+
+// Closed to this caller: closed, unless the preview key is right. Since
+// build 76 the key is checked by the database (_seo-data.previewOk), not
+// compared here, because it is no longer in the public settings.
+async function closedFor(general, preview) {
+  const closed = general.maintenanceMode === true ||
+    ['closed', 'coming-soon'].indexOf(general.websiteStatus || 'live') > -1;
+  if (!closed) return false;
+  return !(await previewOk(preview));
+}
+
+// A WhatsApp order, priced here (decision Q2). The same catalogue and price
+// rules as a payment, but a WhatsApp order is the start of a conversation,
+// not a charge, so nothing is refused: a piece priced on request, sold out
+// since, or no longer on sale is recorded as asked for, without a price, for
+// the shop to settle in the chat. The total is what the storefront calls
+// the order's total (orderTotal() in assets/app.js): the priced pieces times
+// their quantities, nothing else. The browser's own prices are not asked for.
+async function priceWhatsApp(s, rawItems, preview) {
+  const F = formats();
+  if (!Array.isArray(rawItems) || !rawItems.length) return { error: 'There is nothing in the order.' };
+  if (rawItems.length > MAX_LINES) return { error: 'That is too many different pieces for one order.' };
+  const items = [];
+  for (const it of rawItems) {
+    const sku = String((it && it.sku) || '').trim();
+    const qty = Math.floor(Number(it && it.qty));
+    if (!sku || sku.length > 60) return { error: 'A piece in the order could not be read.' };
+    if (!(qty >= 1 && qty <= MAX_QTY)) return { error: 'A quantity in the order could not be read.' };
+    items.push({ sku, qty, asked: String((it && it.name) || '').trim().slice(0, 200) });
+  }
+  const style = F.moneyStyle(s.general, s.pricing);
+  const [feed, meta] = await Promise.all([
+    catalogue(preview).catch(() => []),
+    productMeta(items.map((i) => i.sku)).catch(() => ({})),
+  ]);
+  const bySku = {};
+  feed.forEach((p) => { bySku[p.sku] = p; });
+  let total = 0;
+  const lines = items.map((it) => {
+    const base = bySku[it.sku];
+    const p = base ? withMeta(base, meta[it.sku], s.pricing) : null;
+    if (!p || p.hidden) return { sku: it.sku, name: it.asked || it.sku, price: null, qty: it.qty };
+    const v = F.priceView(p, s.pricing, style);
+    const unit = (v.onRequest || !(v.now > 0)) ? null : v.now;
+    if (unit !== null) total = round2(total + unit * it.qty);
+    return { sku: p.sku, name: p.name, price: unit, qty: it.qty };
+  });
+  return { lines, total, currency: style.currency };
+}
+
+// Who is signed in, asked of Supabase itself with the token the browser
+// sent: a browser can say anything about who it is. A token that does not
+// check out is a guest.
+async function customerFrom(event) {
+  const h = (event && event.headers) || {};
+  const bearer = String(h.authorization || h.Authorization || '').replace(/^Bearer\s+/i, '').trim();
+  const { url, key } = readConfig();
+  if (!bearer || !url || !key || bearer === key) return null;
+  try {
+    const res = await fetch(url.replace(/\/+$/, '') + '/auth/v1/user', {
+      headers: { apikey: key, Authorization: 'Bearer ' + bearer },
+    });
+    if (!res.ok) return null;
+    const u = await res.json();
+    return (u && u.id) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// The visitor's address as Netlify saw it, for the database's throttle.
+function clientAddr(event) {
+  const h = (event && event.headers) || {};
+  const v = h['x-nf-client-connection-ip'] || String(h['x-forwarded-for'] || '').split(',')[0];
+  return String(v || '').trim().slice(0, 64) || null;
+}
+
+// The order, written by the database's place_order with the service key,
+// the only key it now answers. On a database where supabase-hardening.sql
+// has not been run yet, place_order still has its old three-part form, and
+// that is used instead, so no order is lost to the order things were done
+// in. The old form cannot be told who the customer was; such an order is
+// filed as a guest's until the SQL is run.
+async function recordOrder(order, items, preview, customer, client) {
+  try {
+    return await svc('POST', 'rpc/place_order', {
+      p_order: order, p_items: items, p_preview: preview || null,
+      p_customer: customer || null, p_client: client || null,
+    });
+  } catch (e) {
+    if (!/PGRST202|Could not find the function/i.test(String(e && e.message))) throw e;
+    return svc('POST', 'rpc/place_order', { p_order: order, p_items: items, p_preview: preview || null });
+  }
+}
+
 function siteOrigin(event) {
   const env = process.env.URL || '';
   if (env) return env.replace(/\/+$/, '');
@@ -501,8 +589,9 @@ function siteOrigin(event) {
 }
 
 module.exports = {
-  json, formats, shopSettings, shopClosed, onlineOn, priceOrder, cleanItems,
+  json, formats, shopSettings, onlineOn, priceOrder, cleanItems,
   deliveryCharge, svc, serviceKey, flw, flwKey, paymentOptions, hashMatches, newTxRef,
   settle, failPayment, confirmByEmail, siteOrigin,
+  previewOk, closedFor, priceWhatsApp, customerFrom, clientAddr, recordOrder,
   PER_PHONE_PER_HOUR, PER_SHOP_PER_HOUR,
 };

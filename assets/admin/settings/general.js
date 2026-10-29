@@ -206,6 +206,10 @@
     render: function (host, ctx) {
       ctx.ui.form(host, {
         key: 'general',
+        /* The preview key is kept with the private settings (build 76),
+           where no visitor's browser can read it; everything else on this
+           page is the public half, as before. */
+        privateKey: 'general',
         savedMessage: 'Saved ✓ — the site picks this up within about a minute',
 
         /* THE MAP PINS. The website map has to know where each place is,
@@ -305,16 +309,17 @@
                 rows: 3, maxLength: 300, required: true,
                 showIf: function (v) { return !!v.maintenanceMode; },
                 hint: 'What customers see while maintenance mode is on.' },
-              { type: 'text', name: 'previewKey', label: 'Preview key', maxLength: 60,
+              { type: 'text', name: 'previewKey', label: 'Preview key', maxLength: 60, private: true,
                 hint: 'A word of your choosing. While the shop is shut, open it as ' +
                       'yourshop.com/?preview=THATWORD and you will see the real site ' +
                       'while everybody else still sees the notice. Leave it empty and ' +
                       'nobody gets past, yourself included.' },
               { type: 'note', name: 'previewNote', label: 'About the preview key',
-                text: 'It keeps a customer from wandering in while you work; it is not ' +
-                      'a password, and it is not meant to be. Orders, chats and the ' +
-                      'product feed are all refused while the shop is shut, and this ' +
-                      'key is what lets you test them anyway.' }
+                text: 'It keeps a customer from wandering in while you work. It is kept ' +
+                      'with the private settings, so visitors cannot read it, and the ' +
+                      'database checks it. Orders, chats and the product feed are all ' +
+                      'refused while the shop is shut, and this key is what lets you ' +
+                      'test them anyway.' }
             ]
           }
         ]

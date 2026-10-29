@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.45.0',
-  build: 75,
-  builtAt: '2026-10-29T12:32:15Z',
-  notes: 'Safety work, part 2: Netlify now publishes only the website (index.html, admin.html, config.js, sw.js, the manifest, assets/ and images/), through a build step that refuses to deploy without a real config.js; safety headers on every page; a Content Security Policy in report-only mode, reporting to the csp-report function; supabase-js 2.118.0 and Leaflet 1.9.4 kept in assets/vendor/ instead of a public CDN; the admin\'s main script moved into assets/admin/shell.js; script addresses carry a fingerprint so a deploy reaches browsers at once. Nothing a customer sees changes.'
+  version: '1.46.0',
+  build: 76,
+  builtAt: '2026-10-29T17:44:14Z',
+  notes: 'Safety work, part 3 (with supabase-hardening.sql): the database now enforces each role\'s ticks and two-factor (required for the owner and for any role ticked for Settings, Orders or Subscribers; the admin shows the setup at sign-in); "Switch off" stops a person at the database; WhatsApp orders are priced by the website from the catalogue and written with the service key; limits on how fast one connection can start chats, write, review, join the newsletter or order; test-mode payments are marked TEST and left out of sales; the preview key is private; the shop makes its own notification keys and the shared ones are retired; someone who unsubscribed is only put back by a link sent to their own inbox; visitors can call only the functions the website uses; older SQL files refuse to undo this.'
 };

@@ -445,7 +445,7 @@ function tryParse(s) {
 /* A shop that has told its customers it is shut should not still be
    handing out its catalogue. The settings say whether it is, and the
    preview key is how the owner still sees it while testing. */
-const { settings } = require('./_seo-data');
+const { settings, previewOk } = require('./_seo-data');
 // ADDED: the day a piece sold out, noted in the website's own database, for
 // "hide sold-out pieces after so many days". Never holds up or breaks the feed.
 const { stampSoldOut } = require('./_sold-out');
@@ -456,9 +456,10 @@ async function closedToThisCaller(event) {
     const closed = g.maintenanceMode === true ||
                    ['closed', 'coming-soon'].indexOf(g.websiteStatus || 'live') > -1;
     if (!closed) return false;
-    const key = String((g.previewKey || '')).trim();
+    /* Asked of the database since build 76: the key is in the private
+       settings now, where this function's public key cannot read it. */
     const asked = String(((event && event.queryStringParameters) || {}).preview || '').trim();
-    return !(key && asked === key);
+    return !(await previewOk(asked));
   } catch (e) {
     /* The settings could not be read. A shop that cannot be asked is
        treated as open: refusing every product because of a failed

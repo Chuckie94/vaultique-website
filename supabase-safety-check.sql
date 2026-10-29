@@ -4,6 +4,11 @@
 -- Run in THIS WEBSITE's Supabase (not the platform's):
 --   SQL Editor > New query > paste all of this > Run
 --
+-- BUILD 76 AND LATER: you do not need this file any more. Run
+-- supabase-hardening.sql instead; its report covers all of this and
+-- more. Running this one as well does no harm (it only reads, apart from
+-- giving the chat notifications yet another new secret).
+--
 -- Safe to run again, as often as you like. It changes ONE thing: it gives
 -- the chat notifications a new secret. Everything else it only reads.
 --

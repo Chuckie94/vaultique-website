@@ -19,6 +19,11 @@
      5. WHETHER THE FUNCTIONS CAN READ config.js, through the sitemap.
      6. WHETHER NETLIFY RAN THE BUILD STEP (build 75 on): the pages'
         fingerprinted script addresses, and the csp-report function.
+     7. BUILD 76: the place-order and newsletter functions are there, the
+        database has had supabase-hardening.sql, and the preview key is no
+        longer in the settings every visitor downloads. Asked of the
+        website's Supabase with the public key from the live config.js,
+        exactly as the shop's own pages ask it.
 
    READ ONLY. Ordinary GET requests to your own site; nothing is changed
    anywhere. The list of files comes from this folder, so it always checks
@@ -265,6 +270,64 @@ async function checkBuild() {
   else note('/.netlify/functions/csp-report answered ' + (c.status || c.error));
 }
 
+/* The website's own Supabase, as any visitor's browser finds it: the
+   address and the public (anon) key in the live config.js. */
+async function webSupabase() {
+  const r = await json('/config.js');
+  const url = /SUPABASE_URL\s*:\s*['"]([^'"]+)['"]/.exec(r.text || '');
+  const key = /SUPABASE_ANON_KEY\s*:\s*['"]([^'"]+)['"]/.exec(r.text || '');
+  return url && key ? { url: url[1].replace(/\/+$/, ''), key: key[1] } : null;
+}
+async function askSupabase(sb, p) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(sb.url + '/rest/v1/' + p, {
+      signal: ctl.signal,
+      headers: { apikey: sb.key, Authorization: 'Bearer ' + sb.key, Accept: 'application/json', 'User-Agent': 'vaultique-live-check' },
+    });
+    const text = await res.text();
+    let body = null;
+    try { body = JSON.parse(text); } catch (e) { body = null; }
+    return { status: res.status, body };
+  } catch (e) {
+    return { status: 0, body: null, error: e.name === 'AbortError' ? 'no answer in 15 s' : e.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function check76() {
+  console.log('\n7. Build 76: orders, the newsletter, and the database');
+  /* GET is the one thing each refuses: 405 means it is there. */
+  for (const [fn, what] of [['place-order', 'WhatsApp orders are priced and recorded by the website'],
+                            ['newsletter', 'rejoining the newsletter goes by a link to the person\'s own inbox']]) {
+    const r = await peek('/.netlify/functions/' + fn);
+    if (r.status === 405) ok('the ' + fn + ' function is there: ' + what);
+    else if (r.status === 404) fail('/.netlify/functions/' + fn + ' is missing: netlify/functions/' + fn + '.js was not uploaded');
+    else note('/.netlify/functions/' + fn + ' answered ' + (r.status || r.error));
+  }
+
+  const sb = await webSupabase();
+  if (!sb) { note('could not read the Supabase address from /config.js, so the database was not asked'); return; }
+
+  /* A question only signed-in staff may ask since the hardening. Asked as
+     a visitor: refused means the hardening is in; "no such function"
+     means it has not been run. Nothing is changed either way. */
+  const g = await askSupabase(sb, 'rpc/admin_gate');
+  const code = g.body && g.body.code;
+  if ((g.status === 401 || g.status === 403) && code === '42501') ok('supabase-hardening.sql has been run (a visitor is refused the staff-only questions)');
+  else if (g.status === 404 || code === 'PGRST202') fail('supabase-hardening.sql has not been run in the website\'s Supabase yet (START-HERE.txt, step B)');
+  else if (g.status === 200) fail('a visitor can ask the database a staff-only question: run supabase-hardening.sql again and send its report');
+  else note('the database answered ' + (g.status || g.error) + ' when asked whether the hardening is in');
+
+  const s = await askSupabase(sb, 'site_settings?key=eq.general&select=data');
+  if (!Array.isArray(s.body)) { note('the public settings could not be read (' + (s.status || s.error) + ')'); return; }
+  const preview = s.body[0] && s.body[0].data && s.body[0].data.previewKey;
+  if (preview) fail('the preview key is in the settings every visitor downloads: run supabase-hardening.sql (START-HERE.txt, step B)');
+  else ok('the preview key is not in the public settings');
+}
+
 (async () => {
   console.log('\nChecking ' + BASE + ' (read only)');
   const home = await peek('/');
@@ -279,6 +342,7 @@ async function checkBuild() {
   await checkPayments();
   await checkConfig();
   await checkBuild();
+  await check76();
   console.log('\n  ' + (fails ? fails + ' to fix' : 'nothing to fix') + (notes ? ', ' + notes + ' worth knowing' : '') + '\n');
   process.exit(fails ? 1 : 0);
 })();

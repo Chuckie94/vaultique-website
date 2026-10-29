@@ -799,8 +799,18 @@
         paint();
         box.value = body;
         grow();
-        say('That did not send. Check your connection and try again.', 'err');
+        say(sendTrouble(e), 'err');
       });
+  }
+
+  /* Why a message did not go. Since build 76 the database also limits
+     how quickly one connection can start conversations and write
+     (supabase-hardening.sql), and that is said as what it is: a person
+     told to check a connection that is fine would only try harder. */
+  function sendTrouble(e) {
+    return /Too many/i.test(String((e && e.message) || ''))
+      ? 'That is a lot of messages at once. Please wait a minute, then send it again.'
+      : 'That did not send. Check your connection and try again.';
   }
 
   /* The shop closed the thread and the customer has more to say. Rather
@@ -812,8 +822,8 @@
     return ensureConversation()
       .then(function () { return rpc('chat_send', { p_token: token, p_body: body }); })
       .then(function () { msgs = []; lastAt = null; status = 'open'; return ask(); })
-      .catch(function () {
-        say('That did not send. Check your connection and try again.', 'err');
+      .catch(function (e) {
+        say(sendTrouble(e), 'err');
       });
   }
 
@@ -907,7 +917,7 @@
           return sendPhoto(file, true);
         }
         say(why === 'too big' ? 'That photo is too large to send. Try a smaller one.'
-          : why.indexOf('too many photos') > -1 ? 'That is a lot of photos at once. Please wait a little and try again.'
+          : /too many/i.test(why) ? 'That is a lot of photos at once. Please wait a little and try again.'
           : 'The photo did not send. Check your connection and try again.', 'err');
       });
   }

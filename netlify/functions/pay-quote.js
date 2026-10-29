@@ -12,7 +12,7 @@ exports.handler = async function (event) {
   try {
     const s = await P.shopSettings();
     if (!P.onlineOn(s)) return P.json(403, { error: 'Online payment is switched off.', off: true });
-    if (P.shopClosed(s.general, body.preview)) return P.json(403, { error: 'The shop is not taking orders at the moment.' });
+    if (await P.closedFor(s.general, body.preview)) return P.json(403, { error: 'The shop is not taking orders at the moment.' });
     const q = await P.priceOrder(s, body.items, body.fulfilment, body.preview, String(body.town || '').slice(0, 60));
     if (q.problems) return P.json(409, { problems: q.problems, deliveryProblem: q.deliveryProblem });
     return P.json(200, q);

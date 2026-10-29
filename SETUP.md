@@ -6,6 +6,42 @@ never touches it. Products keep coming from the POS automatically.
 
 You will do five short steps. It takes about 10 minutes.
 
+> ### The SQL files, and the order they go in (build 76)
+>
+> **A shop that is already running** — this one — runs **only
+> `supabase-hardening.sql`** from build 76 on: it is safe to run again, as
+> often as you like, and ends with a report. Once it has been run, the older
+> `supabase-*.sql` files **refuse to run** and say so, changing nothing,
+> because each of them would quietly put back something the hardening took
+> away. Wherever this guide says an older file "is safe to run again", that
+> was true before build 76; it is not needed any more.
+>
+> **A brand-new Supabase project** runs every file once, in this order, then
+> the hardening last:
+>
+> ```
+>  1 supabase-setup.sql            15 supabase-chat-jobs.sql
+>  2 supabase-chat.sql             16 supabase-chat-realtime.sql
+>  3 supabase-chat-phase2.sql      17 supabase-chat-photos.sql
+>  4 supabase-chat-phase3.sql      18 supabase-payments.sql
+>  5 supabase-chat-phase4.sql      19 supabase-chat-mentions.sql
+>  6 supabase-chat-phase5.sql      20 supabase-chat-handover.sql
+>  7 supabase-chat-phase6.sql      21 supabase-analytics-live.sql
+>  8 supabase-chat-phase7.sql      22 supabase-analytics-sources.sql
+>  9 supabase-chat-phase8.sql      23 supabase-rewards.sql
+> 10 supabase-chat-phase9.sql      24 supabase-signup.sql
+> 11 supabase-chat-phase10.sql     25 supabase-new-arrivals.sql
+> 12 supabase-fixes.sql            26 supabase-sold-out.sql
+> 13 supabase-product-pulse.sql    27 supabase-browsing-towns.sql
+> 14 supabase-analytics.sql        28 supabase-cart-pieces.sql
+>                                  then supabase-hardening.sql
+> ```
+>
+> Upload the website **before** running `supabase-hardening.sql`, and wait for
+> Netlify to say Published: the admin pages from before build 76 would take the
+> database's new two-factor questions for a refusal. (`supabase-safety-check.sql`,
+> from build 74, is not in the list: the hardening's report replaces it.)
+
 ---
 
 ## 1. Create a new Supabase project (separate from the POS)
@@ -141,8 +177,10 @@ rather than trusting the page.
 
 **Changing somebody's role** is the dropdown on their row. **New password**
 gives them a fresh temporary one and makes them choose their own again — that
-is what to press when somebody cannot get in. **Switch off** stops them
-signing in and keeps their replies readable in the conversations they handled.
+is what to press when somebody cannot get in. **Switch off** stops them — at
+the database, not only on the page, once `supabase-hardening.sql` has been run
+(before build 76 it only hid the admin from them) — and keeps their replies
+readable in the conversations they handled.
 **Remove** takes away their access and leaves their login alone: it may be a
 customer account as well, and deleting it would take their orders with it.
 
@@ -177,6 +215,13 @@ a server-side function ever holds it.
 Until you do that, the page still lists people, changes their roles and
 switches them on and off — it only needs the key to *create* a login or set a
 new password, and it tells you exactly this if you try without it.
+
+**Since build 76 the website needs this key for two more things.** WhatsApp
+orders are recorded in the Orders tab by the website's own `place-order`
+function, which prices them from the catalogue and writes them with this key;
+after `supabase-hardening.sql` nothing else may write an order. Without the key
+the WhatsApp message still goes, so no sale is lost, but the order never reaches
+the Orders tab. The newsletter's "send me a link to rejoin" email uses it too.
 
 **If you ran an earlier version.** There used to be a second kind of login that
 signed in at `/agent.html`. That page is gone and so is the separate list. The
@@ -221,8 +266,13 @@ the panel closed and the phone in a pocket.
 
 **Each person turns on their own device.** Open **Live Chats** on the phone
 that should buzz and press **Notify me here**. That is it — there is nothing to
-copy, no key to paste, and no Netlify variable to add. The keys were generated
-for this shop and are already in the file.
+copy, no key to paste, and no Netlify variable to add. The shop's notification
+keys are made by the owner's own browser the first time the owner opens **Live
+Chats** after running **supabase-hardening.sql** (build 76), so nobody else ever
+holds them; until then *Notify me here* says to ask the owner to open it.
+(Up to build 75 the keys came written into the file, the same in every copy of
+the website; build 76 retires those, and every device has to press *Notify me
+here* once more.)
 
 Do the same on every device that should buzz. A phone, a laptop and a tablet
 are three separate presses; turning one off leaves the others alone.
@@ -253,22 +303,23 @@ Only the shop owner's browser can set it, and that is a real boundary rather
 than tidiness: a secret travels to that address, so somebody who could point it
 elsewhere would be handed it.
 
-So the order is: run the file, upload the folder, **open Live Chats once**, then
-press *Notify me here*.
+So the order is: run the file and **supabase-hardening.sql**, upload the folder,
+**the owner opens Live Chats once**, then everybody presses *Notify me here*.
 
 **If the phones never buzz**, in this order:
 
 1. Was **Notify me here** actually pressed on that device? It says *Notifying
    this device* when it is on.
 2. On an iPhone — was it opened from the Home Screen icon, or from a tab?
-3. Has the owner opened Live Chats at least once since running the file? That
-   is what fills the address in. Check with:
+3. Has the owner opened Live Chats at least once since running the files? That
+   is what fills the address in and makes the keys. Check with:
    ```sql
-   select data->>'siteUrl' from public.site_settings_private where key = 'chat_push';
+   select data->>'siteUrl' as address, public.chat_push_key() is not null as has_keys
+     from public.site_settings_private where key = 'chat_push';
    ```
-   Blank means nobody has, and blank means no notifications at all — on purpose,
-   because a wrong address would fail silently and a blank one is a state that
-   fixes itself.
+   A blank address or `has_keys = false` means the owner has not — and that
+   means no notifications at all, on purpose: a wrong address would fail
+   silently, and a blank one is a state that fixes itself.
 4. Supabase > **Database** > **Extensions**: `pg_net` should be enabled. The
    file turns it on, but a project can refuse.
 
@@ -653,7 +704,10 @@ confirmation goes to the customer and to you automatically.
    **Test**, and save. The line at the top should show ✓ against every item.
 7. **Try it** on your phone: add something to the cart, press **Pay now**, and pay
    with one of Flutterwave's test cards or test mobile money numbers (listed in
-   their documentation under "Testing"). Check the order shows **Paid ✓**.
+   their documentation under "Testing"). Check the order shows **Paid ✓**, and
+   beside it **TEST · no money moved** (build 76, once `supabase-hardening.sql`
+   has been run). Test payments are not counted in the Dashboard's or
+   Analytics' sales.
 8. When you are ready, set the mode to **Live**, save, and make one small real
    purchase yourself.
 
@@ -1420,7 +1474,8 @@ How many people came to the website, what they looked at, and on what.
 
 **Orders** and **Sales** come from the Orders tab. To remove a test order from
 these figures, open **Orders**, find it, and press **Delete** (or set its status
-to **Cancelled**; cancelled orders are not counted).
+to **Cancelled**; cancelled orders are not counted). An order paid online in
+Test mode is left out by itself (build 76).
 
 **Added to cart** (build 70). Press **See which pieces** under the number, or
 open the **Added to cart** card: every piece added to a cart in the dates shown,
@@ -1779,10 +1834,12 @@ These are not the same thing and the difference matters.
 - **Unsubscribe** records that they left. The address stays in the list, greyed
   out, and you are handed your unsubscribe wording, ready to send back to them.
   **Nothing on your site puts them back by accident** — the tick-box beside a
-  new account will not, however many times they open one. The one thing that
-  will is the person typing their own address into the newsletter box
-  themselves, because that is them asking, and telling somebody they had
-  rejoined while quietly leaving them off would be worse than either.
+  new account will not, however many times they open one. Since build 76, nor
+  does typing the address into the newsletter box: anybody could type anybody's
+  address. Instead the website emails that address a link (through Settings >
+  Notifications, the same email as "Send a test email"), and only the person
+  who opens it and presses the button is put back. If the shop's email is not
+  set up, the form tells them to contact you instead.
 - **Delete** erases them completely. Use it when somebody asks to be forgotten
   entirely. Afterwards nothing stops the address being added again.
 
@@ -1894,15 +1951,35 @@ Press **Set up two factor**, scan the square with Google Authenticator, Microsof
 Authenticator, Authy or any app of that kind, then type the code it shows. From
 then on, signing in asks for a code as well.
 
-> **Keep the app.** If you lose the phone and have no other way in, only Supabase
-> can let you back into your own admin. Most authenticator apps can back
-> themselves up — turn that on when you set it up.
+> **Keep the app, and keep the setup code.** When you set it up, the admin shows
+> a code under the square (a line of capital letters and figures). Write it down
+> and keep it somewhere safe away from the phone: typed into a new phone's
+> authenticator app, it gives the same six-digit codes. Most authenticator apps
+> can also back themselves up — turn that on.
 
 This is checked **every time you sign in**, including when you come back to a tab
-that was already open. It is enforced by this admin page, which is what stops a
-person with your password. Someone who bypassed the page entirely and spoke to
-the database directly would not be stopped by it — if you ever want that closed
-too, say so and I will add the database rule for it.
+that was already open — and since build 76 (`supabase-hardening.sql`) it is
+checked by the **database** too, so somebody who has your password but not your
+phone gets nothing, however they ask.
+
+**Required, not optional, for some people (build 76).** Two-factor is required
+for the owner, and for anybody whose role is ticked for **Settings**, **Orders**
+or **Subscribers** (Settings > Users & Roles says so under each role). The first
+time they sign in after the hardening, the admin shows them how to set it up
+before anything else, and the button to turn it off is not offered to them. For
+anybody else, an Agent who only answers chats for instance, it stays optional.
+
+**Lost the phone and the setup code?** In the website's Supabase, SQL Editor:
+
+```sql
+delete from auth.mfa_factors
+ where user_id = (select id from auth.users where email = 'THE-PERSON@EXAMPLE.COM');
+```
+
+They then sign in with their password, and the admin asks them to set
+two-factor up again, on the new phone. The owner can do this for anybody on the
+staff. Only somebody who can sign in to Supabase itself can run it, which is the
+point.
 
 #### Signing in
 
@@ -2052,11 +2129,13 @@ You get the real shop — products, checkout, chat, all of it working — while
 everybody else still gets the notice. The key is remembered for that tab, so
 you can click around without repeating it, and closing the tab forgets it.
 
-**Be clear about what it is.** It is a door key, not a password. It sits in the
-same settings the storefront reads, so it is not a secret and is not meant to
-be one. What it stops is a customer wandering in while you work, which is the
-thing that actually happens. If you leave it empty, nobody gets past the notice
-— including you.
+**Be clear about what it is.** It is a door key, not a password: anybody you
+send the link to can use it. Until build 76 it sat in the same settings every
+visitor's browser downloads, so anybody who looked could find it; since
+`supabase-hardening.sql` it is kept with the private settings (like the bank
+details), only people who may open Settings see it, and the database checks it
+when somebody uses it. If you leave it empty, nobody gets past the notice —
+including you.
 
 Change it whenever you like; the old one stops working the moment you save.
 - **Reviews:** every review left on the site appears here. Mark a review as

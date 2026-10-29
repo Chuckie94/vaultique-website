@@ -96,12 +96,20 @@ const server = http.createServer(async (req, res) => {
   }
   if (p === '/web/rest/v1/site_settings_private') return send(200, [{ data: { smtpPassword: 'x' } }]);
   if (p === '/web/rest/v1/product_meta') return send(200, META);
+  // Who a signed-in customer is, as Supabase answers it (build 76: the
+  // functions ask, rather than taking the browser's word).
+  if (p === '/web/auth/v1/user') {
+    return (req.headers.authorization || '') === 'Bearer customer-jwt'
+      ? send(200, { id: 'cust-1', email: 'chanda@mail.test' }) : send(401, { msg: 'invalid JWT' });
+  }
   if (p === '/web/rest/v1/rpc/place_order') {
+    // After supabase-hardening.sql only the service key may call it.
+    if (!service) return send(401, { message: 'permission denied for function place_order' });
     const b = JSON.parse(body);
     const id = 'ord-' + (++seq);
     const ref = 'VB-' + String(seq).padStart(5, 'A').slice(-5).replace(/[^A-Z0-9]/g, 'A');
     DB.orders.push(Object.assign({ id, ref, status: 'pending', created_at: new Date().toISOString() }, b.p_order,
-      { auth: req.headers.authorization }));
+      { auth: req.headers.authorization, customer: b.p_customer || null }));
     b.p_items.forEach(i => DB.order_items.push(Object.assign({ order_id: id }, i)));
     return send(200, { id, ref });
   }
@@ -223,8 +231,10 @@ const server = http.createServer(async (req, res) => {
     is(made && made.payment_options === 'card, mobilemoneyzambia', 'card and mobile money are offered');
     is(made && made.redirect_url === 'https://vaultiqueboutique.com/payment-return', 'and the customer comes back to this site');
     const order = DB.orders[0];
-    is(order && order.total === 1380 && order.auth === 'Bearer customer-jwt',
-       'the order is recorded through place_order, in the customer\'s own account');
+    is(order && order.total === 1380 && order.auth === 'Bearer service-key' && order.customer === 'cust-1',
+       'the order is recorded through place_order with the service key, in the account Supabase vouched for',
+       order && JSON.stringify({ auth: order.auth, customer: order.customer }));
+    is(order && order.pay_mode === 'test', 'and marked on the order itself as a TEST payment (build 76)');
     is(order && order.payment_status === 'awaiting' && order.delivery_fee === 80 && order.goods_total === 1300,
        'marked awaiting payment, with the goods and delivery kept apart');
     is(DB.order_items.length === 2 && DB.order_items[0].price === 500, 'with its lines at the server\'s prices');

@@ -458,20 +458,21 @@
     return enabled() && api.settings.orderHistory !== false;
   }
 
-  /* Written through place_order() in the database rather than by
-     inserting here, because a guest cannot do it from this side.
-     `or_insert` lets the row in, but PostgreSQL applies the table's
-     SELECT policies to anything an insert RETURNs, and asking for the
-     new row's id — which the lines need — made the whole insert fail
-     for anyone not signed in. The lines were refused as well:
-     `oi_insert` asks whether the order exists, and that question is
-     answered under the caller's own reading rights, which show a guest
-     nothing. One call to a function that has the standing to do it
-     settles both, and writes the order and its lines together, so the
-     Orders tab never shows half of one.
+  /* Recorded by the website's place-order function (build 76).
 
-     The reference is made in there too, so two people pressing Continue
-     in the same second cannot land on the same one.
+     The order used to be written from here, through the database's
+     place_order, with the prices this page worked out. A browser can be
+     made to say anything, so a WhatsApp order could reach the Orders tab
+     saying K1 for anything and be added to Sales. Now this says only which
+     pieces and how many; the function prices every line from the
+     catalogue, the same way an online payment is priced, and writes the
+     order with a key no browser holds.
+
+     Who placed it goes with it as this browser's own sign-in, which the
+     function checks with Supabase before filing the order under them.
+
+     The reference is made in the database, so two people pressing
+     Continue in the same second cannot land on the same one.
 
      Recorded whether or not customer accounts are switched on. This is
      the shop's own record of what was asked for; `orderHistory` is a
@@ -479,23 +480,21 @@
      customer is shown their own, in myOrders() below. */
   function recordOrder(order) {
     var payload = {
-      p_order: {
+      order: {
         name: order.name || null, phone: order.phone || null,
         email: order.email || null, address: order.address || null,
         notes: order.notes || null,
-        fulfilment: order.fulfilment === 'collection' ? 'collection' : 'delivery',
-        total: (order.total === undefined || order.total === null) ? null : Number(order.total),
-        currency: order.currency || null
+        fulfilment: order.fulfilment === 'collection' ? 'collection' : 'delivery'
       },
-      p_items: (order.items || []).map(function (it) {
-        return { sku: it.sku || null, name: it.name || null,
-                 price: (it.price === undefined ? null : Number(it.price)),
-                 qty: it.qty || 1 };
+      /* The name rides along only for a piece the catalogue no longer
+         knows, so the shop can still see what was asked for. */
+      items: (order.items || []).map(function (it) {
+        return { sku: it.sku || null, name: it.name || null, qty: it.qty || 1 };
       }),
       /* Nothing while the shop is open. While it is shut the database
          refuses an order, and this is the owner's way to test one. */
-      p_preview: (typeof renderHooks.previewKey === 'function'
-                    ? (renderHooks.previewKey() || null) : null)
+      preview: (typeof renderHooks.previewKey === 'function'
+                  ? (renderHooks.previewKey() || null) : null)
     };
 
     function answer(d) {
@@ -504,25 +503,15 @@
     }
     function lost(e) { return { error: e }; }
 
-    /* With a client, because it carries the session: an order placed by
-       somebody signed in has to be filed under them, and auth.uid()
-       inside the function is what does that. */
-    if (sb) {
-      return sb.rpc('place_order', payload).then(function (r) {
-        if (r && r.error) return lost(r.error);
-        return answer(r && r.data);
-      }, lost);
-    }
-
-    /* Without one, because a shop with accounts switched off never
-       downloads it — and those orders are still the shop's to keep. The
-       storefront hands over the same call made plainly, the way reviews
-       and the newsletter already go. Nobody can be signed in without a
-       client, so this path is always a guest and the function files it
-       as one. */
-    var direct = renderHooks.placeOrder;
-    if (!direct) return Promise.resolve(null);
-    return Promise.resolve().then(function () { return direct(payload); }).then(answer, lost);
+    var send = renderHooks.placeOrder;
+    if (!send) return Promise.resolve(null);
+    var token = (sb && signedIn())
+      ? Promise.resolve(sb.auth.getSession()).then(function (r) {
+          var s = r && r.data && r.data.session;
+          return (s && s.access_token) || null;
+        }, function () { return null; })
+      : Promise.resolve(null);
+    return token.then(function (t) { return send(payload, t); }).then(answer, lost);
   }
 
   function myOrders() {

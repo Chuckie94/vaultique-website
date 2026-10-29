@@ -52,6 +52,7 @@ vaultique-website/
 ├── tests/                     checks that can be re-run against a later build
 ├── tools/
 │   ├── build-site.cjs         what Netlify publishes: run on every deploy (build 75)
+│   ├── db-check.sh            the database, checked: setup files, hardening, the audit's checks (build 76)
 │   └── live-check.cjs         checks the live site from outside, read only
 └── images/                    optional photos, named by SKU (see README there)
 ```
@@ -130,6 +131,17 @@ psql -d <scratch db> -f tests/chat-jobs-fixture.sql -f tests/chat-photos-fixture
 psql -d <scratch db> -f tests/chat-jobs-fixture.sql \
                      -f supabase-chat-jobs.sql \
                      -f tests/chat-jobs.sql     the job-enquiry filter
+node tests/build-site.test.cjs           what Netlify publishes, and what stops a deploy (build 75)
+node tests/csp-report.test.cjs           the Content Security Policy's report function (build 75)
+node tests/csp.browser.cjs               every page under the policy, with nothing it would block (build 75)
+node tests/place-order.test.cjs          a WhatsApp order, priced by the website from the catalogue (build 76)
+node tests/admin-two-factor.browser.cjs  two-factor at the admin's door; TEST on a test payment (build 76)
+node tests/chat-keys.browser.cjs         the shop's own notification keys, made in the owner's browser (build 76)
+node tests/newsletter.test.cjs           joining the newsletter; back on it only by a link from that inbox (build 76)
+node tests/newsletter.browser.cjs        the newsletter form, as a visitor sees it (build 76)
+bash tools/db-check.sh                   supabase-hardening.sql on a stand-in Supabase: the 28 files, the
+                                         hardening twice, the older files refusing, then tests/hardening.sql
+                                         (build 76; one-time setup in tests/supabase-standin/README.txt)
 ```
 
 The browser ones need Playwright (`npm install playwright`); the two SQL

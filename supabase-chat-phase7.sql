@@ -25,15 +25,40 @@
 --     notification that fails is a missed buzz, and a message that
 --     fails is a lost customer.
 --
--- WHAT YOU HAVE TO DO: run this file. That is all — there is nothing in
--- it to fill in or check. The keys below were generated for this shop
--- and are written into site_settings_private, which has no public read
--- policy: the website cannot read it and neither can a customer.
+-- WHAT YOU HAVE TO DO: run this file, then supabase-hardening.sql. That
+-- is all — there is nothing in either to fill in or check. The secret
+-- below is made by the database itself, and the keys by the owner's own
+-- browser the first time the owner opens Live Chats; both are kept in
+-- site_settings_private, which has no public read policy: the website
+-- cannot read it and neither can a customer.
 --
 -- The one thing this file cannot know is the address the shop's website
 -- answers at, so it does not guess. The first time the owner opens Live
 -- Chats, the browser tells the database the address it is being used at.
 -- ---------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------
+-- NOT AFTER BUILD 76'S HARDENING. Once supabase-hardening.sql has been
+-- run on this project it holds the newer version of everything this
+-- file sets up, and running this one again would quietly put back an
+-- older, weaker one. So it stops here, before changing anything.
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_done boolean := false;
+begin
+  -- Asked through EXECUTE because on a project that has never run the
+  -- hardening the table does not exist, and a plain query naming it
+  -- would stop this file before it started.
+  if to_regclass('public.schema_migrations') is not null then
+    execute 'select exists (select 1 from public.schema_migrations where version >= ''076'')' into v_done;
+  end if;
+  if v_done then
+    raise exception using
+      message = 'Not run, and nothing was changed: supabase-hardening.sql (build 76) has already been run on this project and replaces this file. If you were running this file again because older instructions said it was safe to, you do not need to: run supabase-hardening.sql again instead.',
+      hint = 'Only if this file has never been run on this project and you need it: run  delete from public.schema_migrations where version = ''076-hardening'';  then this file, then supabase-hardening.sql again.';
+  end if;
+end $$;
 
 create extension if not exists pg_net with schema extensions;
 
@@ -228,15 +253,23 @@ create trigger chat_one_voice_t
 -- can a customer. Only this shop's own functions and the sender, which
 -- reads them with the service role key from outside these rules.
 --
+-- No keys are written here (build 76). Up to build 75 this file carried
+-- one key pair and one secret that every copy of the website shared, so
+-- anybody holding any copy could sign a notification to the shop's
+-- phones. Now:
+--   * the secret is made here, by this database, at random;
+--   * the key pair is made by the owner's own browser the first time the
+--     owner opens Live Chats, and stored through chat_push_keys_set
+--     (supabase-hardening.sql). Until then "Notify me here" says so.
+--
 -- Written once. Running this file again leaves whatever is there,
 -- so the keys never change under devices that have already subscribed —
 -- changing them would silence every phone until it subscribed again.
 -- ---------------------------------------------------------------------
 insert into public.site_settings_private (key, data)
 values ('chat_push', jsonb_build_object(
-  'vapidPublic',  'BAwIM3PoXqqdmloCT-l3wymrUKhFTc_eFtnemss4NyPAoKBbpL99_7R_JBPYdGwzmOtY-JMobix3x1xZLZSVB9w',
-  'vapidPrivate', '1ebigkWGU6PdDbHjDqhxLebRYHmkvD347GevngFMvRM',
-  'secret',       '4ScGtkubiXPyCmdV5LQoVlVNtJPZWJyP',
+  'secret',          replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+  'secretRotatedAt', now(),
   -- Deliberately blank. This is where the database sends the "somebody
   -- wrote" nudge, and it is the one value in this file that nobody can
   -- know but the shop — so nobody types it. The first time the owner
@@ -247,8 +280,9 @@ values ('chat_push', jsonb_build_object(
   -- fails, by design, so a wrong address here would mean phones that
   -- never buzz and nothing anywhere saying why. Blank means no nudge at
   -- all until the address is known, which is a state that fixes itself.
-  'siteUrl',      '',
-  'subject',      'mailto:chimukachipini@gmail.com'
+  -- The same address is what the push services are given as the shop's
+  -- contact, rather than anybody's email.
+  'siteUrl',         ''
 ))
 on conflict (key) do nothing;
 
@@ -477,7 +511,7 @@ grant execute on function public.chat_push_site(text)                   to authe
 -- ---------------------------------------------------------------------
 -- Checking it took
 --
---   select public.chat_push_key();            -- the long B... string
+--   select public.chat_push_key();            -- a long B... string, once the owner has opened Live Chats
 --   select count(*) from public.chat_push;    -- devices, once you subscribe
 --   select key from public.site_settings_private;  -- should list chat_push
 --

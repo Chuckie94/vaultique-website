@@ -23,9 +23,9 @@ B. THE BROWSER  (three drags, because GitHub takes 100 files at a time)
 ------------------------------------------------------------------------
   Add file > Upload files, drag, then Commit changes. Three times:
 
-  Drag 1 — two FOLDERS together:     assets   netlify          (91 files)
-  Drag 2 — three FOLDERS together:   tests   images   tools    (82 files)
-  Drag 3 — every loose file at the top level                   (39 files)
+  Drag 1 — two FOLDERS together:     assets   netlify          (93 files)
+  Drag 2 — three FOLDERS together:   tests   images   tools    (93 files)
+  Drag 3 — every loose file at the top level                   (40 files)
 
   (Until build 75 this said two drags, with all five folders in the
   first. That was already more than 100 files, and build 75 adds more.)
@@ -61,3 +61,10 @@ Netlify rebuilds on its own, usually within a minute or two. Then follow
 the steps at the top of START-HERE.txt: uploading runs no SQL, and it never
 deletes a file. When a build takes a file away, START-HERE names it, and it
 has to be deleted from your repository by hand.
+
+BUILD 76: UPLOAD FIRST, SQL SECOND. Wait until Netlify > Deploys shows
+this upload as Published, and only then run supabase-hardening.sql in
+the website's Supabase (START-HERE.txt, step B). The other way round, the
+admin pages from build 75 would take the database's new two-factor
+questions for a refusal and sign you out. If that happens anyway: finish
+the upload, wait for Published, and sign in again.

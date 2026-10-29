@@ -64,7 +64,7 @@ const server = http.createServer(async (req, res) => {
   const send = (code, o, type) => { res.writeHead(code, { 'Content-Type': type || 'application/json' }); res.end(o === undefined ? '' : (typeof o === 'string' ? o : JSON.stringify(o))); };
   const service = (req.headers.authorization || '') === 'Bearer service-key';
 
-  if (p.startsWith('/.netlify/functions/pay-')) {
+  if (p.startsWith('/.netlify/functions/pay-') || p === '/.netlify/functions/place-order') {
     const name = p.split('/').pop();
     const r = await FN[name]({ httpMethod: req.method, body, headers: req.headers,
                                queryStringParameters: Object.fromEntries(u.searchParams) });
@@ -90,6 +90,8 @@ const server = http.createServer(async (req, res) => {
     return send(200, SETTINGS[key] ? [{ data: SETTINGS[key] }] : []);
   }
   if (p === '/web/rest/v1/rpc/place_order') {
+    // After supabase-hardening.sql (build 76) only the service key may call it.
+    if (!service) return send(401, { message: 'permission denied for function place_order' });
     const b = JSON.parse(body); const id = 'ord-' + (++seq); const ref = 'VB-ABCD' + seq;
     DB.orders.push(Object.assign({ id, ref, status: 'pending' }, b.p_order));
     b.p_items.forEach(i => DB.order_items.push(Object.assign({ order_id: id }, i)));
@@ -127,6 +129,7 @@ const server = http.createServer(async (req, res) => {
     'pay-quote': require(path.join(F, 'pay-quote')).handler,
     'pay-start': require(path.join(F, 'pay-start')).handler,
     'pay-status': require(path.join(F, 'pay-status')).handler,
+    'place-order': require(path.join(F, 'place-order')).handler,
     products: require(path.join(F, 'products')).handler,
   };
   const browser = await chromium.launch();
@@ -268,6 +271,12 @@ const server = http.createServer(async (req, res) => {
       const wa = await page.evaluate(() => window.__opened);
       is(wa.length === 1 && /wa\.me\/260970000000/.test(wa[0]),
          'still goes straight to WhatsApp, without asking for the email', JSON.stringify(wa));
+      await page.waitForTimeout(600);
+      const rec = DB.orders[DB.orders.length - 1];
+      const lines = DB.order_items.filter(i => rec && i.order_id === rec.id);
+      is(rec && rec.name === 'Chanda' && rec.total === 1300 && lines.length === 2 && lines[0].price === 500,
+         'and the order reaches the Orders tab at the catalogue\'s prices, priced by the server (build 76)',
+         JSON.stringify({ rec, lines }));
 
       console.log('\nPaying online');
       await checkout(page);

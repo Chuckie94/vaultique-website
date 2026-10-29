@@ -323,7 +323,11 @@ const stock = p => p.evaluate(() => {
         { id: '5', ref: 'VB-005', total: 500,  currency: 'ZMW', status: 'pending', created_at: at(0),
           payment_method: 'online', payment_status: 'paid' },
         { id: '6', ref: 'VB-006', total: 700,  currency: 'ZMW', status: 'pending', created_at: at(0),
-          payment_method: 'online', payment_status: 'awaiting' }
+          payment_method: 'online', payment_status: 'awaiting' },
+        /* "Paid" with a test card while payments were in Test mode (build
+           76): no money moved, so not a sale either. */
+        { id: '7', ref: 'VB-007', total: 4000, currency: 'ZMW', status: 'pending', created_at: at(0),
+          payment_method: 'online', payment_status: 'paid', pay_mode: 'test' }
       ] },
       'customers:count': { count: 42 },
       customers: { data: [{ created_at: at(2) }, { created_at: at(5) }] },
@@ -344,9 +348,9 @@ const stock = p => p.evaluate(() => {
 
     group('Orders are counted the way a shop counts them');
     c = await cardBy(page, 'Orders');
-    is(c && c.n === '3', 'three orders today — the cancelled one and the unpaid online one are not among them', JSON.stringify(c));
+    is(c && c.n === '3', 'three orders today — the cancelled one, the unpaid online one and the test payment are not among them', JSON.stringify(c));
     c = await cardBy(page, 'Order value');
-    is(c && /5,550/.test(c.n), 'and today is worth 1850 + 3200 + 500 paid online, with the cancelled 900 and the unpaid 700 left out',
+    is(c && /5,550/.test(c.n), 'and today is worth 1850 + 3200 + 500 paid online, with the cancelled 900, the unpaid 700 and the test 4000 left out',
        c && c.n);
     is(c && /K/.test(c.n), 'shown in the shop’s own money', c && c.n);
     is(c && /7,950/.test(c.s), 'the week includes the older order and still excludes the cancelled',

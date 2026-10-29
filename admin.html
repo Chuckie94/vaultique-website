@@ -77,6 +77,25 @@
     <div style="margin-top:14px"><button class="btn btn-out btn-sm" id="mfaCancel">Sign out instead</button></div>
   </div>
 
+  <!-- Two-factor that this account must have and has not set up yet
+       (build 76): the owner, and anybody whose role can open Settings,
+       Orders or Subscribers. The database refuses the account until it
+       is done, so this is the way in, not a nag. -->
+  <div class="panel hide" id="mfaSetup">
+    <h1 class="serif">Set up two-factor</h1>
+    <p>Your account needs a code from an authenticator app as well as your password. It takes a minute, once.</p>
+    <p class="hint">1. Open an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, Authy or similar) and add an account by scanning this.</p>
+    <img class="sec-qr hide" id="mfaSetupQr" alt="QR code for setting up two-factor" />
+    <p class="hint">Cannot scan it? Type this into the app instead:</p>
+    <p class="sec-secret" id="mfaSetupSecret">…</p>
+    <p class="hint">Keep a copy of that code somewhere safe, away from the phone. It is how you put the app back on a new phone.</p>
+    <label for="mfaSetupCode">2. Enter the six digit code the app now shows</label>
+    <input type="text" id="mfaSetupCode" inputmode="numeric" autocomplete="one-time-code" maxlength="7" />
+    <div style="margin-top:18px"><button class="btn btn-gold" id="mfaSetupBtn" style="width:100%">Turn it on and continue</button></div>
+    <div class="msg" id="mfaSetupMsg"></div>
+    <div style="margin-top:14px"><button class="btn btn-out btn-sm" id="mfaSetupCancel">Sign out instead</button></div>
+  </div>
+
   <!-- Somebody signing in on a password the owner handed them. They do
        not get past this: the password they were given is known to
        somebody else, and a shared password is nobody's. -->

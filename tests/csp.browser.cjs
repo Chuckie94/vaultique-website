@@ -51,6 +51,9 @@ const META = [{ sku: 'VB-DRS-001', image_url: 'https://img.example.test/dress.jp
 /* Settings > General with two shops in it: the visit panel then draws its
    own map (Leaflet, with OpenStreetMap's tiles) instead of Google's frame. */
 let GENERAL = null;
+/* What admin_gate answers (build 76); null is a database from before it. */
+let GATE = null;
+const QR_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="black"/></svg>';
 const TWO_SHOPS = { address: 'Cairo Road', city: 'Lusaka', country: 'Zambia', mapPoints: [
   { name: 'Lusaka', lat: -15.4167, lng: 28.2833, address: 'Cairo Road' },
   { name: 'Kitwe', lat: -12.8024, lng: 28.2132, address: 'Freedom Avenue' }] };
@@ -122,6 +125,7 @@ const server = http.createServer((req, res) => {
   if (p === '/rest/v1/rpc/my_access') {
     return send(200, 'application/json', JSON.stringify({ is_admin: true, is_owner: true, active: true, permissions: null }));
   }
+  if (p === '/rest/v1/rpc/admin_gate' && GATE) return send(200, 'application/json', JSON.stringify(GATE));
   if (p.indexOf('/rest/v1/rpc/') === 0) return send(200, 'application/json', 'null');
   if (p === '/rest/v1/admins') return send(200, 'application/json', JSON.stringify([{ id: OWNER, role: 'owner', active: true }]));
   if (p.indexOf('/rest/v1/') === 0) {
@@ -134,6 +138,10 @@ const server = http.createServer((req, res) => {
   }
   if (p === '/auth/v1/user') return send(200, 'application/json', JSON.stringify(USER));
   if (p.indexOf('/auth/v1/token') === 0) return send(400, 'application/json', '{"message":"no refresh here"}');
+  if (p === '/auth/v1/factors' && req.method === 'POST') {
+    return send(200, 'application/json', JSON.stringify({ id: 'f9', type: 'totp', friendly_name: 'Vaultique admin',
+      totp: { qr_code: QR_SVG, secret: 'JBSWY3DPEHPK3PXP', uri: 'otpauth://totp/Vaultique:owner@shop.test?secret=JBSWY3DPEHPK3PXP' } }));
+  }
   if (p.indexOf('/auth/v1/') === 0) return send(200, 'application/json', '{}');
   if (p.indexOf('/storage/v1/') === 0) return send(200, 'application/json', '[]');
   if (p.indexOf('/.netlify/functions/') === 0) return send(200, 'application/json', '{}');
@@ -359,6 +367,34 @@ let base = '';
       if (errors.length) console.log('      [' + errors.length + ' other script error(s) against the empty stand-in database, none from the policy: ' +
                                       errors.slice(0, 2).map(e => e.slice(0, 90)).join(' | ') + ']');
       await ctx.close();
+    }
+
+    console.log('\nThe admin, setting up two-factor (build 76)');
+    {
+      GATE = { staff: true, owner: true, active: true, required: true, enrolled: false, aal: 'aal1', ok: false };
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      await ctx.addInitScript(WATCH);
+      await ctx.addInitScript(s => { try { if (!localStorage.getItem('sb-127-auth-token')) localStorage.setItem('sb-127-auth-token', s); } catch (e) {} }, session());
+      await otherSites(ctx);
+      const page = await ctx.newPage();
+      const consoleCsp = [], errors = [];
+      page.on('console', m => { if (/Content Security Policy|Refused to/i.test(m.text())) consoleCsp.push(m.text()); });
+      page.on('pageerror', e => errors.push(String(e.message || e)));
+      await page.goto(base + '/admin.html', { waitUntil: 'domcontentloaded' });
+      let drawn = true;
+      try {
+        await page.waitForFunction(() => {
+          const q = document.getElementById('mfaSetupQr');
+          return !!q && !q.classList.contains('hide') && q.complete && q.naturalWidth > 0;
+        }, null, { timeout: 15000 });
+      } catch (e) { drawn = false; }
+      await page.waitForTimeout(400);
+      const secret = await page.evaluate(() => (document.getElementById('mfaSetupSecret') || {}).textContent || '');
+      is(drawn && secret === 'JBSWY3DPEHPK3PXP',
+         'the setup panel draws its square code and the code to type, with the real Supabase library', secret);
+      await noViolations({ page, consoleCsp, errors, label: 'two-factor setup' }, ', the square code included');
+      await ctx.close();
+      GATE = null;
     }
 
     console.log('\nWhat the pages asked this site for');

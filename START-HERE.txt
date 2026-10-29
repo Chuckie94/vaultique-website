@@ -1,7 +1,146 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 75
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 76
 ====================================================
-The whole site, cumulative (includes everything in builds 73 and 74).
+The whole site, cumulative (includes everything in builds 73, 74 and 75).
 Upload this and you are up to date.
+
+NEW IN 76 — SAFETY WORK, PART 3: THE DATABASE. ONE SQL FILE, RUN AFTER
+  THE UPLOAD. About forty minutes, most of it checking. If you have not
+  done build 74's and 75's steps yet (below), do those as well.
+  Do these in order. Each one says how you know it is done.
+
+  A. TWO CHECKS BEFORE YOU START.
+     1. Netlify: your website's site > Site configuration > Environment
+        variables > SUPABASE_SERVICE_ROLE_KEY (this website's
+        service_role key; build 74, step E). From this build on,
+        WhatsApp orders reach the Orders tab only through it. If you add
+        it now, the upload in B deploys it.
+     2. The WEBSITE's Supabase: Authentication > Multi-Factor (the menu
+        may call it Sign In / Providers > Multi-Factor): "TOTP (App
+        Authenticator)" must be Enabled. It usually is. If it were off,
+        nobody who must use two-factor could get in after step C.
+     Done when: both are as described.
+
+  B. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
+     browser it is three drags, as in 75.
+     Done when: Netlify > Deploys shows it as Published.
+     WAIT FOR PUBLISHED BEFORE C. The admin pages from build 75 cannot
+     work with what C changes: they would sign you out. (If that happens
+     anyway, wait for Published and sign in again.)
+
+  C. RUN supabase-hardening.sql in the WEBSITE's Supabase (not the
+     platform's): SQL Editor > New query > paste the whole file > Run.
+     If Supabase asks you to confirm because it sees words like "drop"
+     or "delete": confirm. The file replaces old rules with new ones,
+     retires the notification keys every copy of the website shared
+     (and the phone sign-ups made with them), and clears its own
+     two-day count of visits for the throttles. No order, customer,
+     product, chat, review or subscriber is deleted.
+     It ends with a report, one line per thing worth knowing. Do what
+     its last column says, and keep a copy (a screenshot is fine).
+     Done when: the last line says  This file | RECORDED (076-hardening).
+     It is safe to run again whenever you like; it then only reports.
+     If it stops at once saying "Nothing was changed", read the message:
+     it names the file to run first, or says what to send me.
+
+  D. SIGN IN TO THE ADMIN AS THE OWNER. You are shown "Set up
+     two-factor" with a square code. Scan it with an authenticator app
+     on your phone (Google Authenticator, Microsoft Authenticator,
+     Authy, 1Password...). WRITE DOWN the line of letters and figures
+     under the square, and keep it safe away from the phone: it is your
+     way back in if the phone is lost. Then type the six-digit code.
+     Done when: you are in the admin. Every sign-in now asks for a code.
+     Everybody whose role is ticked for Settings, Orders or Subscribers
+     is shown the same at their next sign-in. Agents who only answer
+     chats are not made to (Settings > Security still lets them).
+
+  E. CHECK THE ROLES: Settings > Users & Roles. What each role is ticked
+     for is now enforced by the database, not only by which tabs show,
+     and each role says whether two-factor is required for it. Somebody
+     who can no longer open something they need: tick it for their role.
+     Switch off now really stops a person; Remove still works as well.
+     Done when: each person can open what they need, and nothing more.
+
+  F. PHONE NOTIFICATIONS: as the owner, open Live Chats once. That makes
+     the shop's own notification keys, in your browser; nobody else ever
+     holds them. Then everybody who wants notifications opens Live Chats
+     on each phone or computer and presses "Notify me here" again.
+     Done when: the button says "Notifying this device", and a message
+     sent from the website's chat buzzes the phone.
+
+  G. ONE TEST ORDER: on the website, put a piece in the cart and check
+     out by WhatsApp (you need not send the WhatsApp message). In
+     Admin > Orders it appears at the catalogue price. Then set it to
+     Cancelled.
+     Done when: you have seen it at the right price, and cancelled it.
+
+  H. CHECK THE LIVE SITE FROM OUTSIDE, with Node 18 or later, from this
+     folder:
+        node tools/live-check.cjs https://YOUR-SITE
+     New: part 7 checks the place-order and newsletter functions are
+     there, the hardening is in, and the preview key is not public.
+     Done when: it ends "nothing to fix".
+
+  I. IN A DAY OR TWO, CHECK THE LIMITS CAN TELL VISITORS APART. In the
+     website's Supabase, SQL Editor:
+        select bucket, key = 'unknown' as no_address, count(*)
+          from public.rate_events group by 1, 2 order by 1, 2;
+     Mostly false under no_address: the per-visitor limits work. Mostly
+     true: only the shop-wide limits apply; send me the result.
+     Done when: you have sent it, or seen mostly false.
+
+  IF YOU LOSE YOUR PHONE: type the code you wrote down in D into a new
+  phone's authenticator app. Without it, in the website's Supabase,
+  SQL Editor, with your own email in it:
+        delete from auth.mfa_factors
+         where user_id = (select id from auth.users where email = 'YOU@EXAMPLE.COM');
+  then sign in with your password and set two-factor up again. The same
+  line with their email does it for a member of staff.
+
+  WHAT CHANGED
+    * TWO-FACTOR IS CHECKED BY THE DATABASE, and required for the owner
+      and for any role ticked for Settings, Orders or Subscribers. Until
+      now only the admin page asked, so a stolen password used outside
+      the page got in.
+    * ROLE TICKS ARE RULES. An Agent ticked only for Live Chats reads the
+      chats and none of the shop's other records, however they ask.
+    * SWITCH OFF really switches somebody off.
+    * ONLY THE OWNER can change roles, or the chat notification settings.
+    * WHATSAPP ORDERS are priced by the website from the catalogue (the
+      code that prices online payments) and recorded with the service
+      key. Nobody can write an order straight into the Orders tab any
+      more, at K1 or any other price. A piece priced on request is
+      recorded without a price, for you to settle in the chat.
+    * LIMITS on how fast one visitor can start chats and send messages,
+      post reviews, join the newsletter or place orders, and a ceiling
+      for the whole shop. Nobody using the site normally meets them; the
+      chat says "please wait a minute" to anybody who does.
+    * TEST PAYMENTS SAY SO: "TEST · no money moved" in Orders, and left
+      out of the Dashboard's and Analytics' sales.
+    * THE PREVIEW KEY is kept with the private settings; only people who
+      may open Settings can see it.
+    * NOTIFICATION KEYS: each shop makes its own (step F). The shared
+      pair, and the owner's email address, are gone from every file.
+    * THE NEWSLETTER: somebody who unsubscribed is put back only through
+      a link sent to their own inbox, by your email in Settings >
+      Notifications. New addresses join at once, as before.
+    * VISITORS can call only the 23 database functions the website uses.
+      The internal ones are closed to them, and the daily clean-up runs.
+    * THE OLDER SQL FILES refuse to run once the hardening is in, and
+      change nothing. SETUP.md lists the order for a new project.
+    * New: supabase-hardening.sql; netlify/functions/place-order.js and
+      newsletter.js; tools/db-check.sh; seven test files and a stand-in
+      Supabase for them.
+    * assets/version.js says build 76.
+
+  WHAT IS NOT IN THIS BUILD, AND COMES NEXT (part 4: the functions)
+    Test mode usable only by you (until then keep online payment Off or
+    Live on the live site); "[TEST]" in the payment emails; the email
+    password kept out of browsers, with "Send a test email" and the
+    Subscribers tab's "Send welcome" sent by the website itself (until
+    then "Send welcome" works only for people who may open Settings);
+    and the old secret-key paths removed once everything says "door". The security policy is still report-only: send what
+    csp-report logged (build 75, step D) with your next request. Keep
+    every zip of the website private, this one included.
 
 NEW IN 75 — SAFETY WORK, PART 2: WHAT NETLIFY PUBLISHES. No SQL.
   Nothing a customer sees changes. Upload, then check: about fifteen
@@ -310,7 +449,7 @@ Every line of each check must say OK.
     Contact > Business email) is told when a request is waiting.
   * Admin > Rewards shows staff why no code was emailed for a link.
 
-212 files. config.js is not in this folder, on purpose (see STEP 3).
+226 files. config.js is not in this folder, on purpose (see STEP 3).
 
 
 ================================================================
@@ -495,13 +634,18 @@ platform's.
 THE AUTOMATED CHECKS, IF YOU EVER WANT THEM
 ================================================================
       node tools/live-check.cjs https://YOUR-SITE   the live site, read only (Node 18+)
+      bash tools/db-check.sh                        the database side, on a stand-in Supabase
+                                                    (one-time setup: tests/supabase-standin/README.txt)
       npm install playwright
       node tests/rewards-door.test.cjs         45 checks  (no browser)
       node tests/product-door.test.cjs         36 checks  (no browser)
       node tests/product-sync.test.cjs         41 checks  (no browser)
       node tests/rewards-engine.test.cjs       11 checks  (no browser)
       node tests/rewards-function.test.cjs     35 checks  (no browser)
-      node tests/payments.test.cjs             48 checks  (no browser)
-      node tests/dashboard.browser.cjs        155 checks
+      node tests/payments.test.cjs             49 checks  (no browser)
+      node tests/place-order.test.cjs          18 checks  (no browser)
+      node tests/newsletter.test.cjs           23 checks  (no browser)
+      node tests/dashboard.browser.cjs        156 checks
+      node tests/admin-two-factor.browser.cjs  20 checks
       node tests/cart-stock.browser.cjs        23 checks
       node tests/live-update.browser.cjs       21 checks

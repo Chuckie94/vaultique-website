@@ -222,8 +222,42 @@
     }, function () { return null; });
   }
 
+  /* What the database says about this sign-in before anything else can
+     (build 76, supabase-hardening.sql): is this somebody on the staff,
+     switched off or not, and do they owe a two-factor code, or have to
+     set two-factor up first? It answers with the password alone, which
+     is exactly when the question matters: after that file, the rest of
+     the database says nothing at all to a sign-in that still owes a
+     code, and the checks below would read that silence as "not an
+     administrator".
+
+     A database from before build 76 has no such question. Then the
+     answer is null and everything carries on exactly as it did. */
+  function gate() {
+    return Promise.resolve(sb.rpc('admin_gate')).then(function (r) {
+      if (!r || r.error || !r.data) return null;
+      return typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
+    }, function () { return null; });
+  }
+
   function afterPassword() {
     show('login', false);
+    return gate().then(function (g) {
+      if (!g) return afterGate();
+      if (!g.staff) return refuseAdmin('no');
+      if (!g.active) return refuseSwitchedOff();
+      if (g.enrolled && g.aal !== 'aal2') {
+        show('mfa', true);
+        var box = $('mfaCode');
+        if (box) { box.value = ''; box.focus(); }
+        return;
+      }
+      if (g.required && !g.enrolled) return askSetup();
+      return afterGate();
+    });
+  }
+
+  function afterGate() {
     return adminVerdict().then(function (verdict) {
       if (verdict !== 'yes') return refuseAdmin(verdict);
       return loadAccess().then(function (me) {
@@ -494,9 +528,89 @@
       msg.textContent = '';
       $('mfaCode').value = '';
       show('mfa', false);
-      if (recovering) { askForNewPassword(); return; }
-      enterAdmin();
+      /* Back through the whole of the sign-in, now at level aal2: the
+         database answers everything it would not answer a moment ago,
+         and anything else owed (a new password, say) is still asked. */
+      return afterPassword();
     }).catch(function (e) {
+      msg.textContent = (e && e.message) || 'That code was not accepted.';
+      msg.className = 'msg err';
+    });
+  }
+
+  /* Setting up two-factor at the door, for an account that must have it
+     and does not yet (the owner, or a role that can open Settings,
+     Orders or Subscribers). The same steps as Settings > Security, but
+     here they are the way in: the database refuses this account until a
+     code has been confirmed. */
+  var setupFactor = null;
+  function askSetup() {
+    show('mfaSetup', true);
+    var msg = $('mfaSetupMsg'), qr = $('mfaSetupQr'), secret = $('mfaSetupSecret');
+    msg.textContent = 'Getting it ready…'; msg.className = 'msg';
+    qr.classList.add('hide'); secret.textContent = '…';
+    /* A setup somebody walked away from is still on the account,
+       unconfirmed. It protects nothing and would block a fresh one with
+       the same name, so it is cleared first. */
+    return Promise.resolve(sb.auth.mfa.listFactors()).then(function (r) {
+      var all = (r && r.data && r.data.all) || [];
+      return Promise.all(all.filter(function (f) { return f && f.status !== 'verified'; })
+        .map(function (f) { return sb.auth.mfa.unenroll({ factorId: f.id }).catch(function () {}); }));
+    }).then(function () {
+      return sb.auth.mfa.enroll({ factorType: 'totp',
+        friendlyName: 'Vaultique admin ' + new Date().toISOString().slice(0, 10) });
+    }).then(function (r) {
+      if (r.error) throw r.error;
+      setupFactor = r.data.id;
+      var totp = r.data.totp || {};
+      if (totp.qr_code) { qr.src = totp.qr_code; qr.classList.remove('hide'); }
+      secret.textContent = totp.secret || '';
+      msg.textContent = '';
+      var box = $('mfaSetupCode');
+      if (box) { box.value = ''; box.focus(); }
+    }).catch(function (e) {
+      var why = String((e && e.message) || e || '');
+      /* The one cause the person can fix, said plainly: the project has
+         app codes switched off, in Supabase rather than here. */
+      msg.textContent = /disabled|not enabled|not_enabled/i.test(why)
+        ? 'Two-factor with an app is switched off for this website in Supabase. In the website\'s ' +
+          'Supabase: Authentication > Multi-Factor (or Sign In / Providers) > TOTP (App ' +
+          'Authenticator) > Enabled. Then sign out and in again.'
+        : 'Two-factor could not be set up just now: ' + why + '. Sign out and in again to try again.';
+      msg.className = 'msg err';
+    });
+  }
+
+  $('mfaSetupBtn').addEventListener('click', doSetup);
+  $('mfaSetupCode').addEventListener('keydown', function (e) { if (e.key === 'Enter') doSetup(); });
+  $('mfaSetupCancel').addEventListener('click', function () {
+    if (setupFactor) sb.auth.mfa.unenroll({ factorId: setupFactor }).catch(function () {});
+    sb.auth.signOut().then(function () { location.reload(); });
+  });
+
+  function doSetup() {
+    var msg = $('mfaSetupMsg');
+    var typed = String($('mfaSetupCode').value || '').replace(/\s/g, '');
+    if (!setupFactor) return;
+    if (!/^\d{6}$/.test(typed)) { msg.textContent = 'The code is six digits.'; msg.className = 'msg err'; return; }
+    var btn = $('mfaSetupBtn');
+    btn.disabled = true;
+    msg.textContent = 'Checking…'; msg.className = 'msg';
+    Promise.resolve(sb.auth.mfa.challenge({ factorId: setupFactor })).then(function (c) {
+      if (c.error) throw c.error;
+      return sb.auth.mfa.verify({ factorId: setupFactor, challengeId: c.data.id, code: typed });
+    }).then(function (r) {
+      if (r.error) throw r.error;
+      setupFactor = null;
+      btn.disabled = false;
+      msg.textContent = '';
+      $('mfaSetupCode').value = '';
+      show('mfaSetup', false);
+      /* The confirmed code lifted this sign-in to aal2, so the database
+         now answers. Through the rest of the sign-in from here. */
+      return afterPassword();
+    }).catch(function (e) {
+      btn.disabled = false;
       msg.textContent = (e && e.message) || 'That code was not accepted.';
       msg.className = 'msg err';
     });
@@ -1506,7 +1620,10 @@
       expired:  ['pay-fail', 'Payment not completed']
     };
     var b = map[o.payment_status] || ['pay-wait', 'Online payment'];
-    return '<div class="pay-badge ' + b[0] + '">' + escapeHtml(b[1]) + '</div>';
+    /* Build 76: an order sent to pay while Settings > Payments was in Test
+       mode says so, so a test card's "payment" is never taken for money. */
+    var test = o.pay_mode === 'test' ? '<div class="pay-badge pay-test">TEST \u00b7 no money moved</div>' : '';
+    return '<div class="pay-badge ' + b[0] + '">' + escapeHtml(b[1]) + '</div>' + test;
   }
   function orderRow(o) {
     var d = document.createElement('div');

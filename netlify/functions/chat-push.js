@@ -104,16 +104,19 @@ function encrypt(plaintext, sub) {
 }
 
 /* ------------------------------------------------------- RFC 8292, §2
-   Proof that this shop sent it, signed with the key pair the migration
-   put in the database. The audience is the push service's own origin,
-   so a token taken from one is no use at another. */
+   Proof that this shop sent it, signed with the shop's own key pair:
+   made by the owner's browser and stored in the database (build 76;
+   until then every copy of the website shipped the same pair). The
+   audience is the push service's own origin, so a token taken from one
+   is no use at another. The contact given to the push service is the
+   website's own address, not a person's email. */
 function vapidHeader(endpoint, keys) {
   const aud = new URL(endpoint).origin;
   const head = b64u(JSON.stringify({ typ: 'JWT', alg: 'ES256' }));
   const claim = b64u(JSON.stringify({
     aud,
     exp: Math.floor(Date.now() / 1000) + 12 * 60 * 60,
-    sub: keys.subject || 'mailto:admin@example.com'
+    sub: keys.subject || keys.siteUrl || undefined
   }));
 
   const pub = unb64u(keys.vapidPublic);
