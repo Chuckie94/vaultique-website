@@ -24,6 +24,10 @@
         longer in the settings every visitor downloads. Asked of the
         website's Supabase with the public key from the live config.js,
         exactly as the shop's own pages ask it.
+     8. WHICH BUILD IS LIVE (build 77 on): what the live
+        assets/version.js says, beside what this folder's says. A live
+        site older than this folder was not uploaded, or Netlify refused
+        to publish it: Netlify > Deploys says why, at the end of its log.
 
    READ ONLY. Ordinary GET requests to your own site; nothing is changed
    anywhere. The list of files comes from this folder, so it always checks
@@ -328,6 +332,21 @@ async function check76() {
   else ok('the preview key is not in the public settings');
 }
 
+/* The build number in a version.js (the admin reads the same line). */
+const buildIn = (text) => { const m = /\bbuild\s*:\s*(\d+)/.exec(text || ''); return m ? Number(m[1]) : 0; };
+
+async function checkVersion() {
+  console.log('\n8. Which build is live');
+  let here = 0;
+  try { here = buildIn(fs.readFileSync(path.join(ROOT, 'assets', 'version.js'), 'utf8')); } catch (e) { here = 0; }
+  const r = await json('/assets/version.js');
+  const live = r.status === 200 ? buildIn(r.text) : 0;
+  if (!live) { note('/assets/version.js could not be read (' + (r.status || r.error) + '), so which build is live is not known'); return; }
+  if (!here || live >= here) ok('the live site is build ' + live + (here && live > here ? ', newer than this folder (build ' + here + ')' : ''));
+  else fail('the live site is still build ' + live + ', and this folder is build ' + here + '. Upload it (START-HERE.txt); if you ' +
+            'have, open Netlify > Deploys: a deploy that says Failed ends its log with "BUILD STOPPED:" and the reason');
+}
+
 (async () => {
   console.log('\nChecking ' + BASE + ' (read only)');
   const home = await peek('/');
@@ -343,6 +362,7 @@ async function check76() {
   await checkConfig();
   await checkBuild();
   await check76();
+  await checkVersion();
   console.log('\n  ' + (fails ? fails + ' to fix' : 'nothing to fix') + (notes ? ', ' + notes + ' worth knowing' : '') + '\n');
   process.exit(fails ? 1 : 0);
 })();

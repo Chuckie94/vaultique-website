@@ -23,7 +23,7 @@ exports.handler = async function (event) {
     const r = await P.settle(txRef, d.id);
     if (r.status === 'paid' && r.fresh && r.pay && r.pay.order_id) {
       const s = await P.shopSettings();
-      await P.confirmByEmail(s, r.pay.order_id);
+      await P.confirmByEmail(s, r.pay.order_id, r.pay.mode, r.late);
     }
     return { statusCode: 200, body: '' };
   } catch (e) {

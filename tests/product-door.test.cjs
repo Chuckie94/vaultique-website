@@ -22,6 +22,13 @@
    tools/vbp-website-door.sql was run there, and DOOR_ANSWER is exactly what
    the door returned to the anonymous role. So "the door path gives the same
    feed as today" below is checked against what the real SQL hands out.
+
+   SINCE BUILD 77 THE SECRET KEY IS NEVER SENT (W-24). When the door does not
+   answer, the old way is still asked, but with the publishable key only, and
+   on the platform the lock refuses that: the answer is an error saying the
+   catalogue could not be read, never an empty shop. The stand-in below locks
+   app_state the same way; `locked: false` stands for a database without the
+   lock, where the old way still reads, so the two ways can be compared.
    =========================================================================== */
 const path = require('path');
 
@@ -60,7 +67,7 @@ const copy = (v) => JSON.parse(JSON.stringify(v));
 
 /* One stand-in for both of the platform's ways in, and the website's own
    settings. `door` is what the door answers: a body, or a status number. */
-function platform({ door, row, bell, stamp }) {
+function platform({ door, row, bell, stamp, locked }) {
   const calls = [];
   global.fetch = async (url, init) => {
     const u = String(url), m = (init && init.method) || 'GET';
@@ -76,8 +83,11 @@ function platform({ door, row, bell, stamp }) {
       return { ok: true, json: async () => copy(bell) };
     }
     if (/app_state/.test(u)) {
-      if (/select=updated_at/.test(u)) return { ok: true, json: async () => (stamp ? [{ updated_at: stamp }] : []) };
-      return { ok: true, json: async () => copy(row) };
+      // THE LOCK, as on the platform: only the secret key gets in, and anybody
+      // else is answered 200 with nothing, as for a row that is not there.
+      const through = locked === false || h.apikey === SECRET;
+      if (/select=updated_at/.test(u)) return { ok: true, json: async () => (through && stamp ? [{ updated_at: stamp }] : []) };
+      return { ok: true, json: async () => (through ? copy(row) : []) };
     }
     if (/product_pulse/.test(u)) {
       if (m === 'POST') return { ok: true, json: async () => [] };
@@ -120,9 +130,9 @@ const ROW = [{ id: 100, data: { products: RAW } }];
   /* ====================================================================== */
   console.log('\nThrough the door, the website gets exactly what it gets today');
   {
-    const today = (await feed({ door: 404, row: ROW }, { POS_SUPABASE_KEY: SECRET })).body;
+    const today = (await feed({ door: 404, row: ROW, locked: false }, { POS_SUPABASE_KEY: undefined })).body;
     const door = (await feed({ door: DOOR_ANSWER, row: ROW }, { POS_SUPABASE_KEY: undefined })).body;
-    is(today.source === 'row' && today.products.length === 6, 'today: six pieces, read the old way');
+    is(today.source === 'row' && today.products.length === 6, 'the old way, where nothing locks the row: six pieces');
     is(JSON.stringify(door.products) === JSON.stringify(today.products),
        'through the door: the same six, every field the same, in the same order');
     is(door.version === today.version && door.count === today.count,
@@ -165,7 +175,7 @@ const ROW = [{ id: 100, data: { products: RAW } }];
   }
 
   /* ====================================================================== */
-  console.log('\nUntil the door is there, nothing changes');
+  console.log('\nUntil the door is there, never the secret key (build 77)');
   {
     const shapes = [
       ['not created yet (404)', 404],
@@ -177,10 +187,15 @@ const ROW = [{ id: 100, data: { products: RAW } }];
     ];
     for (const [what, door] of shapes) {
       const { body, res, calls } = await feed({ door, row: ROW }, { POS_SUPABASE_KEY: SECRET });
-      is(res.statusCode === 200 && body.source === 'row' && body.products.length === 6 &&
-         calls.some((c) => /app_state\?id=eq\.100/.test(c.u) && c.apikey === SECRET),
-         'the door ' + what + ': the old way is read, with the key, and the shop is all there');
+      is(res.statusCode === 503 && body.sourceUnreadable === true &&
+         calls.some((c) => /app_state\?id=eq\.100/.test(c.u) && c.apikey === PUBLISHABLE) &&
+         !calls.some((c) => c.apikey === SECRET || c.auth === 'Bearer ' + SECRET),
+         'the door ' + what + ': the old way is asked with the public key only, even with the secret one still set, ' +
+         'and the lock\'s refusal is an error, not an empty shop');
     }
+    const { body, res } = await feed({ door: 404, row: ROW, locked: false }, { POS_SUPABASE_KEY: SECRET });
+    is(res.statusCode === 200 && body.source === 'row' && body.products.length === 6,
+       'where nothing locks the row, the old way still reads it, with the public key');
   }
 
   /* ====================================================================== */
@@ -190,7 +205,7 @@ const ROW = [{ id: 100, data: { products: RAW } }];
     is(res.statusCode === 503 && body.sourceUnreadable === true,
        'no door and the lock refusing the old way: an error, never a shop with nothing in it');
     is(/NOT\s+empty/.test(body.error), 'and the error says the catalogue is not empty');
-    const shapeless = await feed({ door: 404, row: [{ id: 100, data: { customers: [] } }] }, { POS_SUPABASE_KEY: SECRET });
+    const shapeless = await feed({ door: 404, row: [{ id: 100, data: { customers: [] } }], locked: false }, {});
     is(shapeless.res.statusCode === 503, 'a row with no product list in it is not an empty shop either');
     const empty = await feed({ door: Object.assign({}, DOOR_ANSWER, { products: [] }), row: [] }, {});
     is(empty.res.statusCode === 200 && empty.body.products.length === 0,
@@ -236,10 +251,15 @@ const ROW = [{ id: 100, data: { products: RAW } }];
        'and uses its time, reading nothing from app_state');
     is(!calls.some((c) => c.apikey === SECRET), 'the secret key is sent nowhere');
     ({ r, calls } = await pulse({ bell: 404, stamp: 'row-100-time' }, { POS_SUPABASE_KEY: SECRET }));
-    is(r.posUpdatedAt === 'row-100-time' && calls.some((c) => /app_state\?id=eq\.100&select=updated_at/.test(c.u)),
-       'with no bell yet, it reads row 100\'s time the way it always has');
-    ({ r } = await pulse({ bell: [], stamp: 'row-100-time' }, { POS_SUPABASE_KEY: SECRET }));
-    is(r.posUpdatedAt === 'row-100-time', 'and the same for a reply in any other shape');
+    is(calls.some((c) => /app_state\?id=eq\.100&select=updated_at/.test(c.u) && c.apikey === PUBLISHABLE) &&
+       !calls.some((c) => c.apikey === SECRET),
+       'with no bell yet, it asks row 100\'s time with the public key, never the secret one (build 77)');
+    is(!r.posUpdatedAt && /no timestamp/.test(r.message) && !calls.some((c) => /product_pulse/.test(c.u) && c.m === 'POST'),
+       'the lock refuses it, so the pulse writes nothing and waits for the bell');
+    ({ r } = await pulse({ bell: 404, stamp: 'row-100-time', locked: false }, {}));
+    is(r.posUpdatedAt === 'row-100-time', 'where nothing locks the row, it still reads row 100\'s time');
+    ({ r } = await pulse({ bell: [], stamp: 'row-100-time', locked: false }, {}));
+    is(r.posUpdatedAt === 'row-100-time', 'and the same for a bell reply in any other shape');
   }
 
   console.log(failures ? ('\n' + checks + ' checks, ' + failures + ' failed')

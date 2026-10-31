@@ -1,10 +1,11 @@
 -- =====================================================================
--- Vaultique Boutique Point — website database HARDENING (build 76)
+-- Vaultique Boutique Point — website database HARDENING (builds 76 to 78)
 -- ---------------------------------------------------------------------
--- UPLOAD BUILD 76 FIRST, AND WAIT UNTIL NETLIFY SAYS "PUBLISHED".
--- The admin and the shop need build 76's own pages to work with what
--- this file changes. An older admin page would take the database's new
--- questions for a refusal and sign people out.
+-- UPLOAD THE WEBSITE FIRST (build 78 or later), AND WAIT UNTIL NETLIFY
+-- SAYS "PUBLISHED". The admin and the shop need their own new pages to
+-- work with what this file changes. An admin page from before build 76
+-- would take the database's new questions for a refusal and sign people
+-- out.
 --
 -- Then run in THIS WEBSITE's Supabase (not the platform's):
 --   SQL Editor > New query > paste all of this > Run
@@ -12,8 +13,12 @@
 -- Safe to run again, as often as you like: it changes nothing that is
 -- already as it should be, and the result is always a fresh report.
 -- After it has run once, the older supabase-*.sql files refuse to run
--- again (see section 13), because each of them would quietly put back
+-- again (see section 14), because each of them would quietly put back
 -- something this file took away.
+--
+-- Build 77 added item 14 below and raised two shop-wide limits; build 78
+-- adds item 15. A project that ran an earlier version runs this one too:
+-- it is the same file, grown, and is safe to run over the old one.
 --
 -- WHAT IT DOES. Each line is a finding from the build 73 audit.
 --    1. Two-factor is checked by the database, not only by the page,
@@ -38,6 +43,12 @@
 --   12. Every function's search path is pinned. (Security Advisor)
 --   13. A record of what has been run, so old files cannot undo this.
 --       (W-07)
+--   14. The email password can be replaced but never read back, not
+--       even by the owner: only the website's own functions read it.
+--       (W-12, build 77)
+--   15. A sale, on the Dashboard and in Analytics, is an order the shop
+--       has confirmed or one paid online; orders still "Received" are
+--       shown on their own. (W-05, W-21, decision Q4, build 78)
 --
 -- The report at the end says, line by line, what it found and what to
 -- do. It never shows a key, a password or a bank detail.
@@ -410,8 +421,10 @@ begin
 end;
 $$;
 
--- A new chat: 6 every 10 minutes from one connection, 120 an hour for
--- the whole shop.
+-- A new chat: 6 every 10 minutes from one connection, 500 an hour for
+-- the whole shop. The shop-wide figure is a backstop against a flood from
+-- many connections at once, set high enough (build 77; it was 120) that
+-- it takes a great many of them to shut real customers out for the hour.
 create or replace function public.chat_start_throttle()
 returns trigger
 language plpgsql
@@ -420,7 +433,7 @@ set search_path = public, pg_temp
 as $$
 begin
   perform public.throttle('chat_start', public.client_addr(), 6, interval '10 minutes');
-  perform public.throttle('chat_start', 'shop', 120, interval '1 hour');
+  perform public.throttle('chat_start', 'shop', 500, interval '1 hour');
   return new;
 end;
 $$;
@@ -547,9 +560,11 @@ begin
     raise exception 'the shop is not taking orders at the moment';
   end if;
 
-  -- 10 an hour from one connection, 200 an hour for the shop.
+  -- 10 an hour from one connection; 1,000 an hour for the shop, as a
+  -- backstop only (build 77; it was 200, few enough that a handful of
+  -- connections could have stopped every order for an hour).
   perform public.throttle('order', coalesce(nullif(btrim(p_client), ''), 'unknown'), 10, interval '1 hour');
-  perform public.throttle('order', 'shop', 200, interval '1 hour');
+  perform public.throttle('order', 'shop', 1000, interval '1 hour');
 
   if v_name    is not null and char_length(v_name)    > 120 then raise exception 'name is too long'; end if;
   if v_phone   is not null and char_length(v_phone)   > 40  then raise exception 'phone is too long'; end if;
@@ -617,7 +632,7 @@ grant execute on function public.place_order(jsonb, jsonb, text, uuid, text) to 
 
 
 -- ---------------------------------------------------------------------
--- 6. Test payments say so (W-04)
+-- 6. Test payments say so (W-04), and what counts as a sale (Q4, build 78)
 --
 -- The payment mode lived only in the payments settings, so an order paid
 -- with a test card looked exactly like a real one in the Orders tab. The
@@ -683,6 +698,37 @@ begin
   $f$;
 end $$;
 
+-- WHAT COUNTS AS A SALE (decision Q4, build 78; W-05, W-21). The
+-- Dashboard and Analytics counted every order that was not cancelled as a
+-- sale, so an order nobody had confirmed, or one made up, added to "Sales"
+-- the moment it was placed. A sale is now an order the shop has confirmed
+-- (Confirmed, Ready, On its way, Delivered, or the older Completed), or
+-- one paid online for real. A WhatsApp order still "Received" is shown on
+-- its own, as waiting to be confirmed. A cancelled order, a test payment
+-- and an order still on the payment page are not counted at all.
+--
+-- One rule, here, answered for one order at a time: 'sale', 'waiting' or
+-- 'none'. The order is read as JSON so that a project without the
+-- payment columns is answered too. The Dashboard, which reads the orders
+-- itself, applies the same rule (assets/admin/dashboard.js).
+create or replace function public.order_counts_as(p_order jsonb)
+returns text
+language sql
+immutable
+set search_path = public, pg_temp
+as $$
+  select case
+    when coalesce(p_order ->> 'status', '') = 'cancelled' then 'none'
+    when p_order ->> 'payment_method' = 'online' then
+      case when p_order ->> 'payment_status' = 'paid'
+                and coalesce(p_order ->> 'pay_mode', '') <> 'test' then 'sale'
+           else 'none' end
+    when coalesce(nullif(p_order ->> 'status', ''), 'pending') = 'pending' then 'waiting'
+    when p_order ->> 'status' in ('confirmed', 'ready', 'dispatched', 'delivered', 'completed') then 'sale'
+    else 'none'
+  end;
+$$;
+
 -- And Analytics > How orders were paid counts no test payment as money.
 -- The same figures as supabase-payments.sql gave, with two changes: an
 -- order paid in Test mode is left out, and only somebody whose role is
@@ -712,10 +758,17 @@ begin
     v_end   := ((p_to + 1)::timestamp) at time zone coalesce(nullif(p_tz, ''), 'UTC');
 
     select json_build_object(
+      -- A WhatsApp order is a sale once the shop has confirmed it, and one
+      -- still "Received" is counted on its own (decision Q4, build 78:
+      -- order_counts_as, above).
       'whatsapp_orders', count(*) filter (where o.payment_method is distinct from 'online'
-                                            and coalesce(o.status, '') <> 'cancelled'),
+                                            and public.order_counts_as(to_jsonb(o)) = 'sale'),
       'whatsapp_sales',  coalesce(sum(o.total) filter (where o.payment_method is distinct from 'online'
-                                            and coalesce(o.status, '') <> 'cancelled'), 0),
+                                            and public.order_counts_as(to_jsonb(o)) = 'sale'), 0),
+      'whatsapp_waiting', count(*) filter (where o.payment_method is distinct from 'online'
+                                            and public.order_counts_as(to_jsonb(o)) = 'waiting'),
+      'whatsapp_waiting_value', coalesce(sum(o.total) filter (where o.payment_method is distinct from 'online'
+                                            and public.order_counts_as(to_jsonb(o)) = 'waiting'), 0),
       'online_orders',   count(*) filter (where o.payment_method = 'online' and o.payment_status = 'paid'
                                             and coalesce(o.status, '') <> 'cancelled'),
       'online_sales',    coalesce(sum(coalesce(o.paid_amount, o.total)) filter (
@@ -746,6 +799,145 @@ begin
      where o.created_at >= v_start and o.created_at < v_end
        and coalesce(o.pay_mode, '') <> 'test';
     return v_out;
+  end;
+  $f$;
+end $$;
+
+
+-- Analytics' own Orders and Sales (supabase-analytics.sql's site_stats),
+-- by the same rule, and the orders waiting to be confirmed beside them.
+-- Everything else it counts is exactly as that file has it.
+do $$
+begin
+  if to_regclass('public.site_events') is null or to_regclass('public.site_daily') is null
+     or to_regclass('public.site_visitor_days') is null then return; end if;
+  create or replace function public.site_stats(p_from date, p_to date, p_tz text)
+  returns json
+  language plpgsql
+  volatile
+  security definer
+  set search_path = public, pg_temp
+  as $f$
+  declare
+    v_today   date;
+    v_to      date;
+    v_last    date;
+    v_partial boolean;
+    v_ps      timestamptz;
+    v_pe      timestamptz;
+    r_sum     record;
+    r_now     record;
+    v_people  integer := 0;
+    v_new     integer := 0;
+    v_orders  integer := 0;
+    v_sales   numeric := 0;
+    v_wait    integer := 0;
+    v_wait_v  numeric := 0;
+    v_cur     text;
+    v_oe      timestamptz;
+  begin
+    if not public.may_see_analytics() then
+      raise exception 'You do not have permission to read the website analytics.';
+    end if;
+    if p_from is null or p_to is null then return null; end if;
+    p_tz := coalesce(nullif(p_tz, ''), 'UTC');
+
+    v_today   := (now() at time zone p_tz)::date;
+    v_to      := least(p_to, v_today);
+    v_last    := least(v_to, v_today - 1);
+    v_partial := (v_to >= v_today and p_from <= v_today);
+    v_ps      := (v_today::timestamp) at time zone p_tz;
+    v_pe      := now();
+
+    perform public.site_rollup_range(p_from, v_last, p_tz);
+
+    select coalesce(sum(visits), 0)          as visits,
+           coalesce(sum(page_views), 0)      as page_views,
+           coalesce(sum(product_views), 0)   as product_views,
+           coalesce(sum(add_to_cart), 0)     as add_to_cart,
+           coalesce(sum(checkout_starts), 0) as checkout_starts,
+           coalesce(sum(mobile), 0)          as mobile,
+           coalesce(sum(desktop), 0)         as desktop,
+           coalesce(sum(tablet), 0)          as tablet
+      into r_sum
+      from public.site_daily
+     where tz = p_tz and day >= p_from and day <= v_last;
+
+    select count(distinct e.session)                                             as visits,
+           count(*) filter (where e.kind = 'page_view')                          as page_views,
+           count(*) filter (where e.kind = 'product_view')                       as product_views,
+           count(*) filter (where e.kind = 'add_to_cart')                        as add_to_cart,
+           count(*) filter (where e.kind = 'checkout_start')                     as checkout_starts,
+           count(distinct e.session) filter (where e.device = 'mobile')          as mobile,
+           count(distinct e.session) filter (where e.device = 'desktop')         as desktop,
+           count(distinct e.session) filter (where e.device = 'tablet')          as tablet
+      into r_now
+      from public.site_events e
+     where v_partial and e.at >= v_ps and e.at < v_pe;
+
+    select count(*), count(*) filter (where m.is_first)
+      into v_people, v_new
+      from (
+        select u.visitor, bool_or(u.is_first) as is_first
+          from (
+              select d.visitor, d.is_first
+                from public.site_visitor_days d
+               where d.day >= p_from and d.day <= v_last
+            union all
+              select e.visitor,
+                     not exists (select 1 from public.site_visitor_days x
+                                  where x.visitor = e.visitor)
+                from public.site_events e
+               where v_partial and e.at >= v_ps and e.at < v_pe
+               group by e.visitor
+          ) u
+         group by u.visitor
+      ) m;
+
+    -- The orders: a sale is what order_counts_as says it is, worth what
+    -- was paid when it was paid online. Caught, as before, so that a
+    -- project whose orders cannot be read still gets its visits.
+    v_oe := ((v_to + 1)::timestamp) at time zone p_tz;
+    begin
+      select count(*) filter (where k.kind = 'sale'),
+             coalesce(sum(k.worth) filter (where k.kind = 'sale'), 0),
+             count(*) filter (where k.kind = 'waiting'),
+             coalesce(sum(k.worth) filter (where k.kind = 'waiting'), 0),
+             max(o.currency)
+        into v_orders, v_sales, v_wait, v_wait_v, v_cur
+        from public.orders o
+        cross join lateral (
+          select public.order_counts_as(to_jsonb(o)) as kind,
+                 coalesce(case when to_jsonb(o) ->> 'payment_method' = 'online'
+                               then nullif(to_jsonb(o) ->> 'paid_amount', '')::numeric end,
+                          o.total, 0) as worth) k
+       where o.created_at >= ((p_from::timestamp) at time zone p_tz)
+         and o.created_at <  v_oe;
+    exception when others then
+      v_orders := 0; v_sales := 0; v_wait := 0; v_wait_v := 0; v_cur := null;
+    end;
+
+    return json_build_object(
+      'from',            p_from,
+      'to',              v_to,
+      'tz',              p_tz,
+      'visits',          r_sum.visits          + coalesce(r_now.visits, 0),
+      'page_views',      r_sum.page_views      + coalesce(r_now.page_views, 0),
+      'product_views',   r_sum.product_views   + coalesce(r_now.product_views, 0),
+      'add_to_cart',     r_sum.add_to_cart     + coalesce(r_now.add_to_cart, 0),
+      'checkout_starts', r_sum.checkout_starts + coalesce(r_now.checkout_starts, 0),
+      'visitors',        v_people,
+      'new_visitors',    v_new,
+      'returning_visitors', greatest(v_people - v_new, 0),
+      'mobile',          r_sum.mobile  + coalesce(r_now.mobile, 0),
+      'desktop',         r_sum.desktop + coalesce(r_now.desktop, 0),
+      'tablet',          r_sum.tablet  + coalesce(r_now.tablet, 0),
+      'orders',          coalesce(v_orders, 0),
+      'sales',           coalesce(v_sales, 0),
+      'waiting_orders',  coalesce(v_wait, 0),
+      'waiting_value',   coalesce(v_wait_v, 0),
+      'currency',        v_cur
+    );
   end;
   $f$;
 end $$;
@@ -1064,7 +1256,63 @@ end $$;
 
 
 -- ---------------------------------------------------------------------
--- 11. What a visitor may call (W-08)
+-- 11. The email password can be replaced, never read back (W-12, build 77)
+--
+-- The password of the shop's email account sat in the private settings,
+-- where anybody whose role may open Settings could read it, and every
+-- "Send a test email" and "Send welcome" carried it from the admin page
+-- to the website. Since build 77 the website sends those itself, with the
+-- account as stored, so no page needs the password at all. It now lives
+-- in a private row of its own that nobody signed in can read or write,
+-- not even the owner; only the website's functions read it, with the
+-- service key.
+--
+-- Settings > Notifications still sets it. The moment it is saved the
+-- database moves it across and keeps only a note THAT one is saved.
+-- Saving the form with the box left empty keeps the one already there.
+-- ---------------------------------------------------------------------
+create or replace function public.mail_password_private()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_pw text;
+begin
+  if new.key <> 'notifications' then return new; end if;
+  v_pw := coalesce(new.data ->> 'smtpPassword', '');
+  if v_pw <> '' then
+    insert into public.site_settings_private (key, data)
+    values ('mail_secret', jsonb_build_object('smtpPassword', v_pw, 'savedAt', now()))
+    on conflict (key) do update set data = excluded.data, updated_at = now();
+  end if;
+  new.data := (coalesce(new.data, '{}'::jsonb) - 'smtpPassword')
+              || jsonb_build_object('passwordSaved', exists (
+                   select 1 from public.site_settings_private s
+                    where s.key = 'mail_secret' and coalesce(s.data ->> 'smtpPassword', '') <> ''));
+  return new;
+end;
+$$;
+
+drop trigger if exists ssp_mail_password on public.site_settings_private;
+create trigger ssp_mail_password
+  before insert or update on public.site_settings_private
+  for each row execute function public.mail_password_private();
+
+drop policy if exists ssp_mail_secret_none on public.site_settings_private;
+create policy ssp_mail_secret_none on public.site_settings_private
+  as restrictive for all to authenticated
+  using (key <> 'mail_secret')
+  with check (key <> 'mail_secret');
+
+-- Move a password that is there now (the trigger does the moving).
+update public.site_settings_private set data = data
+ where key = 'notifications' and data ? 'smtpPassword';
+
+
+-- ---------------------------------------------------------------------
+-- 12. What a visitor may call (W-08)
 --
 -- Supabase lets every visitor call every function in the database
 -- unless it is told otherwise, and "revoke ... from public" does not
@@ -1132,7 +1380,7 @@ end $$;
 
 
 -- ---------------------------------------------------------------------
--- 12. Every function's search path is pinned (Security Advisor)
+-- 13. Every function's search path is pinned (Security Advisor)
 --
 -- A function that does not say where to look for the tables it names
 -- looks wherever the caller says. Every security-definer function here
@@ -1164,7 +1412,7 @@ end $$;
 
 
 -- ---------------------------------------------------------------------
--- 13. A record of what has been run (W-07)
+-- 14. A record of what has been run (W-07)
 --
 -- Twenty-six of the older files say "safe to run again", and before this
 -- build that was not true of ten of them: running one again on its own
@@ -1184,7 +1432,7 @@ alter table public.schema_migrations enable row level security;
 revoke all on public.schema_migrations from anon, authenticated;
 
 insert into public.schema_migrations (version, note)
-values ('076-hardening', 'supabase-hardening.sql, build 76')
+values ('078-hardening', 'supabase-hardening.sql, build 78')
 on conflict (version) do update set applied_at = now();
 
 notify pgrst, 'reload schema';
@@ -1252,6 +1500,17 @@ begin
   v_rows := v_rows || jsonb_build_array(jsonb_build_array(
     'Orders', 'How orders are written', 'only by the website, priced from the catalogue', ''));
 
+  -- What counts as a sale (build 78), and how many wait for the shop.
+  begin
+    select count(*) into v_n from public.orders o where public.order_counts_as(to_jsonb(o)) = 'waiting';
+  exception when others then v_n := 0;
+  end;
+  v_rows := v_rows || jsonb_build_array(jsonb_build_array(
+    'Orders', 'What counts as a sale', 'confirmed by the shop, or paid online (never a test payment)',
+    case when v_n > 0
+         then v_n || ' order(s) are still "Received", waiting to be confirmed. They show on the Dashboard and in Analytics on their own, not as sales: confirm or cancel them in Admin > Orders.'
+         else '' end));
+
   select (case when coalesce(data->>'previewKey', '') <> '' then 'SET, now private' else 'empty' end)
     into v_txt from public.site_settings_private where key = 'general';
   v_rows := v_rows || jsonb_build_array(jsonb_build_array(
@@ -1277,6 +1536,36 @@ begin
          then 'Email is not set up (Settings > Notifications), so the link cannot be sent: until it is, ' || v_n || ' unsubscribed address(es) cannot rejoin.'
          else '' end));
 
+  -- The email password (build 77).
+  select data into v from public.site_settings where key = 'notifications';
+  v_rows := v_rows || jsonb_build_array(jsonb_build_array(
+    'Email', 'Password',
+    case when exists (select 1 from public.site_settings_private
+                       where key = 'mail_secret' and coalesce(data ->> 'smtpPassword', '') <> '')
+           then 'saved; only the website itself can read it'
+         when coalesce((v ->> 'emailEnabled')::boolean, false) then 'none saved'
+         else 'email not set up' end,
+    case when coalesce((v ->> 'emailEnabled')::boolean, false)
+              and not exists (select 1 from public.site_settings_private
+                               where key = 'mail_secret' and coalesce(data ->> 'smtpPassword', '') <> '')
+           then 'If your email account needs a password, type it in Settings > Notifications and save, then use "Send a test email".'
+         else '' end));
+
+  -- Online payment, and who may use Test mode (build 77).
+  select data into v from public.site_settings where key = 'payments';
+  v_rows := v_rows || jsonb_build_array(jsonb_build_array(
+    'Payments', 'Online payment',
+    case when coalesce((v ->> 'onlineEnabled')::boolean, false) is not true then 'OFF'
+         when coalesce(v ->> 'onlineMode', 'test') = 'live' then 'ON · LIVE'
+         else 'ON · TEST MODE: only the shop can use it' end,
+    case when coalesce((v ->> 'onlineEnabled')::boolean, false) and coalesce(v ->> 'onlineMode', 'test') <> 'live'
+           then 'Customers are not offered it. You test with your preview key: open the shop as https://YOUR-SITE/?preview=YOUR-KEY' ||
+                case when exists (select 1 from public.site_settings_private
+                                   where key = 'general' and coalesce(data ->> 'previewKey', '') <> '')
+                     then '' else ' (none is set yet: choose one in Settings > General first)' end ||
+                '. Test payments are marked TEST.'
+         else '' end));
+
   select count(*), string_agg(p.proname, ', ' order by p.proname) filter (where not (p.proname = any (pg_temp.vq_visitor_ok())))
     into v_n, v_txt
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -1290,11 +1579,11 @@ begin
          else 'Run this file again. If these are still listed, send this line to whoever looks after the website.' end));
 
   v_rows := v_rows || jsonb_build_array(jsonb_build_array(
-    'Database', 'Throttles', 'on: chats, reviews, newsletter, orders', ''));
+    'Database', 'Throttles', 'on: chats, reviews, newsletter, orders; and, from the website, starting payments and the admin''s emails', ''));
 
   select count(*) into v_n from public.schema_migrations;
   v_rows := v_rows || jsonb_build_array(jsonb_build_array(
-    'Database', 'This file', 'RECORDED (076-hardening)',
+    'Database', 'This file', 'RECORDED (078-hardening)',
     'The older supabase-*.sql files now refuse to run again. This one is safe to run again whenever you like.'));
 
   return query

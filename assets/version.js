@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.46.0',
-  build: 76,
-  builtAt: '2026-10-29T17:44:14Z',
-  notes: 'Safety work, part 3 (with supabase-hardening.sql): the database now enforces each role\'s ticks and two-factor (required for the owner and for any role ticked for Settings, Orders or Subscribers; the admin shows the setup at sign-in); "Switch off" stops a person at the database; WhatsApp orders are priced by the website from the catalogue and written with the service key; limits on how fast one connection can start chats, write, review, join the newsletter or order; test-mode payments are marked TEST and left out of sales; the preview key is private; the shop makes its own notification keys and the shared ones are retired; someone who unsubscribed is only put back by a link sent to their own inbox; visitors can call only the functions the website uses; older SQL files refuse to undo this.'
+  version: '1.49.0',
+  build: 79,
+  builtAt: '2026-10-31T10:01:00Z',
+  notes: 'Safety work, part 6, the checks and the guides (no SQL): the website\'s own checks now run on GitHub after every upload (.github/workflows/tests.yml), and by hand from the tests folder with npm; the database checks run in one go (tools/sql-tests.sh); SETUP.md has one table of everything Netlify may hold, and README.md describes the website as it is now; the payment and rewards checks wait for what they check rather than for set times, and a browser check that fails is tried once more and named if it passes only then. Nothing a customer or the admin sees changes.'
 };

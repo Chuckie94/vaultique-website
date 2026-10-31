@@ -96,7 +96,13 @@ const server = http.createServer((req, res) => {
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push(String(e.message || e)));
   await page.goto(base + '/', { waitUntil: 'networkidle' });
-  await page.waitForTimeout(800);
+  /* Each check waits for what it is about to look at, never for a set
+     time (build 79): on a slow or busy computer it waits longer rather
+     than looking too soon. A wait that runs out is not a failure by
+     itself; the check after it says what was there instead. */
+  const until = async (test) => { for (const end = Date.now() + 10000; !test() && Date.now() < end;) await new Promise(r => setTimeout(r, 50)); };
+  await page.waitForFunction(() => window.VBP_ACCOUNT && window.VBP_REWARDS && window.VBP_REWARDS.enabled === true,
+    null, { timeout: 10000 }).catch(() => {});
   /* A signed-in customer, as far as the rewards code can tell. */
   await page.evaluate(() => {
     const A = window.VBP_ACCOUNT;
@@ -121,7 +127,7 @@ const server = http.createServer((req, res) => {
     is(/If this number is on our records/.test(told) && !/@/.test(told), 'the customer is told a code may be on its way, and no email is shown');
     await page.fill('#rw_code', '000000');
     await page.click('#rwCard .rw-code .btn');
-    await page.waitForTimeout(300);
+    await page.waitForFunction(() => /not right/.test(document.getElementById('rwCard').textContent), null, { timeout: 10000 }).catch(() => {});
     is(/not right/.test(await page.textContent('#rwCard')), 'a wrong code is turned away');
     await page.fill('#rw_code', '123456');
     await page.click('#rwCard .rw-code .btn');
@@ -142,7 +148,9 @@ const server = http.createServer((req, res) => {
     await page.fill('#od_name', 'Chanda'); await page.fill('#od_phone', '0977000007');
     await page.check('#od_points'); await page.check('#od_consent');
     await page.click('#odGo');
-    await page.waitForTimeout(600);
+    // The points are promised first, then the message is written.
+    await until(() => CALLS.some(c => c.body.action === 'hold'));
+    await page.waitForFunction(() => window.__opened.some(t => /text=/.test(t.location.href)), null, { timeout: 10000 }).catch(() => {});
     const holdCall = CALLS.find(c => c.body.action === 'hold');
     is(holdCall && /^RW-[A-Z0-9]{6}$/.test(holdCall.body.orderRef) && holdCall.body.due === 1150,
        'the points are promised on the server first, for this order', JSON.stringify(holdCall && holdCall.body));
@@ -156,7 +164,8 @@ const server = http.createServer((req, res) => {
     SHOPPING = { rewardsOnline: false };
     const off = await browser.newPage();
     await off.goto(base + '/', { waitUntil: 'networkidle' });
-    await off.waitForTimeout(600);
+    await off.waitForFunction(() => window.VBP_REWARDS && window.VBP_REWARDS.enabled === false &&
+      /wa\.me/.test((document.querySelector('#rewards .btn') || {}).href || ''), null, { timeout: 10000 }).catch(() => {});
     const band = await off.evaluate(() => { const b = document.querySelector('#rewards .btn'); return b && { href: b.getAttribute('href'), text: b.textContent }; });
     is(await off.evaluate(() => window.VBP_REWARDS.enabled === false) && band && /wa\.me/.test(band.href || ''),
        'nothing changes: the homepage button is the WhatsApp message it always was', JSON.stringify(band));

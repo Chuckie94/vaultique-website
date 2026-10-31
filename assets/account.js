@@ -739,9 +739,12 @@
           if (r && r.confirm) {
             body.innerHTML = '';
             body.appendChild(el('h3', 'serif', 'Almost there'));
+            /* The same words whether or not the address already had an
+               account (account-signup.js, build 77): the email it gets
+               says which. */
             body.appendChild(el('p', 'ac-lead',
-              'We have sent a link to ' + email.value.trim() +
-              '. Click it to confirm your address, then sign in.'));
+              'We have sent an email to ' + email.value.trim() +
+              '. Follow the link in it to finish, then sign in.'));
             body.appendChild(el('p', 'ac-quiet', 'Not there after a few minutes? Check the spam or junk folder.'));
             var again = el('p', 'ac-msg');
             if (r.note) say(again, r.note, 'err');

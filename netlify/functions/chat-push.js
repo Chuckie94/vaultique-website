@@ -24,7 +24,7 @@
    one of them.
    ===================================================================== */
 const crypto = require('crypto');
-const { readConfig } = require('./_seo-data');
+const { readConfig, serviceKey: siteServiceKey } = require('./_seo-data');
 
 const TTL = 86400;                 // a day. Longer than any shift.
 const RECORD_SIZE = 4096;
@@ -176,7 +176,7 @@ exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' });
 
   const s = site();
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey = siteServiceKey();
   if (!s.url || !serviceKey) {
     /* Said, but said quietly: whoever called this is not a person, and
        the only reader is a log. */

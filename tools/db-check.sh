@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-# Vaultique Boutique Point — the database, checked (build 76)
+# Vaultique Boutique Point — the database, checked (builds 76 and 77)
 # ---------------------------------------------------------------------
 # For whoever looks after the website, not for the shop. Builds a scratch
 # database the way a real project got here and checks it:
@@ -58,7 +58,7 @@ echo "3. Each older file again: each must refuse"
 refused=0
 for f in $FILES; do
   if out=$(run "$here/$f"); then echo "   RAN, and should not have:  $f"; fail=1
-  elif echo "$out" | grep -q "supabase-hardening.sql (build 76) has already been run"; then refused=$((refused + 1))
+  elif echo "$out" | grep -q "supabase-hardening.sql (build 76 or later) has already been run"; then refused=$((refused + 1))
   else echo "   FAILED for another reason:  $f"; echo "$out" | grep -E 'ERROR' | head -2 | sed 's/^/           /'; fail=1
   fi
 done

@@ -31,7 +31,7 @@ exports.handler = async function (event) {
     if (r.status === 'unknown') return P.json(404, { status: 'unknown' });
     if (r.status === 'paid' && r.fresh && r.pay && r.pay.order_id) {
       const s = await P.shopSettings();
-      await P.confirmByEmail(s, r.pay.order_id);
+      await P.confirmByEmail(s, r.pay.order_id, r.pay.mode, r.late);
     }
     const s = await P.shopSettings();
     const F = P.formats();
@@ -40,6 +40,8 @@ exports.handler = async function (event) {
       status: r.status,
       ref: txRef.split('-').slice(0, 2).join('-'),
       amountText: r.pay ? F.money(Number(r.pay.amount), style) : '',
+      /* A Test-mode payment (build 77): the page says no money moved. */
+      test: !!(r.pay && r.pay.mode === 'test'),
     });
   } catch (e) {
     return P.json(200, { status: 'pending' });

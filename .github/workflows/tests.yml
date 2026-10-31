@@ -1,0 +1,109 @@
+# =====================================================================
+# Vaultique Boutique Point — the website's own checks, on GitHub (build 79)
+# ---------------------------------------------------------------------
+# Every push to the repository runs these on GitHub's computers:
+#
+#   Node tests      the functions and the build step      (two or three minutes)
+#   Browser tests   the shop and the admin, in Chromium   (about twenty minutes)
+#   Database        the 28 SQL files, supabase-hardening.sql and the SQL
+#                   checks on a stand-in Supabase made fresh each time,
+#                   and the browser-to-database round trip (about five minutes)
+#
+# Nothing here is published, and none of it touches the shop: not
+# Netlify, not either Supabase, not Flutterwave, not the email account.
+# It needs no keys and no secrets.
+#
+# A run with a failure shows as a red cross beside the commit on GitHub:
+# open the Actions tab to see which check failed and why. It does not stop
+# Netlify deploying; that is Netlify's own build step (tools/build-site.cjs).
+# A browser check file that fails is tried once more (tests/run-tests.js):
+# one that passes only then is named as a warning, and the run stays green.
+#
+# The same checks by hand, from tests/:  npm ci, then npm run test:node,
+# npm run test:browser and npm run test:sql (README.md, "Tests").
+# =====================================================================
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Uploading through the browser is three commits in a row
+# (HOW-TO-UPLOAD.txt): a newer push stops a run still going for an older
+# one on the same branch, so only the finished upload is checked in full.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: Node tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - run: npm ci
+      - run: npm run test:node
+
+  browser:
+    name: Browser tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - run: npm ci
+      - name: Chromium, the version this Playwright expects
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+
+  database:
+    name: Database (stand-in Supabase)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - name: PostgreSQL, with the pg_net stand-in (tests/supabase-standin/README.txt)
+        run: |
+          sudo systemctl start postgresql.service
+          v=$(psql --version | sed -E 's/[^0-9]*([0-9]+).*/\1/')
+          echo "PostgreSQL $v"
+          sudo cp tests/supabase-standin/pg_net.control tests/supabase-standin/pg_net--0.1.sql "/usr/share/postgresql/$v/extension/"
+      - name: The 28 files, the hardening twice, the older files refusing (tools/db-check.sh)
+        run: sudo AS_USER=postgres bash tools/db-check.sh
+      - name: The SQL checks, chain by chain (tools/sql-tests.sh)
+        run: sudo AS_USER=postgres bash tools/sql-tests.sh
+      - name: Browser to database, end to end (tests/analytics.roundtrip.cjs)
+        working-directory: tests
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          sudo -u postgres psql -q -c "alter user postgres password 'roundtrip-local'"
+          sudo -u postgres createdb vq_roundtrip
+          sudo -u postgres psql -q -v ON_ERROR_STOP=1 -d vq_roundtrip -f - < analytics-fixture.sql
+          sudo -u postgres psql -q -v ON_ERROR_STOP=1 -d vq_roundtrip -f - < ../supabase-analytics.sql
+          cd .. && VBP_TEST_DB=postgresql://postgres:roundtrip-local@127.0.0.1/vq_roundtrip node tests/analytics.roundtrip.cjs

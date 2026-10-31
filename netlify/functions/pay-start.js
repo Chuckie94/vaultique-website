@@ -39,9 +39,27 @@ exports.handler = async function (event) {
     if (!P.flwKey(mode) || !P.serviceKey()) {
       return P.json(503, { error: 'Online payment is not ready yet. Please order on WhatsApp for now.' });
     }
+    // Build 77 (decision Q3): Test mode is the shop's own, not the public's.
+    if (mode === 'test' && !(await P.testAllowed(event, body.preview))) {
+      return P.json(403, { error: P.TEST_ONLY, off: true });
+    }
 
-    // Tidy walked-away attempts, then the limits.
+    // Tidy walked-away attempts, then the limits: this connection first,
+    // counted by the database (build 77), then this phone and the shop.
     await P.svc('POST', 'rpc/pay_expire_stale', {}, 'return=minimal').catch(() => {});
+    const client = P.clientAddr(event);
+    if (client) {
+      try {
+        await P.svc('POST', 'rpc/throttle', { p_bucket: 'pay_start', p_key: client,
+          p_max: P.PER_CONNECTION_PER_HOUR, p_window: '1 hour' }, 'return=minimal');
+      } catch (e) {
+        if (/Too many/.test(String(e && e.message))) {
+          return P.json(429, { error: 'There have been a lot of payment attempts from here. Please wait a little and try again.' });
+        }
+        /* No throttle in the database yet (supabase-hardening.sql not
+           run): the phone and shop limits below still apply. */
+      }
+    }
     const hourAgo = new Date(Date.now() - 3600000).toISOString();
     const digits = buyer.phone.replace(/\D/g, '');
     const [mine, all] = await Promise.all([
@@ -93,7 +111,9 @@ exports.handler = async function (event) {
       meta: { order_ref: placed.ref },
     });
     const link = made.data && made.data.data && made.data.data.link;
-    if (!made.ok || !link) {
+    // Only ever a web page of Flutterwave's own: the customer's browser is
+    // sent there, so nothing else is passed on (build 78).
+    if (!made.ok || !/^https:\/\/[^\/\\\s]/i.test(String(link || ''))) {
       await P.failPayment(pay, 'could not open the payment page');
       return P.json(502, { error: 'The payment page could not be opened just now. Please try again, or order on WhatsApp.' });
     }

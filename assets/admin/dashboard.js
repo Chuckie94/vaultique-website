@@ -219,13 +219,15 @@
       }
 
       /* ---- what the storefront took ---------------------------------------
-         ORDER VALUE, NOT SALES, AND THE DIFFERENCE MATTERS. The website
-         does not take payment: every method in Settings > Payments is
-         settled off the site — cash in person, a transfer, mobile money —
-         so what is counted here is what customers asked the storefront
-         for, not money that has arrived. The shop's books are the
-         Business Platform's, and calling this "sales" would put a figure
-         on this page that nobody should reconcile against them.
+         ORDER VALUE, NOT SALES, AND THE DIFFERENCE MATTERS. Most of what
+         the website sells is settled off the site — cash in person, a
+         transfer, mobile money — so what is counted here is the orders
+         the shop has confirmed, and the ones paid online (build 78,
+         decision Q4; orders still waiting to be confirmed are said
+         beside them), not money that has arrived in the bank. The
+         shop's books are the Business Platform's, and calling this
+         "sales" would put a figure on this page that nobody should
+         reconcile against them.
 
          ONE SCALE AT A TIME. Orders and their value are different
          measures and are never drawn on one pair of axes; the toggle
@@ -251,9 +253,10 @@
       ovHead.appendChild(mBox);
       ovCard.appendChild(ovHead);
       ovCard.appendChild(el('div', 'an-note',
-        'What the storefront recorded. The website does not take payment — ' +
-        'orders are settled off the site, and the Business Platform holds the ' +
-        'shop\u2019s books.'));
+        'Orders the shop has confirmed, and the ones paid online. An order still ' +
+        'waiting to be confirmed is said beside them, not counted, and a cancelled ' +
+        'one not at all. Most orders are settled off the site: the Business ' +
+        'Platform holds the shop\u2019s books.'));
 
       var periodBox = el('div', 'db-periods');
       var PERIODS = [
@@ -498,9 +501,28 @@
          rows answer "today", "this week" and "this month" without asking
          three times.
 
-         A cancelled order is not a sale and is not counted as one. It is
-         still an order that was placed, so it is not hidden either: the
-         count is of orders that stand. */
+         WHAT COUNTS (decision Q4, build 78). An order the shop has
+         confirmed (Confirmed, Ready, On its way, Delivered, or the older
+         Completed), or one paid online for real, is counted. A WhatsApp
+         order still "Received" is not counted yet: nobody has said the
+         piece is there, and an order anybody could have made up must not
+         add to what the shop took. It is shown beside the figures, as
+         waiting. A cancelled order, a test payment and an order still on
+         the payment page are not counted at all. The same rule as
+         Analytics, which the database applies (order_counts_as in
+         supabase-hardening.sql). */
+      var SALE_STATUSES = { confirmed: 1, ready: 1, dispatched: 1, delivered: 1, completed: 1 };
+      function countsAs(o) {
+        var status = o.status || 'pending';
+        if (status === 'cancelled') return 'none';
+        if (o.payment_method === 'online') {
+          return (o.payment_status === 'paid' && o.pay_mode !== 'test') ? 'sale' : 'none';
+        }
+        if (status === 'pending') return 'waiting';
+        return SALE_STATUSES[status] ? 'sale' : 'none';
+      }
+      function isSale(o) { return o.kind === 'sale'; }
+      function isWaiting(o) { return o.kind === 'waiting'; }
       var ordersCache = null;         // shared with the phases that follow
       function loadOrders(t) {
         var mine = asking;
@@ -518,30 +540,30 @@
           if (mine !== asking) return null;
           if (r.error) throw r.error;
           var rows = (r.data || []).map(function (o) {
+            var paid = o.payment_method === 'online' && o.paid_amount != null && o.paid_amount !== '';
             return {
               id: o.id, ref: o.ref,
-              /* An order sent to pay online and not paid is not a sale, and
-                 is treated here exactly like a cancelled one. So is one
-                 "paid" in Test mode (build 76): no money moved. */
-              status: (o.payment_method === 'online' && (o.payment_status !== 'paid' || o.pay_mode === 'test'))
-                ? 'cancelled' : o.status,
-              total: Number(o.total) || 0,
+              status: o.status,
+              kind: countsAs(o),
+              /* Paid online: what was paid. Otherwise the order's total. */
+              total: (paid ? Number(o.paid_amount) : Number(o.total)) || 0,
               at: o.created_at,
               day: dayIn(tz, new Date(o.created_at))
             };
           });
           ordersCache = rows;
-          var mineToday = rows.filter(function (o) {
-            return o.day === t && o.status !== 'cancelled';
-          });
-          var mineWeek = rows.filter(function (o) {
-            return o.day >= shift(t, -6) && o.day <= t && o.status !== 'cancelled';
-          });
+          var lastWeek = function (o) { return o.day >= shift(t, -6) && o.day <= t; };
+          var mineToday = rows.filter(function (o) { return o.day === t && isSale(o); });
+          var mineWeek = rows.filter(function (o) { return lastWeek(o) && isSale(o); });
+          var waitWeek = rows.filter(function (o) { return lastWeek(o) && isWaiting(o); });
           var sum = function (list) {
             return list.reduce(function (a, o) { return a + o.total; }, 0);
           };
-          setKpi('orders', num(mineToday.length), num(mineWeek.length) + ' in 7 days');
-          setKpi('sales', asMoney(sum(mineToday)), asMoney(sum(mineWeek)) + ' in 7 days');
+          var waiting = function (said) {
+            return waitWeek.length ? ' \u00b7 ' + said + ' waiting to be confirmed' : '';
+          };
+          setKpi('orders', num(mineToday.length), num(mineWeek.length) + ' in 7 days' + waiting(num(waitWeek.length)));
+          setKpi('sales', asMoney(sum(mineToday)), asMoney(sum(mineWeek)) + ' in 7 days' + waiting(asMoney(sum(waitWeek))));
           paintOverview(rows, t);
           loadSelling(rows, t);
           return rows;
@@ -572,25 +594,25 @@
       function paintOverview(rows, t) {
         var monthStart = stampOf(parts(t).y, parts(t).m, 1);
         var wStart = weekStart(t);
-        var stands = function (o) { return o.status !== 'cancelled'; };
-
         var windows = {
           today: function (o) { return o.day === t; },
           week:  function (o) { return o.day >= wStart && o.day <= t; },
           month: function (o) { return o.day >= monthStart && o.day <= t; }
         };
         PERIODS.forEach(function (pd) {
-          var list = rows.filter(windows[pd.key]).filter(stands);
+          var list = rows.filter(windows[pd.key]).filter(isSale);
           var worth = list.reduce(function (a, o) { return a + o.total; }, 0);
+          var waits = rows.filter(windows[pd.key]).filter(isWaiting).length;
           periodEls[pd.key].n.textContent = num(list.length) +
             (list.length === 1 ? ' order' : ' orders');
-          periodEls[pd.key].s.textContent = asMoney(worth);
+          periodEls[pd.key].s.textContent = asMoney(worth) +
+            (waits ? ' \u00b7 ' + num(waits) + ' waiting' : '');
         });
 
         trendDays = [];
         for (var i = 6; i >= 0; i--) {
           var day = shift(t, -i);
-          var of = rows.filter(function (o) { return o.day === day; }).filter(stands);
+          var of = rows.filter(function (o) { return o.day === day; }).filter(isSale);
           trendDays.push({
             day: day,
             orders: of.length,
@@ -1070,14 +1092,14 @@
       }
 
       /* Best selling. The lines belonging to the orders already fetched —
-         the last seven days of them, and never a cancelled one, so this
-         agrees with the money above it rather than telling a second
-         story. */
+         the last seven days of them, and only the ones counted above
+         (build 78: confirmed, or paid online), so this agrees with the
+         money above it rather than telling a second story. */
       function loadSelling(rows, t) {
         var mine = asking;
         var weekAgo = shift(t, -6);
         var ids = rows.filter(function (o) {
-          return o.status !== 'cancelled' && o.day >= weekAgo && o.day <= t;
+          return isSale(o) && o.day >= weekAgo && o.day <= t;
         }).map(function (o) { return o.id; }).slice(0, 300);
 
         if (!ids.length) { perf.sold = []; paintPerf(); return; }

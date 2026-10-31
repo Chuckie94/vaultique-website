@@ -46,8 +46,8 @@ begin
   end if;
   if v_done then
     raise exception using
-      message = 'Not run, and nothing was changed: supabase-hardening.sql (build 76) has already been run on this project and replaces this file. If you were running this file again because older instructions said it was safe to, you do not need to: run supabase-hardening.sql again instead.',
-      hint = 'Only if this file has never been run on this project and you need it: run  delete from public.schema_migrations where version = ''076-hardening'';  then this file, then supabase-hardening.sql again.';
+      message = 'Not run, and nothing was changed: supabase-hardening.sql (build 76 or later) has already been run on this project and replaces this file. If you were running this file again because older instructions said it was safe to, you do not need to: run supabase-hardening.sql again instead.',
+      hint = 'Only if this file has never been run on this project and you need it: run  delete from public.schema_migrations where version >= ''076'';  then this file, then supabase-hardening.sql again.';
   end if;
 end $$;
 

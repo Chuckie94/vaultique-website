@@ -254,7 +254,7 @@ const server = http.createServer((req, res) => {
       await page.check('#ac_consent');
       await page.click('.ac-body .btn-gold'); await page.waitForTimeout(500);
       is(/waiting to be confirmed/.test(await page.textContent('.ac-body')) && await page.isVisible('.ac-resend'),
-         'an address already waiting is offered the link again');
+         'an address already waiting is offered the link again (said only with "Verify email addresses" off, build 77)');
       is(errors.length === 0, 'with no page errors' + (errors.length ? ': ' + errors[0] : ''));
       await ctx.close();
     }

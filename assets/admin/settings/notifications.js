@@ -180,7 +180,8 @@
               { type: 'text', name: 'smtpPassword', label: 'SMTP password', half: true,
                 private: true, secret: true, maxLength: 200,
                 showIf: function (v) { return !!v.emailEnabled; },
-                hint: 'Kept where customers cannot reach it, with your bank details.' },
+                hint: 'Kept where only the website itself can read it: once saved it is never ' +
+                      'shown again, here or anywhere. Type a new one only to change it.' },
               { type: 'textarea', name: 'signature', label: 'Email signature', rows: 4,
                 maxLength: 400, placeholder: 'Vaultique Boutique Point\nManda Hill, Lusaka',
                 showIf: function (v) { return !!v.emailEnabled; } }
@@ -200,6 +201,11 @@
         },
 
         afterLoad: function (values, form) {
+          /* Since supabase-hardening.sql (build 77) the database takes the
+             password out of reach the moment it is saved, and only says
+             THAT one is saved. Leaving the box empty keeps it. */
+          var pw = host.querySelector('#f_smtpPassword');
+          if (pw && values.passwordSaved) pw.placeholder = 'Saved and hidden. Type a new one only to change it.';
           buildExtras(values, form);
         }
       });
@@ -285,16 +291,14 @@
           testMsg.textContent = 'Sending…';
           testMsg.className = 'sec-msg';
 
-          /* Read back what is stored rather than what is on screen: a
-             test that passes on unsaved details would prove nothing
-             about the shop that is actually running. */
-          Promise.all([
-            A.store.load('notifications'),
-            A.store.loadPrivate(PRIVATE_KEY),
-            ctx.sb.auth.getSession()
-          ]).then(function (r) {
-            var saved = r[0] || {}, shut = r[1] || {};
-            var session = r[2] && r[2].data && r[2].data.session;
+          /* The website sends it with what is STORED, not what is on
+             screen: a test that passes on unsaved details would prove
+             nothing about the shop that is actually running. Since build
+             77 the page sends only the address: the account, password
+             and all, is read by the website itself, and the password
+             never comes to this page at all. */
+          Promise.resolve(ctx.sb.auth.getSession()).then(function (r) {
+            var session = r && r.data && r.data.session;
             if (!session) throw new Error('You are not signed in.');
 
             return fetch('/.netlify/functions/send-email', {
@@ -303,18 +307,7 @@
                 'Content-Type': 'application/json',
                 Authorization: 'Bearer ' + session.access_token
               },
-              body: JSON.stringify({
-                smtpHost: saved.smtpHost, smtpPort: saved.smtpPort,
-                encryption: saved.encryption,
-                smtpUser: saved.smtpUser, smtpPassword: shut.smtpPassword,
-                senderName: saved.senderName, senderEmail: saved.senderEmail,
-                replyTo: saved.replyTo,
-                to: to,
-                subject: 'Test message from ' + (general.businessName || 'your website'),
-                text: 'This is a test from your website admin.\n\n' +
-                      'If you are reading it, your email settings work.\n\n' +
-                      (saved.signature || '')
-              })
+              body: JSON.stringify({ kind: 'test', to: to })
             });
           }).then(function (res) {
             return res.json().catch(function () {

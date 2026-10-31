@@ -17,6 +17,7 @@ const SENDS = {};
 const SENT = [];
 let mailWorks = true;
 let sqlRun = true;
+let hideFromState = '';      // an account made between the two questions
 global.fetch = async (url, opts = {}) => {
   const u = new URL(url);
   const ok = (data, status = 200) => ({ ok: status < 300, status, json: async () => data, text: async () => JSON.stringify(data) });
@@ -35,7 +36,7 @@ global.fetch = async (url, opts = {}) => {
   }
   if (u.pathname === '/rest/v1/rpc/account_signup_state') {
     if (!sqlRun) return ok({ code: 'PGRST202', message: 'Could not find the function public.account_signup_state' }, 404);
-    const x = USERS[b.p_email]; return ok(!x ? 'none' : x.confirmed ? 'confirmed' : 'waiting');
+    const x = b.p_email === hideFromState ? null : USERS[b.p_email]; return ok(!x ? 'none' : x.confirmed ? 'confirmed' : 'waiting');
   }
   if (u.pathname === '/rest/v1/site_settings') {
     const key = (u.searchParams.get('key') || '').replace('eq.', '');
@@ -70,9 +71,7 @@ const call = async (body, ip) => {
   is(/redirect_to=https:\/\/shop\.test\/account/.test(SENT[0].text), 'and the link brings them back to their account page');
   is(SENT[0].senderEmail === 'noreply@shop.test', 'sent from the shop\'s own email (Settings > Notifications)');
 
-  console.log('\nThe same address again');
-  r = await call({ action: 'signup', email: 'new@example.com', password: 'secret123', name: 'Mutale' });
-  is(r.status === 409 && r.body.waiting === true, 'is told it is waiting to be confirmed, with the resend offered', JSON.stringify(r.body));
+  console.log('\nThe link again');
   SENT.length = 0;
   r = await call({ action: 'resend', email: 'new@example.com' });
   is(r.status === 200 && SENT.length === 1 && /type=magiclink/.test(SENT[0].text), 'the link is sent again');
@@ -81,6 +80,65 @@ const call = async (body, ip) => {
   r = await call({ action: 'resend', email: 'new@example.com' });
   r = await call({ action: 'resend', email: 'new@example.com' });
   is(r.status === 429, 'no more than three links an hour to one address', String(r.status));
+
+  console.log('\nAn address already in use gets the same answer (build 77)');
+  const again = (email, extra) => call(Object.assign({ action: 'signup', email, password: 'second-pass2', name: 'Mallory Visitor' }, extra || {}));
+  SENT.length = 0;
+  const asNew = await again('brand-new@example.com');
+  USERS['waits@example.com'] = { confirmed: false, password: 'first-pass1', meta: { name: 'Owner' } };
+  USERS['owner@example.com'] = { confirmed: true, password: 'theirs-123', meta: { name: 'Owner' } };
+  SENT.length = 0;
+  const asWaiting = await again('waits@example.com');
+  const toWaiting = SENT.slice();
+  SENT.length = 0;
+  const asTaken = await again('Owner@Example.com ');
+  const toTaken = SENT.slice();
+  is(asNew.status === 200 && asNew.body.created && JSON.stringify(asWaiting) === JSON.stringify(asNew) &&
+     JSON.stringify(asTaken) === JSON.stringify(asNew),
+     'a new address, one waiting to be confirmed and one in use: the very same answer',
+     [asNew, asWaiting, asTaken].map((x) => JSON.stringify(x)).join(' / '));
+  is(toWaiting.length === 1 && toWaiting[0].to === 'waits@example.com' && /type=magiclink/.test(toWaiting[0].text) &&
+     /still waiting to be confirmed/.test(toWaiting[0].text),
+     'waiting: its owner is sent a link that confirms it and signs in', JSON.stringify(toWaiting));
+  is(USERS['waits@example.com'].password === 'first-pass1' && USERS['owner@example.com'].password === 'theirs-123',
+     'and no account\'s password is changed by somebody signing up with its address');
+  is(toTaken.length === 1 && toTaken[0].to === 'owner@example.com' && /already an account/.test(toTaken[0].text) &&
+     /Sign in here: https:\/\/shop\.test\/account/.test(toTaken[0].text) && /Forgotten your password\?/.test(toTaken[0].text) &&
+     !/token=/.test(toTaken[0].text),
+     'in use: its owner is told, with where to sign in and how to choose a new password, and no link that does anything',
+     JSON.stringify(toTaken));
+  is(!/Mallory|second-pass2/.test(toWaiting.concat(toTaken).map((m) => m.subject + ' ' + m.text).join(' ')),
+     'nothing typed into the form reaches the owner\'s inbox, not even the name');
+  ACCOUNTS.passwordReset = false;
+  SENT.length = 0;
+  await again('owner@example.com');
+  is(SENT.length === 1 && !/on the sign-in page/.test(SENT[0].text) && /Reply to this email/.test(SENT[0].text),
+     'with "Offer password reset" off, the email does not send them to it');
+  delete ACCOUNTS.passwordReset;
+  mailWorks = false;
+  const newFails = await again('another-new@example.com');
+  const takenFails = await again('owner@example.com');
+  mailWorks = true;
+  is(newFails.body.emailed === false && JSON.stringify(takenFails) === JSON.stringify(newFails),
+     'the email failing: the same answer for both as well', JSON.stringify(newFails) + ' / ' + JSON.stringify(takenFails));
+  for (let i = 0; i < 3; i++) r = await again('brand-new@example.com');
+  const r2 = await again('owner@example.com');
+  is(r.status === 429 && JSON.stringify(r2) === JSON.stringify(r),
+     'and the same limit, three emails an hour to one address, in use or not', JSON.stringify(r) + ' / ' + JSON.stringify(r2));
+  USERS['race@example.com'] = { confirmed: true, password: 'theirs-123' };
+  hideFromState = 'race@example.com';
+  SENT.length = 0;
+  r = await again('race@example.com');
+  hideFromState = '';
+  is(JSON.stringify(r) === JSON.stringify(asNew) && SENT.length === 1 && SENT[0].to === 'race@example.com' &&
+     /already an account/.test(SENT[0].text),
+     'an account made a moment before, between the two questions: the same answer, and its owner told', JSON.stringify(r));
+  ACCOUNTS.emailVerification = false;
+  r = await again('owner@example.com');
+  ACCOUNTS.emailVerification = true;
+  is(r.status === 409 && /already an account/.test(r.body.error) && USERS['owner@example.com'].password === 'theirs-123',
+     'with "Verify email addresses" off it cannot be the same (the account would be signed straight in): ' +
+     'an address in use is said to be, as Supabase\'s own sign-up says it', JSON.stringify(r));
 
   console.log('\nThe shop\'s rules');
   r = await call({ action: 'signup', email: 'a@example.com', password: 'short', name: 'A' });

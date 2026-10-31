@@ -89,6 +89,13 @@ is(q.fee === 0 && q.free, '"free delivery over" still wins, checked last');
     const u = new URL(req.url, 'http://x');
     const send = o => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
     if (u.pathname === '/pos/rest/v1/app_state') return send([{ id: 100, state: { products: POS } }]);
+    /* Online payment is in Test mode here, which since build 77 only the
+       shop may use: these quotes carry its preview key, as the owner's do. */
+    if (u.pathname === '/web/rest/v1/rpc/preview_ok') {
+      let b = '';
+      req.on('data', (c) => { b += c; });
+      return req.on('end', () => send(JSON.parse(b || '{}').p_key === 'shop-preview'));
+    }
     if (u.pathname === '/web/rest/v1/site_settings') {
       const k = u.searchParams.get('key').replace('eq.', '');
       return send(SETTINGS[k] ? [{ data: SETTINGS[k] }] : []);
@@ -100,7 +107,10 @@ is(q.fee === 0 && q.free, '"free delivery over" still wins, checked last');
   Object.assign(process.env, { WEB_SUPABASE_URL: base + '/web', WEB_SUPABASE_ANON_KEY: 'a',
                                POS_SUPABASE_URL: base + '/pos', POS_SUPABASE_KEY: 'p' });
   const quote = require(path.join(__dirname, '..', 'netlify', 'functions', 'pay-quote')).handler;
-  const ask = async (b) => { const r = await quote({ httpMethod: 'POST', body: JSON.stringify(b), headers: {} }); return { code: r.statusCode, body: JSON.parse(r.body) }; };
+  const ask = async (b) => {
+    const r = await quote({ httpMethod: 'POST', body: JSON.stringify(Object.assign({ preview: 'shop-preview' }, b)), headers: {} });
+    return { code: r.statusCode, body: JSON.parse(r.body) };
+  };
 
   console.log('\nAt checkout, with weights from the POS');
   try {

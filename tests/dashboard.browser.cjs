@@ -346,15 +346,18 @@ const stock = p => p.evaluate(() => {
     c = await cardBy(page, 'Checkouts begun');
     is(c && c.n === '5', 'checkouts begun shows today', JSON.stringify(c));
 
-    group('Orders are counted the way a shop counts them');
+    group('Orders are counted the way a shop counts them (build 78, decision Q4)');
     c = await cardBy(page, 'Orders');
-    is(c && c.n === '3', 'three orders today — the cancelled one, the unpaid online one and the test payment are not among them', JSON.stringify(c));
+    is(c && c.n === '2', 'two orders today: the confirmed one and the one paid online. The one still "Received" waits, ' +
+       'and the cancelled one, the unpaid online one and the test payment are not counted', JSON.stringify(c));
+    is(c && /3 in 7 days/.test(c.s) && /1 waiting to be confirmed/.test(c.s),
+       'the week has the older confirmed one too, and the one still waiting is said beside them', c && c.s);
     c = await cardBy(page, 'Order value');
-    is(c && /5,550/.test(c.n), 'and today is worth 1850 + 3200 + 500 paid online, with the cancelled 900, the unpaid 700 and the test 4000 left out',
-       c && c.n);
+    is(c && /3,700/.test(c.n), 'and today is worth 3200 confirmed + 500 paid online; the 1850 still waiting, the cancelled 900, ' +
+       'the unpaid 700 and the test 4000 are left out', c && c.n);
     is(c && /K/.test(c.n), 'shown in the shop’s own money', c && c.n);
-    is(c && /7,950/.test(c.s), 'the week includes the older order and still excludes the cancelled',
-       c && c.s);
+    is(c && /6,100/.test(c.s) && /1,850 waiting/.test(c.s),
+       'the week adds the older order, with what is waiting said on its own', c && c.s);
 
     group('The people are totals, not today');
     c = await cardBy(page, 'Registered customers');
@@ -399,11 +402,11 @@ const stock = p => p.evaluate(() => {
     }));
 
     let pd = await period(page, 'Today');
-    is(pd && /^2 orders/.test(pd.n), 'today counts the two that stand', JSON.stringify(pd));
-    is(pd && /5,050/.test(pd.s), 'and is worth what they came to', pd && pd.s);
+    is(pd && /^1 order\b/.test(pd.n), 'today counts the one confirmed', JSON.stringify(pd));
+    is(pd && /3,200/.test(pd.s) && /1 waiting/.test(pd.s), 'worth what it came to, with the one still waiting said beside it', pd && pd.s);
     pd = await period(page, 'This month');
-    is(pd && /^4 orders/.test(pd.n), 'the month has all four that stand', JSON.stringify(pd));
-    is(pd && /8,450/.test(pd.s), 'worth 1850 + 3200 + 2400 + 1000', pd && pd.s);
+    is(pd && /^3 orders/.test(pd.n), 'the month has the three confirmed or completed', JSON.stringify(pd));
+    is(pd && /6,600/.test(pd.s), 'worth 3200 + 2400 + 1000', pd && pd.s);
 
     /* THE FIRST OF THE MONTH, which is when this used to go wrong: the
        page's clock set to eight in the morning, shop time, on the 1st. An
@@ -416,7 +419,7 @@ const stock = p => p.evaluate(() => {
       await render(page, Object.assign({}, SETTINGS_OK, {
         'rpc:site_stats': { when: { same: { data: {} }, span: { data: {} } } },
         orders: { data: [
-          { id: 'f1', total: 1200, status: 'pending',   created_at: new Date(FIRST - 3600000).toISOString() },
+          { id: 'f1', total: 1200, status: 'confirmed', created_at: new Date(FIRST - 3600000).toISOString() },
           { id: 'f2', total: 4000, status: 'completed', created_at: new Date(FIRST - 2 * 86400000).toISOString() }
         ] },
         'customers:count': { count: 0 }, customers: { data: [] },
@@ -443,8 +446,8 @@ const stock = p => p.evaluate(() => {
       }));
     }
 
-    is(/does not take payment/i.test(await textOf(page, '.card .an-note') || ''),
-       'the card says plainly that the website takes no money',
+    is(/confirmed/i.test(await textOf(page, '.card .an-note') || '') && /paid online/i.test(await textOf(page, '.card .an-note') || ''),
+       'the card says plainly what is counted: confirmed, or paid online',
        await textOf(page, '.card .an-note'));
     is(/Business Platform/i.test(await textOf(page, '.card .an-note') || ''),
        'and points at where the books actually are');
@@ -457,7 +460,7 @@ const stock = p => p.evaluate(() => {
        String(await page.evaluate(() => document.querySelectorAll('.db-trend .db-val').length)));
     let vals = await page.evaluate(() =>
       Array.from(document.querySelectorAll('.db-trend .db-val')).map(e => e.textContent));
-    is(vals[6] === '2', 'today reads 2 orders', vals.join(','));
+    is(vals[6] === '1', 'today reads 1 order: the one confirmed', vals.join(','));
     is(vals.indexOf('0') > -1, 'a day with none reads as a nought rather than a gap', vals.join(','));
 
     group('And the toggle changes the measure rather than adding an axis');
@@ -471,7 +474,7 @@ const stock = p => p.evaluate(() => {
     await page.waitForTimeout(80);
     vals = await page.evaluate(() =>
       Array.from(document.querySelectorAll('.db-trend .db-val')).map(e => e.textContent));
-    is(/5,050/.test(vals[6] || ''), 'today now reads its value', vals.join(','));
+    is(/3,200/.test(vals[6] || ''), 'today now reads its value', vals.join(','));
     is((await page.evaluate(() => document.querySelectorAll('.db-trend svg').length)) === 1,
        'still one chart on one scale');
     is(await page.evaluate(() => {
@@ -707,7 +710,8 @@ const stock = p => p.evaluate(() => {
       ] },
       orders: { data: [
         { id: 'o1', total: 1850, status: 'confirmed', created_at: at(0) },
-        { id: 'o2', total: 3200, status: 'cancelled', created_at: at(1) }
+        { id: 'o2', total: 3200, status: 'cancelled', created_at: at(1) },
+        { id: 'o3', total: 500,  status: 'pending',   created_at: at(1) }
       ] },
       order_items: { data: [
         { sku: 'B', name: 'Tote Bag',   qty: 3 },
@@ -776,6 +780,7 @@ const stock = p => p.evaluate(() => {
     });
     is(sentIds && sentIds.indexOf('o1') > -1, 'the order that stands is asked about', sentIds);
     is(sentIds && sentIds.indexOf('o2') === -1, 'the cancelled one is not', sentIds);
+    is(sentIds && sentIds.indexOf('o3') === -1, 'nor one still waiting to be confirmed (build 78)', sentIds);
 
     group('Out of stock is the feed, and carries no count');
     list = await pickList(page, 'Out of stock');

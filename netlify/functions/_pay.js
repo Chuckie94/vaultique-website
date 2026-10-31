@@ -28,12 +28,17 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
-const { settings, readConfig, rows, previewOk } = require('./_seo-data');
+const { settings, readConfig, rows, previewOk, serviceKey: siteServiceKey } = require('./_seo-data');
 
 const MAX_LINES = 50;
 const MAX_QTY = 99;
 const PER_PHONE_PER_HOUR = 5;
-const PER_SHOP_PER_HOUR = 300;
+// Build 77: one connection may start this many payments an hour, and the
+// whole shop this many. The shop-wide figure is a backstop against a
+// flood, not a working limit: at 300 anybody typing made-up phone numbers
+// could switch online payment off for everybody for an hour (W-11).
+const PER_CONNECTION_PER_HOUR = 8;
+const PER_SHOP_PER_HOUR = 1000;
 
 function json(statusCode, body) {
   return {
@@ -286,7 +291,7 @@ async function priceOrder(s, rawItems, fulfilment, preview, town) {
 }
 
 // ---- the website's database, as the payment service ---------------------
-function serviceKey() { return process.env.SUPABASE_SERVICE_ROLE_KEY || ''; }
+function serviceKey() { return siteServiceKey(); }   // either name (build 77, _seo-data.js)
 
 async function svc(method, pathAndQuery, body, prefer) {
   const { url } = readConfig();
@@ -373,18 +378,21 @@ async function settle(txRef, transactionId) {
       detail: { flw_ref: d.flw_ref || '', amount: d.amount, charged: d.charged_amount, app_fee: d.app_fee },
     });
     if (!won || !won.length) return { status: 'paid', pay, fresh: false };
+    let revive = false;
     if (pay.order_id) {
       // An order cancelled only because its payment had failed or expired
       // comes back to life. One the shop has moved along is left as it is.
       const was = await svc('GET', 'orders?id=eq.' + pay.order_id + '&select=status,payment_status');
-      const revive = was && was[0] && was[0].status === 'cancelled' &&
-                     ['failed', 'expired'].indexOf(was[0].payment_status) > -1;
+      revive = !!(was && was[0] && was[0].status === 'cancelled' &&
+                  ['failed', 'expired'].indexOf(was[0].payment_status) > -1);
       await svc('PATCH', 'orders?id=eq.' + pay.order_id, Object.assign({
         payment_status: 'paid', paid_amount: Number(d.amount), paid_at: now,
         pay_channel: String(d.payment_type || ''), updated_at: now,
       }, revive ? { status: 'pending' } : {}), 'return=minimal');
     }
-    return { status: 'paid', pay: won[0], fresh: true };
+    // late: the order had lapsed and been cancelled, and this brought it
+    // back. Its piece may have sold since, so the shop is told (build 78).
+    return { status: 'paid', pay: won[0], fresh: true, late: !!(pay.order_id && revive) };
   }
 
   if (d.status === 'successful' && !ours) {
@@ -415,18 +423,24 @@ async function failPayment(pay, why) {
 }
 
 // ---- the confirmation email -------------------------------------------------
-async function confirmByEmail(s, orderId) {
+// mode is the payment's own ('test' or 'live'). A test payment says so in
+// both subjects and never calls itself paid (build 77, W-04): no money
+// moved, and an email that said otherwise could be forwarded as proof.
+async function confirmByEmail(s, orderId, mode, late) {
   try {
-    const [pub, priv, orders, items] = await Promise.all([
-      settings('notifications'),
-      svc('GET', 'site_settings_private?key=eq.notifications&select=data'),
+    // The shop's email account, read the one way every function reads it
+    // (_mail.js): since build 77 the password is in a row only the server
+    // can read.
+    const M = require('./_mail');
+    const [account, orders, items] = await Promise.all([
+      M.mailAccount(),
       svc('GET', 'orders?id=eq.' + orderId + '&select=*'),
       svc('GET', 'order_items?order_id=eq.' + orderId + '&select=name,qty,price'),
     ]);
-    const n = pub || {};
-    const secret = (priv && priv[0] && priv[0].data) || {};
+    const n = account.pub;
     const o = orders && orders[0];
-    if (!o || !n.emailEnabled || !n.smtpHost || !n.senderEmail) return { sent: 0 };
+    if (!o || !account.ready) return { sent: 0 };
+    const test = mode === 'test' || o.pay_mode === 'test';
 
     const F = formats();
     const style = F.moneyStyle(s.general, s.pricing);
@@ -441,25 +455,27 @@ async function confirmByEmail(s, orderId) {
       o.goods_total != null ? 'Items: ' + money(o.goods_total) : '',
       Number(o.tax_total) ? 'Tax: ' + money(o.tax_total) : '',
       Number(o.delivery_fee) ? 'Delivery: ' + money(o.delivery_fee) : '',
-      'Paid: ' + money(o.paid_amount) + (o.pay_channel ? ' (' + (o.pay_channel === 'card' ? 'card' : 'mobile money') + ')' : ''),
+      (test ? 'TEST payment, no money taken: ' : 'Paid: ') + money(o.paid_amount) +
+        (o.pay_channel ? ' (' + (o.pay_channel === 'card' ? 'card' : 'mobile money') + ')' : ''),
       '',
       o.fulfilment === 'collection' ? 'You are collecting this order in person.' : (o.address ? 'Delivering to: ' + o.address : ''),
     ].filter((l, i, a) => l !== '' || (a[i - 1] !== '' && i > 0));
 
     const sendMail = require('./send-email')._internals.sendMail;
-    const base = {
-      smtpHost: n.smtpHost, smtpPort: n.smtpPort, encryption: n.encryption,
-      smtpUser: n.smtpUser, smtpPassword: secret.smtpPassword,
-      senderName: n.senderName || shop, senderEmail: n.senderEmail, replyTo: n.replyTo,
-    };
+    const base = Object.assign(M.accountConfig(account), { senderName: n.senderName || shop });
     let sent = 0;
     if (s.pay.onlineConfirmEmail !== false && o.email) {
       try {
         await sendMail(Object.assign({}, base, {
           to: o.email,
-          subject: 'Payment received \u2014 order ' + o.ref,
-          text: 'Hello ' + (o.name || '') + ',\n\nThank you. We have received your payment.\n\n' +
-                parts.join('\n') + '\n\nWe will be in touch about your order shortly.\n\n' + (n.signature || shop),
+          subject: test ? '[TEST] Test payment \u2014 order ' + o.ref + ', no money taken'
+                        : 'Payment received \u2014 order ' + o.ref,
+          text: 'Hello ' + (o.name || '') + ',\n\n' +
+                (test ? 'This was a TEST payment, made while the shop was testing online payment. ' +
+                        'No money was taken, and this is not a receipt.'
+                      : 'Thank you. We have received your payment.') + '\n\n' +
+                parts.join('\n') + '\n\n' +
+                (test ? '' : 'We will be in touch about your order shortly.\n\n') + (n.signature || shop),
         }));
         sent++;
       } catch (e) { /* the payment stands whether or not the email goes */ }
@@ -469,8 +485,17 @@ async function confirmByEmail(s, orderId) {
       try {
         await sendMail(Object.assign({}, base, {
           to: shopTo,
-          subject: 'Paid online: order ' + o.ref + ' \u2014 ' + money(o.paid_amount),
-          text: 'A customer has paid online.\n\n' + parts.join('\n') + '\n\n' +
+          subject: (late ? '[CHECK STOCK] ' : '') +
+                   (test ? '[TEST] Test payment: order ' + o.ref + ' \u2014 no money moved'
+                         : 'Paid online: order ' + o.ref + ' \u2014 ' + money(o.paid_amount)),
+          text: (late ? 'PAID LATE. This payment arrived after the payment window had closed, when the order ' +
+                        'had already been cancelled for not being paid, and it has brought the order back. ' +
+                        'Nothing was set aside for it meanwhile, so the piece may have sold since: check it is ' +
+                        'still there before you confirm the order, and if it is not, refund the customer from ' +
+                        'your Flutterwave dashboard.\n\n' : '') +
+                (test ? 'A TEST payment was made on the website, in Test mode. No money moved: Flutterwave\'s ' +
+                        'test cards and numbers were used. The order is marked TEST in the Orders tab.'
+                      : 'A customer has paid online.') + '\n\n' + parts.join('\n') + '\n\n' +
                 'Customer: ' + (o.name || '') + '\nPhone: ' + (o.phone || '') + '\nEmail: ' + (o.email || '') +
                 (o.notes ? '\nNotes: ' + o.notes : '') + '\n\nOpen the Orders tab in your admin to confirm it.',
         }));
@@ -554,6 +579,34 @@ async function customerFrom(event) {
   }
 }
 
+// ---- build 77: who may use Test mode (decision Q3) --------------------------
+// In Test mode anybody could "pay" with the test cards Flutterwave
+// publishes and be sent a paid-looking confirmation. On the live site it
+// is for the shop alone: whoever holds the preview key, or the owner,
+// signed in with two-factor.
+function claimsOf(token) {
+  try {
+    return JSON.parse(Buffer.from(String(token || '').split('.')[1] || '', 'base64url').toString('utf8')) || {};
+  } catch (e) { return {}; }
+}
+async function ownerFrom(event) {
+  const h = (event && event.headers) || {};
+  const bearer = String(h.authorization || h.Authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (!bearer || !serviceKey()) return false;
+  // The token is checked with Supabase first, so what it says can be read.
+  const id = await customerFrom(event);
+  if (!id || claimsOf(bearer).aal !== 'aal2') return false;
+  try {
+    const r = await svc('GET', 'admins?id=eq.' + encodeURIComponent(id) + '&role=eq.owner&select=id');
+    return !!(r && r.length);
+  } catch (e) { return false; }
+}
+async function testAllowed(event, preview) {
+  if (await previewOk(preview)) return true;
+  return ownerFrom(event);
+}
+const TEST_ONLY = 'Paying online is not available just now. Please order on WhatsApp instead.';
+
 // The visitor's address as Netlify saw it, for the database's throttle.
 function clientAddr(event) {
   const h = (event && event.headers) || {};
@@ -593,5 +646,6 @@ module.exports = {
   deliveryCharge, svc, serviceKey, flw, flwKey, paymentOptions, hashMatches, newTxRef,
   settle, failPayment, confirmByEmail, siteOrigin,
   previewOk, closedFor, priceWhatsApp, customerFrom, clientAddr, recordOrder,
-  PER_PHONE_PER_HOUR, PER_SHOP_PER_HOUR,
+  testAllowed, ownerFrom, TEST_ONLY,
+  PER_PHONE_PER_HOUR, PER_CONNECTION_PER_HOUR, PER_SHOP_PER_HOUR,
 };

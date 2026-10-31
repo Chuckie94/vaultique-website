@@ -1,5 +1,5 @@
 -- ===========================================================================
--- THE HARDENING, CHECKED (supabase-hardening.sql, build 76)
+-- THE HARDENING, CHECKED (supabase-hardening.sql, builds 76 to 78; checks to 79)
 --
 -- Runs on a scratch database that has the Supabase stand-in, all 28 setup
 -- files in order, then supabase-hardening.sql:  tools/db-check.sh  does it.
@@ -311,8 +311,113 @@ select hchk(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p
                          where n.nspname = 'public' and p.prokind = 'f'
                            and not exists (select 1 from unnest(coalesce(p.proconfig, '{}'::text[])) c where c like 'search_path=%')),
   'search path: every function says where to look');
-select hchk(exists (select 1 from public.schema_migrations where version = '076-hardening'),
+select hchk(exists (select 1 from public.schema_migrations where version = '078-hardening'),
   'the record: this file is written down as run');
+
+-- ======================================================= 15. the email password (build 77)
+-- The fixture above saved a password the way Settings does; the database
+-- has taken it out of reach.
+select hchk((select data ->> 'smtpPassword' from public.site_settings_private where key = 'mail_secret') = 'x'
+            and not exists (select 1 from public.site_settings_private where key = 'notifications' and data ? 'smtpPassword'),
+  'email password: saved through Settings, it is moved where only the website reads it');
+set role authenticated; select pg_temp.as_user('00000000-0000-0000-0000-0000000000f6', 'aal2');
+select hchk((select (data ->> 'passwordSaved')::boolean from public.site_settings_private where key = 'notifications')
+            and not exists (select 1 from public.site_settings_private where key = 'notifications' and data ? 'smtpPassword'),
+  'email password: an Administrator sees only that one is saved');
+select hchk((select count(*) from public.site_settings_private where key = 'mail_secret') = 0,
+  'email password: and cannot read it');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a1', 'aal2');
+select hchk((select count(*) from public.site_settings_private where key = 'mail_secret') = 0,
+  'email password: nor can the owner: no page needs it any more');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f6', 'aal2');
+select hchk(pg_temp.fails($q$insert into public.site_settings_private (key, data) values ('mail_secret', '{"smtpPassword":"mine"}')
+                             on conflict (key) do update set data = excluded.data$q$),
+  'email password: nobody signed in can write the hidden row directly');
+select hchk(not pg_temp.fails($q$update public.site_settings_private set data = '{"smtpPassword":""}' where key = 'notifications'$q$),
+  'email password: saving Settings with the box left empty works');
+reset role;
+select hchk((select data ->> 'smtpPassword' from public.site_settings_private where key = 'mail_secret') = 'x',
+  'email password: and keeps the one already saved');
+set role authenticated; select pg_temp.as_user('00000000-0000-0000-0000-0000000000f6', 'aal2');
+select hchk(not pg_temp.fails($q$update public.site_settings_private set data = '{"smtpPassword":"new-one"}' where key = 'notifications'$q$),
+  'email password: typing a new one and saving replaces it');
+reset role;
+select hchk((select data ->> 'smtpPassword' from public.site_settings_private where key = 'mail_secret') = 'new-one'
+            and not exists (select 1 from public.site_settings_private where key = 'notifications' and data ? 'smtpPassword'),
+  'email password: and it goes straight out of reach again');
+set role authenticated; select pg_temp.as_user('00000000-0000-0000-0000-0000000000b2', 'aal1');
+select hchk((select count(*) from public.site_settings_private) = 0,
+  'email password: an Agent sees no private settings at all');
+reset role;
+
+reset role;
+
+-- ======================================================= 16. what counts as a sale (build 78, Q4)
+-- A day of its own, long ago, so nothing else the checks above made is in it.
+set role service_role; select pg_temp.as_service();
+insert into public.orders (ref, name, total, status, payment_method, payment_status, pay_mode, paid_amount, currency, created_at) values
+  ('VB-Q4W1', 'Waiting',    100, 'pending',   null,     null,       null,   null, 'ZMW', '2020-03-10 12:00+00'),
+  ('VB-Q4C1', 'Confirmed',  200, 'confirmed', null,     null,       null,   null, 'ZMW', '2020-03-10 12:00+00'),
+  ('VB-Q4D1', 'Delivered',  300, 'delivered', null,     null,       null,   null, 'ZMW', '2020-03-10 12:00+00'),
+  ('VB-Q4L1', 'Older',      400, 'completed', null,     null,       null,   null, 'ZMW', '2020-03-10 12:00+00'),
+  ('VB-Q4R1', 'Ready',       50, 'ready',     null,     null,       null,   null, 'ZMW', '2020-03-10 12:00+00'),
+  ('VB-Q4X1', 'Cancelled',  500, 'cancelled', null,     null,       null,   null, 'ZMW', '2020-03-10 12:00+00'),
+  ('VB-Q4O1', 'Paid',       600, 'pending',   'online', 'paid',     'live', 600,  'ZMW', '2020-03-10 12:00+00'),
+  ('VB-Q4O2', 'Paying',     700, 'pending',   'online', 'awaiting', 'live', null, 'ZMW', '2020-03-10 12:00+00'),
+  ('VB-Q4T1', 'Test',       800, 'pending',   'online', 'paid',     'test', 800,  'ZMW', '2020-03-10 12:00+00');
+reset role;
+select hchk(public.order_counts_as('{"status":"pending"}') = 'waiting'
+        and public.order_counts_as('{}') = 'waiting'
+        and public.order_counts_as('{"status":"confirmed"}') = 'sale'
+        and public.order_counts_as('{"status":"dispatched"}') = 'sale'
+        and public.order_counts_as('{"status":"cancelled"}') = 'none'
+        and public.order_counts_as('{"status":"pending","payment_method":"online","payment_status":"paid","pay_mode":"live"}') = 'sale'
+        and public.order_counts_as('{"status":"confirmed","payment_method":"online","payment_status":"awaiting"}') = 'none'
+        and public.order_counts_as('{"status":"delivered","payment_method":"online","payment_status":"paid","pay_mode":"test"}') = 'none'
+        and public.order_counts_as('{"status":"cancelled","payment_method":"online","payment_status":"paid"}') = 'none',
+  'sales: confirmed, ready, on its way, delivered or completed is a sale; "Received" waits; paid online for real is a sale; cancelled, test and unpaid are not');
+set role authenticated; select pg_temp.as_user('00000000-0000-0000-0000-0000000000a1', 'aal2');
+select hchk((j ->> 'whatsapp_orders')::int = 4 and (j ->> 'whatsapp_sales')::numeric = 950
+        and (j ->> 'whatsapp_waiting')::int = 1 and (j ->> 'whatsapp_waiting_value')::numeric = 100
+        and (j ->> 'online_orders')::int = 1 and (j ->> 'online_sales')::numeric = 600,
+  'sales: How orders were paid counts 4 confirmed WhatsApp orders (K950) and 1 paid online (K600), with the 1 still Received (K100) beside them')
+  from (select public.pay_sales_split('2020-03-10', '2020-03-10', 'UTC')::jsonb as j) x;
+select hchk((j ->> 'orders')::int = 5 and (j ->> 'sales')::numeric = 1550
+        and (j ->> 'waiting_orders')::int = 1 and (j ->> 'waiting_value')::numeric = 100,
+  'sales: Analytics'' Orders and Sales say the same: 5 orders, K1,550, and 1 waiting (K100) on its own')
+  from (select public.site_stats('2020-03-10', '2020-03-10', 'UTC')::jsonb as j) x;
+reset role;
+select hchk(not has_function_privilege('anon', 'public.order_counts_as(jsonb)', 'execute'),
+  'sales: the rule is nothing a visitor can call');
+
+-- ======================================================= 17. what a visitor may call (build 79)
+-- The list in supabase-hardening.sql, section 12, written out a second
+-- time on purpose. A function that a visitor can call without being on
+-- it fails here, so a later file cannot quietly hand one out; and one
+-- taken off the list in one place but not the other fails too.
+reset role;
+create temp table visitor_list as select unnest(array[
+  'chat_start', 'chat_send', 'chat_poll', 'chat_seen', 'chat_identify', 'chat_claim',
+  'chat_resume', 'chat_end', 'chat_typing', 'chat_channel',
+  'chat_photo_start', 'chat_send_photo', 'chat_photos_on',
+  'site_beat', 'site_gone', 'site_bye',
+  'subscribe_email', 'shop_is_closed', 'preview_ok',
+  'is_admin', 'chat_may_answer', 'review_auto_publish', 'chat_photo_slot_open']::text[]) as name;
+select hchk(count(*) = 0, 'visitors: every function they can call is on the list' ||
+            coalesce(' — not on it: ' || string_agg(distinct p.proname, ', '), ''))
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.prokind = 'f'
+   and p.proname <> 'hchk'                         -- this file's own
+   and not exists (select 1 from pg_depend d
+                    where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')
+   and has_function_privilege('anon', p.oid, 'execute')
+   and p.proname not in (select name from visitor_list);
+select hchk(count(*) = 0, 'visitors: and every function on it is there for them' ||
+            coalesce(' — missing: ' || string_agg(v.name, ', '), ''))
+  from visitor_list v
+ where not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                    where n.nspname = 'public' and p.proname = v.name
+                      and has_function_privilege('anon', p.oid, 'execute'));
 
 reset role;
 select case when ok then '  ✓ ' else '  ✗ ' end || what from hardening_checks order by n;

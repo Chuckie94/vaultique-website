@@ -2,8 +2,13 @@
    VAULTIQUE REWARDS ON THE WEBSITE -- netlify/functions/rewards.js
 
    Run as Netlify runs it. The website's database, its sign-in, the platform's
-   business record and the email are all answered here. What is checked above
+   rewards door and the email are all answered here. What is checked above
    all: nothing about a customer is said or kept that should not be.
+
+   The platform answers through its rewards door only, as it does since build
+   77: the door's answers below are worked out from the platform's records by
+   the website's own formula, the way the real door works them out. The
+   platform's secret key stays set throughout and must never be used.
    =========================================================================== */
 const path = require('path');
 process.env.WEB_SUPABASE_URL = 'https://site.test';
@@ -11,6 +16,8 @@ process.env.WEB_SUPABASE_ANON_KEY = 'anon';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'site-service';
 process.env.POS_SUPABASE_URL = 'https://platform.test';
 process.env.POS_SUPABASE_KEY = 'sb_secret_platform';
+const DOORKEY = 'd00rk3yd00rk3yd00rk3yd00rk3yd00rk3yd00rk3yd00rk3yd00rk3yd00rk3y0';
+process.env.POS_REWARDS_KEY = DOORKEY;
 
 let checks = 0, failures = 0;
 const is = (c, m, x) => { checks++; if (c) console.log('  ✓ ' + m); else { failures++; console.log('  ✗ ' + m + (x ? '\n      ' + x : '')); } };
@@ -48,7 +55,22 @@ global.fetch = async (url, opts = {}) => {
   LOG.push({ url, body: opts.body || '' });
   const u = new URL(url);
   const ok = (data, status = 200) => ({ ok: status < 300, status, json: async () => data, text: async () => JSON.stringify(data) });
-  if (u.host === 'platform.test') { platformReads++; return ok([{ id: 100, data: PLATFORM }]); }
+  if (u.host === 'platform.test') {
+    platformReads++;
+    /* The rewards door: one customer's points, or the email to send a code
+       to, for exactly one customer with that number, and nothing else. */
+    const fn = u.pathname.replace('/rest/v1/rpc/', '');
+    const b = JSON.parse(opts.body || '{}');
+    if (['vbp_website_rewards', 'vbp_website_rewards_email'].indexOf(fn) < 0) return ok([]);   // app_state: locked
+    if (b.p_key !== DOORKEY) return ok({ v: 1, ok: false, why: 'refused', door: fn });
+    const c = R.customerByNumber(PLATFORM, b.p_number);
+    if (fn === 'vbp_website_rewards') {
+      return ok(c ? { v: 1, ok: true, door: fn, found: true, settings: PLATFORM.settings,
+                      points: R.pointsBalance(c, PLATFORM.sales, PLATFORM.settings, PLATFORM.returns) }
+                  : { v: 1, ok: true, door: fn, found: false });
+    }
+    return ok({ v: 1, ok: true, door: fn, found: !!c, email: (c && c.email) || null });
+  }
   if (u.pathname === '/auth/v1/user') {
     const t = String(opts.headers.Authorization || '').replace('Bearer ', '');
     return USERS[t] ? ok(USERS[t]) : ok({ msg: 'bad' }, 401);
@@ -73,7 +95,13 @@ global.fetch = async (url, opts = {}) => {
     rows.push(Object.assign(dflt, row));
     return ok(null, 201);
   }
-  if (m === 'PATCH') { rows.filter((r) => match(r, q)).forEach((r) => Object.assign(r, JSON.parse(opts.body))); return ok(null, 204); }
+  if (m === 'PATCH') {
+    const hit = rows.filter((r) => match(r, q));
+    hit.forEach((r) => Object.assign(r, JSON.parse(opts.body)));
+    /* The database answers with the rows it changed when asked to, which
+       is how a request learns whether its conditional update won. */
+    return /return=representation/.test((opts.headers || {}).Prefer || '') ? ok(hit.map((r) => Object.assign({}, r))) : ok(null, 204);
+  }
   if (m === 'DELETE') { DB[table] = rows.filter((r) => !match(r, q)); return ok(null, 204); }
 };
 require.cache[require.resolve(path.resolve(__dirname, '../netlify/functions/send-email.js'))] = {
@@ -150,6 +178,26 @@ const codeIn = (m) => (/\b(\d{6})\b/.exec(m.text) || [])[1];
   r = await call('tok-chanda', { action: 'verify', code: codeIn(SENT[2]) });
   is(r.status === 200, 'and the last code still links the account', String(r.status));
 
+  console.log('\nGuessing the code all at once (build 77)');
+  DB.rewards_codes = []; DB.rewards_links = []; SENT.length = 0;
+  r = await call('tok-chanda', { action: 'link', number: 'VB0007' });
+  const right = codeIn(SENT[SENT.length - 1]);
+  const guesses = [];
+  for (let i = 0; i < 12; i++) {
+    const g = String((Number(right) + 1 + i) % 1000000).padStart(6, '0');
+    guesses.push(call('tok-chanda', { action: 'verify', code: g }));
+  }
+  const answers = await Promise.all(guesses);
+  is(answers.every((a) => a.status === 400) && DB.rewards_codes[0] && DB.rewards_codes[0].tries === 5,
+     'twelve guesses sent at the same moment use up the five tries, and no more: each needs a try of its own',
+     'tries recorded: ' + (DB.rewards_codes[0] && DB.rewards_codes[0].tries));
+  r = await call('tok-chanda', { action: 'verify', code: right });
+  is(r.status === 400 && DB.rewards_links.length === 0, 'so after them even the right code is refused, as it should be');
+  DB.rewards_codes = []; SENT.length = 0;
+  r = await call('tok-chanda', { action: 'link', number: 'VB0007' });
+  r = await call('tok-chanda', { action: 'verify', code: codeIn(SENT[SENT.length - 1]) });
+  is(r.status === 200, 'a new code, asked for, links the account as before', String(r.status));
+
   console.log('\nUsing the points on an order');
   r = await call('tok-chanda', { action: 'quote', due: 30 });
   is(r.body.quote && r.body.quote.value === 30 && r.body.quote.points === 60000, 'a K30 order: 60,000 points take K30 off', JSON.stringify(r.body));
@@ -179,10 +227,13 @@ const codeIn = (m) => (/\b(\d{6})\b/.exec(m.text) || [])[1];
   is(r.status === 400 || SENT.length === n, 'a join with no name is refused');
 
 
-  console.log('\nWhen the platform cannot be read safely');
-  process.env.POS_SUPABASE_KEY = 'sb_publishable_abc';
+  console.log('\nNever the platform\'s secret key (build 77)');
+  is(!LOG.some((l) => /app_state/.test(l.url)), 'all along, the business record itself was never read');
+  delete process.env.POS_REWARDS_KEY;
   r = await call('tok-chanda', { action: 'status' });
-  is(r.body.unavailable === true && r.body.points === undefined, 'a publishable key is never used to read customers', JSON.stringify(r.body));
+  is(r.body.unavailable === true && r.body.points === undefined && !LOG.some((l) => /app_state/.test(l.url)),
+     'without the door\'s key: unavailable, and the secret key, still set, is not used instead', JSON.stringify(r.body));
+  process.env.POS_REWARDS_KEY = DOORKEY;
 
   console.log(failures ? '\n  ✗ ' + failures + ' of ' + checks + ' checks FAILED' : '\n  rewards function: all ' + checks + ' checks passed');
   process.exit(failures ? 1 : 0);

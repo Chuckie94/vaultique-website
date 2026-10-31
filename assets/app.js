@@ -207,6 +207,57 @@
   function slug(s) {
     return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   }
+  /* A link typed into the settings, followed only if it is one of the kinds
+     Settings > Homepage accepts (settings/homepage.js): a page on this site
+     (#/... or /...), a web address (https:// or http://), an email
+     (mailto:) or a phone number (tel:). The admin's form checks that, but
+     the database cannot, so anything else written straight into it
+     (javascript:, data: and the like) comes back as '' and the button keeps
+     its own behaviour (build 78, W-13). Browsers skip tabs and line breaks
+     inside an address, so a link with any is refused outright. */
+  function safeHref(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (!s || /[\u0000-\u001f\u007f]/.test(s)) return '';
+    if (/^#\//.test(s)) return s;
+    if (/^\/(?![\/\\])/.test(s)) return s;
+    if (/^https?:\/\/[^\/\\\s]/i.test(s)) return s;
+    if (/^mailto:[^\s]/i.test(s) || /^tel:\+?[\d\s().-]+$/i.test(s)) return s;
+    return '';
+  }
+  /* The announcement bar is the one place the settings may carry a little
+     formatting: bold, italics, a line break, a link. Only that survives
+     (build 78): any other tag is reduced to its text (a script, a style or
+     a frame to nothing at all), every attribute is dropped, and a link
+     keeps its address only if safeHref accepts it. The text is read inside
+     a <template>, where nothing in it runs or loads, and the bar is built
+     from new elements rather than from the text itself. */
+  var SAFE_TAGS = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, SMALL: 1, SPAN: 1, BR: 1, A: 1 };
+  var DROP_TAGS = /^(SCRIPT|STYLE|TEMPLATE|IFRAME|FRAME|OBJECT|EMBED|NOSCRIPT|SVG|MATH|TEXTAREA|SELECT|TITLE)$/;
+  function fillSafe(target, html) {
+    target.textContent = '';
+    var t = document.createElement('template');
+    if (!('content' in t)) { target.textContent = String(html == null ? '' : html).replace(/<[^>]*>/g, ''); return; }
+    t.innerHTML = String(html == null ? '' : html);
+    (function copy(from, to) {
+      Array.prototype.forEach.call(from.childNodes, function (n) {
+        if (n.nodeType === 3) { to.appendChild(document.createTextNode(n.nodeValue)); return; }
+        if (n.nodeType !== 1) return;
+        var tag = String(n.tagName).toUpperCase();
+        if (DROP_TAGS.test(tag)) return;
+        if (!SAFE_TAGS[tag]) { copy(n, to); return; }
+        var e = document.createElement(tag.toLowerCase());
+        if (tag === 'A') {
+          var href = safeHref(n.getAttribute('href'));
+          if (href) {
+            e.setAttribute('href', href);
+            if (/^https?:/i.test(href)) { e.setAttribute('target', '_blank'); e.setAttribute('rel', 'noopener'); }
+          }
+        }
+        to.appendChild(e);
+        if (tag !== 'BR') copy(n, e);
+      });
+    })(t.content, target);
+  }
   function moneyStyle() {
     if (MONEY) return MONEY;
     if (FMT) MONEY = FMT.moneyStyle(SETTINGS, PRICING);
@@ -715,7 +766,7 @@
       if (h.announceEnabled === false) bar.classList.add('hide');
       else {
         bar.classList.remove('hide');
-        if (h.announceText) bar.innerHTML = h.announceText;
+        if (h.announceText) fillSafe(bar, h.announceText);
       }
     }
 
@@ -760,7 +811,7 @@
     if (!btn) return;
     if (h.heroCtaText) btn.textContent = h.heroCtaText;
 
-    var link = (h.heroCtaLink || '').trim();
+    var link = safeHref(h.heroCtaLink);
     if (!link) return;                    // leave the built-in shop behaviour
     var a = document.createElement('a');
     a.className = btn.className;
@@ -1227,7 +1278,7 @@
       var a = el('a', 'btn btn-wa');
       a.href = waUrl(enquiryNumber(), waSay('I have a question.'));
       a.target = '_blank'; a.rel = 'noopener';
-      a.innerHTML = waIcon() + (CARESET.faqAskText || 'Ask us on WhatsApp');
+      a.innerHTML = waIcon() + esc(CARESET.faqAskText || 'Ask us on WhatsApp');
       foot.appendChild(a);
     }
     sec.classList.remove('hide');
@@ -1388,7 +1439,7 @@
     if (cta) {
       if (HOME.promoCtaText) {
         cta.textContent = HOME.promoCtaText;
-        var link = (HOME.promoCtaLink || '').trim();
+        var link = safeHref(HOME.promoCtaLink);
         if (link) {
           cta.href = link;
           if (/^https?:/i.test(link)) { cta.target = '_blank'; cta.rel = 'noopener'; }
@@ -1972,9 +2023,14 @@
      ================================================================== */
   var PAY_MEMO = 'vbp_pay';
   var PAY_FN = '/.netlify/functions/';
+  /* In Test mode only the shop may pay (build 77, decision Q3): anybody
+     else could "pay" with Flutterwave's published test cards. The shop
+     tests with its preview key (Settings > General); the payment
+     functions refuse everybody else as well, whatever this page shows. */
   function payOnline() {
     return !PREVIEW && !!PAY && PAY.onlineEnabled === true &&
-           (PAY.onlineCard !== false || PAY.onlineMobile !== false);
+           (PAY.onlineCard !== false || PAY.onlineMobile !== false) &&
+           (PAY.onlineMode === 'live' || previewing());
   }
   function payLabel() {
     if (PAY && PAY.onlineLabel) return PAY.onlineLabel;
@@ -2094,7 +2150,9 @@
       items: payItems(order), fulfilment: d.how, town: d.town || '', preview: previewKey() || null,
       buyer: { name: d.name, phone: d.phone, email: d.email, address: d.address, notes: d.notes }
     }).then(function (r) {
-      if (r._code === 200 && r.link) {
+      /* Flutterwave's own page, and nothing else: an address that is not
+         https:// is not followed, whoever sent it (build 78). */
+      if (r._code === 200 && /^https:\/\/[^\/\\\s]/i.test(String(r.link || ''))) {
         try { sessionStorage.setItem(PAY_MEMO, JSON.stringify({ tx: r.txRef, cart: !order.single })); } catch (e) {}
         location.href = r.link;
         return;
@@ -2152,10 +2210,13 @@
       var memo = null;
       try { memo = JSON.parse(sessionStorage.getItem(PAY_MEMO) || 'null'); } catch (e) {}
       if (how === 'paid') {
-        head.textContent = 'Payment received';
-        lead.textContent = 'Thank you. Order ' + (r.ref || '') + ' is paid' +
-          (r.amountText ? ' (' + r.amountText + ')' : '') +
-          '. A confirmation is on its way to your email, and we will be in touch about your order.';
+        head.textContent = r.test ? 'Test payment received' : 'Payment received';
+        lead.textContent = r.test
+          ? 'This was a TEST payment: no money was taken. Order ' + (r.ref || '') +
+            ' is marked TEST in the Orders tab, and the emails say TEST too.'
+          : 'Thank you. Order ' + (r.ref || '') + ' is paid' +
+            (r.amountText ? ' (' + r.amountText + ')' : '') +
+            '. A confirmation is on its way to your email, and we will be in touch about your order.';
         if (memo && memo.tx === q.tx_ref) {
           if (memo.cart) { cart = []; saveCart(); afterCartChange(); }
           try { sessionStorage.removeItem(PAY_MEMO); } catch (e) {}
@@ -3384,7 +3445,7 @@
       var wa = el('a', 'btn btn-wa');
       wa.href = buyHref(p);
       if (!canBuy(p)) { wa.target = '_blank'; wa.rel = 'noopener'; }
-      wa.innerHTML = waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, false));
+      wa.innerHTML = waIcon() + esc(canBuy(p) ? checkoutLabel() : askLabel(p, false));
       if (canBuy(p)) wa.addEventListener('click', function (e) { startOrder(e, p); });
       waLine.appendChild(wa);
       /* Beneath the buy button, not instead of it. A piece that can be
@@ -4199,7 +4260,7 @@
       '<div class="detail-cta" style="max-width:none">' +
       ((canBuy(p) || canAsk(p))
         ? '<a class="btn btn-wa" id="qvBuy"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
-          waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
+          waIcon() + esc(canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       '<span id="qvCartSlot"></span>' +
       '<button class="btn btn-outline" id="qvFull">View full details</button></div>';
@@ -4298,7 +4359,7 @@
       '<div class="cta-main">' +
       ((canBuy(p) || canAsk(p))
         ? '<a class="btn btn-wa" id="buyDetail"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
-          waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
+          waIcon() + esc(canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       (canBuy(p) ? '<span id="cartSlot"></span>' : '') +
       '</div><div class="cta-sub">' +
@@ -5022,7 +5083,7 @@
   function setText(sel, val) { if (val == null || val === '') return; var e = $(sel); if (e) e.textContent = val; }
   function applyContent(c) {
     if (!c) c = {};
-    if (c.announce) { var a = $('#announceBar'); if (a) a.innerHTML = c.announce; }
+    if (c.announce) { var a = $('#announceBar'); if (a) fillSafe(a, c.announce); }
     if (c.hero) {
       setText('#heroEyebrow', c.hero.eyebrow);
       setText('#heroTitle', c.hero.title);

@@ -28,14 +28,13 @@
    key (POS_REWARDS_KEY), never with the secret key, and it reads the
    platform's sections and the sales' own rows, never row 100.
 
-   The old way, reading the whole business with the secret key
-   (POS_SUPABASE_KEY), is kept only for while the door is not set up: no
-   door key, or a door that does not answer, refuses the key, or cannot
-   read. Once POS_SUPABASE_KEY is deleted from Netlify there is no old way
-   at all, and anything the door cannot answer is "rewards cannot be
-   reached just now". A door that is busy (its own hourly limit) is never
-   answered the old way: that limit is there so nobody can copy the
-   customers out, and reading everything instead would undo it.
+   Since build 77 (W-24) there is no other way. The old one, reading the
+   whole business with the secret key (POS_SUPABASE_KEY), is gone, even
+   while that key is still in Netlify: anything the door cannot answer
+   (no door key, a door that is missing, refuses the key, cannot read, or
+   is busy with its own hourly limit) is "rewards cannot be reached just
+   now". That limit is there so nobody can copy the customers out, and
+   reading everything instead would undo it.
 
    THE FORMULA is the platform's own, js/services/loyaltyEngine.js at its
    build 453, copied function for function so the website and the till
@@ -139,14 +138,21 @@ function plausibleNumber(v) { const k = numberKey(v); return k.length >= 3 && k.
 function platformUrl() {
   return String(process.env.POS_SUPABASE_URL || 'https://xbrchpxdmptwuvivdiqj.supabase.co').replace(/\/+$/, '');
 }
-/* Only a secret key will do here. Customers and sales must never be read
-   with a key that is also in a web page, so the publishable key the
-   product feed falls back to is deliberately not a fallback for this. */
-function platformKey() {
+/* Whether the platform's SECRET key is still in Netlify. Since build 77
+   it is never used to read anything (W-24): the rewards ask the rewards
+   door and nothing else. It is only looked at so /api/rewards-check can
+   say it should be deleted. A public key there is not a secret: the
+   publishable one, or an older token whose role is anon. The same rule
+   as the build step's (tools/build-site.cjs), which will not publish
+   while a secret one is there. */
+function secretKeyStillSet() {
   const k = String(process.env.POS_SUPABASE_KEY || '').trim();
-  return /^sb_publishable_/.test(k) ? '' : k;
+  if (!k || /^sb_publishable_/.test(k)) return false;
+  if (/^sb_secret_/.test(k)) return true;
+  try {
+    return JSON.parse(Buffer.from(k.split('.')[1] || '', 'base64url').toString('utf8')).role !== 'anon';
+  } catch (e) { return true; }
 }
-function stateRow() { return String(process.env.POS_STATE_ROW || '100').trim(); }
 
 function tryParse(s) { try { const v = JSON.parse(s); return v && typeof v === 'object' ? v : null; } catch (e) { return null; } }
 function locate(obj) {
@@ -171,26 +177,13 @@ function findState(row) {
   return null;
 }
 
-/* One read of the business document, held for a few seconds so that a
-   customer opening their rewards and then checking out is one read, not
-   two. Held in this function's memory only; never written anywhere. */
-let held = null;
-const HOLD_MS = 20000;
-async function readPlatform() {
-  if (held && Date.now() - held.at < HOLD_MS) return held.state;
-  const url = platformUrl(), key = platformKey();
-  if (!url || !key) throw Object.assign(new Error('rewards are not connected'), { code: 'not-connected' });
-  const res = await fetch(url + '/rest/v1/app_state?id=eq.' + encodeURIComponent(stateRow()) + '&select=*', {
-    headers: { apikey: key, Authorization: 'Bearer ' + key, Accept: 'application/json' }
-  });
-  if (!res.ok) throw Object.assign(new Error('the platform could not be read (' + res.status + ')'), { code: 'unreadable' });
-  const rows = await res.json();
-  const state = findState(Array.isArray(rows) ? rows[0] : rows);
-  if (!state) throw Object.assign(new Error('the platform record has no customers'), { code: 'unreadable' });
-  held = { at: Date.now(), state };
-  return state;
-}
-function forget() { held = null; }
+/* Until build 77 the rewards could also read the whole business document
+   (every customer and sale) with that secret key, whenever the door was
+   not set up. That way is gone: if POS_SUPABASE_KEY were ever put back,
+   nothing here would read with it. What remains below works on a
+   business document handed to it, for the tests that check the website
+   counts points exactly as the till does. */
+function forget() { /* nothing is held any more; kept for the tests */ }
 
 /* The one customer with this number, or null. A number shared by two
    records is treated as unknown: guessing between two people's points is
@@ -274,10 +267,10 @@ async function askDoor(fn, number) {
   return { asked: true, answer: a };
 }
 
-/* Whether the old way may be used now: only while the secret key is still
-   in Netlify, and never because the door was busy. */
-function oldWayFor(d) { return !!platformKey() && !(d && d.busy); }
 function unreachable(why, code) { return Object.assign(new Error(why), { code: code || 'unreadable' }); }
+function notAnswered(d) {
+  return unreachable(d.why, d.busy ? 'busy' : (doorKey() ? 'unreadable' : 'not-connected'));
+}
 
 /* One customer's standing: { source, found, standing, settings }. Throws
    (code 'unreadable', 'busy' or 'not-connected') when it cannot be said. */
@@ -291,11 +284,7 @@ async function standingFor(number, promised) {
     const settings = (a.settings && typeof a.settings === 'object') ? a.settings : {};
     return { source: 'door', found: true, standing: standingFrom(points, settings, promised), settings };
   }
-  if (!oldWayFor(d)) throw unreachable(d.why, d.busy ? 'busy' : (doorKey() ? 'unreadable' : 'not-connected'));
-  const state = await readPlatform();
-  const cust = customerByNumber(state, number);
-  if (!cust) return { source: 'row', found: false, standing: null, settings: state.settings || {}, why: d.why };
-  return { source: 'row', found: true, standing: standing(state, cust, promised), settings: state.settings || {}, why: d.why };
+  throw notAnswered(d);
 }
 
 /* For the code that proves a number is somebody's: { source, found,
@@ -307,10 +296,7 @@ async function emailFor(number) {
     const a = d.answer;
     return { source: 'door', found: !!a.found, email: a.found ? emailOf({ email: a.email }) : '' };
   }
-  if (!oldWayFor(d)) throw unreachable(d.why, d.busy ? 'busy' : (doorKey() ? 'unreadable' : 'not-connected'));
-  const state = await readPlatform();
-  const cust = customerByNumber(state, number);
-  return { source: 'row', found: !!cust, email: cust ? emailOf(cust) : '', why: d.why };
+  throw notAnswered(d);
 }
 
 /* For /api/rewards-check: is the door set up and answering? Asks with a
@@ -318,15 +304,15 @@ async function emailFor(number) {
    reading anything or counting it. Says nothing about any customer. */
 async function doorCheck() {
   const d = await askDoor(DOOR, '');
-  const secret = !!platformKey();
+  const secret = secretKeyStillSet();
   if (d.asked && d.answer.ok) {
     return { source: 'door', doorKeySet: true, secretKeyStillSet: secret,
-             next: secret ? 'The door is working. You can now delete POS_SUPABASE_KEY from Netlify.'
+             next: secret ? 'The door is working. Delete POS_SUPABASE_KEY from Netlify: since build 77 nothing uses it.'
                           : 'The door is working, and the secret key is gone. Nothing more to do.' };
   }
-  return { source: secret ? 'row' : 'none', doorKeySet: !!doorKey(), secretKeyStillSet: secret, why: d.why,
-           next: secret ? 'Rewards are still read the old way. Keep POS_SUPABASE_KEY until this says "door".'
-                        : 'Rewards cannot be read until the door is set up.' };
+  return { source: 'none', doorKeySet: !!doorKey(), secretKeyStillSet: secret, why: d.why,
+           next: 'Rewards cannot be read until the platform\'s rewards door answers (POS_REWARDS_KEY, and the door\'s SQL on the platform).' +
+                 (secret ? ' POS_SUPABASE_KEY is not used for them any more (build 77).' : '') };
 }
 
 module.exports = {
@@ -336,7 +322,7 @@ module.exports = {
   // numbers
   numberKey, plausibleNumber,
   // the platform
-  readPlatform, forget, findState, customerByNumber, standing, standingFrom, emailOf, platformKey,
+  forget, findState, customerByNumber, standing, standingFrom, emailOf, secretKeyStillSet,
   // the door
   standingFor, emailFor, doorCheck, askDoor, doorKey
 };

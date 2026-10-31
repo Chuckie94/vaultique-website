@@ -37,6 +37,14 @@
         what it would have blocked. That record is what decides when the
         policy is switched on.
 
+     5. REFUSES TO PUBLISH WHILE NETLIFY STILL HOLDS POS_SUPABASE_KEY, the
+        business platform's SECRET key (build 77, W-24). Nothing in the
+        website uses it any more: the products and the rewards are read
+        only through the platform's doors. A shop whose doors are not
+        working yet must not lose its catalogue to an upload, so the
+        deploy stops here, the site that was live stays live, and the
+        log says what to check before deleting the key.
+
    It changes nothing outside dist/, reads nothing from the internet, and
    needs nothing installed but Node itself.
 
@@ -181,6 +189,35 @@ function readConfig() {
     origin: u.origin,
     socket: (u.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + u.host,  // Realtime
   };
+}
+
+/* ------------------------------------------------- the platform's secret key */
+
+/* A secret key, as opposed to the publishable one (which is public, in every
+   page the platform serves, and harmless here). New keys say which they are;
+   an older key is a token whose role says so. */
+function isSecretKey(k) {
+  k = String(k || '').trim();
+  if (!k || /^sb_publishable_/.test(k)) return false;
+  if (/^sb_secret_/.test(k)) return true;
+  try {
+    const role = JSON.parse(Buffer.from(k.split('.')[1] || '', 'base64url').toString('utf8')).role;
+    if (role === 'anon') return false;
+  } catch (e) { /* not a token: treat as secret */ }
+  return true;
+}
+function checkPlatformKey() {
+  if (!isSecretKey(process.env.POS_SUPABASE_KEY)) return;
+  stop('Netlify still holds POS_SUPABASE_KEY, the business platform\'s SECRET key.\n' +
+       'It opens the whole business, and since build 77 nothing in the website uses it:\n' +
+       'the products and the rewards are read only through the platform\'s doors.\n\n' +
+       'Before deleting it, check the site that is live now (it is still the old build):\n' +
+       '  https://YOUR-SITE/api/products        must say  "source":"door"   (near the end)\n' +
+       '  https://YOUR-SITE/api/rewards-check   must say  "source":"door"\n' +
+       'Both say "door": Netlify > Site configuration > Environment variables >\n' +
+       'POS_SUPABASE_KEY > Delete, then Deploys > Trigger deploy.\n' +
+       'Either says anything else: do not delete it, keep the old build, and send\n' +
+       'what they say to whoever looks after the website.');
 }
 
 /* ----------------------------------------------------------------- files */
@@ -334,6 +371,7 @@ function preparePage(page) {
 
   console.log('\nPutting the website together in ' + OUT);
   const supabase = readConfig();
+  checkPlatformKey();
 
   removeTree(OUT);
   fs.mkdirSync(OUT, { recursive: true });

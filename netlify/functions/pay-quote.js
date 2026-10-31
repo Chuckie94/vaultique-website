@@ -13,6 +13,9 @@ exports.handler = async function (event) {
     const s = await P.shopSettings();
     if (!P.onlineOn(s)) return P.json(403, { error: 'Online payment is switched off.', off: true });
     if (await P.closedFor(s.general, body.preview)) return P.json(403, { error: 'The shop is not taking orders at the moment.' });
+    if (s.pay.onlineMode !== 'live' && !(await P.testAllowed(event, body.preview))) {
+      return P.json(403, { error: P.TEST_ONLY, off: true });
+    }
     const q = await P.priceOrder(s, body.items, body.fulfilment, body.preview, String(body.town || '').slice(0, 60));
     if (q.problems) return P.json(409, { problems: q.problems, deliveryProblem: q.deliveryProblem });
     return P.json(200, q);

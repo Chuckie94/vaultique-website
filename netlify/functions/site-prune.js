@@ -27,14 +27,17 @@
    where this shop was before this file existed. It says so in its log
    and does nothing else.
    ===================================================================== */
-const { readConfig } = require('./_seo-data');
+const { readConfig, serviceKey } = require('./_seo-data');
 
-/* The same key product-pulse.js uses, and for the same reason: this is a
-   role rather than a person, so there is no signed-in administrator for
-   the database to check. It must never appear anywhere a browser can
-   read — it lives in Netlify's environment variables and nowhere else. */
+/* The website's service key, for the same reason as product-pulse.js:
+   this is a role rather than a person, so there is no signed-in
+   administrator for the database to check. It must never appear anywhere
+   a browser can read — it lives in Netlify's environment variables and
+   nowhere else. Until build 77 this read only WEB_SUPABASE_SERVICE_KEY,
+   not the SUPABASE_SERVICE_ROLE_KEY that SETUP.md asks for, so on most
+   shops it never ran (W-09); either name works now. */
 function writeKey() {
-  return String(process.env.WEB_SUPABASE_SERVICE_KEY || '').trim();
+  return serviceKey();
 }
 
 /* Four hundred days of raw events. Overridable, so a shop that wants a
@@ -60,7 +63,7 @@ exports.handler = async function () {
      can act on from here, and the only cost of doing nothing is a table
      that goes on growing as it already was. */
   if (!url) return ok('no website Supabase configured; nothing to prune');
-  if (!key) return ok('WEB_SUPABASE_SERVICE_KEY is not set; nothing is being pruned');
+  if (!key) return ok('SUPABASE_SERVICE_ROLE_KEY is not set; nothing is being pruned');
 
   const days = keepDays();
   let res;

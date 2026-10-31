@@ -336,21 +336,30 @@
            did on the way to buying; these two are whether any of them
            did. They are counted from the orders table rather than
            recorded in the browser, so no ad blocker can hide one and a
-           refreshed thank-you page cannot count one twice. Cancelled
-           orders are left out; an order still pending is counted,
-           because it was placed. */
+           refreshed thank-you page cannot count one twice.
+
+           WHAT COUNTS (decision Q4, build 78). An order the shop has
+           confirmed, or one paid online for real. One still "Received"
+           is said in the note beneath, as waiting, and not counted; a
+           cancelled one and a test payment not at all. The database
+           decides (order_counts_as, supabase-hardening.sql): until that
+           file has been run again, the figures are counted the old way,
+           pending included, and the notes say what they did before. */
         { key: 'orders',          label: 'Orders',          note: 'Orders placed in this range.' },
         { key: 'sales',           label: 'Sales',           note: 'What those orders came to.',
           money: true }
       ];
       var kpiBox = el('div', 'an-kpis');
       var kpiNums = {};
+      var kpiNotes = {};
       KPIS.forEach(function (k) {
         var card = el('div', 'an-kpi');
         var n = el('div', 'an-kpi-n', '—');
         card.appendChild(n);
         card.appendChild(el('div', 'an-kpi-l', k.label));
-        card.appendChild(el('div', 'an-kpi-s', k.note));
+        var note = el('div', 'an-kpi-s', k.note);
+        card.appendChild(note);
+        kpiNotes[k.key] = note;
         /* Build 70: the number, and the way to which pieces it was. */
         if (k.key === 'add_to_cart') {
           var see = el('button', 'an-kpi-go', 'See which pieces \u203a');
@@ -810,6 +819,9 @@
           var sales = (Number(d.whatsapp_sales) || 0) + (Number(d.online_sales) || 0);
           kpiNums.orders.textContent = num(orders);
           kpiNums.sales.textContent = money(sales, cur);
+          if ('whatsapp_waiting' in d) {
+            noteWaiting(Number(d.whatsapp_waiting) || 0, Number(d.whatsapp_waiting_value) || 0, cur);
+          }
           var any = (Number(d.online_orders) || 0) + (Number(d.online_waiting) || 0) +
                     (Number(d.online_unfinished) || 0);
           if (!any && !onlineOn) { payCard.classList.add('hide'); return; }
@@ -832,8 +844,10 @@
         }
         tile(money(n('online_sales'), cur), 'Paid online',
              num(n('online_orders')) + (n('online_orders') === 1 ? ' order' : ' orders'));
-        tile(money(n('whatsapp_sales'), cur), 'Ordered on WhatsApp',
-             num(n('whatsapp_orders')) + (n('whatsapp_orders') === 1 ? ' order' : ' orders'));
+        var newRule = 'whatsapp_waiting' in d;
+        tile(money(n('whatsapp_sales'), cur), newRule ? 'Confirmed on WhatsApp' : 'Ordered on WhatsApp',
+             num(n('whatsapp_orders')) + (n('whatsapp_orders') === 1 ? ' order' : ' orders') +
+             (n('whatsapp_waiting') ? ' \u00b7 ' + num(n('whatsapp_waiting')) + ' more waiting to be confirmed' : ''));
         tile(sales ? Math.round(n('online_sales') / sales * 100) + '%' : '\u2014',
              'Online share', 'Of sales in this range.');
         tile(num(n('online_unfinished')), 'Not completed',
@@ -871,8 +885,12 @@
         payBody.appendChild(el('p', 'an-note',
           (n('delivery_paid') ? 'Paid online includes ' + money(n('delivery_paid'), cur) +
                                 ' of delivery fees. ' : '') +
-          'An online order counts as a sale only once the payment is confirmed. WhatsApp ' +
-          'orders count as they always have, until cancelled.'));
+          (newRule
+            ? 'An online order counts as a sale once the payment is confirmed, and a WhatsApp ' +
+              'order once the shop has confirmed it. Orders still \u201cReceived\u201d are said ' +
+              'beside them, not counted; cancelled ones and test payments are not counted at all.'
+            : 'An online order counts as a sale only once the payment is confirmed. WhatsApp ' +
+              'orders count as they always have, until cancelled.')));
       }
 
       function loadSeries(mine) {
@@ -1004,7 +1022,18 @@
           kpiNums[k.key].textContent = k.money
             ? money(d[k.key], d.currency)
             : num(d[k.key] || 0);
+          kpiNotes[k.key].textContent = k.note;
         });
+        if ('waiting_orders' in d) noteWaiting(Number(d.waiting_orders) || 0, Number(d.waiting_value) || 0, d.currency);
+      }
+      /* Orders and Sales by the rule of build 78, with the orders still
+         waiting to be confirmed said beneath them. Only called when the
+         database has answered that way. */
+      function noteWaiting(n, worth, cur) {
+        kpiNotes.orders.textContent = 'Confirmed by the shop, or paid online.' +
+          (n ? ' ' + num(n) + ' more ' + (n === 1 ? 'is' : 'are') + ' waiting to be confirmed.' : '');
+        kpiNotes.sales.textContent = 'What those came to.' +
+          (worth ? ' ' + money(worth, cur) + ' more is waiting.' : '');
       }
 
       function paintPresets() {

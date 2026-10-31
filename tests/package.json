@@ -1,0 +1,19 @@
+{
+  "name": "vaultique-website-tests",
+  "private": true,
+  "description": "The website's own checks. Nothing here is published: Netlify publishes dist/, which tools/build-site.cjs makes without any of it.",
+  "scripts": {
+    "test": "node run-tests.js node && node run-tests.js browser",
+    "test:node": "node run-tests.js node",
+    "test:browser": "node run-tests.js browser",
+    "test:sql": "bash ../tools/sql-tests.sh && bash ../tools/db-check.sh",
+    "check:live": "node ../tools/live-check.cjs"
+  },
+  "devDependencies": {
+    "leaflet": "1.9.4",
+    "playwright": "1.63.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

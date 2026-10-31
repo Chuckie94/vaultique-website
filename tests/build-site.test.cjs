@@ -66,7 +66,7 @@ function freshSite() {
 
 function build(extraEnv, args) {
   const r = spawnSync(process.execPath, [path.join(SITE, 'tools', 'build-site.cjs')].concat(args || []),
-    { cwd: SITE, encoding: 'utf8', env: Object.assign({}, process.env, { CSP_REPORTS: '' }, extraEnv || {}) });
+    { cwd: SITE, encoding: 'utf8', env: Object.assign({}, process.env, { CSP_REPORTS: '', POS_SUPABASE_KEY: '' }, extraEnv || {}) });
   return { code: r.status, out: (r.stdout || '') + (r.stderr || '') };
 }
 
@@ -134,6 +134,31 @@ try {
   r = build();
   is(r.code === 0 && !/!/.test(r.out.split('\n').filter((l) => /^\s+!/.test(l)).join('')),
      'a config.js that does more than a sandbox allows is still read, as the functions read it');
+
+  /* ------------------------------------------ the platform's secret key */
+  console.log('\nNo deploy while Netlify still holds the platform\'s secret key (build 77)');
+  freshSite();
+  const tokenFor = (role) => 'eyJhbGciOiJIUzI1NiJ9.' +
+    Buffer.from(JSON.stringify({ iss: 'supabase', role })).toString('base64url') + '.c2lnbmF0dXJl';
+  r = build({ POS_SUPABASE_KEY: 'sb_secret_abcdefghijklmnopqrstuvwxyz' });
+  is(r.code === 1, 'a secret key (sb_secret_…): the build stops', 'exit ' + r.code);
+  is(/POS_SUPABASE_KEY/.test(r.out) && /"source":"door"/.test(r.out) && /\/api\/products/.test(r.out) &&
+     /\/api\/rewards-check/.test(r.out) && /still live/.test(r.out),
+     'and says what to check on the live site before deleting it, and that the live site is untouched',
+     r.out.trim().split('\n').slice(0, 3).join(' | '));
+  is(!fs.existsSync(DIST), 'nothing was made to publish');
+  is(!/abcdefghijklmnop(?!\.supabase)/.test(r.out.replace(/https:\/\/abcdefghijklmnop\.supabase\.co/g, '')) &&
+     r.out.indexOf('sb_secret_abc') === -1, 'and the key itself is never written in the log');
+  r = build({ POS_SUPABASE_KEY: tokenFor('service_role') });
+  is(r.code === 1 && /POS_SUPABASE_KEY/.test(r.out), 'an older secret key (a service_role token): stops too');
+  r = build({ POS_SUPABASE_KEY: 'not-a-key-anybody-knows' });
+  is(r.code === 1, 'a key it cannot tell: treated as secret, stops');
+  r = build({ POS_SUPABASE_KEY: 'sb_publishable_abcdefghijklmnop' });
+  is(r.code === 0 && fs.existsSync(DIST), 'the publishable key (public, harmless): published', r.out.trim().split('\n').slice(0, 3).join(' | '));
+  r = build({ POS_SUPABASE_KEY: tokenFor('anon') });
+  is(r.code === 0, 'an older public key (an anon token): published');
+  r = build({ POS_SUPABASE_KEY: '  ' });
+  is(r.code === 0, 'empty: published');
 
   /* ------------------------------------------------------- what goes out */
   console.log('\nOnly the website is published');

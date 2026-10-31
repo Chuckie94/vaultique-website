@@ -1218,7 +1218,9 @@
       galRow.innerHTML = '';
       gallery(p.sku).forEach(function (u, idx) {
         var g = document.createElement('div'); g.className = 'g';
-        g.innerHTML = '<img src="' + u + '" alt="">';
+        /* Made as an element, not written as text: an address with a quote
+           in it can then only ever be an address (build 78, W-19). */
+        var im = document.createElement('img'); im.src = u; im.alt = ''; g.appendChild(im);
         var x = document.createElement('button'); x.textContent = '×'; x.title = 'Remove';
         x.addEventListener('click', function () {
           var arr = gallery(p.sku); var removed = arr[idx];
@@ -1268,7 +1270,8 @@
       vidRow.innerHTML = '';
       videosOf(p.sku).forEach(function (u, idx) {
         var g = document.createElement('div'); g.className = 'g'; g.style.width = '74px'; g.style.height = '58px';
-        g.innerHTML = '<video src="' + u + '" muted style="width:100%;height:100%;object-fit:cover"></video>';
+        var vd = document.createElement('video'); vd.src = u; vd.muted = true;
+        vd.style.cssText = 'width:100%;height:100%;object-fit:cover'; g.appendChild(vd);
         var x = document.createElement('button'); x.textContent = '×'; x.title = 'Remove';
         x.addEventListener('click', function () {
           var arr = videosOf(p.sku); var removed = arr[idx];
@@ -1772,7 +1775,7 @@
   function loadReviews() {
     var host = $('revList'); host.innerHTML = '<p class="count">Loading…</p>';
     sb.from('reviews').select('*').order('created_at', { ascending: false }).then(function (r) {
-      if (r.error) { host.innerHTML = '<p class="count">Error: ' + r.error.message + '</p>'; return; }
+      if (r.error) { host.innerHTML = '<p class="count">Error: ' + escapeHtml(r.error.message) + '</p>'; return; }
       var rows = r.data || [];
       $('revCount').textContent = rows.length + ' reviews';
       if (!rows.length) { host.innerHTML = '<p class="count">No reviews yet.</p>'; return; }
@@ -1843,7 +1846,7 @@
   function loadSubscribers() {
     var host = $('subList'); host.innerHTML = '<p class="count">Loading…</p>';
     sb.from('subscribers').select('*').order('created_at', { ascending: false }).then(function (r) {
-      if (r.error) { host.innerHTML = '<p class="count">Error: ' + r.error.message + '</p>'; return; }
+      if (r.error) { host.innerHTML = '<p class="count">Error: ' + escapeHtml(r.error.message) + '</p>'; return; }
       subRows = r.data || [];
       drawSubscribers();
     });
@@ -1987,36 +1990,18 @@
     btn.textContent = 'Sending…';
     var reset = function () { btn.disabled = false; btn.textContent = was; };
 
-    Promise.all([
-      window.VBP_ADMIN.store.load('newsletter'),
-      window.VBP_ADMIN.store.load('notifications'),
-      window.VBP_ADMIN.store.loadPrivate('notifications'),
-      sb.auth.getSession()
-    ]).then(function (r) {
-      var news = r[0] || {}, mail = r[1] || {}, shut = r[2] || {};
-      var session = r[3] && r[3].data && r[3].data.session;
-      if (!mail.emailEnabled || !mail.smtpHost) {
-        throw new Error('Email is not set up yet. Settings > Notifications has the five ' +
-                        'details your provider gives you.');
-      }
+    /* The website writes it from Settings > Newsletter and sends it with
+       the stored account (build 77): this page sends only the address,
+       which must be on the list. Anybody whose role is ticked for
+       Subscribers may, without ever being handed the email password. */
+    Promise.resolve(sb.auth.getSession()).then(function (r) {
+      var session = r && r.data && r.data.session;
       if (!session) throw new Error('You are not signed in.');
-
-      var body = [news.welcomeEmail || '', mail.signature || '', news.footer || '']
-        .filter(function (part) { return String(part || '').trim(); })
-        .join('\n\n');
-
       return fetch('/.netlify/functions/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json',
                    Authorization: 'Bearer ' + session.access_token },
-        body: JSON.stringify({
-          smtpHost: mail.smtpHost, smtpPort: mail.smtpPort, encryption: mail.encryption,
-          smtpUser: mail.smtpUser, smtpPassword: shut.smtpPassword,
-          senderName: mail.senderName, senderEmail: mail.senderEmail, replyTo: mail.replyTo,
-          to: email,
-          subject: news.welcomeSubject || 'Welcome',
-          text: body
-        })
+        body: JSON.stringify({ kind: 'welcome', to: email })
       });
     }).then(function (res) {
       return res.json().catch(function () { throw new Error('The sender did not answer properly.'); });
@@ -2085,7 +2070,7 @@
   function loadPolicies() {
     var host = $('polList'); host.innerHTML = '<p class="count">Loading…</p>';
     sb.from('policies').select('*').order('sort', { ascending: true }).then(function (r) {
-      if (r.error) { host.innerHTML = '<p class="count">Error: ' + r.error.message + '</p>'; return; }
+      if (r.error) { host.innerHTML = '<p class="count">Error: ' + escapeHtml(r.error.message) + '</p>'; return; }
       var rows = r.data || [];
       $('polCount').textContent = rows.length + ' policies';
       host.innerHTML = '';

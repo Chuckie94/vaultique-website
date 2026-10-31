@@ -22,7 +22,13 @@ const POS = [
   { sku: 'GONE', name: 'Sold Piece', category: 'Bags', price: 800, stock: 0, active: true },
   { sku: 'OVR', name: 'Overridden', category: 'Bags', price: 1000, stock: 5, active: true },
 ];
-let SETTINGS, META, DB, FLW, MAIL;
+let SETTINGS, META, DB, FLW, MAIL, HITS, NO_THROTTLE;
+/* Signed-in tokens as Supabase would vouch for them (build 77). The owner's
+   says how far they got: password only (aal1), or past two-factor (aal2). */
+const jwt = (claims) => 'h.' + Buffer.from(JSON.stringify(claims)).toString('base64url') + '.s';
+const OWNER_AAL2 = jwt({ sub: 'owner-1', aal: 'aal2' });
+const OWNER_AAL1 = jwt({ sub: 'owner-1', aal: 'aal1' });
+const USERS = { 'customer-jwt': 'cust-1', [OWNER_AAL2]: 'owner-1', [OWNER_AAL1]: 'owner-1' };
 function reset() {
   SETTINGS = {
     general: { businessName: 'Vaultique', currency: 'ZMW' },
@@ -36,6 +42,8 @@ function reset() {
   DB = { orders: [], order_items: [], payments: [] };
   FLW = { made: [], verify: {} };   // verify[tx_ref] = transaction as Flutterwave would report it
   MAIL = [];
+  HITS = {};          // the database's throttle: bucket|key -> count
+  NO_THROTTLE = false;
 }
 reset();
 
@@ -71,11 +79,12 @@ const server = http.createServer(async (req, res) => {
 
   // Flutterwave
   if (p.startsWith('/flw/')) {
-    if ((req.headers.authorization || '') !== 'Bearer FLWSECK_TEST-secret') return send(401, { status: 'error' });
+    const flwKey = req.headers.authorization || '';
+    if (flwKey !== 'Bearer FLWSECK_TEST-secret' && flwKey !== 'Bearer FLWSECK-live-secret') return send(401, { status: 'error' });
     if (p === '/flw/payments' && req.method === 'POST') {
       const b = JSON.parse(body);
-      FLW.made.push(b);
-      return send(200, { status: 'success', data: { link: 'https://checkout.flutterwave.test/pay/' + b.tx_ref } });
+      FLW.made.push(Object.assign({ _key: flwKey }, b));
+      return send(200, { status: 'success', data: { link: FLW.link !== undefined ? FLW.link : 'https://checkout.flutterwave.test/pay/' + b.tx_ref } });
     }
     let m = /^\/flw\/transactions\/(\d+)\/verify$/.exec(p);
     if (m) {
@@ -99,8 +108,22 @@ const server = http.createServer(async (req, res) => {
   // Who a signed-in customer is, as Supabase answers it (build 76: the
   // functions ask, rather than taking the browser's word).
   if (p === '/web/auth/v1/user') {
-    return (req.headers.authorization || '') === 'Bearer customer-jwt'
-      ? send(200, { id: 'cust-1', email: 'chanda@mail.test' }) : send(401, { msg: 'invalid JWT' });
+    const id = USERS[String(req.headers.authorization || '').replace(/^Bearer /, '')];
+    return id ? send(200, { id, email: id + '@mail.test' }) : send(401, { msg: 'invalid JWT' });
+  }
+  if (p === '/web/rest/v1/rpc/preview_ok') return send(200, JSON.parse(body || '{}').p_key === 'shop-preview');
+  if (p === '/web/rest/v1/rpc/throttle') {
+    if (!service) return send(401, {});
+    if (NO_THROTTLE) return send(404, { code: 'PGRST202', message: 'Could not find the function public.throttle' });
+    const b = JSON.parse(body), k = b.p_bucket + '|' + b.p_key;
+    if ((HITS[k] || 0) >= b.p_max) return send(400, { code: 'P0429', message: 'Too many tries just now. Please wait a little and try again.' });
+    HITS[k] = (HITS[k] || 0) + 1;
+    return send(204);
+  }
+  if (p === '/web/rest/v1/admins') {
+    if (!service) return send(401, {});
+    const id = (u.searchParams.get('id') || '').replace('eq.', '');
+    return send(200, id === 'owner-1' && u.searchParams.get('role') === 'eq.owner' ? [{ id }] : []);
   }
   if (p === '/web/rest/v1/rpc/place_order') {
     // After supabase-hardening.sql only the service key may call it.
@@ -150,7 +173,11 @@ const server = http.createServer(async (req, res) => {
   const start = require(path.join(F, 'pay-start')).handler;
   const hook = require(path.join(F, 'pay-webhook')).handler;
   const status = require(path.join(F, 'pay-status')).handler;
-  const post = (fn, b, headers) => fn({ httpMethod: 'POST', body: JSON.stringify(b), headers: headers || {} })
+  /* Online payment is in Test mode here, which since build 77 is the
+     shop's alone: these requests carry the shop's preview key, the way
+     the owner tests. A request that says preview: null is a stranger. */
+  const post = (fn, b, headers) => fn({ httpMethod: 'POST',
+    body: JSON.stringify('preview' in b ? b : Object.assign({ preview: 'shop-preview' }, b)), headers: headers || {} })
     .then(r => ({ code: r.statusCode, body: r.body ? JSON.parse(r.body) : null }));
   const get = (fn, q) => fn({ httpMethod: 'GET', queryStringParameters: q, headers: {} })
     .then(r => ({ code: r.statusCode, body: r.body ? JSON.parse(r.body) : null }));
@@ -271,16 +298,20 @@ const server = http.createServer(async (req, res) => {
     is(r.statusCode === 200 && DB.orders[0].payment_status === 'paid' && DB.orders[0].paid_amount === 1380,
        'confirmed with Flutterwave, the order is marked paid');
     is(DB.orders[0].pay_channel === 'mobilemoneyzambia' && DB.payments[0].status === 'paid', 'with how it was paid');
-    is(MAIL.length === 2 && MAIL[0].to === 'chanda@example.com' && /Payment received/.test(MAIL[0].subject),
-       'the customer is emailed a confirmation automatically', JSON.stringify(MAIL.map(m => m.to)));
-    is(MAIL[1] && MAIL[1].to === 'shop@example.com' && /K1,380/.test(MAIL[1].subject), 'and the shop is told');
-    is(/Delivery: K80/.test(MAIL[0].text) && /Paid: K1,380 \(mobile money\)/.test(MAIL[0].text), 'the email shows the delivery and what was paid', MAIL[0].text);
+    is(MAIL.length === 2 && MAIL[0].to === 'chanda@example.com' && /^\[TEST\]/.test(MAIL[0].subject),
+       'the customer is emailed automatically, and a Test-mode payment says [TEST] in the subject (build 77)',
+       JSON.stringify(MAIL.map(m => m.to + ': ' + m.subject)));
+    is(MAIL[1] && MAIL[1].to === 'shop@example.com' && /^\[TEST\].*no money moved/.test(MAIL[1].subject),
+       'and the shop is told, [TEST] and "no money moved" in its subject', MAIL[1] && MAIL[1].subject);
+    is(/Delivery: K80/.test(MAIL[0].text) && /TEST payment, no money taken: K1,380 \(mobile money\)/.test(MAIL[0].text) &&
+       !/(^|\n)Paid:/.test(MAIL[0].text) && /not a receipt/.test(MAIL[0].text),
+       'the email shows the delivery, and calls the payment a test, never "Paid"', MAIL[0].text);
     r = await hook({ httpMethod: 'POST', headers: { 'verif-hash': 'my-secret-hash' },
                      body: JSON.stringify({ data: { id: 555, tx_ref: txRef } }) });
     r = await get(status, { tx_ref: txRef, transaction_id: '555' });
     is(MAIL.length === 2, 'a repeated webhook, and the customer coming back, send nothing twice');
-    is(r.body.status === 'paid' && r.body.ref === DB.orders[0].ref && r.body.amountText === 'K1,380',
-       'the page they come back to is told: paid', JSON.stringify(r.body));
+    is(r.body.status === 'paid' && r.body.ref === DB.orders[0].ref && r.body.amountText === 'K1,380' && r.body.test === true,
+       'the page they come back to is told: paid, in Test mode', JSON.stringify(r.body));
     is(!JSON.stringify(r.body).includes('chanda'), 'and nothing personal is in that answer');
 
     console.log('\nNot paid');
@@ -292,9 +323,74 @@ const server = http.createServer(async (req, res) => {
     is(r.body.status === 'failed' && o2.status === 'cancelled' && o2.payment_status === 'failed',
        'a cancelled payment cancels its order, so it does not count as a sale');
     FLW.verify[tx2] = { id: 600, tx_ref: tx2, status: 'successful', amount: 300, currency: 'ZMW', payment_type: 'card' };
+    const mailed = MAIL.length;
     r = await get(status, { tx_ref: tx2, transaction_id: '600' });
     is(r.body.status === 'paid' && o2.status === 'pending' && o2.payment_status === 'paid',
        'but money that arrives after all brings the order back', JSON.stringify(o2));
+    const late = MAIL.slice(mailed).find(m => m.to === 'shop@example.com');
+    is(late && /^\[CHECK STOCK\]/.test(late.subject) && /PAID LATE/.test(late.text) && /refund/.test(late.text),
+       'and the shop is told it came late, so the piece may have sold: check before confirming (build 78)',
+       late && (late.subject + ' | ' + late.text.slice(0, 120)));
+    const first = MAIL.slice(0, 2).find(m => m.to === 'shop@example.com');
+    is(first && !/CHECK STOCK|PAID LATE/.test(first.subject + first.text), 'a payment in time says nothing of the kind');
+
+    console.log('\nTest mode is the shop\'s own (build 77, decision Q3)');
+    let before = { made: FLW.made.length, orders: DB.orders.length, pays: DB.payments.length };
+    r = await post(quote, { items: ITEMS, fulfilment: 'collection', preview: null });
+    is(r.code === 403 && r.body.off, 'a stranger is not even quoted while online payment is in Test mode', JSON.stringify(r));
+    r = await post(start, { items: ITEMS, buyer: BUYER, fulfilment: 'collection', preview: null });
+    is(r.code === 403 && r.body.off && /WhatsApp/.test(r.body.error), 'nor can they start a payment, and are pointed to WhatsApp');
+    r = await post(start, { items: ITEMS, buyer: BUYER, fulfilment: 'collection', preview: 'a-guess' });
+    is(r.code === 403, 'a wrong preview key is a stranger too');
+    r = await post(start, { items: ITEMS, buyer: BUYER, fulfilment: 'collection', preview: null }, { authorization: 'Bearer customer-jwt' });
+    is(r.code === 403, 'and so is a signed-in customer');
+    r = await post(start, { items: ITEMS, buyer: BUYER, fulfilment: 'collection', preview: null }, { authorization: 'Bearer ' + OWNER_AAL1 });
+    is(r.code === 403, 'and the owner with only a password: a stolen password does not make test payments');
+    is(FLW.made.length === before.made && DB.orders.length === before.orders && DB.payments.length === before.pays,
+       'none of them recorded anything, or reached Flutterwave');
+    r = await post(start, { items: [{ sku: 'SC-1', qty: 1 }], buyer: Object.assign({}, BUYER, { phone: '0955000001' }),
+                            fulfilment: 'collection', preview: null }, { authorization: 'Bearer ' + OWNER_AAL2 });
+    is(r.code === 200 && FLW.made.length === before.made + 1, 'the owner, past two-factor, may test', JSON.stringify(r));
+
+    console.log('\nIn Live mode, everybody pays, and nothing says TEST');
+    SETTINGS.payments.onlineMode = 'live';
+    process.env.FLW_SECRET_KEY_LIVE = 'FLWSECK-live-secret';
+    r = await post(quote, { items: [{ sku: 'SC-1', qty: 1 }], fulfilment: 'collection', preview: null });
+    is(r.code === 200 && r.body.total === 300, 'a stranger is quoted');
+    r = await post(start, { items: [{ sku: 'SC-1', qty: 1 }], buyer: Object.assign({}, BUYER, { phone: '0955000002' }),
+                            fulfilment: 'collection', preview: null });
+    const live = FLW.made[FLW.made.length - 1];
+    is(r.code === 200 && live && live._key === 'Bearer FLWSECK-live-secret', 'and pays, with the live key', JSON.stringify(r));
+    const liveTx = live.tx_ref;
+    FLW.verify[liveTx] = { id: 901, tx_ref: liveTx, status: 'successful', amount: 300, currency: 'ZMW', payment_type: 'card' };
+    MAIL = [];
+    r = await get(status, { tx_ref: liveTx, transaction_id: '901' });
+    is(r.body.status === 'paid' && r.body.test === false, 'the page they come back to is told: paid, for real');
+    is(MAIL.length === 2 && /^Payment received/.test(MAIL[0].subject) && /Paid: K300 \(card\)/.test(MAIL[0].text) &&
+       /^Paid online: .* K300$/.test(MAIL[1].subject) && !MAIL.some(m => /TEST/.test(m.subject + m.text)),
+       'and the emails read as before: "Payment received", "Paid online", no TEST anywhere', JSON.stringify(MAIL.map(m => m.subject)));
+    SETTINGS.payments.onlineMode = 'test';
+    delete process.env.FLW_SECRET_KEY_LIVE;
+
+    console.log('\nOne connection cannot use up the shop\'s payments (build 77)');
+    const here = { 'x-nf-client-connection-ip': '198.51.100.7' };
+    let refused = null;
+    for (let i = 0; i < 9; i++) {
+      r = await post(start, { items: [{ sku: 'SC-1', qty: 1 }], buyer: Object.assign({}, BUYER, { phone: '09770000' + (10 + i) }),
+                              fulfilment: 'collection' }, here);
+      if (r.code === 429 && refused === null) refused = i + 1;
+    }
+    is(refused === 9 && /from here/.test(r.body.error), 'eight payments an hour from one connection, whatever phone numbers it types; the ninth is refused',
+       'refused at attempt ' + refused);
+    r = await post(start, { items: [{ sku: 'SC-1', qty: 1 }], buyer: Object.assign({}, BUYER, { phone: '0966111222' }),
+                            fulfilment: 'collection' }, { 'x-nf-client-connection-ip': '203.0.113.20' });
+    is(r.code === 200, 'while another customer pays as normal');
+    is(require(path.join(F, '_pay')).PER_SHOP_PER_HOUR >= 1000, 'and the shop-wide ceiling is a backstop (1,000 an hour), not something a stranger can reach');
+    NO_THROTTLE = true;
+    r = await post(start, { items: [{ sku: 'SC-1', qty: 1 }], buyer: Object.assign({}, BUYER, { phone: '0966333444' }),
+                            fulfilment: 'collection' }, here);
+    is(r.code === 200, 'before supabase-hardening.sql has been run there is no count to ask, and paying carries on');
+    NO_THROTTLE = false;
 
     console.log('\nLimits and readiness');
     for (let i = 0; i < 4; i++) await post(start, { items: [{ sku: 'SC-1', qty: 1 }], buyer: BUYER, fulfilment: 'collection' });
@@ -311,6 +407,19 @@ const server = http.createServer(async (req, res) => {
     r = await get(status, { check: '1' });
     is(!JSON.stringify(r.body).includes('FLWSECK') && !JSON.stringify(r.body).includes('my-secret-hash'),
        'but never the keys themselves');
+
+    console.log('\nThe customer is only ever sent to a web page (build 78)');
+    for (const [what, link] of [['a javascript: address', 'javascript:alert(1)'],
+                                ['a page that is not https://', 'http://checkout.flutterwave.test/pay/x'],
+                                ['nothing at all', '']]) {
+      reset();
+      FLW.link = link;
+      r = await post(start, { items: [{ sku: 'SC-1', qty: 1 }], buyer: BUYER, fulfilment: 'collection' });
+      is(r.code === 502 && !('link' in r.body) && DB.payments[0] && DB.payments[0].status === 'failed' &&
+         DB.orders[0] && DB.orders[0].payment_status === 'failed',
+         'Flutterwave answering with ' + what + ': nothing is passed on to the browser, and the attempt is closed',
+         JSON.stringify({ code: r.code, body: r.body, pay: DB.payments[0] && DB.payments[0].status }));
+    }
   } catch (e) {
     fail('threw: ' + (e && e.stack || e));
   } finally {

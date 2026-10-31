@@ -65,14 +65,18 @@
   A.store.registerDefaults('homepage', DEFAULTS);
 
   /* A link may be left blank for the shop, or point at a page on this
-     site, or go somewhere else entirely. Anything else is a typo. */
+     site, or go somewhere else entirely. Anything else is a typo. The shop
+     front follows exactly these kinds and no others (assets/app.js,
+     safeHref, build 78), whatever the database holds. */
   function checkLink(v) {
     if (!v) return '';
     var s = String(v).trim();
+    if (/[\u0000-\u001f\u007f]/.test(s)) return 'Take out the line break or tab in it.';
     if (/^#\//.test(s)) return '';
-    if (/^https?:\/\//i.test(s)) return '';
-    if (/^(mailto|tel):/i.test(s)) return '';
-    return 'Start with #/ for a page on this site, or https:// for somewhere else. ' +
+    if (/^\/(?![\/\\])/.test(s)) return '';
+    if (/^https?:\/\/[^\/\\\s]/i.test(s)) return '';
+    if (/^mailto:[^\s]/i.test(s) || /^tel:\+?[\d\s().-]+$/i.test(s)) return '';
+    return 'Start with #/ or / for a page on this site, or https:// for somewhere else. ' +
            'Leave it blank to go to the shop.';
   }
 

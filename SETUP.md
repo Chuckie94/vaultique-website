@@ -42,6 +42,32 @@ You will do five short steps. It takes about 10 minutes.
 > database's new two-factor questions for a refusal. (`supabase-safety-check.sql`,
 > from build 74, is not in the list: the hardening's report replaces it.)
 
+> ### Netlify's variables, all of them (build 79)
+>
+> Netlify › your site › Site configuration › **Environment variables**. A
+> changed variable reaches the site at the next deploy (Deploys › Trigger
+> deploy). Nothing else in the website reads a variable: this is the whole list.
+>
+> | Variable | Set it? | What it is | Read by |
+> |---|---|---|---|
+> | `SUPABASE_SERVICE_ROLE_KEY` | **yes** | This website's Supabase **service_role** key (secret: Project Settings › API) | every function that writes: orders, payments, staff logins, sign-up, email, rewards, the newsletter, the product pulse, the nightly clean-up |
+> | `WEB_SUPABASE_SERVICE_KEY` | no | The older name for the same key; either one is enough | the same |
+> | `WEB_SUPABASE_URL`, `WEB_SUPABASE_ANON_KEY` | only if the build log says the functions cannot read `config.js` | This website's Supabase address and public key | every function (`_seo-data.js`); the build step |
+> | `SITE_SUPABASE_URL`, `SITE_SUPABASE_ANON_KEY` | no | Older names for the two above | every function |
+> | `POS_REWARDS_KEY` | for Vaultique Rewards | The platform's rewards door's own key (its `tools/vbp-rewards-door.sql`) | `rewards.js`, `rewards-check.js` |
+> | `FLW_SECRET_KEY_TEST` | for online payment in Test mode | Flutterwave's **test** secret key | the payment functions |
+> | `FLW_SECRET_KEY_LIVE` | for online payment in Live mode | Flutterwave's **live** secret key | the payment functions |
+> | `FLW_WEBHOOK_HASH` | for online payment | The phrase set as the webhook's secret hash in Flutterwave | `pay-webhook.js`, `pay-status.js` |
+> | `POS_SUPABASE_URL` | no (the platform's address is built in) | The business platform's Supabase address | `products.js`, `product-pulse.js`, the rewards |
+> | `POS_PUBLIC_KEY` | no (built in) | The platform's **publishable** key, public already | the same |
+> | `POS_STATE_ROW` | no (100) | The platform's row the products are in, for the old way only | `products.js`, `product-pulse.js` |
+> | `LOW_STOCK_AT` | no (3) | How few left counts as "only a few left" | `products.js` |
+> | `ANALYTICS_KEEP_DAYS` | no (400) | How many days of raw visit records the nightly clean-up keeps | `site-prune.js` |
+> | `CSP_REPORTS` | no | `off` stops the security policy's reports; the policy stays | the build step |
+> | `URL` | never: Netlify sets it | The site's main address | sign-up links, the page after paying |
+> | `FLW_API_BASE` | **never** | Where Flutterwave's API is; only the tests point it elsewhere | the payment functions |
+> | `POS_SUPABASE_KEY` | **must not be there** | The platform's **secret** key, unused since build 77. Netlify will not publish the website while it holds one. | the build step (to refuse it); `rewards-check.js` (to say so) |
+
 ---
 
 ## 1. Create a new Supabase project (separate from the POS)
@@ -702,17 +728,30 @@ confirmation goes to the customer and to you automatically.
    test email works, because that is what sends the confirmations.
 6. **Settings > Payments > Online payment**: switch it on, leave the mode on
    **Test**, and save. The line at the top should show ✓ against every item.
-7. **Try it** on your phone: add something to the cart, press **Pay now**, and pay
-   with one of Flutterwave's test cards or test mobile money numbers (listed in
-   their documentation under "Testing"). Check the order shows **Paid ✓**, and
-   beside it **TEST · no money moved** (build 76, once `supabase-hardening.sql`
-   has been run). Test payments are not counted in the Dashboard's or
-   Analytics' sales.
+   **While the mode is Test, only you can pay online** (build 77): customers
+   see no **Pay now** at all and order on WhatsApp as usual. You see it by
+   opening the shop with your preview key, `https://YOUR-SITE/?preview=YOUR-KEY`
+   (**Settings > General > Preview key**). The website itself refuses a test
+   payment from anybody else, whatever their browser sends.
+7. **Try it** on your phone: open the shop with your preview key, add something
+   to the cart, press **Pay now**, and pay with one of Flutterwave's test cards
+   or test mobile money numbers (listed in their documentation under
+   "Testing"). Check the order shows **Paid ✓**, and beside it **TEST · no money
+   moved** (build 76, once `supabase-hardening.sql` has been run). Test payments
+   are not counted in the Dashboard's or Analytics' sales, the page after paying
+   says **Test payment received**, and both confirmation emails begin
+   **[TEST]** and say no money was taken (build 77).
 8. When you are ready, set the mode to **Live**, save, and make one small real
    purchase yourself.
 
 **To stop taking online payments**, switch **Take payments online** off. The
 button goes at once. Any payment already under way still completes and is recorded.
+
+**Limits** (build 77): one phone number can start 5 payments an hour, and one
+connection 8 (the connection limit needs `supabase-hardening.sql`, build 76 or
+later).
+The whole shop's ceiling is 1,000 an hour, there only as a backstop. Nobody
+paying normally meets any of them.
 
 #### Delivery in online payments
 
@@ -769,7 +808,10 @@ fees, the same town listed twice, or a medium limit below the small one.
 **Payments nobody finished.** If a customer opens the payment page and walks
 away, the order shows **Awaiting payment**. After three hours it is marked
 **Payment not completed** and cancelled, so it no longer counts as a sale. If the
-money arrives late after all, the order comes back as **Paid**.
+money arrives late after all, the order comes back as **Paid**. Nothing was set
+aside for it meanwhile, so the shop's email about it then begins **[CHECK
+STOCK]** (build 78): check the piece is still there before confirming the
+order, and if it is not, refund the customer from your Flutterwave dashboard.
 
 ### Vaultique Rewards on the website
 
@@ -792,10 +834,11 @@ list out.
    **platform's** Supabase, and put the key it shows once into Netlify as
    **POS_REWARDS_KEY**. **SUPABASE_SERVICE_ROLE_KEY** (this website's own)
    must be there too. Open `/api/rewards-check`: it should say
-   `"source":"door"`. Then **POS_SUPABASE_KEY** can be deleted from Netlify
-   (deploy again afterwards). Until the door is set up, the rewards read the
-   old way, with **POS_SUPABASE_KEY** as the platform's **secret** key
-   (`sb_secret_…`); a publishable key is refused for that on purpose.
+   `"source":"door"`. Since build 77 the door is the only way: the old one,
+   reading the whole business with the platform's secret key
+   (**POS_SUPABASE_KEY**), is gone, and Netlify will not publish the website
+   while that key is still among its variables. Until the door is set up, the
+   rewards say they cannot be reached just now.
 3. **Settings > Notifications** must be able to send email: the code goes
    by email.
 4. **Customer accounts** must be on (Settings > Customer Accounts).
@@ -830,11 +873,17 @@ list out.
 The announcement bar, the hero, your story, the core values, and which
 sections appear in what order.
 
-- **Announcement bar.** On or off, and what it says. `<b>bold</b>` works.
+- **Announcement bar.** On or off, and what it says. `<b>bold</b>`, `<i>italics</i>`,
+  `<u>underline</u>`, a line break (`<br>`) and a link (`<a href="#/shop">…</a>`)
+  work. Any other tag is taken out, keeping only its words (build 78): no
+  picture, script or styling can be slipped in through it.
 - **Hero.** On or off, the three rotating photos, the small line, both heading
   lines, the subtitle, and the button. Leave the button's link blank and it goes
-  to the shop as it always has; `#/policies` sends it to a page on your site, and
-  a full `https://` address opens elsewhere in a new tab.
+  to the shop as it always has; `#/policies` or `/policies` sends it to a page on
+  your site, a full `https://` address opens elsewhere in a new tab, and
+  `mailto:` and `tel:` work too. Any other kind of link is ignored by the shop
+  front (build 78), even one written straight into the database, and the button
+  goes to the shop. The promotional banner's button works the same way.
 - **Our story.** The heading and two paragraphs. Clear a paragraph and it goes
   rather than reverting to the words the site shipped with.
 - **Core values.** The row of promises under the story. Leave the list empty to
@@ -1079,9 +1128,23 @@ Whether customers can have an account, and what one is worth having.
 
 #### Verifying
 
-**Email verification** works straight away; Supabase sends the message. Someone
-can sign in but cannot check out until they have clicked the link, and the site
-tells them so on the page rather than letting them reach a dead conversation.
+**Email verification** works straight away; Supabase sends the message (once
+`supabase-signup.sql` has been run, the website sends it itself, through your
+email in Settings > Notifications). Someone can sign in but cannot check out
+until they have clicked the link, and the site tells them so on the page rather
+than letting them reach a dead conversation.
+
+**The same answer for every address** (build 77). With email verification on,
+creating an account says exactly the same thing whether or not the address
+already has an account, so nobody can use the form to find out who shops with
+you. The difference is in the email, which only the owner of the address
+reads: a new address gets its link; one already waiting to be confirmed gets
+a link that confirms it and signs in; one already in use is told so, with
+where to sign in and how to choose a new password. Nothing typed into the form
+is put in those emails, and no account's password is changed by it. With email
+verification **off** the account is ready at once and signed straight in, so
+the form has to say when an address is already in use, as Supabase's own
+sign-up does: switching verification on is what closes that.
 
 **Phone verification** has its own switch, but it needs an SMS provider
 connected to Supabase (Authentication → Providers → Phone, with Twilio or
@@ -1399,8 +1462,8 @@ so a quiet Tuesday reads as a quiet Tuesday rather than as something broken.
 | Product views | Pieces opened to read about |
 | Added to cart | Pieces gathered to buy |
 | Checkouts begun | People setting off to WhatsApp to order |
-| Orders | Orders the website took today |
-| Order value | What those orders came to |
+| Orders | Orders confirmed today, or paid online (build 78), with any still waiting to be confirmed said beneath |
+| Order value | What those orders came to, likewise |
 | Registered customers | Everybody with an account, and how many joined this month |
 | Newsletter subscribers | Everybody still subscribed, and how many joined this month |
 
@@ -1412,11 +1475,15 @@ Orders and what they came to, for **today**, **this week** (from Monday) and
 **this month**, with the last seven days drawn underneath. The chart shows one
 measure at a time — press **Orders** or **Order value** to change which.
 
-> **This is not a sales figure and is not meant to be.** The website takes no
-> payment: every method under Settings > Payments is settled off the site — cash
-> in person, a transfer, mobile money, on delivery. So this is *what customers
-> asked the shop for*, not money that has arrived. Your books are the Business
-> Platform's. A cancelled order is not counted here at all.
+> **What is counted (build 78, decision Q4).** An order counts once you have
+> confirmed it (Confirmed, Ready, On its way, Delivered, or the older
+> Completed), or once it has been paid online for real. An order still
+> **Received** is not counted yet, since nobody has checked the piece is there
+> and anybody could have placed it: the number still waiting to be confirmed is
+> shown beside the figures instead. A cancelled order, a test payment and an
+> order still on the payment page are not counted at all. Most orders are
+> settled off the site, so this is still not money in the bank: your books are
+> the Business Platform's.
 
 #### Needs attention
 
@@ -1505,8 +1572,10 @@ asked of the visitor and no internet address is kept. The country is very
 reliable. The town is right for most visitors, but a phone on a mobile network
 is sometimes placed at its network's hub (Lusaka, for somebody nearby). It never
 shows anything finer than a town. It uses the service key already in Netlify,
-**SUPABASE_SERVICE_ROLE_KEY** (there if you set up staff logins) or
-**WEB_SUPABASE_SERVICE_KEY**, and counts visits from the day it is switched on.
+**SUPABASE_SERVICE_ROLE_KEY** (there if you set up staff logins), and counts
+visits from the day it is switched on. (Since build 77 every function reads the
+service key the same way and understands either name, SUPABASE_SERVICE_ROLE_KEY
+or the older WEB_SUPABASE_SERVICE_KEY, so one of the two is enough.)
 
 **Where visitors say they are (build 69).** A town cannot be read from a
 connection in Zambia: Airtel, MTN and Zamtel send every phone on mobile data
@@ -1564,10 +1633,14 @@ the chosen dates into:
 
 It also says how much of the online money was delivery fees.
 
-**An online order counts as a sale only once it is paid**, in Orders and Sales
-here and on the Dashboard. One still on the payment page is not counted, and is
-not shown as "waiting" for you either. WhatsApp orders count as they always
-have, until cancelled.
+**What counts as a sale (build 78, decision Q4)**, in Orders and Sales here and
+on the Dashboard: an online order once it is paid, and a WhatsApp order once you
+have confirmed it. WhatsApp orders still **Received** are said beside the
+figures as waiting to be confirmed, and are not counted until you confirm them.
+An online order still on the payment page, a cancelled order and a test payment
+are not counted at all. (Until `supabase-hardening.sql` from build 78 has been
+run, Analytics counts the way it did before, Received orders included, and says
+so.)
 
 **Nothing here works until you run one file.** Open the **SQL Editor** for this
 website's Supabase project > **New query**, paste in the whole of
@@ -1913,10 +1986,20 @@ failed — a wrong password and an unreachable host need completely different
 fixes.
 
 - Most providers use **port 587 with STARTTLS**, or **465 with SSL/TLS**.
-- Your **SMTP password is kept in the private table**, with your bank details,
-  where the website cannot read it. It never reaches a customer's browser.
+- Your **SMTP password**, once saved, is kept where only the website's own
+  functions can read it (build 77, once `supabase-hardening.sql` has been run
+  again): not a customer's browser, not the admin, not even yours. The box
+  stays empty and says **Saved and hidden**; type in it only to change the
+  password. Backups made from then on leave it out by themselves, so after
+  restoring one on a new project, type it in once more.
 - Save your changes before testing — the test uses what is stored, not what is
-  on screen.
+  on screen, and is sent by the website itself to the address you type.
+- **Who can send:** the test, anybody whose role is ticked for **Settings**;
+  **Send welcome** in Subscribers, anybody ticked for **Subscribers**, and only
+  to an address on the subscriber list (build 77). If one fails, the message
+  says which part failed (the server's address, its security setting, the
+  sign-in, the sender, the recipient...). The mail server's own words go to the
+  function's log only: Netlify > Logs > Functions > send-email.
 
 > The test only works on your live website address. Opening `admin.html` from a
 > folder on your computer means the sender is not there to answer.
@@ -2071,9 +2154,15 @@ every upload.**
 - **Download a backup** saves every setting on every page of this admin into one
   file: business details, prices, delivery, payment details, the lot. Take one
   before big changes.
-- The file holds your **bank account and mobile money details in plain readable
-  text**. Anyone who opens it can read them. Keep it somewhere only you can get
-  to and do not email it to anyone. You are warned before it downloads.
+- The file holds your **bank account and mobile money details, and your preview
+  key, in plain readable text**. Anyone who opens it can read them. Keep it
+  somewhere only you can get to and do not email it to anyone. You are warned
+  before it downloads.
+- It **never** holds the **email password** or the **phone-notification keys**
+  (build 78), and restoring a backup never writes them back, even an older
+  backup that has them: the ones in use stay as they are. After restoring onto
+  a new project, type the email password again in Settings > Notifications, and
+  open Live Chats as the owner to make new notification keys.
 - It does **not** include product photos, orders, customers or reviews. Those
   stay in the database, which Supabase backs up itself.
 - **Restore from a backup** reads a file back. It shows you which sections will
@@ -2106,7 +2195,9 @@ Until now the notice was only a notice: the page hid itself, but the product
 feed carried on handing out the whole catalogue, an order sent straight at the
 database was accepted, a chat could still be started, and a search engine that
 does not run JavaScript saw the shop rather than the notice. All four are shut
-now:
+now (the order one completely since build 76's `supabase-hardening.sql`: before
+it, an order written straight into the orders table, rather than through the
+checkout, still got in):
 
 - `/api/products` returns nothing while the shop is shut.
 - The database refuses an order and refuses to start a chat.
