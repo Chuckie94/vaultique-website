@@ -67,6 +67,21 @@
         c.appendChild(el('p', 'an-note', 'Run supabase-rewards.sql in this website’s Supabase SQL Editor, then open this page again.'));
         host.appendChild(c);
       }
+      /* Questions and answers in the admin's own dialog (dialogs.js), never
+         the browser's "vaultiqueboutique.com says" box. */
+      var D = window.VBP_DIALOGS || {};
+      var ask = (ctx && ctx.ask) || D.ask;
+      var tell = (ctx && ctx.tell) || D.tell;
+      /* The database's refusal is two words; this says who can, and where
+         that is set. */
+      function plain(e) {
+        var m = String((e && e.message) || '');
+        if (/not permitted/i.test(m)) {
+          return 'This sign-in may not answer rewards. The shop owner can, and so can anybody whose role ' +
+                 'is allowed Orders (Settings > Users & Roles).';
+        }
+        return m || 'That could not be done.';
+      }
       function row(parent, title, sub, actions) {
         var r = el('div', 'rw-row');
         var t = el('div', 'rw-row-t');
@@ -77,13 +92,20 @@
         (actions || []).forEach(function (x) {
           var b = el('button', 'btn btn-sm ' + (x.primary ? 'btn-gold' : 'btn-outline'), x.label);
           b.type = 'button';
-          b.addEventListener('click', function () {
-            if (x.confirm && !window.confirm(x.confirm)) return;
+          function go() {
             b.disabled = true;
-            Promise.resolve(x.run()).then(load, function (e) {
+            Promise.resolve().then(x.run).then(load, function (e) {
               b.disabled = false;
-              window.alert((e && e.message) || 'That could not be done.');
+              if (tell) tell(plain(e), { title: 'Not done' });
+              else flash(plain(e));
             });
+          }
+          b.addEventListener('click', function () {
+            if (!x.confirm) { go(); return; }
+            if (!ask) { flash('This could not be asked here. Reload the page and try again.'); return; }
+            ask(x.confirm, { title: x.title || 'Are you sure?', okText: x.okText || x.label, cancelText: 'Cancel',
+                             danger: !!x.danger })
+              .then(function (yes) { if (yes) go(); });
           });
           a.appendChild(b);
         });
@@ -164,7 +186,8 @@
             row(reqBody, 'Link customer number ' + q.cust_no,
               person(who, q.user_id) + ' · asked ' + when(q.created_at) +
               '. Check on the platform that this number is theirs before approving.', [
-              { label: 'Approve', primary: true, confirm: 'Link this website account to customer number ' + q.cust_no + '?',
+              { label: 'Approve', primary: true, title: 'Link this account?', okText: 'Approve',
+                confirm: 'Link this website account to customer number ' + q.cust_no + '?',
                 run: function () { return decide('approve', q, '', function () { return rpc('rewards_decide', { p_request: q.id, p_approve: true }); }); } },
               { label: 'Decline', run: function () { return decide('decline', q, '', function () { return rpc('rewards_decide', { p_request: q.id, p_approve: false }); }); } }
             ]);
@@ -197,9 +220,11 @@
           row(holdBody, h.order_ref + ' · customer number ' + h.cust_no,
             pts(h.points) + ' points (−' + money(h.value) + ') · ' + person(who, h.user_id) + ' · ' + when(h.created_at), [
             { label: 'Rung up on the till', primary: true,
+              title: 'Rung up on the till?', okText: 'Yes, rung up',
               confirm: 'Was ' + h.order_ref + ' rung up under customer number ' + h.cust_no + ', with Redeem points pressed?',
               run: function () { return rpc('rewards_settle', { p_hold: h.id, p_rung_up: true }); } },
-            { label: 'Release', confirm: 'Give these points back to the customer? Do this if the order was cancelled.',
+            { label: 'Release', title: 'Release the points?', okText: 'Release',
+              confirm: 'Give these points back to the customer? Do this if the order was cancelled.',
               run: function () { return rpc('rewards_settle', { p_hold: h.id, p_rung_up: false }); } }
           ]);
         });
@@ -209,7 +234,8 @@
           row(linkBody, 'Customer number ' + l.cust_no,
             person(who, l.user_id) + ' · ' + (l.how === 'team' ? 'approved by the team' : 'confirmed by email code') +
             ' · ' + when(l.linked_at), [
-            { label: 'Unlink', confirm: 'Unlink this website account from customer number ' + l.cust_no + '? Their points on the platform are not touched.',
+            { label: 'Unlink', title: 'Unlink this account?', okText: 'Unlink', danger: true,
+              confirm: 'Unlink this website account from customer number ' + l.cust_no + '? Their points on the platform are not touched.',
               run: function () { return rpc('rewards_unlink', { p_user: l.user_id }); } }
           ]);
         });

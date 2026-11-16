@@ -90,9 +90,30 @@
       foot.appendChild(document.createTextNode('Customer number ' + s.number + ' · '));
       var un = el('button', 'ac-link', 'Not you?');
       un.type = 'button';
+      /* Asked here, in the card and in the shop's own words, rather than in
+         the browser's "vaultiqueboutique.com says" box. */
       un.addEventListener('click', function () {
-        if (!window.confirm('Stop showing these rewards on this account? Your points stay where they are.')) return;
-        ask('unlink').then(function () { forget(); draw(body, true); });
+        foot.innerHTML = '';
+        foot.className = 'rw-foot rw-ask';
+        foot.appendChild(el('span', 'rw-ask-q', 'Stop showing these rewards on this account? Your points stay where they are.'));
+        var row = el('span', 'ac-actions rw-ask-row');
+        var yes = el('button', 'btn btn-gold', 'Yes, stop showing them');
+        var no = el('button', 'ac-link', 'Keep them');
+        yes.type = 'button'; no.type = 'button';
+        row.appendChild(yes); row.appendChild(no);
+        foot.appendChild(row);
+        var said = el('span', 'ac-msg');
+        foot.appendChild(said);
+        no.focus();
+        no.addEventListener('click', function () { draw(body, false); });
+        yes.addEventListener('click', function () {
+          yes.disabled = true; no.disabled = true;
+          ask('unlink').then(function () { forget(); draw(body, true); }, function (e) {
+            yes.disabled = false; no.disabled = false;
+            said.textContent = (e && e.message) || 'That could not be done just now.';
+            said.className = 'ac-msg err';
+          });
+        });
       });
       foot.appendChild(un);
       body.appendChild(foot);

@@ -458,21 +458,20 @@
     return enabled() && api.settings.orderHistory !== false;
   }
 
-  /* Recorded by the website's place-order function (build 76).
+  /* Written through place_order() in the database rather than by
+     inserting here, because a guest cannot do it from this side.
+     `or_insert` lets the row in, but PostgreSQL applies the table's
+     SELECT policies to anything an insert RETURNs, and asking for the
+     new row's id — which the lines need — made the whole insert fail
+     for anyone not signed in. The lines were refused as well:
+     `oi_insert` asks whether the order exists, and that question is
+     answered under the caller's own reading rights, which show a guest
+     nothing. One call to a function that has the standing to do it
+     settles both, and writes the order and its lines together, so the
+     Orders tab never shows half of one.
 
-     The order used to be written from here, through the database's
-     place_order, with the prices this page worked out. A browser can be
-     made to say anything, so a WhatsApp order could reach the Orders tab
-     saying K1 for anything and be added to Sales. Now this says only which
-     pieces and how many; the function prices every line from the
-     catalogue, the same way an online payment is priced, and writes the
-     order with a key no browser holds.
-
-     Who placed it goes with it as this browser's own sign-in, which the
-     function checks with Supabase before filing the order under them.
-
-     The reference is made in the database, so two people pressing
-     Continue in the same second cannot land on the same one.
+     The reference is made in there too, so two people pressing Continue
+     in the same second cannot land on the same one.
 
      Recorded whether or not customer accounts are switched on. This is
      the shop's own record of what was asked for; `orderHistory` is a
@@ -480,21 +479,23 @@
      customer is shown their own, in myOrders() below. */
   function recordOrder(order) {
     var payload = {
-      order: {
+      p_order: {
         name: order.name || null, phone: order.phone || null,
         email: order.email || null, address: order.address || null,
         notes: order.notes || null,
-        fulfilment: order.fulfilment === 'collection' ? 'collection' : 'delivery'
+        fulfilment: order.fulfilment === 'collection' ? 'collection' : 'delivery',
+        total: (order.total === undefined || order.total === null) ? null : Number(order.total),
+        currency: order.currency || null
       },
-      /* The name rides along only for a piece the catalogue no longer
-         knows, so the shop can still see what was asked for. */
-      items: (order.items || []).map(function (it) {
-        return { sku: it.sku || null, name: it.name || null, qty: it.qty || 1 };
+      p_items: (order.items || []).map(function (it) {
+        return { sku: it.sku || null, name: it.name || null,
+                 price: (it.price === undefined ? null : Number(it.price)),
+                 qty: it.qty || 1 };
       }),
       /* Nothing while the shop is open. While it is shut the database
          refuses an order, and this is the owner's way to test one. */
-      preview: (typeof renderHooks.previewKey === 'function'
-                  ? (renderHooks.previewKey() || null) : null)
+      p_preview: (typeof renderHooks.previewKey === 'function'
+                    ? (renderHooks.previewKey() || null) : null)
     };
 
     function answer(d) {
@@ -503,35 +504,241 @@
     }
     function lost(e) { return { error: e }; }
 
-    var send = renderHooks.placeOrder;
-    if (!send) return Promise.resolve(null);
-    var token = (sb && signedIn())
-      ? Promise.resolve(sb.auth.getSession()).then(function (r) {
-          var s = r && r.data && r.data.session;
-          return (s && s.access_token) || null;
-        }, function () { return null; })
-      : Promise.resolve(null);
-    return token.then(function (t) { return send(payload, t); }).then(answer, lost);
+    /* With a client, because it carries the session: an order placed by
+       somebody signed in has to be filed under them, and auth.uid()
+       inside the function is what does that. */
+    if (sb) {
+      return sb.rpc('place_order', payload).then(function (r) {
+        if (r && r.error) return lost(r.error);
+        return answer(r && r.data);
+      }, lost);
+    }
+
+    /* Without one, because a shop with accounts switched off never
+       downloads it — and those orders are still the shop's to keep. The
+       storefront hands over the same call made plainly, the way reviews
+       and the newsletter already go. Nobody can be signed in without a
+       client, so this path is always a guest and the function files it
+       as one. */
+    var direct = renderHooks.placeOrder;
+    if (!direct) return Promise.resolve(null);
+    return Promise.resolve().then(function () { return direct(payload); }).then(answer, lost);
   }
+
+  var ORDER_COLS = 'id, ref, status, total, currency, fulfilment, created_at, order_items(sku, name, price, qty)';
+  /* BUILD 76 · what the till wrote when it rang the order up: the receipt
+     the customer can download. supabase-pos-orders.sql adds these columns;
+     until it has been run they are not there, and asking for them would
+     lose the whole list, so the list is asked for again without them. */
+  var RECEIPT_COLS = ', pos_receipt_no, pos_receipt, pos_completed_at';
 
   function myOrders() {
     if (!sb || !signedIn() || !historyOn()) return Promise.resolve([]);
-    var q = sb.from('orders')
-      .select('id, ref, status, total, currency, fulfilment, created_at, order_items(sku, name, price, qty)')
-      .eq('customer_id', api.user.id)
-      .order('created_at', { ascending: false });
+    function ask(cols) {
+      var q = sb.from('orders')
+        .select(cols)
+        .eq('customer_id', api.user.id)
+        .order('created_at', { ascending: false });
 
-    /* "Recent" is the shop's own window, so a customer is not shown five
-       years of history when the shop meant one. */
-    if ((api.settings.historyScope || 'all') === 'recent') {
-      var months = Number(api.settings.historyMonths);
-      if (isFinite(months) && months > 0) {
-        var since = new Date();
-        since.setMonth(since.getMonth() - months);
-        q = q.gte('created_at', since.toISOString());
+      /* "Recent" is the shop's own window, so a customer is not shown five
+         years of history when the shop meant one. */
+      if ((api.settings.historyScope || 'all') === 'recent') {
+        var months = Number(api.settings.historyMonths);
+        if (isFinite(months) && months > 0) {
+          var since = new Date();
+          since.setMonth(since.getMonth() - months);
+          q = q.gte('created_at', since.toISOString());
+        }
       }
+      return q;
     }
-    return q.then(function (r) { return (r && r.data) || []; }, function () { return []; });
+    function plain() {
+      return ask(ORDER_COLS).then(function (r) { return (r && r.data) || []; }, function () { return []; });
+    }
+    return ask(ORDER_COLS + RECEIPT_COLS).then(function (r) {
+      if (r && !r.error) return r.data || [];
+      return plain();
+    }, plain);
+  }
+
+  /* ---- the receipt, as a PDF ------------------------------------------
+     BUILD 76 · The owner: "If the customer has an account, a receipt can
+     then appear in a download able manner."
+
+     Written here, by hand, rather than with a PDF library: the site has
+     none, and a receipt needs very little of one. One page the width of
+     the till's own paper (80 mm), in Courier, the till receipt's own
+     typeface, so every column lines up exactly as it does on the paper
+     receipt. Courier is one of the fonts every PDF reader carries, so
+     nothing is embedded and the file stays a few kilobytes.
+
+     What it says comes from what the till printed (orders.pos_receipt),
+     never from this page: the website is not where the sale was made. */
+  var PDF_W = 226.77, PDF_MARGIN = 12, PDF_SIZE = 8, PDF_LEAD = 10.5;
+  var PDF_COLS = Math.floor((PDF_W - 2 * PDF_MARGIN) / (PDF_SIZE * 0.6));   // 42, as the till's 80 mm paper
+
+  /* Unicode to the PDF's standard WinAnsi letters; anything else is "?". */
+  var WIN = { 0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84, 0x2026: 0x85, 0x2020: 0x86,
+    0x2021: 0x87, 0x02C6: 0x88, 0x2030: 0x89, 0x0160: 0x8A, 0x2039: 0x8B, 0x0152: 0x8C, 0x017D: 0x8E,
+    0x2018: 0x91, 0x2019: 0x92, 0x201C: 0x93, 0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97,
+    0x02DC: 0x98, 0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B, 0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F,
+    0x2212: 0x2D };
+  function winText(v) {
+    var s = String(v == null ? '' : v), out = '';
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c === 9 || c === 10 || c === 13) c = 32;
+      /* 0x80 to 0x9F are kept as they are: WinAnsi letters already (a
+         second pass over text this has written must not spoil it). */
+      if ((c >= 32 && c <= 126) || (c >= 0x80 && c <= 0xFF)) out += String.fromCharCode(c);
+      else if (WIN[c]) out += String.fromCharCode(WIN[c]);
+      else out += '?';
+    }
+    return out;
+  }
+  function pdfEsc(s) { return s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)'); }
+
+  /* Words to lines of at most n letters. A word longer than a line is cut. */
+  function wrap(text, n) {
+    var words = winText(text).split(' '), lines = [], cur = '';
+    words.forEach(function (w) {
+      while (w.length > n) { if (cur) { lines.push(cur); cur = ''; } lines.push(w.slice(0, n)); w = w.slice(n); }
+      if (!w) return;
+      if (!cur) cur = w;
+      else if ((cur + ' ' + w).length <= n) cur += ' ' + w;
+      else { lines.push(cur); cur = w; }
+    });
+    if (cur) lines.push(cur);
+    return lines.length ? lines : [''];
+  }
+  /* A label on the left and a figure on the right, on one line. */
+  function pair(left, right, n) {
+    var r = winText(right), l = winText(left);
+    if (!r) return wrap(l, n);
+    var room = n - r.length - 1;
+    if (room < 1) return [l.slice(0, n), r.slice(0, n)];
+    if (l.length > room) {
+      var first = wrap(l, room);
+      var last = first.pop();
+      return first.concat([last + new Array(n - last.length - r.length + 1).join(' ') + r]);
+    }
+    return [l + new Array(n - l.length - r.length + 1).join(' ') + r];
+  }
+  function centre(text, n) {
+    return wrap(text, n).map(function (l) {
+      var pad = Math.floor((n - l.length) / 2);
+      return new Array(pad + 1).join(' ') + l;
+    });
+  }
+
+  function receiptMoney(v) {
+    var n = Number(v) || 0;
+    if (renderHooks.money) return renderHooks.money(n);
+    return 'K' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  /* The receipt's lines: [text, bold]. */
+  function receiptLines(o) {
+    var r = o.pos_receipt || {}, shop = r.shop || {}, n = PDF_COLS, out = [];
+    var dash = new Array(n + 1).join('-');
+    function add(list, bold) { list.forEach(function (l) { out.push([l, !!bold]); }); }
+    if (shop.name) add(centre(String(shop.name).toUpperCase(), n), true);
+    if (shop.slogan) add(centre(shop.slogan, n));
+    if (shop.address) add(centre(shop.address, n));
+    if (shop.contact) add(centre(shop.contact, n));
+    if (shop.taxId) add(centre('Tax ID / TPIN: ' + shop.taxId, n));
+    if (shop.regNo) add(centre('Reg No: ' + shop.regNo, n));
+    add([dash]);
+    var when = r.date ? new Date(r.date) : (o.pos_completed_at ? new Date(o.pos_completed_at) : null);
+    var whenText = when && !isNaN(when.getTime())
+      ? (renderHooks.date ? renderHooks.date(when.toISOString()) : when.toLocaleDateString()) + ' ' +
+        ('0' + when.getHours()).slice(-2) + ':' + ('0' + when.getMinutes()).slice(-2)
+      : '';
+    add(pair(whenText, r.cashier ? 'Cashier: ' + r.cashier : '', n));
+    add(pair('Receipt: ' + (r.receiptNo || o.pos_receipt_no || ''), '', n));
+    if (r.invoiceNo) add(pair('Invoice: ' + r.invoiceNo, '', n));
+    if (r.txnId) add(pair('Transaction ID', r.txnId, n));
+    add(pair('Online order: ' + (o.ref || ''), '', n));
+    if (r.customer) add(wrap('Customer: ' + r.customer, n));
+    add([dash]);
+    /* Quantity and price in columns of their own, right-aligned. */
+    function col(v, w) { v = winText(v); return v.length >= w ? v : new Array(w - v.length + 1).join(' ') + v; }
+    add(pair('Item', col('Qty', 3) + ' ' + col('Price', 12), n));
+    (r.lines || []).forEach(function (l) {
+      var name = [l.sku, l.name].filter(Boolean).join(' ');
+      add(pair(name, col(l.qty == null ? '' : l.qty, 3) + ' ' + col(receiptMoney(l.total), 12), n));
+    });
+    add([dash]);
+    if (r.subtotalNet != null && r.vat != null && Number(r.vatRate)) add(pair('Subtotal (excl. VAT)', receiptMoney(r.subtotalNet), n));
+    if (Number(r.discount) > 0) add(pair('Discount', '- ' + receiptMoney(r.discount), n));
+    if (r.vat != null && Number(r.vatRate)) add(pair('VAT (' + r.vatRate + '%)', receiptMoney(r.vat), n));
+    add(pair('Delivery', receiptMoney(r.delivery || 0), n));
+    add(pair('TOTAL', receiptMoney(r.total != null ? r.total : o.total), n), true);
+    var pts = r.points || null;
+    if (pts && Number(pts.value) > 0.004) {
+      add(pair('Points redeemed (' + (pts.points || 0) + ')', '- ' + receiptMoney(pts.value), n));
+      add(pair('AMOUNT PAID', receiptMoney(r.amountPaid != null ? r.amountPaid : Math.max(0, (Number(r.total) || 0) - Number(pts.value))), n), true);
+    }
+    (r.payments || []).forEach(function (p) {
+      add(pair(p.method || '', receiptMoney(p.amount), n));
+      if (p.ref) add(pair('Ref / Auth', p.ref, n));
+    });
+    add([dash]);
+    if (r.footer) add(centre(r.footer, n), true);
+    return out;
+  }
+
+  /* The PDF itself, as bytes. Only the parts every reader needs: one page,
+     two of the standard fonts, one stream of text. */
+  function receiptPdf(o) {
+    var lines = receiptLines(o);
+    var h = Math.max(300, Math.ceil(2 * PDF_MARGIN + lines.length * PDF_LEAD + 6));
+    var y = h - PDF_MARGIN - PDF_SIZE;
+    var body = 'BT\n';
+    lines.forEach(function (l) {
+      body += '/' + (l[1] ? 'F2' : 'F1') + ' ' + PDF_SIZE + ' Tf 1 0 0 1 ' + PDF_MARGIN + ' ' + y.toFixed(2) +
+              ' Tm (' + pdfEsc(l[0]) + ') Tj\n';
+      y -= PDF_LEAD;
+    });
+    body += 'ET\n';
+    var title = winText('Receipt ' + ((o.pos_receipt && o.pos_receipt.receiptNo) || o.pos_receipt_no || '') + ' ' + (o.ref || ''));
+    var objs = [
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + PDF_W + ' ' + h + '] ' +
+        '/Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold /Encoding /WinAnsiEncoding >>',
+      '<< /Length ' + body.length + ' >>\nstream\n' + body + 'endstream',
+      '<< /Title (' + pdfEsc(title) + ') /Producer (Vaultique Boutique Point) >>'
+    ];
+    var out = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n', offs = [];
+    objs.forEach(function (ob, i) {
+      offs.push(out.length);
+      out += (i + 1) + ' 0 obj\n' + ob + '\nendobj\n';
+    });
+    var xref = out.length;
+    out += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n';
+    offs.forEach(function (off) { out += ('000000000' + off).slice(-10) + ' 00000 n \n'; });
+    out += 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R /Info 7 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
+    var bytes = new Uint8Array(out.length);
+    for (var i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 0xFF;
+    return bytes;
+  }
+
+  function receiptFileName(o) {
+    var no = String((o.pos_receipt && o.pos_receipt.receiptNo) || o.pos_receipt_no || o.ref || 'receipt');
+    return 'Receipt-' + no.replace(/[^0-9A-Za-z-]+/g, '-') + '.pdf';
+  }
+
+  function downloadReceipt(o) {
+    var blob = new Blob([receiptPdf(o)], { type: 'application/pdf' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = receiptFileName(o); a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
 
   /* ---- the page ------------------------------------------------------
@@ -739,12 +946,9 @@
           if (r && r.confirm) {
             body.innerHTML = '';
             body.appendChild(el('h3', 'serif', 'Almost there'));
-            /* The same words whether or not the address already had an
-               account (account-signup.js, build 77): the email it gets
-               says which. */
             body.appendChild(el('p', 'ac-lead',
-              'We have sent an email to ' + email.value.trim() +
-              '. Follow the link in it to finish, then sign in.'));
+              'We have sent a link to ' + email.value.trim() +
+              '. Click it to confirm your address, then sign in.'));
             body.appendChild(el('p', 'ac-quiet', 'Not there after a few minutes? Check the spam or junk folder.'));
             var again = el('p', 'ac-msg');
             if (r.note) say(again, r.note, 'err');
@@ -1046,6 +1250,17 @@
         if (o.total != null && renderHooks.money) {
           row.appendChild(el('div', 'ac-total', 'Total ' + renderHooks.money(o.total)));
         }
+        /* BUILD 76 · rung up at the shop: the receipt, to keep. */
+        if (o.pos_receipt_no || o.pos_receipt) {
+          row.appendChild(el('div', 'ac-quiet ac-receipt-no',
+            'Completed at the shop' + (o.pos_receipt_no ? ' · Receipt ' + o.pos_receipt_no : '')));
+          if (o.pos_receipt) {
+            var dl = el('button', 'btn btn-outline btn-sm ac-receipt', 'Download receipt');
+            dl.type = 'button';
+            dl.addEventListener('click', function () { downloadReceipt(o); });
+            row.appendChild(dl);
+          }
+        }
         list.appendChild(row);
       });
     });
@@ -1119,6 +1334,9 @@
     historyOn: historyOn,
     recordOrder: recordOrder,
     myOrders: myOrders,
+    receiptPdf: receiptPdf,
+    receiptLines: receiptLines,
+    receiptFileName: receiptFileName,
 
     deleteAccount: deleteAccount
   };

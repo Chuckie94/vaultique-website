@@ -83,16 +83,16 @@ const STATS = { data: { visits: 40, visitors: 31, page_views: 90, product_views:
   const errors = [];
 
   /* Ten in the morning in Lusaka on the day given. */
-  async function open(day, width) {
+  async function open(day, width, extra) {
     const page = await browser.newPage({ viewport: { width: width || 1200, height: 1400 } });
     page.on('pageerror', e => errors.push(String(e.message || e)));
     await page.clock.setFixedTime(new Date(day + 'T08:00:00Z'));
-    await page.route(/cdnjs\.cloudflare\.com|openstreetmap\.org|\/assets\/vendor\/leaflet-/, route => route.abort());
+    await page.route(/cdnjs\.cloudflare\.com|openstreetmap\.org/, route => route.abort());
     await page.goto('http://127.0.0.1:' + server.address().port + '/');
     await page.evaluate((plan) => {
       window.PLAN = plan;
       window.VBP_ADMIN.pages.analytics.render(document.getElementById('host'), { sb: window.__sb, store: window.__store });
-    }, { 'rpc:site_stats': STATS, 'rpc:site_here': { data: [] } });
+    }, Object.assign({ 'rpc:site_stats': STATS, 'rpc:site_here': { data: [] } }, extra || {}));
     await page.waitForTimeout(500);
     return page;
   }
@@ -245,6 +245,37 @@ const STATS = { data: { visits: 40, visitors: 31, page_views: 90, product_views:
       const d = await dates(page);
       is(d && d.n >= least && d.n <= 10 && !d.touch.length && !d.cut.length,
          label + ': ' + (d ? d.n : 0) + ' dates, none touching or cut off', JSON.stringify(d));
+    }
+    await page.close();
+
+
+    /* ==================================================================== */
+    /* THE OWNER: "Fix those % in the screenshot and any other place they
+       appear." A browser records a space in an address as %20. */
+    console.log('\nPage names, as somebody would say them');
+    page = await open('2026-10-24', 390, { 'rpc:site_top_pages': { data: [
+      { path: '/', label: 'Vaultique Boutique Point', views: 425, visitors: 222 },
+      { path: '/shop/PU%20Leather%20Handbags', label: 'PU Leather Handbags · Vaultique Boutique Point', views: 31, visitors: 7 },
+      { path: '/shop/PU%20Male%20Shoes', label: 'PU Male Shoes · Vaultique Boutique Point', views: 10, visitors: 9 },
+      { path: '/product/PL-CTPU-BR-M', label: 'Crossbody Tote Sling', views: 8, visitors: 3 },
+      { path: '/policies/lay-by-policy', label: 'Policies', views: 3, visitors: 2 },
+      { path: '/shop/Caf%C3%A9%20%26%20Bar', label: 'Café', views: 2, visitors: 1 },
+      { path: '/shop/100% Silk', label: 'Silk', views: 1, visitors: 1 }
+    ] } });
+    const names = await page.evaluate(() => {
+      const card = Array.from(document.querySelectorAll('.card')).find(c => (c.querySelector('h3') || {}).textContent === 'Most viewed pages');
+      return card ? Array.from(card.querySelectorAll('.an-row-l')).map(n => n.firstChild.textContent) : [];
+    });
+    is(names.indexOf('Shop — PU Leather Handbags') > -1 && names.indexOf('Shop — PU Male Shoes') > -1,
+       'shop categories read "Shop — PU Male Shoes", not "/shop/PU%20Male%20Shoes"', JSON.stringify(names));
+    is(names[0] === 'Home page' && names.indexOf('Piece — PL-CTPU-BR-M') > -1 && names.indexOf('Policies — Lay by policy') > -1,
+       'the rest as before, and a policy by its name', JSON.stringify(names));
+    is(names.indexOf('Shop — Café & Bar') > -1 && !names.some(n => /%[0-9A-F]{2}/i.test(n)),
+       'no %20, %26 or %C3%A9 anywhere in the list', JSON.stringify(names));
+    is(names.indexOf('Shop — 100% Silk') > -1, 'and an address that cannot be decoded is shown as it came, not dropped');
+    if (process.env.SHOT_PAGES) {
+      const c = page.locator('.card').filter({ hasText: 'Most viewed pages' }).first();
+      await c.screenshot({ path: process.env.SHOT_PAGES });
     }
     await page.close();
 

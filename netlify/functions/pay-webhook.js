@@ -4,17 +4,29 @@
 //   https://<your site>/.netlify/functions/pay-webhook
 //
 // with the same secret hash as FLW_WEBHOOK_HASH in Netlify. A call without
-// that hash is ignored. A call with it is still not believed on its own:
-// settle() asks Flutterwave directly before anything is marked paid.
+// that hash (in the verif-hash header, or signed with it in the newer
+// flutterwave-signature header) is ignored. A call with it is still not
+// believed on its own: settle() asks Flutterwave directly before anything
+// is marked paid.
 const P = require('./_pay');
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: '' };
-  const h = event.headers || {};
-  if (!P.hashMatches(h['verif-hash'] || h['Verif-Hash'])) return { statusCode: 401, body: '' };
+  const h = {};
+  Object.keys(event.headers || {}).forEach((k) => { h[k.toLowerCase()] = event.headers[k]; });
+  const raw = event.isBase64Encoded ? Buffer.from(event.body || '', 'base64').toString('utf8') : String(event.body || '');
+
+  if (!P.hashMatches(h['verif-hash']) && !P.signatureMatches(raw, h['flutterwave-signature'])) {
+    // Something that looks like Flutterwave, with the wrong secret, is
+    // worth knowing about: it is how a hash typed differently in the two
+    // places shows up. Settings > Payments says so.
+    if (h['verif-hash'] || h['flutterwave-signature']) await P.noteWebhook('refused').catch(() => {});
+    return { statusCode: 401, body: '' };
+  }
+  await P.noteWebhook('received').catch(() => {});
 
   let body;
-  try { body = JSON.parse(event.body || '{}'); } catch (e) { return { statusCode: 400, body: '' }; }
+  try { body = JSON.parse(raw || '{}'); } catch (e) { return { statusCode: 400, body: '' }; }
   const d = body.data || body;
   const txRef = String(d.tx_ref || d.txRef || '');
   if (!txRef) return { statusCode: 200, body: '' };
@@ -23,7 +35,7 @@ exports.handler = async function (event) {
     const r = await P.settle(txRef, d.id);
     if (r.status === 'paid' && r.fresh && r.pay && r.pay.order_id) {
       const s = await P.shopSettings();
-      await P.confirmByEmail(s, r.pay.order_id, r.pay.mode, r.late);
+      await P.confirmByEmail(s, r.pay.order_id);
     }
     return { statusCode: 200, body: '' };
   } catch (e) {

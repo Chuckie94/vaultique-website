@@ -30,17 +30,14 @@ getting these files into your repo.
 ### Option 2: Netlify CLI (if you prefer the terminal)
 From inside this folder:
 ```
-netlify deploy --build --prod
+netlify deploy --prod
 ```
-(`--build` runs the build step that makes `dist/`, the folder Netlify
-publishes since build 75.)
 
 ### Important
 - Do not deploy by dragging the folder into Netlify's "Sites" drop zone. This
   site has a serverless function (the product feed), which only works through a
   Git deploy or the Netlify CLI. Uploading the folder directly would break the
-  product feed, and since build 75 it would also skip the build step that
-  decides what is published.
+  product feed.
 - After deploying, open your live site and check that products load and that the
   new Policies page opens from the footer link.
 

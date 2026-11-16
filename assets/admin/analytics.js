@@ -220,8 +220,12 @@
                        : b.d + '/' + b.m;
   }
   /* The address as somebody would say it. Only the ones the storefront
-     draws itself are named; anything else is left exactly as recorded,
-     because a guess would be worse than the path. */
+     draws itself are named; anything else is shown as recorded, because a
+     guess would be worse than the path.
+
+     Decoded, always. A browser records a space in an address as %20, so
+     a shop category came out as "/shop/PU%20Male%20Shoes". It reads now
+     as "Shop \u2014 PU Male Shoes", the way a piece reads "Piece \u2014 code". */
   function prettyPath(path) {
     var p = String(path || '').replace(/\/+$/, '') || '/';
     var NAMED = {
@@ -233,8 +237,19 @@
       '/wishlist': 'Wishlist'
     };
     if (NAMED[p]) return NAMED[p];
-    if (p.indexOf('/product/') === 0) return 'Piece \u2014 ' + p.slice(9);
-    return path;
+    var m;
+    if ((m = /^\/product\/(.+)$/.exec(p))) return 'Piece \u2014 ' + readable(m[1]);
+    if ((m = /^\/shop\/(.+)$/.exec(p))) return 'Shop \u2014 ' + readable(m[1]);
+    if ((m = /^\/policies\/(.+)$/.exec(p))) {
+      var t = readable(m[1]).replace(/-/g, ' ');
+      return 'Policies \u2014 ' + t.charAt(0).toUpperCase() + t.slice(1);
+    }
+    return readable(path);
+  }
+  /* %20 back to a space, and so on. An address that is not properly
+     encoded is shown exactly as it came rather than not at all. */
+  function readable(s) {
+    try { return decodeURIComponent(String(s)); } catch (e) { return String(s); }
   }
 
   function bucketFull(stamp, grain) {
@@ -336,30 +351,21 @@
            did on the way to buying; these two are whether any of them
            did. They are counted from the orders table rather than
            recorded in the browser, so no ad blocker can hide one and a
-           refreshed thank-you page cannot count one twice.
-
-           WHAT COUNTS (decision Q4, build 78). An order the shop has
-           confirmed, or one paid online for real. One still "Received"
-           is said in the note beneath, as waiting, and not counted; a
-           cancelled one and a test payment not at all. The database
-           decides (order_counts_as, supabase-hardening.sql): until that
-           file has been run again, the figures are counted the old way,
-           pending included, and the notes say what they did before. */
+           refreshed thank-you page cannot count one twice. Cancelled
+           orders are left out; an order still pending is counted,
+           because it was placed. */
         { key: 'orders',          label: 'Orders',          note: 'Orders placed in this range.' },
         { key: 'sales',           label: 'Sales',           note: 'What those orders came to.',
           money: true }
       ];
       var kpiBox = el('div', 'an-kpis');
       var kpiNums = {};
-      var kpiNotes = {};
       KPIS.forEach(function (k) {
         var card = el('div', 'an-kpi');
         var n = el('div', 'an-kpi-n', '—');
         card.appendChild(n);
         card.appendChild(el('div', 'an-kpi-l', k.label));
-        var note = el('div', 'an-kpi-s', k.note);
-        card.appendChild(note);
-        kpiNotes[k.key] = note;
+        card.appendChild(el('div', 'an-kpi-s', k.note));
         /* Build 70: the number, and the way to which pieces it was. */
         if (k.key === 'add_to_cart') {
           var see = el('button', 'an-kpi-go', 'See which pieces \u203a');
@@ -657,8 +663,8 @@
 
       /* ---- the map ----------------------------------------------------------- */
 
-      var LEAFLET_JS = '/assets/vendor/leaflet-1.9.4/leaflet.js';     // assets/vendor/README.txt
-      var LEAFLET_CSS = '/assets/vendor/leaflet-1.9.4/leaflet.css';
+      var LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+      var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
       var leafletAsked = null;
       function leaflet() {
         if (window.L && window.L.map) return Promise.resolve(window.L);
@@ -819,9 +825,6 @@
           var sales = (Number(d.whatsapp_sales) || 0) + (Number(d.online_sales) || 0);
           kpiNums.orders.textContent = num(orders);
           kpiNums.sales.textContent = money(sales, cur);
-          if ('whatsapp_waiting' in d) {
-            noteWaiting(Number(d.whatsapp_waiting) || 0, Number(d.whatsapp_waiting_value) || 0, cur);
-          }
           var any = (Number(d.online_orders) || 0) + (Number(d.online_waiting) || 0) +
                     (Number(d.online_unfinished) || 0);
           if (!any && !onlineOn) { payCard.classList.add('hide'); return; }
@@ -844,10 +847,8 @@
         }
         tile(money(n('online_sales'), cur), 'Paid online',
              num(n('online_orders')) + (n('online_orders') === 1 ? ' order' : ' orders'));
-        var newRule = 'whatsapp_waiting' in d;
-        tile(money(n('whatsapp_sales'), cur), newRule ? 'Confirmed on WhatsApp' : 'Ordered on WhatsApp',
-             num(n('whatsapp_orders')) + (n('whatsapp_orders') === 1 ? ' order' : ' orders') +
-             (n('whatsapp_waiting') ? ' \u00b7 ' + num(n('whatsapp_waiting')) + ' more waiting to be confirmed' : ''));
+        tile(money(n('whatsapp_sales'), cur), 'Ordered on WhatsApp',
+             num(n('whatsapp_orders')) + (n('whatsapp_orders') === 1 ? ' order' : ' orders'));
         tile(sales ? Math.round(n('online_sales') / sales * 100) + '%' : '\u2014',
              'Online share', 'Of sales in this range.');
         tile(num(n('online_unfinished')), 'Not completed',
@@ -885,12 +886,8 @@
         payBody.appendChild(el('p', 'an-note',
           (n('delivery_paid') ? 'Paid online includes ' + money(n('delivery_paid'), cur) +
                                 ' of delivery fees. ' : '') +
-          (newRule
-            ? 'An online order counts as a sale once the payment is confirmed, and a WhatsApp ' +
-              'order once the shop has confirmed it. Orders still \u201cReceived\u201d are said ' +
-              'beside them, not counted; cancelled ones and test payments are not counted at all.'
-            : 'An online order counts as a sale only once the payment is confirmed. WhatsApp ' +
-              'orders count as they always have, until cancelled.')));
+          'An online order counts as a sale only once the payment is confirmed. WhatsApp ' +
+          'orders count as they always have, until cancelled.'));
       }
 
       function loadSeries(mine) {
@@ -1022,18 +1019,7 @@
           kpiNums[k.key].textContent = k.money
             ? money(d[k.key], d.currency)
             : num(d[k.key] || 0);
-          kpiNotes[k.key].textContent = k.note;
         });
-        if ('waiting_orders' in d) noteWaiting(Number(d.waiting_orders) || 0, Number(d.waiting_value) || 0, d.currency);
-      }
-      /* Orders and Sales by the rule of build 78, with the orders still
-         waiting to be confirmed said beneath them. Only called when the
-         database has answered that way. */
-      function noteWaiting(n, worth, cur) {
-        kpiNotes.orders.textContent = 'Confirmed by the shop, or paid online.' +
-          (n ? ' ' + num(n) + ' more ' + (n === 1 ? 'is' : 'are') + ' waiting to be confirmed.' : '');
-        kpiNotes.sales.textContent = 'What those came to.' +
-          (worth ? ' ' + money(worth, cur) + ' more is waiting.' : '');
       }
 
       function paintPresets() {

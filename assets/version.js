@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.49.0',
-  build: 79,
-  builtAt: '2026-10-31T10:01:00Z',
-  notes: 'Safety work, part 6, the checks and the guides (no SQL): the website\'s own checks now run on GitHub after every upload (.github/workflows/tests.yml), and by hand from the tests folder with npm; the database checks run in one go (tools/sql-tests.sh); SETUP.md has one table of everything Netlify may hold, and README.md describes the website as it is now; the payment and rewards checks wait for what they check rather than for set times, and a browser check that fails is tried once more and named if it passes only then. Nothing a customer or the admin sees changes.'
+  version: '1.46.0',
+  build: 76,
+  builtAt: '2026-11-15T15:26:49Z',
+  notes: 'Website orders linked to the platform (platform build 508): the WhatsApp message starts with the order number (Order VB-3F9K2), and points promised on the order carry the same number. The platform finds the order in Sales, Online Orders and rings it up at the till; the order then says Completed, and a customer with an account can download the receipt as a PDF. An order still waiting for its online payment cannot be rung up. The Orders tab shows when an order was rung up at the shop. SQL: supabase-pos-orders.sql, once, in this website Supabase.'
 };

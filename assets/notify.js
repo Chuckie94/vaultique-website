@@ -35,7 +35,8 @@
      'completed' is not offered as a step because it is not one - it is
      what older orders were marked before this list grew, and it is kept
      so those orders still read correctly rather than being silently
-     rewritten to something they never were. */
+     rewritten to something they never were. Since build 76 it is also
+     what an order says once the platform's till has rung it up. */
   var FLOW = ['pending', 'confirmed', 'ready', 'dispatched', 'delivered', 'cancelled'];
   var LEGACY = ['completed'];
 
@@ -57,7 +58,7 @@
     dispatched: 'On its way — out for delivery',
     delivered:  'Delivered — the customer has it',
     cancelled:  'Cancelled',
-    completed:  'Completed (older orders)'
+    completed:  'Completed — rung up at the shop'
   };
 
   var STARTER = {

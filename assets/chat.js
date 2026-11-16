@@ -799,18 +799,8 @@
         paint();
         box.value = body;
         grow();
-        say(sendTrouble(e), 'err');
+        say('That did not send. Check your connection and try again.', 'err');
       });
-  }
-
-  /* Why a message did not go. Since build 76 the database also limits
-     how quickly one connection can start conversations and write
-     (supabase-hardening.sql), and that is said as what it is: a person
-     told to check a connection that is fine would only try harder. */
-  function sendTrouble(e) {
-    return /Too many/i.test(String((e && e.message) || ''))
-      ? 'That is a lot of messages at once. Please wait a minute, then send it again.'
-      : 'That did not send. Check your connection and try again.';
   }
 
   /* The shop closed the thread and the customer has more to say. Rather
@@ -822,8 +812,8 @@
     return ensureConversation()
       .then(function () { return rpc('chat_send', { p_token: token, p_body: body }); })
       .then(function () { msgs = []; lastAt = null; status = 'open'; return ask(); })
-      .catch(function (e) {
-        say(sendTrouble(e), 'err');
+      .catch(function () {
+        say('That did not send. Check your connection and try again.', 'err');
       });
   }
 
@@ -917,7 +907,7 @@
           return sendPhoto(file, true);
         }
         say(why === 'too big' ? 'That photo is too large to send. Try a smaller one.'
-          : /too many/i.test(why) ? 'That is a lot of photos at once. Please wait a little and try again.'
+          : why.indexOf('too many photos') > -1 ? 'That is a lot of photos at once. Please wait a little and try again.'
           : 'The photo did not send. Check your connection and try again.', 'err');
       });
   }
@@ -1079,7 +1069,7 @@
      in Postgres, so both work out the same name without either sending
      it. A browser too old to have crypto.subtle simply never subscribes
      and goes on asking, which is what it did before. */
-  var CLIENT_SRC = '/assets/vendor/supabase-js-2.118.0.js';   // assets/vendor/README.txt
+  var CLIENT_SRC = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
   var LIVE = { client: null, channel: null, token: null, ok: false, tried: false };
 
   function sha256Hex(text) {
@@ -1105,8 +1095,8 @@
     return LIVE.client;
   }
 
-  /* The library, if the page has it or this site will give it. Asked
-     for once: a visitor who cannot load it is not asked again on every
+  /* The library, if the page has it or the CDN will give it. Asked for
+     once: a visitor who cannot reach the CDN is not asked again on every
      message, they simply keep the timer they already had. */
   function withClient(then) {
     if (window.supabase && window.supabase.createClient) { then(liveClient()); return; }

@@ -129,6 +129,93 @@
     return function (v) { return !!v[prefix + 'Enabled']; };
   }
 
+  /* What the readiness check found beyond "installed or not": a key that
+     is the wrong one of the three on Flutterwave's API keys page, and
+     whether Flutterwave's webhook is getting through. */
+  function healthLines(c) {
+    var out = [];
+    var when = function (iso) {
+      var d = new Date(iso);
+      return isNaN(d.getTime()) ? iso : d.toLocaleString();
+    };
+    if (c.test && c.testKeyLooksRight === false) {
+      out.push({ warn: true, text: 'The test key does not look like a Flutterwave secret key: it should ' +
+        'start FLWSECK_TEST-. The public key and the encryption key are on the same page; it is the ' +
+        'Secret key that goes in Netlify.' });
+    }
+    if (c.live && c.liveKeyLooksRight === false) {
+      out.push({ warn: true, text: 'The live key does not look like a Flutterwave secret key: it should ' +
+        'start FLWSECK- (and not FLWSECK_TEST-).' });
+    }
+    /* The webhook times are only told to a signed-in administrator. Not
+       told is not the same as "none yet", so nothing is said. */
+    if (!('lastWebhookAt' in c)) return out;
+    if (c.lastWebhookAt) {
+      out.push({ text: 'Flutterwave last reached the webhook ' + when(c.lastWebhookAt) + '.' });
+    } else if (c.hash) {
+      out.push({ text: 'No webhook from Flutterwave yet. After your first test payment, the time it ' +
+        'arrived shows here.' });
+    }
+    if (c.lastRefusedAt && (!c.lastWebhookAt || c.lastRefusedAt > c.lastWebhookAt)) {
+      /* Anybody can call the webhook address, so this cannot be sure it
+         was Flutterwave; it says so. */
+      out.push({ warn: true, text: 'A webhook arrived ' + when(c.lastRefusedAt) + ' with a secret hash ' +
+        'that does not match, so it was ignored. If that was Flutterwave, the secret hash in Flutterwave ' +
+        '(Settings > Webhooks) must be exactly the same as FLW_WEBHOOK_HASH in Netlify. Payments still ' +
+        'go through: the site checks with Flutterwave every fifteen minutes.' });
+    }
+    return out;
+  }
+
+  /* The administrator's own sign-in, for the questions only an
+     administrator may ask the payment service. '' when there is none. */
+  function adminToken() {
+    var sb = A.sb;
+    return Promise.resolve(sb && sb.auth ? sb.auth.getSession() : null).then(function (r) {
+      return (r && r.data && r.data.session && r.data.session.access_token) || '';
+    }, function () { return ''; });
+  }
+
+  /* Asks Flutterwave whether it accepts the installed keys. Nothing is
+     created or charged; it is the same "where is this payment?" question
+     the site asks after every payment, about one that does not exist. */
+  function keyCheck() {
+    var wrap = document.createElement('div');
+    wrap.className = 'pay-ready-note';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-out btn-sm';
+    btn.textContent = 'Check the keys with Flutterwave';
+    var said = document.createElement('span');
+    said.className = 'pay-key-said';
+    wrap.appendChild(btn);
+    wrap.appendChild(said);
+    var words = { accepted: 'accepted ✓', refused: 'refused ✕ — copy the Secret key again',
+                  missing: 'not installed', unreachable: 'Flutterwave could not be reached just now',
+                  unclear: 'no clear answer' };
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      said.textContent = ' Asking Flutterwave…';
+      adminToken().then(function (t) {
+        return fetch('/.netlify/functions/pay-status?check=1', {
+          method: 'POST', cache: 'no-store',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (t || '') },
+          body: JSON.stringify({ action: 'test-keys' })
+        });
+      }).then(function (res) {
+        return res.json().then(function (j) { j._code = res.status; return j; });
+      }).then(function (j) {
+        btn.disabled = false;
+        if (j._code !== 200) { said.textContent = ' ' + (j.error || 'Flutterwave could not be asked just now.'); return; }
+        said.textContent = ' Test key: ' + (words[j.test] || j.test) + ' · Live key: ' + (words[j.live] || j.live);
+      }, function () {
+        btn.disabled = false;
+        said.textContent = ' Flutterwave could not be asked just now.';
+      });
+    });
+    return wrap;
+  }
+
   /* More than nothing and no more than the whole price, to a hundredth of
      a percent: 12.5% is a deposit, 12.555% is a slip of the finger. */
   function depositOk(v) {
@@ -310,11 +397,22 @@
           line.textContent = 'Checking the payment setup\u2026';
           var h3 = box.querySelector('h3');
           h3.parentNode.insertBefore(line, h3.nextSibling);
-          fetch('/.netlify/functions/pay-status?check=1', { cache: 'no-store' })
+          /* Sent with the sign-in: the key checks and the webhook times
+             are only told to an administrator. */
+          adminToken()
+            .then(function (t) {
+              return fetch('/.netlify/functions/pay-status?check=1', {
+                cache: 'no-store', headers: t ? { Authorization: 'Bearer ' + t } : {}
+              });
+            })
             .then(function (r) { return r.json(); })
             .then(function (c) {
+              /* A key that is there but is the wrong one of Flutterwave's
+                 three is not a tick. */
+              var testOk = c.test && c.testKeyLooksRight !== false;
+              var liveOk = c.live && c.liveKeyLooksRight !== false;
               var bits = [
-                [c.test, 'Flutterwave test key'], [c.live, 'Flutterwave live key'],
+                [testOk, 'Flutterwave test key'], [liveOk, 'Flutterwave live key'],
                 [c.hash, 'Webhook secret hash'], [c.service, 'Supabase service key'],
                 [c.formats, 'Price rules']
               ];
@@ -325,14 +423,24 @@
                 s2.textContent = (b[0] ? '\u2713 ' : '\u2715 ') + b[1];
                 line.appendChild(s2);
               });
-              var all = c.hash && c.service && c.formats && (c.test || c.live);
+              var there = c.hash && c.service && c.formats && (c.test || c.live);
+              var all = there && (!c.test || testOk) && (!c.live || liveOk);
               var note = document.createElement('div');
               note.className = 'pay-ready-note';
               note.textContent = all
                 ? 'Ready. The keys live in Netlify and are never shown here.'
-                : 'Not ready yet: add the missing items in Netlify > Site configuration > ' +
-                  'Environment variables, then redeploy. SETUP.md has the steps.';
+                : there
+                  ? 'Almost: a key needs another look, below.'
+                  : 'Not ready yet: add the missing items in Netlify > Site configuration > ' +
+                    'Environment variables, then redeploy. SETUP.md has the steps.';
               line.appendChild(note);
+              healthLines(c).forEach(function (h) {
+                var n = document.createElement('div');
+                n.className = 'pay-ready-note' + (h.warn ? ' pay-ready-warn' : '');
+                n.textContent = h.text;
+                line.appendChild(n);
+              });
+              if (c.test || c.live) line.appendChild(keyCheck());
             })
             .catch(function () {
               line.textContent = 'The payment setup could not be checked from here (the ' +

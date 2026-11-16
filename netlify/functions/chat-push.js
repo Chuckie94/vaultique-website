@@ -24,7 +24,7 @@
    one of them.
    ===================================================================== */
 const crypto = require('crypto');
-const { readConfig, serviceKey: siteServiceKey } = require('./_seo-data');
+const { readConfig } = require('./_seo-data');
 
 const TTL = 86400;                 // a day. Longer than any shift.
 const RECORD_SIZE = 4096;
@@ -104,19 +104,16 @@ function encrypt(plaintext, sub) {
 }
 
 /* ------------------------------------------------------- RFC 8292, §2
-   Proof that this shop sent it, signed with the shop's own key pair:
-   made by the owner's browser and stored in the database (build 76;
-   until then every copy of the website shipped the same pair). The
-   audience is the push service's own origin, so a token taken from one
-   is no use at another. The contact given to the push service is the
-   website's own address, not a person's email. */
+   Proof that this shop sent it, signed with the key pair the migration
+   put in the database. The audience is the push service's own origin,
+   so a token taken from one is no use at another. */
 function vapidHeader(endpoint, keys) {
   const aud = new URL(endpoint).origin;
   const head = b64u(JSON.stringify({ typ: 'JWT', alg: 'ES256' }));
   const claim = b64u(JSON.stringify({
     aud,
     exp: Math.floor(Date.now() / 1000) + 12 * 60 * 60,
-    sub: keys.subject || keys.siteUrl || undefined
+    sub: keys.subject || 'mailto:admin@example.com'
   }));
 
   const pub = unb64u(keys.vapidPublic);
@@ -176,7 +173,7 @@ exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' });
 
   const s = site();
-  const serviceKey = siteServiceKey();
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!s.url || !serviceKey) {
     /* Said, but said quietly: whoever called this is not a person, and
        the only reader is a log. */

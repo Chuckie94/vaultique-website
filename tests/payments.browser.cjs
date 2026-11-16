@@ -64,7 +64,7 @@ const server = http.createServer(async (req, res) => {
   const send = (code, o, type) => { res.writeHead(code, { 'Content-Type': type || 'application/json' }); res.end(o === undefined ? '' : (typeof o === 'string' ? o : JSON.stringify(o))); };
   const service = (req.headers.authorization || '') === 'Bearer service-key';
 
-  if (p.startsWith('/.netlify/functions/pay-') || p === '/.netlify/functions/place-order') {
+  if (p.startsWith('/.netlify/functions/pay-')) {
     const name = p.split('/').pop();
     const r = await FN[name]({ httpMethod: req.method, body, headers: req.headers,
                                queryStringParameters: Object.fromEntries(u.searchParams) });
@@ -79,9 +79,7 @@ const server = http.createServer(async (req, res) => {
   if (p.startsWith('/flw/')) {
     if (p === '/flw/payments') {
       const b = JSON.parse(body);
-      /* Flutterwave's page is always https://, and since build 78 nothing
-         else is followed: the browser below serves this address itself. */
-      return send(200, { status: 'success', data: { link: 'https://checkout.flutterwave.test/fake-flutterwave?tx_ref=' + b.tx_ref } });
+      return send(200, { status: 'success', data: { link: base + '/fake-flutterwave?tx_ref=' + b.tx_ref } });
     }
     const m = /^\/flw\/transactions\/(\d+)\/verify$/.exec(p);
     const t = m ? Object.values(FLW.verify).find(v => String(v.id) === m[1]) : FLW.verify[u.searchParams.get('tx_ref')];
@@ -92,17 +90,12 @@ const server = http.createServer(async (req, res) => {
     return send(200, SETTINGS[key] ? [{ data: SETTINGS[key] }] : []);
   }
   if (p === '/web/rest/v1/rpc/place_order') {
-    // After supabase-hardening.sql (build 76) only the service key may call it.
-    if (!service) return send(401, { message: 'permission denied for function place_order' });
     const b = JSON.parse(body); const id = 'ord-' + (++seq); const ref = 'VB-ABCD' + seq;
     DB.orders.push(Object.assign({ id, ref, status: 'pending' }, b.p_order));
     b.p_items.forEach(i => DB.order_items.push(Object.assign({ order_id: id }, i)));
     return send(200, { id, ref });
   }
   if (p === '/web/rest/v1/rpc/pay_expire_stale') return send(204);
-  // Build 77: Test mode is the shop's own. The owner tests with the
-  // preview key, and the database says whether a key is right.
-  if (p === '/web/rest/v1/rpc/preview_ok') return send(200, JSON.parse(body || '{}').p_key === 'shop-preview');
   const t = /^\/web\/rest\/v1\/(orders|order_items|payments)$/.exec(p);
   if (t && service) {
     const table = DB[t[1]], fs2 = filters(u.search.slice(1));
@@ -134,37 +127,39 @@ const server = http.createServer(async (req, res) => {
     'pay-quote': require(path.join(F, 'pay-quote')).handler,
     'pay-start': require(path.join(F, 'pay-start')).handler,
     'pay-status': require(path.join(F, 'pay-status')).handler,
-    'place-order': require(path.join(F, 'place-order')).handler,
     products: require(path.join(F, 'products')).handler,
   };
   const browser = await chromium.launch();
-  /* Online payment runs in Test mode here, and since build 77 only the
-     shop may use it: the page is opened as the owner testing, with the
-     preview key, unless a check says it is a stranger. */
-  async function open(opts) {
-    const stranger = !!(opts && opts.stranger);
-    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
-    await ctx.route('https://checkout.flutterwave.test/**', r => {
-      const tx = new URL(r.request().url()).searchParams.get('tx_ref') || '';
-      return r.fulfill({ status: 200, contentType: 'text/html', body: '<h1>Flutterwave</h1><p id="tx">' + tx.replace(/[<>&"]/g, '') + '</p>' });
-    });
+  async function open() {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: process.env.SHOT3 ? 2 : 1 });
     await ctx.addInitScript(() => {
       if (!sessionStorage.getItem('seeded')) {
         localStorage.setItem('vbp_cart', JSON.stringify([{ sku: 'BG-1', qty: 2 }, { sku: 'SC-1', qty: 1 }]));
         sessionStorage.setItem('seeded', '1');
       }
+      /* BUILD 76 · the order form opens WhatsApp's tab at the tap and fills
+         it in once the order's number is back (the number heads the message;
+         tests/pos-orders.browser.cjs). So a tab is handed back here, and where
+         it was sent is what is kept: __opened[i] is the address the i-th tab
+         ended up on, as the address window.open was given used to be. */
       window.__opened = [];
-      window.open = function (u) { window.__opened.push(u); return null; };
+      window.open = function (u) {
+        var i = window.__opened.length;
+        window.__opened.push(u || '');
+        var tab = { closed: false, close: function () { tab.closed = true; } };
+        tab.location = {};
+        Object.defineProperty(tab.location, 'href', {
+          get: function () { return window.__opened[i]; },
+          set: function (v) { window.__opened[i] = String(v); }
+        });
+        return tab;
+      };
     });
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(String(e.message || e)));
-    await page.goto(base + (stranger ? '/' : '/?preview=shop-preview'), { waitUntil: 'domcontentloaded' });
-    /* Until the shop has its prices and settings the cart says "one
-       moment" instead of offering checkout, and checkout() waits for that
-       as well; this only lets the shop show its pieces first, as it has
-       for a customer who opens the cart. */
-    await page.waitForSelector('.card', { state: 'attached', timeout: 15000 }).catch(() => {});
+    await page.goto(base + '/', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1500);
     return { ctx, page, errors };
   }
   async function checkout(page) {
@@ -175,22 +170,6 @@ const server = http.createServer(async (req, res) => {
     /* Every order now needs the consent box ticked, as a customer would.
        The box itself is checked under "Consent before any order". */
     if (!page.__leaveConsent && await page.$('#od_consent')) await page.check('#od_consent');
-  }
-  /* Each check waits for what it is about to look at, never for a set
-     time (build 79): on a slow or busy computer it waits longer rather
-     than looking too soon. A wait that runs out is not a failure by
-     itself; the check after it says what was there instead. */
-  async function press(page, sel, re) {
-    // The form's message is emptied first, so one left by an earlier
-    // press is not taken for the answer to this one.
-    await page.evaluate(() => { const m = document.getElementById('odMsg'); if (m) m.textContent = ''; });
-    await page.click(sel);
-    await page.waitForFunction(s => new RegExp(s, 'i').test((document.getElementById('odMsg') || {}).textContent || '') ||
-      !!document.getElementById('pqLead') || (window.__opened || []).length > 0, re.source, { timeout: 10000 }).catch(() => {});
-  }
-  const opened = (page, n) => page.waitForFunction(k => (window.__opened || []).length >= k, n, { timeout: 10000 }).catch(() => {});
-  async function until(test) {
-    for (const end = Date.now() + 10000; !test() && Date.now() < end;) await new Promise(r => setTimeout(r, 50));
   }
 
   try {
@@ -207,17 +186,8 @@ const server = http.createServer(async (req, res) => {
       await ctx.close();
     }
 
-    console.log('\nIn Test mode, a stranger is not offered it (build 77)');
-    SETTINGS.payments.onlineEnabled = true;
-    {
-      const { ctx, page } = await open({ stranger: true });
-      await checkout(page);
-      const v = await page.evaluate(() => ({ pay: !!document.getElementById('odPay'), go: !!document.getElementById('odGo') }));
-      is(!v.pay && v.go, 'no Pay button for a customer while the shop is testing: WhatsApp checkout as usual', JSON.stringify(v));
-      await ctx.close();
-    }
-
     console.log('\nConsent before any order');
+    SETTINGS.payments.onlineEnabled = true;
     {
       const { ctx, page } = await open();
       page.__leaveConsent = true;
@@ -234,17 +204,19 @@ const server = http.createServer(async (req, res) => {
       is(box && !box.ticked && box.beforeButtons, 'unticked to begin with, just above the buttons');
       await page.fill('#od_name', 'Chanda');
       await page.fill('#od_phone', '0977123456');
-      await press(page, '#odGo', /tick the box/);
+      await page.click('#odGo');
+      await page.waitForTimeout(300);
       is((await page.evaluate(() => window.__opened)).length === 0, 'WhatsApp does not open until it is ticked');
       is(/tick the box/i.test(await page.textContent('#odMsg')), 'and the customer is told why');
       await page.fill('#od_email', 'c@e.com');
       if (await page.$('#od_address')) await page.fill('#od_address', 'Plot 9, Kabulonga');
-      await press(page, '#odPay', /tick the box/);
+      await page.click('#odPay');
+      await page.waitForTimeout(300);
       is(!(await page.$('#pqLead')) && /tick the box/i.test(await page.textContent('#odMsg')),
          'nor does paying online go ahead');
       await page.check('#od_consent');
       await page.click('#odGo');
-      await opened(page, 1);
+      await page.waitForFunction(() => window.__opened.some(u => /wa\.me/.test(u)), null, { timeout: 8000 }).catch(() => {});
       const sent = await page.evaluate(() => window.__opened);
       is(sent.length === 1 && /Privacy%20consent%3A%20given/.test(sent[0]), 'ticked, the order goes, saying consent was given',
          JSON.stringify(sent).slice(0, 300));
@@ -270,7 +242,8 @@ const server = http.createServer(async (req, res) => {
       is(/^I confirm that the information provided is accurate/.test(bare.text.trim()),
          'and wording left empty falls back to the standard words', bare.text);
       is(!bare.note, 'the "kept on this device" line is gone');
-      await press(page, '#odGo', /tick the box/);
+      await page.click('#odGo');
+      await page.waitForTimeout(300);
       is((await page.evaluate(() => window.__opened)).length === 0, 'and nothing goes to WhatsApp without the tick');
       await ctx.close();
       SETTINGS.payments.onlineEnabled = was;
@@ -305,28 +278,23 @@ const server = http.createServer(async (req, res) => {
       console.log('\nWhatsApp checkout, with the switch on');
       await page.fill('#od_name', 'Chanda');
       await page.fill('#od_phone', '0977123456');
-      const before = DB.orders.length;
       await page.click('#odGo');
-      await opened(page, 1);
+      await page.waitForFunction(() => window.__opened.some(u => /wa\.me/.test(u)), null, { timeout: 8000 }).catch(() => {});
       const wa = await page.evaluate(() => window.__opened);
       is(wa.length === 1 && /wa\.me\/260970000000/.test(wa[0]),
          'still goes straight to WhatsApp, without asking for the email', JSON.stringify(wa));
-      await until(() => DB.orders.length > before);
-      const rec = DB.orders[DB.orders.length - 1];
-      const lines = DB.order_items.filter(i => rec && i.order_id === rec.id);
-      is(rec && rec.name === 'Chanda' && rec.total === 1300 && lines.length === 2 && lines[0].price === 500,
-         'and the order reaches the Orders tab at the catalogue\'s prices, priced by the server (build 76)',
-         JSON.stringify({ rec, lines }));
 
       console.log('\nPaying online');
       await checkout(page);
       await page.fill('#od_name', 'Chanda');
       await page.fill('#od_phone', '0977123456');
-      await press(page, '#odPay', /email/);
+      await page.click('#odPay');
+      await page.waitForTimeout(200);
       const need = await page.evaluate(() => document.getElementById('odMsg').textContent);
       is(/email/i.test(need), 'the email is asked for before paying', need);
       await page.fill('#od_email', 'chanda@example.com');
-      await press(page, '#odPay', /address/);
+      await page.click('#odPay');
+      await page.waitForTimeout(200);
       const need2 = await page.evaluate(() => document.getElementById('odMsg').textContent);
       is(/address/i.test(need2), 'and a delivery address', need2);
       await page.fill('#od_address', 'Plot 5, Lusaka');
@@ -350,14 +318,12 @@ const server = http.createServer(async (req, res) => {
       console.log('\nComing back, paid');
       FLW.verify[tx] = { id: 900, tx_ref: tx, status: 'successful', amount: 1380, currency: 'ZMW', payment_type: 'card' };
       await page.goto(base + '/payment-return?status=successful&tx_ref=' + tx + '&transaction_id=900');
-      await page.waitForFunction(() => /payment received/i.test((document.getElementById('prHead') || {}).textContent || ''), null, { timeout: 10000 });
+      await page.waitForFunction(() => /Payment received/.test((document.getElementById('prHead') || {}).textContent || ''), null, { timeout: 10000 });
       const done = await page.evaluate(() => ({
-        head: document.getElementById('prHead').textContent,
         lead: document.getElementById('prLead').textContent,
         cart: localStorage.getItem('vbp_cart'), path: location.pathname
       }));
-      is(done.head === 'Test payment received' && /TEST payment: no money was taken/.test(done.lead) && !/is paid/.test(done.lead),
-         'a Test-mode payment says so when they come back, and never "paid" (build 77)', done.head + ' | ' + done.lead);
+      is(/is paid \(K1,380\)/.test(done.lead) && /email/.test(done.lead), 'the customer is told it is paid, and that an email is coming', done.lead);
       is(done.cart === '[]', 'the cart is emptied', done.cart);
       is(done.path === '/', 'and the address is tidied, so a refresh does not ask again', done.path);
       is(o.payment_status === 'paid', 'the order is marked paid');
@@ -383,27 +349,52 @@ const server = http.createServer(async (req, res) => {
       await ctx.close();
     }
 
-    console.log('\nOnly ever a web page (build 78)');
+
+    console.log('\nTyping straight away');
+    {
+      /* The form used to put the cursor in the name box 60 ms after it
+         opened, wherever the customer already was. Somebody quick (or a
+         slow phone, where 60 ms is much longer) had their phone number
+         typed into the name box. */
+      const { ctx, page } = await open();
+      await page.click('#cartBtn');
+      await page.waitForSelector('#ctGo', { timeout: 15000 });
+      await page.click('#ctGo');
+      await page.waitForSelector('#od_phone', { timeout: 15000 });
+      await page.focus('#od_phone');
+      await page.keyboard.type('0977123456', { delay: 30 });
+      await page.waitForTimeout(200);
+      const v = await page.evaluate(() => ({ phone: document.getElementById('od_phone').value,
+                                             name: document.getElementById('od_name').value }));
+      is(v.phone === '0977123456' && v.name === '',
+         'a customer who starts on their phone number at once keeps it in the phone box', JSON.stringify(v));
+      await ctx.close();
+    }
+
+    console.log('\nThe price changing between the quote and Pay');
     {
       const { ctx, page } = await open();
-      /* Whatever answers in place of the website's own function, a
-         payment page that is not https:// is never followed. */
-      await page.route('**/.netlify/functions/pay-start', r => r.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ link: 'javascript:window.__pwned=1', ref: 'VB-XXXXX', txRef: 'VB-XXXXX-0123456789', total: 1380 }) }));
       await checkout(page);
-      await page.fill('#od_name', 'Chanda'); await page.fill('#od_phone', '0966000001');
-      await page.fill('#od_email', 'c@example.com'); await page.fill('#od_address', 'Plot 5');
+      await page.fill('#od_name', 'Mutale'); await page.fill('#od_phone', '0977000001');
+      await page.fill('#od_email', 'm@example.com'); await page.fill('#od_address', 'Plot 7');
       await page.click('#odPay');
       await page.waitForSelector('.pq-total', { timeout: 15000 });
-      const before = page.url();
+      const first = await page.textContent('#pqPay');
+      const orders = DB.orders.length;
+      POS[1].price = 350;                       // the scarf goes up at the till meanwhile
       await page.click('#pqPay');
-      await page.waitForFunction(() => /could not be opened/.test((document.querySelector('#orderBody') || document.body).textContent || ''),
-        null, { timeout: 8000 }).catch(() => {});
-      const after = await page.evaluate(() => ({ url: location.href, pwned: window.__pwned === 1,
-        said: (document.querySelector('#orderBody') || document.body).textContent }));
-      is(after.url === before && !after.pwned && /could not be opened/.test(after.said),
-         'a javascript: address in its place is not followed: the customer is told the page could not be opened',
-         JSON.stringify({ url: after.url, pwned: after.pwned }));
+      await page.waitForFunction(() => /changed/.test((document.getElementById('pqMsg') || {}).textContent || ''), null, { timeout: 15000 });
+      const now = await page.evaluate(() => ({ btn: document.getElementById('pqPay').textContent,
+        msg: document.getElementById('pqMsg').textContent, path: location.pathname,
+        total: (document.querySelector('.pq-total') || {}).textContent || '' }));
+      is(first === 'Pay K1,380' && now.btn === 'Pay K1,430' && /now K1,430/.test(now.msg) && now.path === '/' &&
+         DB.orders.length === orders,
+         'quoted K1,380, now K1,430: the new total is shown and explained, and nothing is charged or ordered yet', JSON.stringify(now));
+      if (process.env.SHOT3) await page.screenshot({ path: process.env.SHOT3 });
+      await Promise.all([page.waitForURL(/fake-flutterwave/, { timeout: 10000 }), page.click('#pqPay')]);
+      const o = DB.orders[DB.orders.length - 1];
+      is(o.total === 1430, 'pressing Pay on the new total goes ahead at the new total');
+      POS[1].price = 300;
       await ctx.close();
     }
 
@@ -440,7 +431,8 @@ const server = http.createServer(async (req, res) => {
          'a town dropdown lists the shop\'s towns', opts.join('|'));
       await page.fill('#od_name', 'C'); await page.fill('#od_phone', '0955000001');
       await page.fill('#od_email', 'c@e.com'); await page.fill('#od_address', 'Plot 9');
-      await press(page, '#odPay', /town/);
+      await page.click('#odPay');
+      await page.waitForTimeout(200);
       const why = await page.evaluate(() => ({ msg: document.getElementById('odMsg').textContent,
         labels: Array.from(document.querySelectorAll('#orderBody label')).map(l => l.textContent),
         lead: (document.getElementById('pqLead') || {}).textContent || null }));

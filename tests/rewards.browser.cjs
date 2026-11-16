@@ -55,6 +55,7 @@ const server = http.createServer((req, res) => {
       }
       if (body.action === 'quote') return send(200, { quote: { points: 60000, value: 30 } });
       if (body.action === 'hold') return send(200, { held: { points: 60000, value: 30 }, number: 'VB0007' });
+      if (body.action === 'unlink') { STATUS = { linked: false, waiting: [] }; return send(200, { linked: false }); }
       return send(400, { error: 'unknown' });
     });
     return;
@@ -96,13 +97,7 @@ const server = http.createServer((req, res) => {
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push(String(e.message || e)));
   await page.goto(base + '/', { waitUntil: 'networkidle' });
-  /* Each check waits for what it is about to look at, never for a set
-     time (build 79): on a slow or busy computer it waits longer rather
-     than looking too soon. A wait that runs out is not a failure by
-     itself; the check after it says what was there instead. */
-  const until = async (test) => { for (const end = Date.now() + 10000; !test() && Date.now() < end;) await new Promise(r => setTimeout(r, 50)); };
-  await page.waitForFunction(() => window.VBP_ACCOUNT && window.VBP_REWARDS && window.VBP_REWARDS.enabled === true,
-    null, { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(800);
   /* A signed-in customer, as far as the rewards code can tell. */
   await page.evaluate(() => {
     const A = window.VBP_ACCOUNT;
@@ -127,7 +122,7 @@ const server = http.createServer((req, res) => {
     is(/If this number is on our records/.test(told) && !/@/.test(told), 'the customer is told a code may be on its way, and no email is shown');
     await page.fill('#rw_code', '000000');
     await page.click('#rwCard .rw-code .btn');
-    await page.waitForFunction(() => /not right/.test(document.getElementById('rwCard').textContent), null, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(300);
     is(/not right/.test(await page.textContent('#rwCard')), 'a wrong code is turned away');
     await page.fill('#rw_code', '123456');
     await page.click('#rwCard .rw-code .btn');
@@ -136,6 +131,33 @@ const server = http.createServer((req, res) => {
     is(/100,500\s*points/.test(cardText) && /Worth K50\.25/.test(cardText), 'linked, the card shows the points and what they are worth', cardText);
     is(/Milestone reached/.test(cardText) && /VB0007/.test(cardText), 'the milestone, and the customer number', cardText);
     is(CALLS.every(c => c.auth === 'Bearer tok-chanda'), 'every question is asked as the signed-in customer');
+
+    console.log('\n"Not you?"');
+    const native = []; page.on('dialog', d => { native.push(d.message()); d.dismiss().catch(() => {}); });
+    const linked = STATUS;
+    await page.click('#rwCard .rw-foot .ac-link');
+    await page.waitForSelector('#rwCard .rw-ask .btn-gold');
+    const asked = (await page.textContent('#rwCard .rw-ask')).replace(/\s+/g, ' ');
+    is(/Stop showing these rewards on this account\?/.test(asked) && /points stay where they are/.test(asked) && native.length === 0,
+       'asked in the card itself, in the shop\'s own words, and not in a browser box', asked);
+    if (process.env.SHOT_NOTYOU) {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.waitForTimeout(150);
+      await page.locator('#rwCard').screenshot({ path: process.env.SHOT_NOTYOU });
+      await page.setViewportSize({ width: 1200, height: 900 });
+    }
+    await page.click('#rwCard .rw-ask .ac-link');
+    await page.waitForSelector('#rwCard .rw-n');
+    is(!CALLS.some(c => c.body.action === 'unlink') && /100,500/.test(await page.textContent('#rwCard')),
+       '"Keep them" leaves the card exactly as it was');
+    await page.click('#rwCard .rw-foot .ac-link');
+    await page.waitForSelector('#rwCard .rw-ask .btn-gold');
+    await page.click('#rwCard .rw-ask .btn-gold');
+    await page.waitForFunction(() => !document.querySelector('#rwCard .rw-n'), null, { timeout: 5000 });
+    is(CALLS.some(c => c.body.action === 'unlink' && c.auth === 'Bearer tok-chanda') && native.length === 0,
+       '"Yes, stop showing them" does it, still with no browser box');
+    STATUS = linked;
+    await page.evaluate(() => window.VBP_REWARDS.forget());
 
     console.log('\nUsing the points on a WhatsApp order');
     await page.evaluate(() => document.getElementById('rwCard').remove());
@@ -148,9 +170,7 @@ const server = http.createServer((req, res) => {
     await page.fill('#od_name', 'Chanda'); await page.fill('#od_phone', '0977000007');
     await page.check('#od_points'); await page.check('#od_consent');
     await page.click('#odGo');
-    // The points are promised first, then the message is written.
-    await until(() => CALLS.some(c => c.body.action === 'hold'));
-    await page.waitForFunction(() => window.__opened.some(t => /text=/.test(t.location.href)), null, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(600);
     const holdCall = CALLS.find(c => c.body.action === 'hold');
     is(holdCall && /^RW-[A-Z0-9]{6}$/.test(holdCall.body.orderRef) && holdCall.body.due === 1150,
        'the points are promised on the server first, for this order', JSON.stringify(holdCall && holdCall.body));
@@ -164,8 +184,7 @@ const server = http.createServer((req, res) => {
     SHOPPING = { rewardsOnline: false };
     const off = await browser.newPage();
     await off.goto(base + '/', { waitUntil: 'networkidle' });
-    await off.waitForFunction(() => window.VBP_REWARDS && window.VBP_REWARDS.enabled === false &&
-      /wa\.me/.test((document.querySelector('#rewards .btn') || {}).href || ''), null, { timeout: 10000 }).catch(() => {});
+    await off.waitForTimeout(600);
     const band = await off.evaluate(() => { const b = document.querySelector('#rewards .btn'); return b && { href: b.getAttribute('href'), text: b.textContent }; });
     is(await off.evaluate(() => window.VBP_REWARDS.enabled === false) && band && /wa\.me/.test(band.href || ''),
        'nothing changes: the homepage button is the WhatsApp message it always was', JSON.stringify(band));

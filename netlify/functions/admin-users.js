@@ -29,6 +29,8 @@
        customer account too, and deleting it would take their orders
        with it.
    ===================================================================== */
+const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 
 function json(status, body) {
@@ -39,13 +41,19 @@ function json(status, body) {
   };
 }
 
-/* The website's own Supabase and service key, read the one way every
-   function reads them (_seo-data.js, build 77). This file used to have a
-   reader of its own, with different variable names. */
-const seo = require('./_seo-data');
 function readConfig() {
-  const c = seo.readConfig();
-  return { url: String(c.url || '').replace(/\/+$/, ''), key: c.key || '' };
+  const envUrl = process.env.SITE_SUPABASE_URL;
+  const envKey = process.env.SITE_SUPABASE_ANON_KEY;
+  if (envUrl && envKey) return { url: envUrl, key: envKey };
+  for (const p of ['config.js', '../config.js', '../../config.js']) {
+    try {
+      const text = fs.readFileSync(path.join(process.cwd(), p), 'utf8');
+      const url = (text.match(/SUPABASE_URL\s*:\s*['"]([^'"]+)['"]/) || [])[1];
+      const key = (text.match(/SUPABASE_ANON_KEY\s*:\s*['"]([^'"]+)['"]/) || [])[1];
+      if (url && key) return { url: url.replace(/\/+$/, ''), key };
+    } catch (e) { /* try the next one */ }
+  }
+  return { url: '', key: '' };
 }
 
 async function callerIsOwner(token, site) {
@@ -100,7 +108,7 @@ exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' });
 
   const site = readConfig();
-  const serviceKey = seo.serviceKey();
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!site.url || !site.key) {
     return json(500, { error: 'The website is not connected to its database yet.' });
   }

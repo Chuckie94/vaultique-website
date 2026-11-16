@@ -926,11 +926,13 @@
 .pay-ready .ok{color:#1e7d46}
 .pay-ready .no{color:#b3261e}
 .pay-ready-note{flex-basis:100%;color:var(--muted,#666);font-size:12px}
+.pay-ready-warn{color:#b3261e}
+.pay-ready .btn{margin-top:4px}
+.pay-key-said{font-size:12px;color:var(--navy,#0b1f3a);margin-left:6px}
 .pay-badge{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;letter-spacing:.02em}
 .pay-paid{background:#e3f4ea;color:#1e7d46}
 .pay-wait{background:#fdf3dc;color:#8a5a00}
 .pay-fail{background:#fbe4e2;color:#b3261e}
-.pay-test{background:#ece6fb;color:#4a2c9e;margin-left:6px}
 
 /* Analytics > How orders were paid */
 .an-pay{margin-bottom:14px}

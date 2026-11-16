@@ -30,10 +30,10 @@
 
    HOW IT ASKS (build 68). Through the platform's rewards door, with the
    door's own key, which answers one customer's points, or the email to
-   send a code to, and nothing else. Since build 77 there is no other way:
-   the old one, the whole business read with the secret key, is gone, and
-   when the door cannot answer the rewards say they cannot be reached just
-   now. /api/rewards-check says whether the door is answering.
+   send a code to, and nothing else. The old way, the whole business read
+   with the secret key, is used only while the door is not set up, and
+   never once POS_SUPABASE_KEY has been deleted. /api/rewards-check says
+   which way is in use.
    ===================================================================== */
 'use strict';
 const crypto = require('crypto');
@@ -263,25 +263,14 @@ exports.handler = async function (event) {
     /* ---------------------------------------------------------- verify */
     if (action === 'verify') {
       const code = String(body.code || '').replace(/\D/g, '');
-      const mine = 'rewards_codes?user_id=eq.' + encodeURIComponent(me.id);
+      const rows = await P.svc('GET', 'rewards_codes?user_id=eq.' + encodeURIComponent(me.id) + '&select=*');
+      const row = rows && rows[0];
       const wrong = 'That code is not right, or it has run out. Check the email, or ask for a new code.';
-      const usable = (r) => r && r.code_hash && new Date(r.expires_at) >= new Date() && r.tries < MAX_TRIES;
-      if (code.length !== 6) return P.json(400, { error: wrong });
-      /* Each guess takes one of the five tries BEFORE it is compared, in
-         one step: the count only moves from the number this request read
-         to one more, so two guesses sent at the same moment cannot both
-         use the same try (W-17). Until build 77 the try was read, the
-         code compared, and the count written back afterwards, so a burst
-         of guesses all saw the same count. */
-      let row = null;
-      for (let i = 0; i <= MAX_TRIES && !row; i++) {
-        const seen = ((await P.svc('GET', mine + '&select=*')) || [])[0];
-        if (!usable(seen)) return P.json(400, { error: wrong });
-        const took = await P.svc('PATCH', mine + '&tries=eq.' + Number(seen.tries), { tries: Number(seen.tries) + 1 });
-        if (took && took[0]) row = took[0];
+      if (!row || !row.code_hash || new Date(row.expires_at) < new Date() || row.tries >= MAX_TRIES || code.length !== 6) {
+        return P.json(400, { error: wrong });
       }
-      if (!row) return P.json(400, { error: wrong });
       if (!same(row.code_hash, hash(me.id, code))) {
+        await P.svc('PATCH', 'rewards_codes?user_id=eq.' + encodeURIComponent(me.id), { tries: row.tries + 1 }, 'return=minimal');
         return P.json(400, { error: wrong });
       }
       try {
@@ -360,12 +349,17 @@ exports.handler = async function (event) {
       const req = q && q[0];
       let emailed = false;
       if (req && req.cust_no) {
+        /* The number as the team typed it, the way the till and the receipts
+           print it (VB-CUS-0006), when it is the same number. The database
+           keeps it without the dashes, which is how it is compared. */
+        const typed = String(body.number || '').trim().toUpperCase();
+        const shown = typed && R.numberKey(typed) === req.cust_no ? typed : req.cust_no;
         const to = await accountEmail(req.user_id);
         emailed = await mail(to, req.kind === 'join' ? 'Welcome to {shop} Rewards' : 'Your {shop} Rewards are linked', [
           req.kind === 'join'
             ? 'Hello' + (req.name ? ' ' + String(req.name).split(' ')[0] : '') + ', you are now registered for {shop} Rewards.'
             : 'Your website account is now linked to your {shop} Rewards.',
-          'Your customer number is ' + req.cust_no + '. Give it at the till so your purchases earn points.',
+          'Your customer number is ' + shown + '. Give it at the till so your purchases earn points.',
           'Sign in on the website and open your account to see your points and use them on your next order.'
         ]);
       }
