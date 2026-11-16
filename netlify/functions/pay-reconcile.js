@@ -21,6 +21,7 @@ const P = require('./_pay');
 const LOOK_BACK_HOURS = 72;   // money that arrives late is still the customer's
 const QUIET_MINUTES = 3;      // somebody may still be on the payment page
 const MAX_PER_RUN = 25;       // a scheduled function has thirty seconds
+const MAX_RETRY_PER_RUN = 10; // build 77: failed attempts asked about again, on top
 const STOP_AFTER_MS = 20000;
 
 const ago = (ms) => new Date(Date.now() - ms).toISOString();
@@ -31,15 +32,35 @@ async function run() {
   // Online payment not connected yet: there is nobody to ask, so nothing is read.
   if (!P.flwKey('test') && !P.flwKey('live')) return { skipped: 'no Flutterwave key' };
   const began = Date.now();
-  const out = { checked: 0, paid: 0, failed: 0, repaired: 0 };
+  const out = { checked: 0, paid: 0, failed: 0, repaired: 0, review: 0 };
 
   // 1) Attempts nobody has heard back about, newest first.
-  const open = await P.svc('GET', 'payments?select=*&status=in.(started,expired)' +
-    '&created_at=gt.' + enc(ago(LOOK_BACK_HOURS * 3600000)) +
-    '&created_at=lt.' + enc(ago(QUIET_MINUTES * 60000)) +
-    '&order=created_at.desc&limit=' + MAX_PER_RUN);
+  const span = '&created_at=gt.' + enc(ago(LOOK_BACK_HOURS * 3600000)) +
+    '&created_at=lt.' + enc(ago(QUIET_MINUTES * 60000)) + '&order=created_at.desc';
+  // BUILD 77 · review too: a payment that needs attention is asked about
+  // again, in case Flutterwave now names one that is exactly right (then it
+  // is paid like any other). The shop is not told twice.
+  const open = await P.svc('GET', 'payments?select=*&status=in.(started,expired,review)' + span + '&limit=' + MAX_PER_RUN);
+
+  // BUILD 77 · And attempts Flutterwave itself reported failed or
+  // cancelled. On Flutterwave's page a customer whose first try fails
+  // (a wrong PIN, not enough on the wallet) can try again and pay; if word
+  // of that payment never reaches this site, nothing else would ever look
+  // again, and the order would stay cancelled with the money taken. Not the
+  // attempts this site stopped itself before a payment page existed
+  // (abandon: "could not open the payment page", "stopped before the
+  // payment page"): nobody could have paid those.
+  const failedOnes = await P.svc('GET', 'payments?select=*&status=eq.failed' + span + '&limit=' + MAX_PER_RUN);
+  const retry = (failedOnes || []).filter((p) =>
+    ['failed', 'cancelled'].indexOf(String((p && p.detail && p.detail.reason) || '')) > -1);
+
+  // Newest first across both, so a customer who paid a few minutes ago is
+  // asked about before an attempt from two days ago.
+  const list = (open || []).concat(retry)
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    .slice(0, MAX_PER_RUN + MAX_RETRY_PER_RUN);
   let s = null;
-  for (const pay of open || []) {
+  for (const pay of list) {
     if (Date.now() - began > STOP_AFTER_MS) break;
     out.checked++;
     try {
@@ -52,6 +73,8 @@ async function run() {
         }
       } else if (r.status === 'failed') {
         out.failed++;
+      } else if (r.status === 'review') {
+        out.review++;   // the shop has been told by settle itself (needsAttention)
       }
     } catch (e) { /* the next run asks again */ }
   }
@@ -92,4 +115,4 @@ exports.handler = async function () {
     return { statusCode: 500, body: JSON.stringify({ error: String((e && e.message) || e).slice(0, 200) }) };
   }
 };
-exports._internals = { run, LOOK_BACK_HOURS, QUIET_MINUTES, MAX_PER_RUN };
+exports._internals = { run, LOOK_BACK_HOURS, QUIET_MINUTES, MAX_PER_RUN, MAX_RETRY_PER_RUN };

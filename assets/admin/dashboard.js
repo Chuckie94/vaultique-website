@@ -819,10 +819,13 @@
             if (r.error) throw r.error;
             /* Orders still on the payment page are not waiting for the shop.
                Asked separately so a shop without the payment columns still
-               gets its count: there, this second read fails and takes off 0. */
+               gets its count: there, this second read fails and takes off 0.
+               BUILD 77: only those still awaiting payment are taken off; a
+               payment that needs attention is very much waiting for the
+               shop, so it stays in the count. */
             return Promise.resolve(
               sb.from('orders').select('*', { count: 'exact', head: true })
-                .eq('status', 'pending').eq('payment_method', 'online').neq('payment_status', 'paid')
+                .eq('status', 'pending').eq('payment_method', 'online').eq('payment_status', 'awaiting')
             ).then(function (u) {
               return Math.max(0, (r.count || 0) - ((u && !u.error && u.count) || 0));
             }, function () { return r.count || 0; });

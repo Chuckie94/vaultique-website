@@ -13,7 +13,9 @@
 //   2. Nothing is "paid" because somebody said so. Not the browser coming
 //      back from Flutterwave, not a webhook on its own. Flutterwave is
 //      asked directly, with the secret key, and the answer must name our
-//      reference, our currency and at least our amount.
+//      reference, our currency and exactly our amount (build 77: to the
+//      ngwee; more, less or another currency "needs attention", see
+//      needsAttention below, and is never marked paid).
 //
 //   3. The secret keys live in Netlify's environment and nowhere else:
 //        FLW_SECRET_KEY_TEST, FLW_SECRET_KEY_LIVE   from the Flutterwave dashboard
@@ -33,7 +35,15 @@
 //
 //   6. Nobody has to come back for a payment to count. pay-reconcile.js
 //      asks Flutterwave every fifteen minutes about every attempt of the
-//      last three days that has not been heard back about.
+//      last three days that has not been heard back about (build 77: and
+//      about the ones Flutterwave itself reported failed, because a
+//      customer can try again on the same page and pay).
+//
+//   7. BUILD 77 · A piece paid for online is held until the till rings its
+//      order up, or the order is completed or cancelled, for at most seven
+//      days: a second customer is not charged for a piece the first one has
+//      already paid for. The feed and the price rules are not touched; the
+//      hold is worked out here, from this website's own orders.
 // =====================================================================
 const fs = require('fs');
 const path = require('path');
@@ -45,6 +55,8 @@ const MAX_LINES = 50;
 const MAX_QTY = 99;
 const PER_PHONE_PER_HOUR = 5;
 const PER_SHOP_PER_HOUR = 300;
+const HOLD_DAYS = 7;          // build 77: how long a piece paid for online is held at most
+const ASK_GAP_MS = 5000;      // build 77: the status page asks Flutterwave about one payment at most this often
 
 function json(statusCode, body) {
   return {
@@ -249,9 +261,11 @@ async function priceOrder(s, rawItems, fulfilment, preview, town) {
   const cleaned = cleanItems(rawItems);
   if (cleaned.error) return { problems: [cleaned.error] };
   const style = F.moneyStyle(s.general, s.pricing);
-  const [feed, meta] = await Promise.all([
+  const skus = cleaned.items.map((i) => i.sku);
+  const [feed, meta, held] = await Promise.all([
     catalogue(preview),
-    productMeta(cleaned.items.map((i) => i.sku)),
+    productMeta(skus),
+    heldPieces(skus),
   ]);
   const bySku = {};
   feed.forEach((p) => { bySku[p.sku] = p; });
@@ -267,6 +281,17 @@ async function priceOrder(s, rawItems, fulfilment, preview, town) {
     const limit = cartLimit(p);
     if (it.qty > limit) {
       problems.push('Only ' + limit + ' of ' + p.name + ' ' + (limit === 1 ? 'is' : 'are') + ' available.');
+      return;
+    }
+    // BUILD 77 · Pieces already paid for online and not yet rung up,
+    // completed or cancelled are not on offer again. Only where the feed
+    // gives the real count (under MAX_QTY): a count capped at the ceiling
+    // says nothing about how many are really left.
+    const hold = (held && limit < MAX_QTY) ? Math.max(0, Math.floor(Number(held[it.sku]) || 0)) : 0;
+    if (hold > 0 && it.qty > limit - hold) {
+      const left = limit - hold;
+      problems.push(left <= 0 ? p.name + ' has just sold out.'
+        : 'Only ' + left + ' of ' + p.name + ' ' + (left === 1 ? 'is' : 'are') + ' available.');
       return;
     }
     const v = F.priceView(p, s.pricing, style);
@@ -302,6 +327,40 @@ async function priceOrder(s, rawItems, fulfilment, preview, town) {
     deliveryNote: d.note, deliveryLabel: d.label || '', town: d.town || '', fulfilment: how,
     total, totalText: money(total),
   };
+}
+
+// ---- BUILD 77 · pieces paid for online, held ------------------------------
+// How many of each piece are already paid for online, on orders the till has
+// not rung up and nobody has completed or cancelled, placed in the last
+// HOLD_DAYS days. Read from this website's own orders with the service key.
+// Anything that goes wrong here answers null, and the payment goes ahead
+// exactly as it did before build 77: a hold that cannot be worked out never
+// stops a sale.
+async function heldPieces(skus) {
+  if (!skus || !skus.length || !serviceKey()) return null;
+  try {
+    const since = new Date(Date.now() - HOLD_DAYS * 86400000).toISOString();
+    // select=*: pos_sale_id exists only once supabase-pos-orders.sql has
+    // been run, and naming a column that is not there would fail the read.
+    const paid = await svc('GET', 'orders?select=*&payment_method=eq.online&payment_status=eq.paid' +
+      '&created_at=gt.' + encodeURIComponent(since) + '&order=created_at.desc&limit=500');
+    const open = (paid || []).filter((o) => o && o.id && !o.pos_sale_id &&
+      ['cancelled', 'completed'].indexOf(String(o.status || '')) < 0);
+    if (!open.length) return {};
+    const items = await svc('GET', 'order_items?select=order_id,sku,qty&order_id=in.(' +
+      open.map((o) => encodeURIComponent(o.id)).join(',') + ')');
+    const want = {};
+    skus.forEach((s) => { want[s] = true; });
+    const out = {};
+    (items || []).forEach((i) => {
+      if (!i || !want[i.sku]) return;
+      const q = Math.floor(Number(i.qty));
+      out[i.sku] = (out[i.sku] || 0) + (q >= 1 ? q : 1);
+    });
+    return out;
+  } catch (e) {
+    return null;
+  }
 }
 
 // ---- the website's database, as the payment service ---------------------
@@ -426,7 +485,8 @@ function newTxRef(orderRef) {
 // ---- settling a payment ------------------------------------------------------
 // Asks Flutterwave, then records the answer. Safe to call any number of
 // times for the same payment: only the first "paid" does anything.
-async function settle(txRef, transactionId) {
+// opts.pause (build 77, the status page only): see askedJustNow.
+async function settle(txRef, transactionId, opts) {
   const found = await svc('GET', 'payments?tx_ref=eq.' + encodeURIComponent(txRef) + '&select=*');
   const pay = found && found[0];
   if (!pay) return { status: 'unknown' };
@@ -439,6 +499,19 @@ async function settle(txRef, transactionId) {
     const caught = await orderPaid(pay, (pay.detail && pay.detail.amount) || pay.amount, pay.channel, pay.updated_at);
     return { status: 'paid', pay, fresh: caught };
   }
+  // BUILD 77 · A payment that needs attention stays so, whatever else
+  // Flutterwave says about this reference (a failed try, nothing at all),
+  // unless it now names a payment that is exactly right: then it is paid
+  // like any other, because that money is the order's.
+  const review = pay.status === 'review' ? 'review' : null;
+
+  // BUILD 77 · The status page asks Flutterwave about one payment at most
+  // once every ASK_GAP_MS. In between it is told "pending" (never "failed":
+  // a customer whose first try failed may be paying on a second one right
+  // now), and the next ask that is let through gets the real answer. The
+  // webhook and the check-up never pause.
+  if (opts && opts.pause && await askedJustNow(pay)) return { status: review || 'pending', pay, paused: true };
+
   // An attempt marked expired or failed is still asked about: money that
   // arrives late is still the customer's money, and still an order.
 
@@ -446,16 +519,20 @@ async function settle(txRef, transactionId) {
     ? await flw(pay.mode, 'GET', '/transactions/' + encodeURIComponent(transactionId) + '/verify')
     : await flw(pay.mode, 'GET', '/transactions/verify_by_reference?tx_ref=' + encodeURIComponent(txRef));
   const d = answer.data && answer.data.data;
-  if (!answer.ok || !d) return { status: pay.status === 'failed' ? 'failed' : 'pending', pay };
+  if (!answer.ok || !d) return { status: review || (pay.status === 'failed' ? 'failed' : 'pending'), pay };
 
   // Flutterwave's answer is about this payment only if it names it. The
   // transaction id comes from the address the customer came back on, so
   // anybody can put another one there; whatever that transaction says, it
   // says nothing about this payment.
   const same = d.tx_ref === txRef;
+  // BUILD 77 · Exactly the amount asked, to the ngwee (half a ngwee either
+  // way for the arithmetic), in the currency asked. Until 76 anything at
+  // least the amount counted; more is not "paid" either, it is a payment
+  // somebody has to look at.
   const ours = same &&
     String(d.currency || '').toUpperCase() === String(pay.currency || '').toUpperCase() &&
-    Number(d.amount) >= Number(pay.amount) - 0.001;
+    Math.abs(Number(d.amount) - Number(pay.amount)) < 0.005;
 
   if (d.status === 'successful' && ours) {
     const now = new Date().toISOString();
@@ -473,20 +550,22 @@ async function settle(txRef, transactionId) {
   }
 
   if (d.status === 'successful' && same) {
-    // Paid, but not what we asked for. Recorded for the shop to look at,
-    // never marked as paid.
-    await svc('PATCH', 'payments?tx_ref=eq.' + encodeURIComponent(txRef) + '&status=neq.paid', {
-      detail: { mismatch: true, amount: d.amount, currency: d.currency, tx_ref: d.tx_ref },
-      updated_at: new Date().toISOString(),
-    }, 'return=minimal');
-    return { status: 'pending', pay };
+    // Paid, but not what we asked for: more, less, or another currency.
+    // Never marked as paid. BUILD 77: no longer only noted in the payment
+    // row for nobody to see, and left for the three-hour tidy-up to cancel
+    // its order with the money taken. It "needs attention": the order stays
+    // open, the shop is told once, and the Orders tab shows it.
+    return needsAttention(pay, d);
   }
 
   if ((d.status === 'failed' || d.status === 'cancelled') && same) {
+    // BUILD 77 · Money already came in against a payment under review:
+    // a failed try on top of it is not "nothing was taken".
+    if (review) return { status: 'review', pay };
     await failPayment(pay, d.status);
     return { status: 'failed', pay };
   }
-  return { status: 'pending', pay };
+  return { status: review || 'pending', pay };
 }
 
 // The order a paid payment belongs to, marked paid if it is not already.
@@ -510,6 +589,112 @@ async function orderPaid(pay, amount, channel, when) {
     pay_channel: String(channel || ''), updated_at: now,
   }, revive ? { status: 'pending' } : {}));
   return !!(rows && rows.length);
+}
+
+// ---- BUILD 77 · the status page, not asking too often ----------------------
+// True when Flutterwave was asked about this payment by the status page less
+// than ASK_GAP_MS ago, or when another ask has just claimed the next turn.
+// The turn is claimed with a conditional write, so of two asks arriving
+// together exactly one goes to Flutterwave. Without the asked_at column
+// (supabase-payment-history.sql not run yet) nothing pauses, as in 76, and
+// anything that goes wrong here lets the ask through rather than leaving a
+// customer without an answer.
+async function askedJustNow(pay) {
+  if (!pay || !Object.prototype.hasOwnProperty.call(pay, 'asked_at')) return false;
+  const now = Date.now();
+  const last = pay.asked_at ? new Date(pay.asked_at).getTime() : NaN;
+  if (isFinite(last) && now - last < ASK_GAP_MS) return true;
+  const turn = pay.asked_at
+    ? '&asked_at=lt.' + encodeURIComponent(new Date(now - ASK_GAP_MS).toISOString())
+    : '&asked_at=is.null';
+  try {
+    const won = await svc('PATCH', 'payments?tx_ref=eq.' + encodeURIComponent(pay.tx_ref) + turn,
+      { asked_at: new Date(now).toISOString() });
+    return !(won && won.length);
+  } catch (e) {
+    return false;
+  }
+}
+
+// ---- BUILD 77 · a payment that needs attention -----------------------------
+// Flutterwave says it was paid, for this reference, but not the amount or
+// the currency asked. The payment is marked "review" by a conditional write
+// (only an attempt not paid and not already under review), so of several
+// webhooks, return visits and check-ups exactly one makes the switch, and
+// only that one tells the shop. The order is marked to match and stays open:
+// one cancelled only because its payment had failed or expired comes back,
+// one the shop cancelled itself stays cancelled. Nothing here ever marks
+// anything paid.
+async function needsAttention(pay, d) {
+  const now = new Date().toISOString();
+  const got = await svc('PATCH', 'payments?tx_ref=eq.' + encodeURIComponent(pay.tx_ref) + '&status=in.(started,expired,failed)', {
+    status: 'review', provider_tx_id: String(d.id || ''), channel: String(d.payment_type || ''), updated_at: now,
+    detail: {
+      mismatch: true, expected: Number(pay.amount), expectedCurrency: pay.currency,
+      amount: d.amount, currency: d.currency, charged: d.charged_amount, app_fee: d.app_fee,
+      flw_ref: d.flw_ref || '', tx_ref: d.tx_ref,
+    },
+  });
+  const row = got && got[0];
+  if (!row) return { status: 'review', pay };
+  await orderNeedsAttention(row, now);
+  try {
+    await attentionEmail(await shopSettings(), row, d);
+  } catch (e) { /* the record stands whether or not the email goes */ }
+  return { status: 'review', pay: row, fresh: true };
+}
+
+async function orderNeedsAttention(pay, now) {
+  if (!pay || !pay.order_id) return false;
+  const was = await svc('GET', 'orders?id=eq.' + pay.order_id + '&select=status,payment_status');
+  const o = was && was[0];
+  if (!o || o.payment_status === 'paid' || o.payment_status === 'review') return false;
+  const revive = o.status === 'cancelled' && ['failed', 'expired'].indexOf(o.payment_status) > -1;
+  const notYet = o.payment_status == null ? '&payment_status=is.null' : '&payment_status=in.(awaiting,expired,failed)';
+  const rows = await svc('PATCH', 'orders?id=eq.' + pay.order_id + notYet,
+    Object.assign({ payment_status: 'review', updated_at: now }, revive ? { status: 'pending' } : {}));
+  return !!(rows && rows.length);
+}
+
+// One email to the shop, whatever the notification settings say about paid
+// orders: this is money somebody has to look at, not news of a sale.
+async function attentionEmail(s, pay, d) {
+  const [pub, priv, orders] = await Promise.all([
+    settings('notifications'),
+    svc('GET', 'site_settings_private?key=eq.notifications&select=data'),
+    pay.order_id ? svc('GET', 'orders?id=eq.' + pay.order_id + '&select=*') : Promise.resolve([]),
+  ]);
+  const n = pub || {};
+  const secret = (priv && priv[0] && priv[0].data) || {};
+  const o = (orders && orders[0]) || {};
+  if (!n.emailEnabled || !n.smtpHost || !n.senderEmail) return { sent: 0 };
+  const shopTo = s.contact.email || n.replyTo || n.senderEmail;
+  if (!shopTo) return { sent: 0 };
+  const F = formats();
+  const style = F.moneyStyle(s.general, s.pricing);
+  const money = (v) => F.money(v, style);
+  const sameCurrency = String(d.currency || '').toUpperCase() === String(pay.currency || '').toUpperCase();
+  const got = sameCurrency ? money(Number(d.amount)) : String(d.currency || '?') + ' ' + d.amount;
+  const how = d.payment_type ? ' (' + (d.payment_type === 'card' ? 'card' : 'mobile money') + ')' : '';
+  const ref = o.ref || String(pay.tx_ref || '').split('-').slice(0, 2).join('-');
+  const shop = s.general.businessName || 'Vaultique Boutique Point';
+  const sendMail = require('./send-email')._internals.sendMail;
+  await sendMail({
+    smtpHost: n.smtpHost, smtpPort: n.smtpPort, encryption: n.encryption,
+    smtpUser: n.smtpUser, smtpPassword: secret.smtpPassword,
+    senderName: n.senderName || shop, senderEmail: n.senderEmail, replyTo: n.replyTo,
+    to: shopTo,
+    subject: 'Payment needs attention: order ' + ref,
+    text: 'A payment came in for order ' + ref + ', but it does not match the order.\n\n' +
+      'The order: ' + money(Number(pay.amount)) + '\n' +
+      'Received: ' + got + how + '\n' +
+      (d.flw_ref ? 'Flutterwave reference: ' + d.flw_ref + '\n' : '') +
+      'Our reference: ' + pay.tx_ref + '\n\n' +
+      'Nothing has been marked paid, and the order stays open. Check the payment in your ' +
+      'Flutterwave dashboard, then contact the customer.\n\n' +
+      'Customer: ' + (o.name || '') + '\nPhone: ' + (o.phone || '') + '\nEmail: ' + (o.email || ''),
+  });
+  return { sent: 1 };
 }
 
 // A payment started here that could not be finished here. Its attempt is
@@ -622,5 +807,6 @@ module.exports = {
   deliveryCharge, svc, serviceKey, flw, flwKey, paymentOptions, hashMatches, newTxRef,
   signatureMatches, noteWebhook, payHealth, callerIsAdmin, changedSince,
   settle, orderPaid, failPayment, abandon, confirmByEmail, siteOrigin,
-  PER_PHONE_PER_HOUR, PER_SHOP_PER_HOUR,
+  heldPieces, askedJustNow, needsAttention,
+  PER_PHONE_PER_HOUR, PER_SHOP_PER_HOUR, HOLD_DAYS, ASK_GAP_MS,
 };

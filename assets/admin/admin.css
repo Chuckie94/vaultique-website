@@ -933,6 +933,14 @@
 .pay-paid{background:#e3f4ea;color:#1e7d46}
 .pay-wait{background:#fdf3dc;color:#8a5a00}
 .pay-fail{background:#fbe4e2;color:#b3261e}
+/* Build 77: a payment that does not match its order, and the payment history */
+.pay-attn{color:#b3261e;margin-top:6px}
+.pay-hist-btn{background:none;border:0;padding:0;margin-top:8px;font:inherit;font-size:12px;
+  color:var(--navy,#0b1f3a);text-decoration:underline;cursor:pointer}
+.pay-hist{margin-top:6px;font-size:12px;color:var(--muted,#666)}
+.pay-hist.hide{display:none}
+.pay-hist-line{display:flex;gap:10px;padding:2px 0;flex-wrap:wrap}
+.pay-hist-at{min-width:118px;color:var(--navy,#0b1f3a)}
 
 /* Analytics > How orders were paid */
 .an-pay{margin-bottom:14px}

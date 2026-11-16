@@ -1749,11 +1749,124 @@
       paid:     ['pay-paid', 'Paid \u2713' + (how ? ' \u00b7 ' + how : '')],
       awaiting: ['pay-wait', 'Awaiting payment'],
       failed:   ['pay-fail', 'Payment failed'],
-      expired:  ['pay-fail', 'Payment not completed']
+      expired:  ['pay-fail', 'Payment not completed'],
+      review:   ['pay-fail', 'Payment needs attention']      // build 77
     };
     var b = map[o.payment_status] || ['pay-wait', 'Online payment'];
     return '<div class="pay-badge ' + b[0] + '">' + escapeHtml(b[1]) + '</div>';
   }
+  /* BUILD 77 · Under an order paid online: what needs attention, and the
+     payment's history (supabase-payment-history.sql: written by the
+     database as things happen, read by administrators only). */
+  function payAt(iso) {
+    var t = new Date(iso);
+    if (isNaN(t.getTime())) return '';
+    return shortDate(iso) + ' ' + ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2);
+  }
+  function payGot(n) {
+    /* What came in, in the order's currency when it is the same one. */
+    if (!n) return '';
+    var cur = String(n.currency || '').toUpperCase();
+    var want = String(n.expectedCurrency || '').toUpperCase();
+    return (!cur || cur === want) ? fmtMoney(Number(n.amount)) : cur + ' ' + n.amount;
+  }
+  function payEventWords(e) {
+    var n = e.note || {};
+    var to = e.to_state || '', from = e.from_state || '';
+    if (e.what === 'payment') {
+      if (!from && to === 'started') {
+        return 'Payment started' + (n.amount != null ? ' · ' + fmtMoney(Number(n.amount)) : '') +
+               (n.mode === 'test' ? ' (test mode)' : '');
+      }
+      if (to === 'paid') {
+        return 'Paid' + (n.amount != null ? ' · ' + fmtMoney(Number(n.amount)) : '') +
+               (n.flw_ref ? ' · Flutterwave ' + n.flw_ref : '');
+      }
+      if (to === 'failed') {
+        if (n.reason === 'failed') return 'Flutterwave: the payment failed';
+        if (n.reason === 'cancelled') return 'Flutterwave: the payment was cancelled';
+        return 'Stopped before the payment page';
+      }
+      if (to === 'expired') return 'Not completed within three hours';
+      if (to === 'review') {
+        return 'Needs attention: received ' + payGot(n) +
+               (n.expected != null ? ', the order is ' + fmtMoney(Number(n.expected)) : '');
+      }
+      return 'Payment: ' + (from || '—') + ' → ' + to;
+    }
+    if (e.what === 'order-payment') {
+      var pw = { awaiting: 'Order sent to pay online', paid: 'Order marked paid',
+                 failed: 'Order: payment failed', expired: 'Order: payment not completed',
+                 review: 'Order: payment needs attention' };
+      return pw[to] || ('Order payment: ' + (from || '—') + ' → ' + (to || '—'));
+    }
+    if (to === 'cancelled') return 'Order cancelled';
+    if (from === 'cancelled' && to === 'pending') return 'Order brought back';
+    var name = function (v) { return (NOTIFY.CHOICES && NOTIFY.CHOICES[v]) || v || '—'; };
+    return 'Order: ' + name(from) + ' → ' + name(to);
+  }
+  function payParts(o, d) {
+    if (o.payment_status === 'review') {
+      var attn = document.createElement('div');
+      attn.className = 'hint pay-attn';
+      attn.textContent = 'A payment came in that does not match this order. Nothing has been ' +
+        'marked paid. Check it in your Flutterwave dashboard, then contact the customer.';
+      d.appendChild(attn);
+      Promise.resolve(sb.from('payments').select('amount,currency,channel,detail')
+        .eq('order_id', o.id).eq('status', 'review').limit(1)).then(function (r) {
+        var p = r && !r.error && r.data && r.data[0];
+        if (!p || !p.detail) return;
+        var how = p.channel === 'card' ? ' by card' : (p.channel ? ' by mobile money' : '');
+        attn.textContent = 'A payment came in that does not match this order: received ' +
+          payGot(p.detail) + how + ', the order is ' + fmtMoney(Number(p.amount)) +
+          '. Nothing has been marked paid. Check it in your Flutterwave dashboard, then contact the customer.';
+      }, function () {});
+    }
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pay-hist-btn';
+    btn.textContent = 'Payment history';
+    var box = document.createElement('div');
+    box.className = 'pay-hist hide';
+    var loaded = false;
+    btn.addEventListener('click', function () {
+      var open = box.classList.contains('hide');
+      box.classList[open ? 'remove' : 'add']('hide');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (!open || loaded) return;
+      loaded = true;
+      box.textContent = 'Loading…';
+      Promise.resolve(sb.from('payment_events').select('at,what,from_state,to_state,note')
+        .eq('order_id', o.id).order('at', { ascending: true }).limit(100)).then(function (r) {
+        if (r && r.error) {
+          box.textContent = 'No payment history yet. It starts once supabase-payment-history.sql has been run.';
+          return;
+        }
+        var rows = (r && r.data) || [];
+        if (!rows.length) { box.textContent = 'No payment history recorded for this order.'; return; }
+        box.innerHTML = '';
+        rows.forEach(function (e) {
+          var line = document.createElement('div');
+          line.className = 'pay-hist-line';
+          var when = document.createElement('span');
+          when.className = 'pay-hist-at';
+          when.textContent = payAt(e.at);
+          var what = document.createElement('span');
+          what.textContent = payEventWords(e);
+          line.appendChild(when);
+          line.appendChild(what);
+          box.appendChild(line);
+        });
+      }, function () {
+        box.textContent = 'The payment history could not be read just now.';
+        loaded = false;
+      });
+    });
+    d.appendChild(btn);
+    d.appendChild(box);
+  }
+
   /* BUILD 76 · what the till has done with an order, in a sentence. */
   function tillSays(o) {
     function at(iso) {
@@ -1814,6 +1927,11 @@
         (Number(o.delivery_fee) ? ' · Delivery ' + fmtMoney(o.delivery_fee) : '');
       d.appendChild(brk);
     }
+
+    /* BUILD 77 · a payment that does not match the order, and the payment's
+       history. Both read only when there is something to show, and both
+       quietly say less on a shop that has not run the SQL for them. */
+    if (o.payment_method === 'online') payParts(o, d);
 
     var items = document.createElement('div');
     items.className = 'hint';

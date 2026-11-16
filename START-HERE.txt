@@ -1,7 +1,51 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 76
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 77
 ====================================================
-The whole site, cumulative (includes everything in build 75).
+The whole site, cumulative (includes everything in builds 75 and 76).
 Upload this and you are up to date.
+
+NEW IN 77 — ONLINE PAYMENT MADE SAFER (after the payment audit)
+ONE SQL FILE IN THIS WEBSITE'S SUPABASE. Nothing on the platform.
+
+  * The 15-minute check-up also asks about payments Flutterwave reported
+    failed. A customer whose first try fails can try again on the same
+    page and pay; if word of that payment never arrived, the order used
+    to stay cancelled with the money taken. Now it is found and the order
+    comes back, with its emails.
+  * Only the exact amount counts as paid. A payment of more, less or in
+    another currency "needs attention": it is never marked paid, its
+    order is never cancelled by the three-hour tidy-up, the shop gets one
+    email, and Admin > Orders shows "Payment needs attention" with what
+    came in. Check it in your Flutterwave dashboard and contact the
+    customer.
+  * The payment status page asks Flutterwave about one payment at most
+    once every five seconds, however often it is asked.
+  * Every online payment keeps a history nobody can change: Admin >
+    Orders, "Payment history" on an order paid online.
+  * The page after paying says "Nothing has been taken" only when
+    Flutterwave says the payment failed. A customer who left Flutterwave's
+    page is told an approval on the phone may still arrive, and not to
+    pay again. The page checks for two minutes instead of 20 seconds.
+  * A piece paid for online is held: a second customer cannot pay for it
+    until the first order is rung up, completed or cancelled (seven days
+    at most). The feed and the prices are not touched.
+
+  THE STEP
+
+  1. THIS WEBSITE'S SUPABASE (not the platform's), after
+     supabase-payments.sql: SQL Editor > New query > paste
+     supabase-payment-history.sql > Run. The SQL is also in the chat.
+     Its last result is one row: asked_at OK, history OK, recorders OK.
+     Run in the wrong Supabase, it stops at once and creates nothing.
+     Safe to run again.
+  2. UPLOAD this website (77).
+
+  Until step 1 is done, 77 works as 76 did on two points only: the status
+  page asks Flutterwave every time, and there is no payment history.
+  Everything else in 77 works at once.
+
+  KEEP ONLINE PAYMENT SWITCHED OFF until the trial payments in the build
+  notes are done (test mode first, then a few small live ones).
+
 
 NEW IN 76 — WEBSITE ORDERS AT THE TILL (goes with the platform's build 508)
 ONE SQL FILE IN THIS WEBSITE'S SUPABASE, AND THREE SETTINGS IN THE

@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.46.0',
-  build: 76,
-  builtAt: '2026-11-15T15:26:49Z',
-  notes: 'Website orders linked to the platform (platform build 508): the WhatsApp message starts with the order number (Order VB-3F9K2), and points promised on the order carry the same number. The platform finds the order in Sales, Online Orders and rings it up at the till; the order then says Completed, and a customer with an account can download the receipt as a PDF. An order still waiting for its online payment cannot be rung up. The Orders tab shows when an order was rung up at the shop. SQL: supabase-pos-orders.sql, once, in this website Supabase.'
+  version: '1.47.0',
+  build: 77,
+  builtAt: '2026-11-15T20:42:29Z',
+  notes: 'Online payment made safer, after the payment audit: the 15-minute check-up also catches a payment that succeeds after a failed try; only the exact amount counts as paid, anything else needs attention (never paid, never cancelled, one email to the shop, shown in Orders); the status page asks Flutterwave about one payment at most every 5 seconds; every payment keeps a history nobody can change (Orders, Payment history); the page after paying no longer says nothing was taken unless Flutterwave says so, and checks for two minutes; a piece paid for online is held, so a second customer cannot pay for it. SQL: supabase-payment-history.sql, once, in this website Supabase.'
 };

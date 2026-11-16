@@ -28,6 +28,7 @@ vaultique-website/
 ├── supabase-cart-pieces.sql  run once: which pieces were added to carts
 ├── supabase-rewards.sql      run once: Vaultique Rewards on the website (links, codes, promised points)
 ├── supabase-pos-orders.sql   run once: the platform's till rings up website orders by their number (build 76)
+├── supabase-payment-history.sql  run once, after supabase-payments.sql: the payment history, and the status page's pause (build 77)
 ├── netlify.toml               Netlify config + /api/products redirect
 ├── netlify/
 │   └── functions/
@@ -118,6 +119,13 @@ psql -d <scratch db> -f tests/pos-orders-fixture.sql -f supabase-setup.sql -f su
      -f tests/pos-orders-bare.sql                            the same door where payment and rewards were never set up
 node tests/pos-orders.browser.cjs          the order number in the message, the receipt download, the Orders tab
 node tests/receipt-pdf.test.cjs            the receipt PDF, written by hand, read by every PDF reader
+node tests/payments-77.test.cjs            build 77: a payment after a failed try found; only the exact amount paid;
+                                           the status page's pause; a piece paid online held
+psql -d <scratch db> -f tests/pos-orders-fixture.sql -f supabase-setup.sql -f supabase-payments.sql \
+     -f tests/pos-orders-admins.sql -f supabase-rewards.sql -f supabase-pos-orders.sql \
+     -f supabase-payment-history.sql -f supabase-payment-history.sql \
+     -f tests/payment-history.sql                            the payment history: written by the database, changed by nobody
+node tests/payment-return.browser.cjs      build 77: the page after paying, and Admin > Orders' needs attention and history
 psql -d <scratch db> -f tests/chat-jobs-fixture.sql -f tests/chat-photos-fixture.sql \
      -f supabase-chat-photos.sql -f tests/chat-photos.sql    the database side of chat photos
 psql -d <scratch db> -f tests/chat-jobs-fixture.sql \

@@ -2199,22 +2199,40 @@
     modal.classList.add('open');
     document.body.style.overflow = 'hidden';
 
-    var tries = 0;
+    /* BUILD 77 · Checked for two minutes, not twenty seconds: a mobile money
+       approval on the phone often takes longer than that. Every 2.5 seconds
+       at first, then every 5 (the server asks Flutterwave about one payment
+       at most every 5 seconds anyway). */
+    var tries = 0, began = Date.now(), left = false, over = false;
+    var CHECK_FOR_MS = 120000;
+    function again() {
+      if (over) return;
+      if (Date.now() - began >= CHECK_FOR_MS) return done(left ? 'left' : 'pending', {});
+      setTimeout(ask, tries < 8 ? 2500 : 5000);
+    }
     function ask() {
+      if (over) return;
       tries++;
       var u = PAY_FN + 'pay-status?tx_ref=' + encodeURIComponent(q.tx_ref) +
               (q.transaction_id ? '&transaction_id=' + encodeURIComponent(q.transaction_id) : '');
       fetch(u, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (r) {
         if (r.status === 'paid') return done('paid', r);
-        if (r.status === 'failed' || (q.status === 'cancelled' && tries >= 2)) return done('failed', r);
-        if (tries < 8) return setTimeout(ask, 2500);
-        done('pending', r);
-      }, function () {
-        if (tries < 8) return setTimeout(ask, 2500);
-        done('pending', {});
-      });
+        if (r.status === 'review') return done('review', r);
+        /* "Nothing has been taken" only on Flutterwave's own word (the
+           server says failed). The address saying the customer cancelled
+           only means they left Flutterwave's page: an approval on the phone
+           can still come through, so that is said, and the page keeps
+           checking. */
+        if (r.status === 'failed') return done('failed', r);
+        if (q.status === 'cancelled' && tries >= 2 && !left) { left = true; show('left', r); }
+        again();
+      }, function () { again(); });
     }
     function done(how, r) {
+      over = true;
+      show(how, r);
+    }
+    function show(how, r) {
       var head = $('#prHead'), lead = $('#prLead'), acts = $('#prActs');
       if (!head) return;
       var memo = payMemo();
@@ -2229,6 +2247,25 @@
         }
         acts.innerHTML = '<button class="btn btn-gold" id="prOk">Continue shopping</button>';
         $('#prOk').addEventListener('click', closeOrderForm);
+      } else if (how === 'review') {
+        /* BUILD 77 · Money came in, but not what the order asked for. The
+           shop has been told; the order is with them. Its cart goes, as for
+           a paid order, so that nothing invites a second payment. */
+        head.textContent = 'We need to check your payment';
+        lead.textContent = 'A payment for order ' + (r.ref || '') + ' has come in, but it does not ' +
+          'match the order. We will contact you about it. Please do not pay again.';
+        if (memo && memo.tx === q.tx_ref) {
+          if (memo.cart) { cart = []; saveCart(); afterCartChange(); }
+          payMemo(null);
+        }
+        acts.innerHTML = '<button class="btn btn-gold" id="prOk">Close</button>';
+        $('#prOk').addEventListener('click', closeOrderForm);
+      } else if (how === 'left') {
+        head.textContent = 'The payment was not completed';
+        lead.textContent = 'If you approved it on your phone, it may still arrive, and you will get ' +
+          'an email when it does. Please do not pay again before then.';
+        acts.innerHTML = '<button class="btn btn-gold" id="prOk">Close</button>';
+        $('#prOk').addEventListener('click', function () { over = true; closeOrderForm(); });
       } else if (how === 'failed') {
         head.textContent = 'The payment did not go through';
         lead.textContent = 'Nothing has been taken. You can try again, or order on WhatsApp instead.';

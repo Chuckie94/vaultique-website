@@ -267,6 +267,20 @@
   status = 404
   force = true
 
+# Build 77: the payment history (new), and the door the platform's till
+# uses (build 76 shipped it without this line).
+[[redirects]]
+  from = "/supabase-payment-history.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-pos-orders.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
 [[redirects]]
   from = "/supabase-chat-mentions.sql"
   to = "/index.html"

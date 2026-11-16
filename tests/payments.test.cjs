@@ -255,14 +255,18 @@ const server = http.createServer(async (req, res) => {
     is(DB.orders[0].payment_status === 'awaiting', 'one with the hash is still not believed: Flutterwave has no such payment');
     FLW.verify[txRef] = { id: 555, tx_ref: txRef, status: 'successful', amount: 1, currency: 'ZMW', payment_type: 'card' };
     r = await get(status, { tx_ref: txRef, transaction_id: '555' });
-    is(r.body.status === 'pending' && DB.orders[0].payment_status === 'awaiting',
+    // BUILD 77 · restated: a payment that does not match its order now
+    // "needs attention" (review) instead of waiting as "pending": the shop is
+    // told once and the order stays open (supabase-payments.sql's tidy-up no
+    // longer cancels it). The point of these three checks stands: never paid.
+    is(r.body.status === 'review' && DB.orders[0].payment_status === 'review',
        'K1 paid against a K1,380 order is not "paid"', JSON.stringify(r.body));
     FLW.verify[txRef] = { id: 555, tx_ref: txRef, status: 'successful', amount: 1380, currency: 'USD', payment_type: 'card' };
     r = await get(status, { tx_ref: txRef, transaction_id: '555' });
-    is(r.body.status === 'pending', 'nor is the right number in the wrong currency');
+    is(r.body.status === 'review' && DB.orders[0].payment_status !== 'paid', 'nor is the right number in the wrong currency');
     FLW.verify['other'] = { id: 777, tx_ref: 'VB-OTHER-0000000000', status: 'successful', amount: 5000, currency: 'ZMW' };
     r = await get(status, { tx_ref: txRef, transaction_id: '777' });
-    is(r.body.status === 'pending', 'nor somebody else\'s payment, however large');
+    is(r.body.status === 'review' && DB.orders[0].payment_status !== 'paid', 'nor somebody else\'s payment, however large');
     r = await get(status, { tx_ref: 'anything' });
     is(r.code === 400, 'a made-up reference is refused');
 

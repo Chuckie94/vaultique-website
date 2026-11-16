@@ -4,6 +4,10 @@
 //       Where has this payment got to? Asked by the page the customer
 //       comes back to. It never takes the browser's word: settle() asks
 //       Flutterwave. Answers with the order reference and amount only.
+//       BUILD 77: it asks Flutterwave about one payment at most once every
+//       five seconds (settle's pause; the page asks more often than that),
+//       and it can answer "review": a payment came in that does not match
+//       the order, and the shop has been told.
 //
 //   GET ?check=1
 //       Is online payment set up? For the admin's status line. Answers
@@ -78,7 +82,7 @@ exports.handler = async function (event) {
   const txRef = String(q.tx_ref || '').slice(0, 80);
   if (!/^VB-[A-Z0-9]{5}-[a-f0-9]{10}$/.test(txRef)) return P.json(400, { error: 'That payment reference could not be read.' });
   try {
-    const r = await P.settle(txRef, q.transaction_id);
+    const r = await P.settle(txRef, q.transaction_id, { pause: true });
     if (r.status === 'unknown') return P.json(404, { status: 'unknown' });
     if (r.status === 'paid' && r.fresh && r.pay && r.pay.order_id) {
       const s = await P.shopSettings();
