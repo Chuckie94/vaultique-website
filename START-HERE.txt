@@ -1,7 +1,49 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 77
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 78
 ====================================================
-The whole site, cumulative (includes everything in builds 75 and 76).
+The whole site, cumulative (includes everything in builds 75, 76 and 77).
 Upload this and you are up to date.
+
+NEW IN 78 — AN ORDER'S PROGRESS, FROM THE TILL TO THE CUSTOMER
+(goes with the platform's build 509)
+ONE SQL FILE IN THIS WEBSITE'S SUPABASE. Nothing on the platform's.
+
+  * Once the platform's till has rung an order up, one whose goods are
+    still to go says Preparing, not Completed. One the customer took at
+    the counter says Completed, as before.
+  * The customer sees where the order is, step by step, on their account
+    page: Paid, Preparing, On its way (or Ready for collection), Delivered
+    (or Collected), with the shop's note and the dates.
+  * While it is on its way, the customer has two buttons: Confirm
+    delivery, and Ask for more time (3 more days, up to 2 times, as the
+    platform's Settings say). Otherwise it is marked delivered by itself
+    after the days run out, with a reminder 2 days before. Collection
+    orders are never marked collected by themselves.
+  * A private link to the order, in the customer's email, works without
+    signing in: the same steps and the same two buttons.
+  * Emails, each once: on its way, the reminder, delivered, refunded.
+  * Admin > Orders says where each order rung up at the shop is.
+  * Every SQL file is now hidden from visitors.
+  * The admin's sign-in check asks the database's own administrator rule
+    before it ever says no, and names the login it refused.
+
+  THE STEPS
+
+  1. THIS WEBSITE'S SUPABASE (not the platform's), after
+     supabase-pos-orders.sql: SQL Editor > New query > paste
+     supabase-order-progress.sql > Run. The SQL is also in the chat.
+     Its last result is one row: progress_columns OK, doors OK,
+     customer_buttons OK, guard OK, and administrators. FIND YOUR OWN
+     LOGIN IN administrators (its email shortened). If it is not there,
+     the admin will not open for it: run the SQL from 16 November
+     ("signing in to the admin with your own login again") first.
+     Run in the wrong Supabase, it stops at once and creates nothing.
+     Safe to run again.
+  2. UPLOAD this website (78).
+  3. Then the platform's build 509, as its notes say.
+
+  Until step 1 is done, 78 works as 77 did: no steps, no buttons, and
+  the 15-minute check does nothing.
+
 
 NEW IN 77 — ONLINE PAYMENT MADE SAFER (after the payment audit)
 ONE SQL FILE IN THIS WEBSITE'S SUPABASE. Nothing on the platform.

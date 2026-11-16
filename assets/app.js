@@ -2286,6 +2286,88 @@
     ask();
   }
 
+  /* ---- an order behind its private link -------------------------------
+     BUILD 78 · The customer's email about an order on its way carries a
+     link to that order alone: vaultiqueboutique.com/order/VB-XXXXX?t=...
+     It shows where the order is, with Confirm delivery and Ask for more time,
+     for a customer who ordered without an account as much as one with.
+     The link's own long random key is the whole permission: the database
+     (order_progress_link) answers only for that order, and with nothing a
+     stranger could use: the first name, the pieces, the receipt number and
+     the progress; never the phone, address or email. */
+  function showOrderLink(ref) {
+    var q = {};
+    try { new URLSearchParams(location.search).forEach(function (v, k) { q[k] = v; }); } catch (e) {}
+    var modal = $('#orderModal'), body = $('#orderBody');
+    if (!modal || !body) return;
+    var PG = window.VBP_PROGRESS;
+    body.innerHTML =
+      '<button class="qv-close" id="odClose" aria-label="Close">&times;</button>' +
+      '<div class="c">Your order</div>' +
+      '<h3 class="serif" id="olHead"></h3>' +
+      '<p class="od-lead" id="olLead">One moment…</p>' +
+      '<div id="olBody"></div>';
+    $('#olHead').textContent = ref;
+    function shut() {
+      closeOrderForm();
+      try { history.replaceState({}, '', pathFor('')); } catch (e) {}
+    }
+    $('#odClose').addEventListener('click', shut);
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+
+    function ask(action) {
+      if (!WEB || !q.t) return Promise.resolve({ ok: false, why: 'not_found' });
+      return fetch(WEB.SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/rpc/order_progress_link', {
+        method: 'POST',
+        headers: { apikey: WEB.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + WEB.SUPABASE_ANON_KEY,
+                   'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_ref: ref, p_token: q.t, p_action: action || null })
+      }).then(function (r) {
+        if (r.status === 404) return { ok: false, why: 'not_set_up' };
+        return r.json().then(function (j) { return j && typeof j === 'object' ? j : { ok: false, why: 'offline' }; });
+      }).catch(function () { return { ok: false, why: 'offline' }; });
+    }
+    function draw(r, said) {
+      var lead = $('#olLead'), host = $('#olBody');
+      if (!lead || !host) return;
+      host.innerHTML = '';
+      if (!r || !r.order || !r.progress) {
+        lead.className = 'od-lead err';
+        lead.textContent = r && r.why === 'offline'
+          ? 'Your order could not be reached just now. Check the internet and open the link again.'
+          : 'This link does not open an order. It may be mistyped, or from an older email. ' +
+            'If you have an account, your orders are on your account page.';
+        return;
+      }
+      var o = r.order;
+      lead.className = 'od-lead';
+      lead.textContent = 'Hello ' + (o.firstName || 'there') + '. Here is where your order is.';
+      (o.items || []).forEach(function (it) {
+        var line = document.createElement('div');
+        line.className = 'ac-item';
+        line.textContent = (it.qty > 1 ? it.qty + ' × ' : '') + (it.name || '');
+        host.appendChild(line);
+      });
+      if (o.total != null) {
+        var tot = document.createElement('div');
+        tot.className = 'ac-total';
+        tot.textContent = 'Total ' + formatPrice(o.total) + (o.receiptNo ? ' · Receipt ' + o.receiptNo : '');
+        host.appendChild(tot);
+      }
+      if (PG) {
+        PG.draw(host, r.progress, {
+          money: formatPrice,
+          message: said || '',
+          onConfirm: function () { return ask('confirm'); },
+          onExtend: function () { return ask('extend'); },
+          after: function (answer, words) { draw(answer, words); }
+        });
+      }
+    }
+    ask(null).then(function (r) { draw(r, ''); });
+  }
+
   /* Every buy button comes through here. With nothing to ask for, it is
      the straight-to-WhatsApp link the shop has always had. */
   function startOrder(e, p) {
@@ -4811,6 +4893,10 @@
     if (polm) { renderPolicies(polm[1] ? decodeURIComponent(polm[1]) : null); showView('policies'); window.scrollTo(0, 0); return; }
 
     if (h === 'payment-return') { showView('home'); showPaymentReturn(); return; }
+
+    /* BUILD 78 · an order behind its private link. */
+    var olm = h.match(/^order\/(VB-[0-9A-Za-z]{3,10})$/i);
+    if (olm) { showView('home'); showOrderLink(olm[1].toUpperCase()); return; }
 
     if (h === 'account') {
       /* Asking for the account page on a shop that has none is not an

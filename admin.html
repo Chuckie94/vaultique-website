@@ -130,6 +130,9 @@
         <select id="ordFilter" style="min-width:150px">
           <option value="pending">Pending</option>
           <option value="confirmed">Confirmed</option>
+          <option value="ready">Ready for collection</option>
+          <option value="dispatched">On its way</option>
+          <option value="delivered">Delivered</option>
           <option value="completed">Completed</option>
           <option value="cancelled">Cancelled</option>
           <option value="">All</option>
@@ -388,7 +391,12 @@
   function adminVerdict() {
     return Promise.resolve(sb.from('admins').select('id').limit(1))
       .then(function (r) {
-        if (r && !r.error && r.data) return r.data.length ? 'yes' : 'no';
+        /* BUILD 78 · A row is an answer; no row, on its own, is not. A shop
+           whose admins table has no read rule hands every administrator an
+           empty list, and build 77 shut a shop's own owner out over exactly
+           that. So an empty list is taken to is_admin(), the test every
+           other rule in the database asks, and only its no is a no. */
+        if (r && !r.error && r.data && r.data.length) return 'yes';
         return viaFunction();
       }, viaFunction);
   }
@@ -430,9 +438,16 @@
           'Check your connection and try again.');
       return Promise.resolve();
     }
-    return Promise.resolve(sb.auth.signOut()).catch(function () {}).then(function () {
-      say('This account is not an administrator. A customer account signs in ' +
-          'on the shop itself, not here.');
+    /* BUILD 78 · which login, by name: "not an administrator" alone left an
+       owner signed in with the wrong one guessing at passwords. */
+    return Promise.resolve(sb.auth.getSession()).catch(function () { return null; }).then(function (res) {
+      var who = (res && res.data && res.data.session && res.data.session.user &&
+                 res.data.session.user.email) || '';
+      return Promise.resolve(sb.auth.signOut()).catch(function () {}).then(function () {
+        say((who ? 'The login ' + who + ' is' : 'This login is') +
+            ' not on this shop\'s list of administrators, so the admin stays closed to it. ' +
+            'A customer account signs in on the shop itself, not here.');
+      });
     });
   }
 
@@ -1867,6 +1882,40 @@
     d.appendChild(box);
   }
 
+  /* BUILD 78 · where an order rung up at the shop is now, in a sentence
+     (supabase-order-progress.sql; the platform moves it on). */
+  function shortAt(iso) {
+    var t = new Date(iso);
+    if (isNaN(t.getTime())) return '';
+    return shortDate(iso) + ' ' + ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2);
+  }
+  function progressSays(o) {
+    var collect = o.fulfilment === 'collection';
+    if (o.status === 'delivered' && o.delivered_at) {
+      var by = { customer: 'confirmed by the customer', shop: 'marked by the shop',
+                 auto: 'marked automatically, the days having run out' }[o.delivered_by] || '';
+      return (collect ? 'Collected' : 'Delivered') + ' on ' + shortAt(o.delivered_at) + (by ? ', ' + by : '');
+    }
+    if (o.status === 'dispatched' && o.dispatched_at) {
+      return 'On its way since ' + shortAt(o.dispatched_at) + (o.ship_note ? ' (' + o.ship_note + ')' : '') +
+        (o.auto_deliver_at ? ' \u00b7 marked delivered automatically on ' + shortAt(o.auto_deliver_at) +
+                             ' unless the customer confirms first' : '') +
+        (Number(o.extend_used) ? ' \u00b7 more time asked ' + o.extend_used + ' of ' +
+                                 (o.extend_max == null ? 2 : o.extend_max) : '');
+    }
+    if (o.status === 'ready' && o.ready_at) {
+      return 'Ready for collection since ' + shortAt(o.ready_at) + (o.ship_note ? ' (' + o.ship_note + ')' : '');
+    }
+    if (o.pos_sale_id && o.status === 'confirmed') return 'Preparing: rung up at the shop, the goods still to go';
+    return '';
+  }
+  function refundSays(o) {
+    if (!o.refund_state) return '';
+    return (o.refund_state === 'part' ? 'Part refunded ' : 'Refunded ') + fmtMoney(o.refund_amount) +
+      (o.refund_at ? ' on ' + shortAt(o.refund_at) : '') + (o.refund_ref ? ' \u00b7 ' + o.refund_ref : '') +
+      (o.refund_note ? ' \u00b7 ' + o.refund_note : '');
+  }
+
   /* BUILD 76 · what the till has done with an order, in a sentence. */
   function tillSays(o) {
     function at(iso) {
@@ -1916,6 +1965,14 @@
       till.textContent = tillLine;
       d.appendChild(till);
     }
+    [['progress-line', progressSays(o)], ['refund-line', refundSays(o)]].forEach(function (pair) {
+      if (!pair[1]) return;
+      var line = document.createElement('div');
+      line.className = 'hint ' + pair[0];
+      line.style.marginTop = '4px';
+      line.textContent = pair[1];
+      d.appendChild(line);
+    });
 
     /* An order paid online: how the total breaks down. */
     if (o.payment_method === 'online' && (Number(o.delivery_fee) || Number(o.tax_total))) {

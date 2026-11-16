@@ -58,6 +58,14 @@
 [functions."pay-reconcile"]
   schedule = "*/15 * * * *"
 
+# BUILD 78 · An order's progress (netlify/functions/order-progress.js). Once
+# the platform sends an order on its way: the customer's emails (on its way,
+# the reminder, delivered, refunded), and marking delivered each order whose
+# day has passed. About 2,900 invocations a month. Before
+# supabase-order-progress.sql has been run it reads once and stops.
+[functions."order-progress"]
+  schedule = "*/15 * * * *"
+
 # Pretty path so the storefront calls /api/products
 [[redirects]]
   from = "/api/products"
@@ -310,6 +318,45 @@
   to = "/index.html"
   status = 404
   force = true
+
+# BUILD 78 · The five that were still answering to anyone who asked, and the
+# new one. Every SQL file in the folder is now kept from visitors.
+[[redirects]]
+  from = "/supabase-browsing-towns.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-cart-pieces.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-new-arrivals.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-signup.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-sold-out.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/supabase-order-progress.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
 
 # The checks that prove the product feed and the live update work. They
 # ship with the folder so they can be re-run against any future change,

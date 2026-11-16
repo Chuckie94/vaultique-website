@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.47.0',
-  build: 77,
-  builtAt: '2026-11-15T20:42:29Z',
-  notes: 'Online payment made safer, after the payment audit: the 15-minute check-up also catches a payment that succeeds after a failed try; only the exact amount counts as paid, anything else needs attention (never paid, never cancelled, one email to the shop, shown in Orders); the status page asks Flutterwave about one payment at most every 5 seconds; every payment keeps a history nobody can change (Orders, Payment history); the page after paying no longer says nothing was taken unless Flutterwave says so, and checks for two minutes; a piece paid for online is held, so a second customer cannot pay for it. SQL: supabase-payment-history.sql, once, in this website Supabase.'
+  version: '1.48.0',
+  build: 78,
+  builtAt: '2026-11-16T15:34:05Z',
+  notes: 'An order\'s progress, from the till to the customer: once the platform rings an order up, one still to go says Preparing (taken at the counter, Completed); then On its way (with the shop\'s note) or Ready for collection, then Delivered or Collected. The customer sees each step on their account page or behind a private link in their email, with Confirm delivery and Ask for more time; an order on its way is marked delivered after the shop\'s days, with a reminder before (collection orders never by themselves); refunds shown. Emails: on its way, the reminder, delivered, refunded. Orders shows where each order is. Every SQL file hidden from visitors. The admin sign-in check asks the database\'s own administrator rule before saying no, and names the login. SQL: supabase-order-progress.sql, once, in this website Supabase.'
 };

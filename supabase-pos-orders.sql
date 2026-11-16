@@ -24,7 +24,9 @@
 --                           step of the delivery, not a sale, so a
 --                           delivered order can still be rung up.
 --   vbp_pos_order_release   the till stopped without ringing it up
---   vbp_pos_order_complete  the sale is done: the order says Completed,
+--   vbp_pos_order_complete  the sale is done: the order says Completed (or,
+--                           build 78, Preparing when its goods are still to
+--                           be sent or collected),
 --                           with the receipt the customer can download
 --
 -- WHO MAY ASK
@@ -598,7 +600,12 @@ $rc$;
 
 
 -- 13) THE SALE IS DONE ------------------------------------------------------------
--- p_sale: { saleId, receiptNo, invoiceNo, pointsUsed, receipt: {...} }.
+-- p_sale: { saleId, receiptNo, invoiceNo, pointsUsed, handedOver, receipt: {...} }.
+-- BUILD 78 · handedOver: true, the customer took the goods at the counter,
+-- and the order says Completed; false, the goods are still to be sent or
+-- collected, and the order says Preparing (status 'confirmed') and carries on
+-- through supabase-order-progress.sql; not said at all (a platform from
+-- before build 509), Completed, exactly as in build 76.
 -- Done once. The same sale sent again (an answer that went missing on the
 -- way back) is "done" again and changes nothing. A different sale for an
 -- order already rung up is refused and named, so the platform can show the
@@ -617,6 +624,7 @@ declare
   v_inv     text;
   v_pts     numeric := 0;
   v_receipt jsonb;
+  v_status  text;
   o         public.orders;
   d         text := 'vbp_pos_order_complete';
 begin
@@ -656,8 +664,11 @@ begin
                               'receiptNo', o.pos_receipt_no, 'saleId', o.pos_sale_id);
   end if;
 
+  v_status := case when jsonb_typeof(p_sale -> 'handedOver') = 'boolean'
+                        and not (p_sale ->> 'handedOver')::boolean
+                   then 'confirmed' else 'completed' end;
   update public.orders
-     set status = 'completed', updated_at = now(),
+     set status = v_status, updated_at = now(),
          pos_sale_id = v_sale, pos_receipt_no = v_rcpt, pos_invoice_no = v_inv,
          pos_receipt = v_receipt, pos_completed_at = now(),
          pos_claim_id = null, pos_claimed_by = null, pos_claimed_at = null

@@ -1093,6 +1093,26 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .ac-status.is-dispatched{background:var(--accent);color:var(--accent-on)}
 .ac-status.is-delivered{background:rgba(var(--ok-rgb),.16);color:#1f7a48}
 .ac-status.is-cancelled{background:rgba(0,0,0,.07);color:var(--muted);text-decoration:line-through}
+/* BUILD 78 · an order's progress (assets/progress.js): the account page and
+   the private link draw the same steps. */
+.ac-status.is-preparing{background:var(--accent);color:var(--accent-on)}
+.pg{margin:12px 0 4px}
+.pg-steps{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.pg-step{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;color:var(--muted);line-height:1.5}
+.pg-dot{flex:0 0 12px;width:12px;height:12px;border-radius:50%;border:2px solid var(--line);margin-top:4px;background:var(--ivory)}
+.pg-step.done{color:var(--ink)}
+.pg-step.done .pg-dot{border-color:#1f9d57;background:#1f9d57}
+.pg-step.now .pg-dot{box-shadow:0 0 0 3px rgba(31,157,87,.18)}
+.pg-step b{font-weight:600;color:inherit}
+.pg-txt{min-width:0;overflow-wrap:anywhere}
+.pg-at,.pg-by{color:var(--muted);font-size:12.5px}
+.pg-note{font-size:13px;color:var(--ink);margin-top:2px}
+.pg-auto,.pg-more,.pg-refund{font-size:13px;color:var(--muted);line-height:1.6;margin-top:10px}
+.pg-refund{color:var(--ink)}
+.pg-acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.pg-acts .btn{min-height:40px}
+.pg-msg{font-size:13px;margin-top:8px;min-height:1em}
+.pg-msg.ok{color:#1f9d57}.pg-msg.err{color:#c0392b}.pg-msg.busy{color:var(--muted)}
 .ac-item{font-size:13.5px;color:var(--ink);margin-top:5px}
 .ac-total{font-family:var(--font-head);font-size:17px;color:var(--navy);margin-top:8px}
 .ac-danger{border-color:#c0392b;color:#c0392b}

@@ -531,6 +531,12 @@
      until it has been run they are not there, and asking for them would
      lose the whole list, so the list is asked for again without them. */
   var RECEIPT_COLS = ', pos_receipt_no, pos_receipt, pos_completed_at';
+  /* BUILD 78 · where the order is once the till has rung it up
+     (supabase-order-progress.sql). Asked for the same way: until that file
+     has been run they are not there, and the list is asked for without them,
+     so nothing is lost and no button shows. */
+  var PROGRESS_COLS = ', pos_sale_id, ship_note, dispatched_at, ready_at, delivered_at, delivered_by, auto_deliver_at, ' +
+    'extend_days, extend_max, extend_used, remind_days, refund_state, refund_amount, refund_ref, refund_note, refund_at, paid_at';
 
   function myOrders() {
     if (!sb || !signedIn() || !historyOn()) return Promise.resolve([]);
@@ -555,11 +561,29 @@
     function plain() {
       return ask(ORDER_COLS).then(function (r) { return (r && r.data) || []; }, function () { return []; });
     }
-    return ask(ORDER_COLS + RECEIPT_COLS).then(function (r) {
+    function receipts() {
+      return ask(ORDER_COLS + RECEIPT_COLS).then(function (r) {
+        if (r && !r.error) return r.data || [];
+        return plain();
+      }, plain);
+    }
+    return ask(ORDER_COLS + RECEIPT_COLS + PROGRESS_COLS).then(function (r) {
       if (r && !r.error) return r.data || [];
-      return plain();
-    }, plain);
+      return receipts();
+    }, receipts);
   }
+
+  /* BUILD 78 · the customer's two buttons, on their own order. The answer is
+     the database's; a request that never got there says so. */
+  function deliveryStep(fn, id) {
+    if (!sb || !signedIn()) return Promise.resolve({ ok: false, why: 'signin' });
+    return Promise.resolve(sb.rpc(fn, { p_id: id })).then(function (r) {
+      if (r && !r.error && r.data && typeof r.data === 'object') return r.data;
+      return { ok: false, why: 'offline' };
+    }, function () { return { ok: false, why: 'offline' }; });
+  }
+  function confirmDelivery(id) { return deliveryStep('order_confirm_delivery', id); }
+  function askMoreTime(id) { return deliveryStep('order_extend_delivery', id); }
 
   /* ---- the receipt, as a PDF ------------------------------------------
      BUILD 76 · The owner: "If the customer has an account, a receipt can
@@ -1219,6 +1243,8 @@
       'An order here is what you asked for on WhatsApp. We confirm each one with you, ' +
       'so the status follows the conversation rather than replacing it.'));
 
+    var PG = window.VBP_PROGRESS || null;
+    function fill(said) {
     myOrders().then(function (rows) {
       list.innerHTML = '';
       if (!rows.length) {
@@ -1227,10 +1253,15 @@
       }
       rows.forEach(function (o) {
         var row = el('div', 'ac-order');
+        row.setAttribute('data-ref', o.ref || '');
         var top = el('div', 'ac-order-top');
         top.appendChild(el('span', 'ac-ref', o.ref || ''));
-        var st = el('span', 'ac-status is-' + (o.status || 'pending'));
-        st.textContent = (o.status || 'pending').charAt(0).toUpperCase() + (o.status || 'pending').slice(1);
+        /* BUILD 78 · rung up at the shop: where it is now, in the words the
+           progress below uses. Any other order keeps the words it had. */
+        var pg = PG && ('dispatched_at' in o) ? PG.fromRow(o) : null;
+        var st = el('span', 'ac-status ' + (pg ? PG.badgeClass(pg) : 'is-' + (o.status || 'pending')));
+        st.textContent = pg ? PG.headline(pg)
+          : (o.status || 'pending').charAt(0).toUpperCase() + (o.status || 'pending').slice(1);
         top.appendChild(st);
         row.appendChild(top);
 
@@ -1238,6 +1269,16 @@
         when.textContent = (renderHooks.date ? renderHooks.date(o.created_at) : '') +
           (o.fulfilment === 'collection' ? ' · for collection' : ' · for delivery');
         row.appendChild(when);
+
+        if (pg && pg.rungUp && o.status !== 'completed' && o.status !== 'cancelled') {
+          PG.draw(row, pg, {
+            money: renderHooks.money,
+            message: said && said.ref === o.ref ? said.words : '',
+            onConfirm: function () { return confirmDelivery(o.id); },
+            onExtend: function () { return askMoreTime(o.id); },
+            after: function (r, words) { fill({ ref: o.ref, words: words }); }
+          });
+        }
 
         (o.order_items || []).forEach(function (it) {
           var line = el('div', 'ac-item');
@@ -1250,10 +1291,12 @@
         if (o.total != null && renderHooks.money) {
           row.appendChild(el('div', 'ac-total', 'Total ' + renderHooks.money(o.total)));
         }
-        /* BUILD 76 · rung up at the shop: the receipt, to keep. */
+        /* BUILD 76 · rung up at the shop: the receipt, to keep. BUILD 78 ·
+           "Completed at the shop" only when it was: goods still to go are not. */
         if (o.pos_receipt_no || o.pos_receipt) {
           row.appendChild(el('div', 'ac-quiet ac-receipt-no',
-            'Completed at the shop' + (o.pos_receipt_no ? ' · Receipt ' + o.pos_receipt_no : '')));
+            (o.status === 'completed' ? 'Completed at the shop' : 'Rung up at the shop') +
+            (o.pos_receipt_no ? ' · Receipt ' + o.pos_receipt_no : '')));
           if (o.pos_receipt) {
             var dl = el('button', 'btn btn-outline btn-sm ac-receipt', 'Download receipt');
             dl.type = 'button';
@@ -1264,6 +1307,8 @@
         list.appendChild(row);
       });
     });
+    }
+    fill(null);
     return c;
   }
 
@@ -1310,6 +1355,8 @@
     canRegister: canRegister,
     guestsMayBuy: guestsMayBuy,
     signedIn: signedIn,
+    confirmDelivery: confirmDelivery,
+    askMoreTime: askMoreTime,
     mayCheckout: mayCheckout,
     whyNotCheckout: whyNotCheckout,
     passwordProblem: passwordProblem,
