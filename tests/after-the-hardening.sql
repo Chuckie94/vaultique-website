@@ -79,8 +79,8 @@ select achk(not has_table_privilege('anon', 'public.pos_door_key', 'select')
             and not has_table_privilege('authenticated', 'public.pos_door_key', 'select')
             and not has_table_privilege('service_role', 'public.pos_door_key', 'select'),
   'the door''s key: nobody can read even its fingerprint');
-select achk(exists (select 1 from public.schema_migrations where version = '081-hardening'),
-  'the record: this build''s hardening (081-hardening) is written down');
+select achk(exists (select 1 from public.schema_migrations where version = '083-hardening'),
+  'the record: this build''s hardening (083-hardening) is written down');
 
 -- ================================================ 2. the till's door
 select achk(count(*) = 9, 'the door: open to the platform''s public key (' || count(*) || ' of 9 doors)')
@@ -255,6 +255,108 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000000f6', 'aal2');
 select achk((select count(*) from public.refunds where order_ref = 'VB-AH811') = 1
             and (select count(*) from public.payment_events where what = 'refund' and tx_ref = 'VB-AH811-0a1b2c3d4e') = 3,
   'online refunds: the same Administrator after the code reads them, and each step is in the payment history');
+
+-- ================================================ build 83: a customer told the shop has replied
+-- supabase-chat-reply-push.sql. A recorder in place of pg_net, so what the
+-- database would post can be read back.
+reset role;
+create schema if not exists net;
+create table if not exists net.posted83 (url text, body jsonb);
+create or replace function net.http_post(url text, body jsonb, headers jsonb, timeout_milliseconds int)
+returns bigint language sql as $p$ insert into net.posted83 (url, body) values (url, body); select 1::bigint $p$;
+insert into public.site_settings_private (key, data)
+values ('chat_push', '{"siteUrl":"https://shop.test","secret":"s83","vapidPublic":"BPub83-0123456789abcdef0123456789abcdef"}')
+on conflict (key) do update
+  set data = public.site_settings_private.data
+             || '{"siteUrl":"https://shop.test","secret":"s83","vapidPublic":"BPub83-0123456789abcdef0123456789abcdef"}'::jsonb;
+insert into public.chat_conversations (id, token, name, status)
+values ('cccccccc-8383-0000-0000-000000000001', 'tok83-a-0123456789abcdef', 'Reply Test', 'open'),
+       ('cccccccc-8383-0000-0000-000000000002', 'tok83-b-0123456789abcdef', 'No Notify', 'open')
+on conflict (id) do nothing;
+
+select achk((select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public'
+                and p.proname in ('chat_reply_push_key', 'chat_reply_push_save', 'chat_reply_push_has', 'chat_reply_push_drop')
+                and has_function_privilege('anon', p.oid, 'execute')) = 4,
+  'reply notifications: the chat window''s four doors are still open after the hardening ran again');
+select achk(not has_function_privilege('anon', 'public.chat_nudge_reply()', 'execute'),
+  'reply notifications: the nudge cannot be called from outside the database');
+
+set role anon;
+select pg_temp.as_anon();
+select achk(public.chat_reply_push_key() = 'BPub83-0123456789abcdef0123456789abcdef',
+  'reply notifications: a visitor''s chat window can read the public notification key');
+select achk(public.chat_reply_push_save('tok83-a-0123456789abcdef', 'https://push.example/abc', 'p256dh-0123456789', 'auth-0123') = true,
+  'reply notifications: with its own conversation''s token, a browser goes on the list');
+select achk(public.chat_reply_push_save('tok83-wrong-0123456789', 'https://push.example/zzz', 'p256dh-0123456789', 'auth-0123') = false
+            and public.chat_reply_push_save('tok83-a-0123456789abcdef', 'http://push.example/plain', 'p256dh-0123456789', 'auth-0123') = false,
+  'reply notifications: a wrong token, or an address that is not https, puts nothing on the list');
+select achk(public.chat_reply_push_has('tok83-a-0123456789abcdef', 'https://push.example/abc')
+            and not public.chat_reply_push_has('tok83-b-0123456789abcdef', 'https://push.example/abc'),
+  'reply notifications: a browser can ask whether it is on the list, for its own conversation only');
+select achk(pg_temp.err('select count(*) from public.chat_reply_push') like '%permission denied%',
+  'reply notifications: the list itself cannot be read by a visitor');
+
+-- The owner replies, as the admin does (only somebody in the shop speaks as the shop).
+reset role;
+delete from net.posted83;
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a1', 'aal2');
+insert into public.chat_messages (conversation_id, sender, body)
+values ('cccccccc-8383-0000-0000-000000000001', 'shop', 'Yes, we have it in a 38.');
+reset role;
+select achk((select count(*) from net.posted83 where body->>'kind' = 'reply'
+              and body->>'conversation' = 'cccccccc-8383-0000-0000-000000000001'
+              and url = 'https://shop.test/.netlify/functions/chat-push') = 1,
+  'reply notifications: a reply from the shop tells the notification function, for that conversation');
+delete from net.posted83;
+insert into public.chat_messages (conversation_id, sender, body)
+values ('cccccccc-8383-0000-0000-000000000001', 'customer', 'Thank you!');
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a1', 'aal2');
+insert into public.chat_messages (conversation_id, sender, body)
+values ('cccccccc-8383-0000-0000-000000000002', 'shop', 'Hello there');
+reset role;
+select achk((select count(*) from net.posted83 where body->>'kind' = 'reply') = 0,
+  'reply notifications: nothing for the customer''s own message, or for a conversation nobody asked about');
+
+set role anon;
+select pg_temp.as_anon();
+select public.chat_reply_push_drop('tok83-a-0123456789abcdef', 'https://push.example/abc');
+select achk(not public.chat_reply_push_has('tok83-a-0123456789abcdef', 'https://push.example/abc'),
+  'reply notifications: "Turn off" takes the browser off the list');
+
+-- When the chat ends there is nobody left to tell: its browsers go at once,
+-- whether the customer pressed End (chat_end) or the shop closed it.
+select public.chat_reply_push_save('tok83-a-0123456789abcdef', 'https://push.example/end1', 'p256dh-0123456789', 'auth-0123');
+select public.chat_reply_push_save('tok83-b-0123456789abcdef', 'https://push.example/end2', 'p256dh-0123456789', 'auth-0123');
+select public.chat_end('tok83-a-0123456789abcdef');
+reset role;
+select achk((select count(*) from public.chat_reply_push where conversation_id = 'cccccccc-8383-0000-0000-000000000001') = 0
+            and (select count(*) from public.chat_reply_push where conversation_id = 'cccccccc-8383-0000-0000-000000000002') = 1,
+  'reply notifications: the customer ending the chat takes its browsers off the list at once, and nobody else''s');
+update public.chat_conversations set status = 'closed' where id = 'cccccccc-8383-0000-0000-000000000002';
+select achk((select count(*) from public.chat_reply_push where conversation_id = 'cccccccc-8383-0000-0000-000000000002') = 0,
+  'reply notifications: and so does the shop closing it');
+select achk(not has_function_privilege('anon', 'public.chat_reply_push_forget()', 'execute'),
+  'reply notifications: what does that cannot be called from outside the database');
+
+-- And a browser asked more than a week ago goes whenever another is saved,
+-- so a conversation nobody ended does not keep its browsers for ever.
+update public.chat_conversations set status = 'open' where id = 'cccccccc-8383-0000-0000-000000000002';
+insert into public.chat_reply_push (conversation_id, endpoint, p256dh, auth, created_at)
+values ('cccccccc-8383-0000-0000-000000000002', 'https://push.example/old', 'p256dh-0123456789', 'auth-0123', now() - interval '8 days');
+set role anon;
+select pg_temp.as_anon();
+select public.chat_reply_push_save('tok83-b-0123456789abcdef', 'https://push.example/new', 'p256dh-0123456789', 'auth-0123');
+reset role;
+select achk(not exists (select 1 from public.chat_reply_push where endpoint = 'https://push.example/old')
+            and exists (select 1 from public.chat_reply_push where endpoint = 'https://push.example/new'),
+  'reply notifications: a browser asked more than a week ago is let go when another is saved');
+reset role;
+delete from public.chat_conversations where id = 'cccccccc-8383-0000-0000-000000000001';
+select achk((select count(*) from public.chat_reply_push where conversation_id = 'cccccccc-8383-0000-0000-000000000001') = 0,
+  'reply notifications: a deleted conversation leaves nothing on the list');
 
 reset role;
 select case when ok then '  ✓ ' else '  ✗ ' end || what from after_checks order by n;

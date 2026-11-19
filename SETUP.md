@@ -42,8 +42,18 @@ You will do five short steps. It takes about 10 minutes.
 > 31 supabase-order-progress.sql   an order's progress and the customer's buttons
 >  and one more (build 81):
 > 32 supabase-online-refund.sql    the platform's online refunds
+>  and one more (build 83):
+> 33 supabase-chat-reply-push.sql  telling a customer you have replied
 >                                  then supabase-hardening.sql once more
 > ```
+>
+> **Build 83, on a shop already running:** upload, then run
+> `supabase-chat-reply-push.sql` once. The hardening is not run again for it:
+> the file opens its own four doors to the chat window. Whenever the hardening
+> is run from now on, this build's copy (or a later one) keeps them open, and
+> its report has a Chat notifications line, *Telling a customer you have
+> replied*, which should say OK. The file is optional: without it the chat
+> window simply never offers the notification.
 >
 > **Build 81, on a shop already running:** upload, then run
 > `supabase-online-refund.sql` once. The hardening is not run again for it:
@@ -387,6 +397,44 @@ Settings) and with the admin behind other windows, with a note in the corner and
 the way to the chat. **Settings > Live Chat** still decides whether there is a
 sound and how loud. A browser only plays a sound after the admin has been
 clicked in once.
+
+### Telling a customer you have replied (build 83)
+
+The same kind of notification, the other way: a customer who has written in
+the chat can be told when you answer, with the website closed and the phone in
+a pocket. Run **supabase-chat-reply-push.sql** once (the hardening is not run
+again for it; when it is, use build 83's copy or later). It stands on
+the shop's own phone notifications above: until the owner has opened Live
+Chats and somebody has pressed *Notify me here*, the database does not know
+the website's address or keys, and customers are not offered it at all.
+
+**What the customer sees.** After their first message the chat asks *Get a
+notification when we reply?* with **Notify me**; their browser then asks them
+to allow notifications. If they close the chat while still waiting for an
+answer and have not turned it on, it asks once more, beside the chat button.
+With the website still open they also see *We have replied to your message*
+beside the chat button and the count in the tab's title.
+
+**What it says.** *We have replied to your message. Tap to read it.*, under the
+shop's name from Settings > General, and nothing of what was said: it shows on
+a locked screen. Tapping it opens the website with the chat open.
+
+**When.** Only for a reply within an hour of the customer's last message, as
+asked: by then they have moved on, and a notification much later is noise.
+**Settings > Live Chat > Telling a customer you have replied** changes the
+hours (0 means any time while the chat is open, up to three days after their
+last message, which is as long as their browser keeps the chat), or switches
+the offer off.
+
+**What is kept.** Only the address the customer's own browser gives for
+notifications, and its two keys, against that one conversation: no name,
+phone or email. Nobody can read it but the notification function. It is
+deleted the moment the chat ends (the customer presses End, or you close it),
+and one more than a week old is deleted whenever another is added.
+
+**On an iPhone** it works only from the Home Screen, as for the shop's own
+phones: Safari > Share > Add to Home Screen, then open the website from that
+icon. Android, and Chrome, Edge and Firefox on a computer, need nothing extra.
 
 ### A green dot while somebody is typing
 
@@ -1396,8 +1444,24 @@ with no price shown has no figure to place and goes last.
 
 ### Settings > Live Chat — the words in the window
 
-Every line a customer reads in the chat window comes from this page. Three of
+Every line a customer reads in the chat window comes from this page. Four of
 them are worth knowing about.
+
+#### The Enquire buttons' messages (build 83)
+
+Every Enquire button on the website opens the chat with a message already in
+the box, for the customer to send as it is or change first. **Enquire buttons:
+the message each one starts** has a box for each: Shopping made personal (the
+homepage band), Delivery, the end of the FAQ, the policies page, a sold-out
+piece and a piece whose price is on request. In the last two, `{product}`,
+`{sku}` and `{price}` are filled in with the piece. An empty box uses the words
+shown in it, the ones the button has always used. The Size, delivery & returns
+panels have their own, in each panel in **Settings > Customer Care**. With the
+live chat off, the same words start the WhatsApp message instead.
+
+Each button puts in its own words every time (build 82 kept the first button's
+words in the box after the chat was closed). Anything the customer has typed
+themselves is never replaced.
 
 #### The line under the title
 

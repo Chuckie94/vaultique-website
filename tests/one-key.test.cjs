@@ -34,7 +34,11 @@ const fresh = (name) => { delete require.cache[require.resolve(path.join(F, name
     const src = fs.readFileSync(path.join(F, f), 'utf8');
     if (/process\.env\.(SUPABASE_SERVICE_ROLE_KEY|WEB_SUPABASE_SERVICE_KEY|WEB_SUPABASE_URL|WEB_SUPABASE_ANON_KEY|SITE_SUPABASE_URL|SITE_SUPABASE_ANON_KEY)/.test(src)) strays.push(f);
   }
-  is(strays.length === 0, 'every function asks _seo-data.js', strays.join(', '));
+  // The files are named on the line itself as well as under it, so a run on
+  // GitHub says which: most likely an old file still in the repository's
+  // netlify/functions that is not part of this build (Netlify still runs it).
+  is(strays.length === 0, 'every function asks _seo-data.js' +
+     (strays.length ? ' -- these do not: netlify/functions/' + strays.join(', netlify/functions/') : ''), strays.join(', '));
 
   console.log('\nThe nightly clean-up, with only SUPABASE_SERVICE_ROLE_KEY set');
   let asked = null;

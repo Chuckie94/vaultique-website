@@ -67,7 +67,22 @@
     deskVolume: 4,
 
     rememberHours: 4,
-    canned: null
+    canned: null,
+
+    /* Build 83: the customer told that the shop has replied (assets/chat.js
+       and netlify/functions/chat-push.js read these). */
+    replyPush: true,
+    replyPushWithin: 1,
+
+    /* What each Enquire button on the website starts the chat with (and
+       the WhatsApp message, when the chat is off). Exactly the words in
+       assets/app.js, ENQ_DEFAULTS. */
+    enquireShop: 'I\'d like to shop with you.',
+    enquireDelivery: 'I have a question about delivery.',
+    enquireFaq: 'I have a question.',
+    enquirePolicies: 'I have a question about your policies.',
+    enquireSoldOut: 'I\'m interested in {product} (SKU: {sku}). Will it be available again?',
+    enquirePrice: 'Could you tell me the price of {product} (SKU: {sku})?'
   };
 
   /* The store hands these back for anything the shop has not saved, and
@@ -121,6 +136,33 @@
                 maxLength: 300, rows: 3, showIf: on('enabled') },
               { type: 'text', name: 'placeholder', label: 'The grey words in the message box',
                 maxLength: 60, showIf: on('enabled') }
+            ]
+          },
+          {
+            /* The owner: "Create a setting to edit the phrase for each one
+               of them." Build 82 had the words written into the site. */
+            title: 'Enquire buttons: the message each one starts',
+            note: 'Every Enquire button on the website opens the chat with a message already ' +
+                  'in the box, for the customer to send as it is or change first. These are ' +
+                  'those messages. When the live chat is off, the same words start the ' +
+                  'WhatsApp message instead. Each Size, delivery & returns panel has its own, ' +
+                  'written in the panel itself in Settings > Customer Care. Leave a box empty ' +
+                  'to use the words shown in it.',
+            fields: [
+              { type: 'text', name: 'enquireShop', label: 'Shopping made personal (the homepage band)',
+                maxLength: 200, placeholder: DEFAULTS.enquireShop },
+              { type: 'text', name: 'enquireDelivery', label: 'Delivery',
+                maxLength: 200, placeholder: DEFAULTS.enquireDelivery },
+              { type: 'text', name: 'enquireFaq', label: 'The end of the questions (FAQ)',
+                maxLength: 200, placeholder: DEFAULTS.enquireFaq },
+              { type: 'text', name: 'enquirePolicies', label: 'The policies page',
+                maxLength: 200, placeholder: DEFAULTS.enquirePolicies },
+              { type: 'text', name: 'enquireSoldOut', label: 'A sold-out piece',
+                maxLength: 200, placeholder: DEFAULTS.enquireSoldOut,
+                hint: '{product}, {sku} and {price} are filled in with the piece.' },
+              { type: 'text', name: 'enquirePrice', label: 'A piece whose price is on request',
+                maxLength: 200, placeholder: DEFAULTS.enquirePrice,
+                hint: '{product} and {sku} are filled in with the piece.' }
             ]
           },
           {
@@ -207,6 +249,27 @@
               { type: 'toggle', name: 'sendOrders', label: 'Send an order', showIf: on('enabled'),
                 hint: 'Where one of their orders has got to.' },
               { type: 'toggle', name: 'sendPhotos', label: 'Send a photo', showIf: on('enabled') }
+            ]
+          },
+          {
+            title: 'Telling a customer you have replied',
+            note: 'After their first message, the chat offers the customer a notification for ' +
+                  'when you reply, and offers it again if they close the chat while still waiting ' +
+                  'for an answer. With the website still open they also see a note by the chat ' +
+                  'button, and the count in the tab. The notification says only that you have ' +
+                  'replied, never what: it shows on a locked screen. It works in Chrome, Edge and ' +
+                  'Firefox, and on an iPhone once the website is added to the home screen. It needs ' +
+                  'supabase-chat-reply-push.sql (build 83), and your own phone notifications set up ' +
+                  'once in Live Chats.',
+            fields: [
+              { type: 'toggle', name: 'replyPush', label: 'Offer customers a notification when you reply',
+                showIf: on('enabled') },
+              { type: 'number', name: 'replyPushWithin',
+                label: 'Only for a reply within this many hours of their last message',
+                min: 0, max: 72, required: true, placeholder: '1', suffix: 'hours',
+                showIf: function (v) { return !!v.enabled && v.replyPush !== false; },
+                hint: 'One hour to begin with. 0 means any time while the chat is open, up to three ' +
+                      'days after their last message: by then their browser has let the chat go.' }
             ]
           },
           {

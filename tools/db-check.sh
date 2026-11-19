@@ -9,8 +9,9 @@
 #   2. the 28 supabase-*.sql files, in the order SETUP.md gives them
 #   3. supabase-hardening.sql, twice: it must be safe to run again
 #   4. build 80: the three files made after the hardening (the platform's
-#      till, the payment history, an order's progress), and build 81's
-#      online refunds, each twice, then supabase-hardening.sql once more:
+#      till, the payment history, an order's progress), build 81's
+#      online refunds and build 83's reply notifications
+#      (supabase-chat-reply-push.sql), each twice, then supabase-hardening.sql once more:
 #      they must sit beside it, and it must leave the till's door, an
 #      order's private link and the refund doors open
 #   5. every one of the 28 files again: each must now refuse, untouched
@@ -61,16 +62,24 @@ for n in 1 2; do
   out=$(run "$here/supabase-hardening.sql") || { echo "   FAILED on run $n"; echo "$out" | grep -E 'ERROR|LINE|CONTEXT' | head -4 | sed 's/^/           /'; fail=1; }
 done
 [ $fail -eq 0 ] && echo "   ran, and ran again"
+# Before supabase-chat-reply-push.sql (build 83) the report says so.
+echo "$out" | grep -q "Telling a customer you have replied.*NOT RUN YET (optional)" \
+  || { echo "   the report does not say the customer reply notification is not run yet"; fail=1; }
 
-echo "3. The files made after the hardening (builds 80 and 81), twice each, then the hardening once more"
-AFTER="supabase-pos-orders.sql supabase-payment-history.sql supabase-order-progress.sql supabase-online-refund.sql"
+echo "3. The files made after the hardening (builds 80, 81 and 83), twice each, then the hardening once more"
+AFTER="supabase-pos-orders.sql supabase-payment-history.sql supabase-order-progress.sql supabase-online-refund.sql
+supabase-chat-reply-push.sql"
 for f in $AFTER; do
   for n in 1 2; do
     out=$(run "$here/$f") || { echo "   FAILED  $f (run $n)"; echo "$out" | grep -E 'ERROR|LINE' | head -3 | sed 's/^/           /'; fail=1; }
   done
 done
 out=$(run "$here/supabase-hardening.sql") || { echo "   FAILED: the hardening after them"; echo "$out" | grep -E 'ERROR|LINE|CONTEXT' | head -4 | sed 's/^/           /'; fail=1; }
-[ $fail -eq 0 ] && echo "   all 4 ran, twice, and the hardening ran after them"
+[ $fail -eq 0 ] && echo "   all 5 ran, twice, and the hardening ran after them"
+# And after it, that the hardening kept its four doors open (build 83).
+echo "$out" | grep -q "Telling a customer you have replied.*OK · the chat window can offer it" \
+  && echo "   the report: telling a customer you have replied, OK · the chat window can offer it" \
+  || { echo "   the report does not say the customer reply notification is OK"; echo "$out" | grep "Telling a customer" | sed 's/^/           /'; fail=1; }
 
 echo "4. Each older file again: each must refuse"
 refused=0
@@ -89,7 +98,7 @@ summary=$(echo "$out" | grep -E 'checks passed|checks FAILED' | tail -1)
 echo "   ${summary:-no summary: the test file did not finish}"
 echo "$summary" | grep -q 'checks passed' || fail=1
 
-echo "6. tests/after-the-hardening.sql (builds 80 and 81: the platform's till, an order's progress, closing an account, online refunds)"
+echo "6. tests/after-the-hardening.sql (builds 80, 81 and 83: the platform's till, an order's progress, closing an account, online refunds, telling a customer the shop has replied)"
 out=$(as "psql -X -d $DB -f -" < "$here/tests/after-the-hardening.sql" 2>&1)
 echo "$out" | grep -E '✗|ERROR' | sed 's/^/   /'
 summary=$(echo "$out" | grep -E 'checks passed|checks FAILED' | tail -1)

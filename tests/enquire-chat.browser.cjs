@@ -11,6 +11,15 @@
    is not an enquiry: Buy on WhatsApp is unchanged. With the live chat
    switched off, Enquire still goes somewhere: WhatsApp, as before.
 
+   BUILD 83. "Why did you stamp everything ... with 'I have a question about
+   delivery'?" The first Enquire's words, left unsent when the chat was
+   closed, stayed in the box, and every other Enquire left them there: the
+   rule that protects what a customer typed could not tell it from its own
+   words. This file used to empty the box between buttons, which is how it
+   missed that; it now closes the chat the way a customer does, and leaves
+   the box alone. And each button's words are the shop's to write, in
+   Settings > Live Chat ("Enquire buttons").
+
    The real index.html, assets/app.js and assets/chat.js; the website's
    Supabase and the product feed are answered here.
    =========================================================================== */
@@ -107,7 +116,6 @@ const server = http.createServer(async (req, res) => {
   });
   async function shut(page) {
     await page.evaluate(() => {
-      const box = document.getElementById('chatInput'); if (box) box.value = '';
       const mini = document.getElementById('chatMin');
       if (mini) mini.click();
       else { const p = document.getElementById('chatPanel'); if (p) p.classList.remove('open'); }
@@ -219,6 +227,7 @@ const server = http.createServer(async (req, res) => {
     await press(page, '#wabanner .btn');
     c = await chat(page);
     is(c.open && c.text === 'Hello, about my order', 'Enquire opens the chat and leaves their words alone', J(c));
+    await page.fill('#chatInput', '');
     await shut(page);
 
     console.log('\nThe piece page and the policies page');
@@ -249,6 +258,56 @@ const server = http.createServer(async (req, res) => {
       return Array.from(document.querySelectorAll('.card')).filter(c => /Croc Clutch/.test(c.textContent))
         .map(c => c.querySelector('.wa-line .btn-wa').textContent.trim())[0]; });
     is(w[0] === 'Talk to a stylist' && asked2 === 'Ask the price', 'words the shop typed itself stay, and still open the chat', J({ w, asked2 }));
+    await ctx.close();
+
+    console.log('\nThe owner\'s steps: one Enquire, close the chat, another Enquire');
+    ({ ctx, page } = await open(true));
+    await press(page, '#deliveryFoot .btn');
+    const first = (await chat(page)).text;
+    await shut(page);
+    await press(page, '.care-wa');
+    const second = (await chat(page)).text;
+    await shut(page);
+    await press(page, '#wabanner .btn');
+    const third = (await chat(page)).text;
+    await shut(page);
+    is(first === 'I have a question about delivery.' && second && second !== first && third === 'I\'d like to shop with you.',
+       'each button puts its own words in the box, not the first one\'s again (build 82 did)', J([first, second, third]));
+    await ctx.close();
+
+    console.log('\nEach button\'s words are the shop\'s to write (Settings > Live Chat)');
+    ({ ctx, page } = await open(true, { chat: { enabled: true,
+      enquireShop: 'Hello! I saw your website and would like some help.',
+      enquireDelivery: 'Do you deliver to Kitwe?',
+      enquireFaq: 'My question is not on the list.',
+      enquirePolicies: 'About your returns policy:',
+      enquireSoldOut: 'Will {product} ({sku}) be back? I liked it at {price}.',
+      enquirePrice: 'What does {product} cost?' } }));
+    const said = {};
+    for (const [name, sel] of [['band', '#wabanner .btn'], ['delivery', '#deliveryFoot .btn'], ['faq', '#faqAsk .btn'],
+                               ['sold', '.card:has(.n:text-is("Leather Satchel")) .wa-line .btn-chat'],
+                               ['price', '.card:has(.n:text-is("Croc Clutch")) .wa-line .btn-chat']]) {
+      await press(page, sel); said[name] = (await chat(page)).text; await shut(page);
+    }
+    is(said.band === 'Hello! I saw your website and would like some help.' && said.delivery === 'Do you deliver to Kitwe?' &&
+       said.faq === 'My question is not on the list.',
+       'the band, delivery and the FAQ start with the words saved for each', J(said));
+    is(/^Will Leather Satchel \(BG-SATC\) be back\? I liked it at K/.test(said.sold) && said.price === 'What does Croc Clutch cost?',
+       'and a piece\'s, with its name, code and price filled in', J(said));
+    await page.goto(base + '/policies', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(600);
+    await press(page, '.pol-help .btn');
+    const pol = (await chat(page)).text;
+    is(pol === 'About your returns policy:', 'the policies page too', pol);
+    await ctx.close();
+
+    ({ ctx, page } = await open(false, { chat: { enabled: false, enquireDelivery: 'Do you deliver to Kitwe?' } }));
+    const pop = ctx.waitForEvent('page', { timeout: 5000 });
+    await page.locator('#deliveryFoot .btn').scrollIntoViewIfNeeded();
+    await page.locator('#deliveryFoot .btn').click();
+    const waPage = await pop.catch(() => null);
+    const waAddr = waPage ? decodeURIComponent(waPage.url()) : '';
+    is(/Do you deliver to Kitwe\?/.test(waAddr), 'with the live chat off, the same saved words start the WhatsApp message', waAddr);
     await ctx.close();
 
     console.log('\nThe live chat switched off: Enquire still goes somewhere');

@@ -1,9 +1,112 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 82
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 83
 ====================================================
-The whole site, cumulative: everything in build 81 (and so build 80,
-with the other website line's builds 74 to 78 carried onto it), and
-Enquire buttons that open the live chat. Upload this and you are up to
-date.
+The whole site, cumulative: everything in build 82 (and so 81 and 80,
+with the other website line's builds 74 to 78 carried onto it), each
+Enquire button's message yours to write, and a notification for a
+customer when the shop replies in the live chat. Upload this and you
+are up to date.
+
+NEW IN 83 — ENQUIRE MESSAGES, AND TELLING A CUSTOMER YOU HAVE REPLIED.
+  ONE SQL FILE: supabase-chat-reply-push.sql, new, run once. About ten
+  minutes. Do these in order. Each one says how you know it is done.
+
+  A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete.
+     Done when: Netlify > Deploys shows it as Published.
+
+  B. RUN supabase-chat-reply-push.sql in the WEBSITE's Supabase (not the
+     platform's): SQL Editor > New query > paste the whole file > Run.
+     The SQL is also in the chat. It changes no conversation, message
+     or setting, and is safe to run again.
+     Done when: its result line says OK under browsers_list, doors and
+     nudge, and "OK · notifications are set up" under
+     shop_notifications.
+     If shop_notifications says NOT YET: sign in to the admin as the
+     owner, open Live Chats and press "Notify me here" once (the button
+     that sends chat notifications to your own phone). That gives the
+     database the website's address and keys. Until it is done the chat
+     window does not offer customers the notification at all.
+     You do not need to run supabase-hardening.sql again: the file opens
+     its own four doors to the chat window, as build 81's did. If you
+     ever do run it, use this build's copy (or a later one): it keeps
+     them open, and its report has the line
+       Chat notifications | Telling a customer you have replied |
+       OK · the chat window can offer it
+
+  C. TRY IT, on your own phone. Open the website (not the admin), write
+     something in the live chat and press "Notify me" under it, then
+     Allow. From another phone or computer, reply in Live Chats. Within
+     a few seconds the phone shows "We have replied to your message.
+     Tap to read it." Tapping it opens the website with the chat open.
+     ON AN IPHONE the website has to be on the home screen first
+     (Safari > Share > Add to Home Screen) and opened from there: Apple
+     lets a website send notifications only that way. Android, and
+     Chrome, Edge or Firefox on a computer, need nothing extra.
+     Done when: the notification arrived.
+
+  D. WATCH THE CHECKS ON GITHUB (Actions > Tests).
+     Done when: the newest Tests run has a green tick.
+     If Node tests is still red with one-key.test.cjs, as it was for
+     build 82: open it. The red line now says which file it found
+     (build 82's log could not; see WHAT CHANGED). It is most likely an
+     old file in the repository's netlify/functions folder that is not
+     part of this build, which Netlify still runs. Send that line in the
+     chat before deleting anything.
+
+  WHAT CHANGED
+    * EACH ENQUIRE BUTTON STARTS ITS OWN MESSAGE AGAIN. In build 82, once
+      the chat had been opened from one Enquire button, closing it and
+      pressing another left the first button's words in the box: that
+      is the "I have a question about delivery" you saw on every one.
+      Now each button puts in its own words. Whatever the customer has
+      typed themselves is still never replaced.
+    * THE MESSAGES ARE YOURS TO WRITE: Settings > Live Chat > "Enquire
+      buttons: the message each one starts". One box each: Shopping
+      made personal (the homepage band), Delivery, the end of the
+      questions (FAQ), the policies page, a sold-out piece, and a piece
+      whose price is on request. In the two piece messages {product},
+      {sku} and {price} are filled in with the piece. Leave a box empty
+      for the words shown in it, which are the ones used until now. The
+      Size, delivery & returns panels keep their own, in each panel in
+      Settings > Customer Care. With the live chat off, the same words
+      start the WhatsApp message instead.
+    * A CUSTOMER CAN ASK TO BE TOLD WHEN YOU REPLY. After their first
+      message the chat asks "Get a notification when we reply?" with a
+      Notify me button; once on, it says so, with Turn off beside it.
+      If they close the chat while still waiting for your answer and
+      have not turned it on, it asks once more beside the chat button:
+      "We will reply here soon. Get a notification when we do?"
+    * WITHIN AN HOUR, AS ASKED. A reply sent within an hour of their
+      last message is announced; a later one is not. Change the hours
+      in Settings > Live Chat > "Telling a customer you have replied"
+      (0 means any time while the chat is open, up to three days after
+      their last message, which is as long as their browser keeps the
+      chat), or switch the offer off there altogether.
+    * WITH THE WEBSITE STILL OPEN they also see "We have replied to your
+      message." with Open chat, by the chat button, and the tab's title
+      starts with the number waiting, like (1).
+    * NOTHING PRIVATE IN IT. The notification says only that the shop
+      has replied, never what, because it can show on a locked screen.
+      The database keeps only the address the customer's own browser
+      gives for notifications, for that conversation: no name, phone or
+      email. When the chat ends (the customer presses End, or you close
+      it in Live Chats) the address is deleted at once, and one more
+      than a week old is deleted too. Nobody can read that list but the
+      website's notification function. It is the same sentence for
+      every reply, so nothing from a conversation, an order or the
+      platform ever goes into one.
+    * GITHUB'S TEST LOG NOW SAYS WHAT A FAILING CHECK FOUND. Until now
+      it showed only the red line, not the line under it naming the
+      file or the answer that was wrong (tests/run-tests.js).
+      one-key.test.cjs also names the files on the red line itself.
+    * New: supabase-chat-reply-push.sql; tests/chat-notify.browser.cjs
+      and tests/chat-settings.browser.cjs. Changed: assets/chat.js,
+      app.js, styles.css, index.html, sw.js, the Live Chat and Customer
+      Care settings pages, netlify/functions/chat-push.js,
+      supabase-hardening.sql (records itself as 083-hardening when it
+      is next run, and its report has the line in B), netlify.toml (the
+      new SQL file is kept from visitors like the others),
+      tools/db-check.sh, README.md, SETUP.md and some tests.
+    * assets/version.js says build 83 (version 1.53.0).
 
 NEW IN 82 — NO SQL. Just upload.
   If build 81's steps are not done yet (supabase-online-refund.sql),

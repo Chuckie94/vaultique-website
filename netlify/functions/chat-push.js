@@ -17,6 +17,12 @@
    services carry it and cannot read it. Neither can Netlify's logs: the
    body is ciphertext by the time it leaves here.
 
+   AND THE CUSTOMER (build 83). When somebody in the shop replies, the
+   database calls this with kind "reply" (supabase-chat-reply-push.sql),
+   and the browsers the customer allowed for that conversation are told
+   that the shop has replied, and nothing else: not the reply, not who
+   wrote it. A notification shows on a locked screen.
+
    WHO MAY CALL IT. Only the database, which sends a secret in a header.
    That secret lives in site_settings_private — a table with no public
    read policy — and this function reads it with the service role key.
@@ -171,6 +177,114 @@ async function pushOne(sub, payload, keys) {
   return res.status;
 }
 
+/* Every subscription told, the ones a push service has given up on
+   dropped. `table` is chat_push for the shop's people, chat_reply_push for
+   a customer's browsers (build 83). */
+async function sendAll(s, serviceKey, table, subs, payload, keys) {
+  let sentCount = 0;
+  const dead = [];
+  await Promise.all(subs.map(async (sub) => {
+    let status = 0;
+    try { status = await pushOne(sub, payload, keys); }
+    catch (e) { status = 0; }
+
+    if (status >= 200 && status < 300) {
+      sentCount++;
+      const done = table === 'chat_push' ? { last_ok_at: new Date().toISOString(), fails: 0 } : { fails: 0 };
+      await db(s.url, serviceKey, `${table}?id=eq.${sub.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(done)
+      }).catch(() => {});
+      return;
+    }
+    /* 404 and 410 are the push service saying this browser is gone for
+       good — uninstalled, or notifications turned off. Anything else
+       might be a bad afternoon, so it is counted rather than acted on. */
+    if (status === 404 || status === 410 || sub.fails >= 2) {
+      dead.push(sub.id);
+    } else {
+      await db(s.url, serviceKey, `${table}?id=eq.${sub.id}`, {
+        method: 'PATCH', body: JSON.stringify({ fails: (sub.fails || 0) + 1 })
+      }).catch(() => {});
+    }
+  }));
+
+  if (dead.length) {
+    await db(s.url, serviceKey,
+      `${table}?id=in.(${dead.map(encodeURIComponent).join(',')})`,
+      { method: 'DELETE' }).catch(() => {});
+  }
+  return { sent: sentCount, dropped: dead.length };
+}
+
+/* The shop has replied: tell the customer's browsers, for this
+   conversation only, and only while it is open. Nothing of what was said
+   goes in it. */
+const BROWSER_KEEPS_HOURS = 72;
+async function replyToCustomer(s, serviceKey, keys, conversationId) {
+  const id = encodeURIComponent(conversationId);
+  const [convRes, setRes, genRes, subsRes] = await Promise.all([
+    db(s.url, serviceKey, `chat_conversations?id=eq.${id}&select=id,status`),
+    db(s.url, serviceKey, 'site_settings?key=eq.chat&select=data'),
+    db(s.url, serviceKey, 'site_settings?key=eq.general&select=data'),
+    db(s.url, serviceKey, `chat_reply_push?conversation_id=eq.${id}&select=id,endpoint,p256dh,auth,fails,created_at`)
+  ]);
+  const conv = convRes.ok ? (await convRes.json())[0] : null;
+  if (!conv) return json(200, { sent: 0, why: 'no such conversation' });
+  const subs = subsRes.ok ? await subsRes.json() : [];
+  if (!subs.length) return json(200, { sent: 0, why: 'nobody is subscribed' });
+
+  /* A conversation that has ended has nobody waiting in it, and a
+     browser's address older than a week is let go: the customer is told
+     about one conversation, not kept on a list. */
+  const week = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const stale = subs.filter((x) => conv.status !== 'open' || new Date(x.created_at).getTime() < week);
+  if (stale.length) {
+    await db(s.url, serviceKey,
+      `chat_reply_push?id=in.(${stale.map((x) => encodeURIComponent(x.id)).join(',')})`,
+      { method: 'DELETE' }).catch(() => {});
+  }
+  const live = subs.filter((x) => stale.indexOf(x) < 0);
+  if (!live.length) return json(200, { sent: 0, why: conv.status !== 'open' ? 'conversation ended' : 'nobody is subscribed' });
+
+  const chatSet = (setRes.ok ? ((await setRes.json())[0] || {}).data : null) || {};
+  if (chatSet.replyPush === false) return json(200, { sent: 0, why: 'switched off' });
+
+  /* The owner: "notify if the customer closed the chat but did not end it
+     and the shop responds to the message within an hour". So a reply is
+     announced only when it comes within that long of the customer's last
+     message: Settings > Live Chat, an hour unless the shop says otherwise,
+     and 0 for any time while the chat is open. */
+  // An emptied box is saved as '' and Number('') is 0, which would mean
+  // "any time": blank, unset or nonsense is the hour.
+  const raw = chatSet.replyPushWithin;
+  const within = raw === '' || raw === null || raw === undefined || typeof raw === 'boolean' ? NaN : Number(raw);
+  const hours = isFinite(within) && within >= 0 ? within : 1;
+  /* 0, "any time", still ends before the customer's browser can have let
+     the conversation go: it keeps it three days from their last visit
+     while they have notifications on (NOTIFY_KEEP in assets/chat.js), and
+     this counts from their last message, which is never later. After
+     that, tapping the notification would open an empty chat. */
+  const limit = Math.min(hours > 0 ? hours : BROWSER_KEEPS_HOURS, BROWSER_KEEPS_HOURS);
+  const lastRes = await db(s.url, serviceKey,
+    `chat_messages?conversation_id=eq.${id}&sender=eq.customer&order=created_at.desc&limit=1&select=created_at`);
+  const last = lastRes.ok ? (await lastRes.json())[0] : null;
+  const at = last && last.created_at ? new Date(last.created_at).getTime() : 0;
+  if (!at || Date.now() - at > limit * 60 * 60 * 1000) {
+    return json(200, { sent: 0, why: 'the reply came more than ' + limit + ' hour(s) after their message' });
+  }
+  const general = (genRes.ok ? ((await genRes.json())[0] || {}).data : null) || {};
+  const shop = String(general.businessName || '').trim() || 'Vaultique Boutique';
+
+  const out = await sendAll(s, serviceKey, 'chat_reply_push', live, {
+    title: shop,
+    body: 'We have replied to your message. Tap to read it.',
+    url: '/?chat=open',
+    tag: 'reply-' + conv.id
+  }, keys);
+  return json(200, out);
+}
+
 /* ------------------------------------------------------------- the job */
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return json(405, { error: 'Use POST.' });
@@ -206,6 +320,8 @@ exports.handler = async function (event) {
 
   const conversationId = body.conversation;
   if (!conversationId) return json(400, { error: 'bad request' });
+
+  if (body.kind === 'reply') return replyToCustomer(s, serviceKey, keys, conversationId);
 
   // ---- what to say -----------------------------------------------------
   /* The conversation, the chat settings and the message itself do not
@@ -311,40 +427,7 @@ exports.handler = async function (event) {
     tag: (body.kind === 'mention' ? 'mention-' : 'chat-') + conv.id
   };
 
-  let sentCount = 0;
-  const dead = [];
-  await Promise.all(subs.map(async (sub) => {
-    let status = 0;
-    try { status = await pushOne(sub, payload, keys); }
-    catch (e) { status = 0; }
-
-    if (status >= 200 && status < 300) {
-      sentCount++;
-      await db(s.url, serviceKey, `chat_push?id=eq.${sub.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ last_ok_at: new Date().toISOString(), fails: 0 })
-      }).catch(() => {});
-      return;
-    }
-    /* 404 and 410 are the push service saying this browser is gone for
-       good — uninstalled, or notifications turned off. Anything else
-       might be a bad afternoon, so it is counted rather than acted on. */
-    if (status === 404 || status === 410 || sub.fails >= 2) {
-      dead.push(sub.id);
-    } else {
-      await db(s.url, serviceKey, `chat_push?id=eq.${sub.id}`, {
-        method: 'PATCH', body: JSON.stringify({ fails: (sub.fails || 0) + 1 })
-      }).catch(() => {});
-    }
-  }));
-
-  if (dead.length) {
-    await db(s.url, serviceKey,
-      `chat_push?id=in.(${dead.map(encodeURIComponent).join(',')})`,
-      { method: 'DELETE' }).catch(() => {});
-  }
-
-  return json(200, { sent: sentCount, dropped: dead.length });
+  return json(200, await sendAll(s, serviceKey, 'chat_push', subs, payload, keys));
 };
 
 /* For the tests. Nothing else reads this. */

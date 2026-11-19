@@ -72,6 +72,22 @@ self.addEventListener('notificationclick', (event) => {
       type: 'window', includeUncontrolled: true
     });
 
+    /* A customer told the shop has replied (build 83): the shop's own
+       pages, never the admin. A shop tab already open is brought forward
+       and opens its chat; otherwise the site opens with the chat open. */
+    if (target.indexOf('/admin') !== 0) {
+      for (const c of open) {
+        let path = '';
+        try { path = new URL(c.url).pathname; } catch (e) { path = ''; }
+        if (path.indexOf('/admin') === 0) continue;
+        try { await c.focus(); } catch (e) {}
+        try { c.postMessage({ type: 'chat-open-customer' }); } catch (e) {}
+        return;
+      }
+      if (self.clients.openWindow) await self.clients.openWindow(target);
+      return;
+    }
+
     /* If the admin panel is already open somewhere — very often it is,
        on the shop's own computer — bring that window forward rather than
        opening a second copy of it. Two admin tabs polling the same

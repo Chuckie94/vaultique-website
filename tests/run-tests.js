@@ -57,16 +57,34 @@ function run(f) {
   return {
     ok: r.status === 0 && !r.error,
     ticks: (out.match(/✓/g) || []).length,
-    crosses: out.split('\n').filter((l) => /✗/.test(l)),
+    crosses: crossesOf(out),
     last: out.split('\n').map((l) => l.trim()).filter(Boolean)
       .filter((l) => /\d+ checks (passed|FAILED)|checks? FAILED|skipped/.test(l)).pop() || '',
     why: r.error ? [String(r.error.code === 'ETIMEDOUT' ? 'stopped after ' + MINUTES + ' minutes' : r.error.message)] : [],
     tail: out.trim().split('\n').slice(-6)
   };
 }
+/* Each ✗ line, with the line or two beneath it that say why: indented
+   further, no tick or cross of their own (a test's is(ok, what, why)
+   prints the why there: which file, what came back). Until build 83 only
+   the ✗ lines were kept, so a run on GitHub named the check that failed
+   but not what it had found. */
+function crossesOf(out) {
+  const lines = out.split('\n');
+  const said = [];
+  lines.forEach((l, i) => {
+    if (!/✗/.test(l)) return;
+    said.push(l.trim());
+    for (let j = i + 1; j < lines.length && j <= i + 3; j++) {
+      if (!/^\s{6,}\S/.test(lines[j]) || /[✓✗]/.test(lines[j])) break;
+      said.push('    ' + lines[j].trim().slice(0, 400));
+    }
+  });
+  return said;
+}
 function reasons(t) {
-  const lines = t.why.concat(t.crosses).slice(0, 12);
-  return lines.length ? lines.map((l) => l.trim()) : t.tail;
+  const lines = t.why.concat(t.crosses).slice(0, 18);
+  return lines.length ? lines : t.tail.map((l) => l.trim());
 }
 
 console.log('\n' + files.length + ' ' + kind + ' test files, one at a time\n');

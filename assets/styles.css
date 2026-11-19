@@ -1385,6 +1385,31 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 }
 
 .chat-note{font-size:11.5px;padding:0 16px 8px;color:var(--muted);line-height:1.5}
+/* "Notify me when you reply" (build 83, assets/chat.js paintNotify). */
+.chat-notify{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px;border-top:1px solid var(--line);background:var(--paper);font-size:12px;color:var(--ink);line-height:1.45}
+.chat-notify .chat-notify-q{flex:1 1 160px}
+/* A reply while the chat is closed, and the offer to be told (build 83, chat.js toast). Above the
+   two round buttons in the corner on a computer; beside the chat button on a phone. */
+/* Beside the chat button on a computer, level with it, so it reads as the
+   chat's own note and covers neither corner button. --chat-fab-w is the
+   button's width (round, or the wider Live chat pill), set by chat.js. */
+.chat-toast{position:fixed;right:calc(34px + var(--chat-fab-w, 58px));bottom:22px;z-index:129;max-width:min(380px, calc(100vw - 46px - var(--chat-fab-w, 58px)));display:flex;align-items:center;gap:10px;padding:12px 12px 12px 16px;background:var(--ivory);color:var(--ink);border:1px solid var(--line-2);border-radius:14px;box-shadow:0 18px 40px -18px rgba(11,31,58,.45);font-size:13px;line-height:1.45;opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .25s,transform .25s}
+.chat-toast.in{opacity:1;transform:none;pointer-events:auto}
+.chat-toast .chat-toast-q{flex:1 1 auto}
+.chat-toast .chat-ask-ok{flex:none;white-space:nowrap}
+.chat-toast-x{flex:none;border:none;background:none;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px;cursor:pointer}
+/* On a phone there is no room beside it: the whole width, just above the
+   chat and WhatsApp buttons. The back-to-top button, which shares that
+   spot, steps aside while the note shows. With the delivery-area panel
+   open (where.js) everything in the corner moves up together. */
+@media (max-width:560px){
+  .chat-toast{left:12px;right:12px;bottom:120px;max-width:none}
+  body:has(.chat-toast.in) .to-top{opacity:0;visibility:hidden}
+}
+@media (max-width:699px){
+  body.wq-on .chat-toast{transform:translateY(calc(8px - var(--wq-h, 0px)))}
+  body.wq-on .chat-toast.in{transform:translateY(calc(-1 * var(--wq-h, 0px)))}
+}
 .chat-note.err{color:var(--err)}
 .chat-head-btns{display:flex;gap:2px;align-items:flex-start}
 .chat-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;

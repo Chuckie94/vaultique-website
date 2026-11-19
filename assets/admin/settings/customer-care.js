@@ -180,8 +180,9 @@
                       hint: 'Adds "Read the full policy" under the panel. The short answer ' +
                             'and the long one finally point at each other.' },
                     { type: 'text', name: 'ask', label: 'Enquire message', maxLength: 120,
-                      hint: 'What the Enquire button starts in the live chat (or on WhatsApp ' +
-                            'when the live chat is off). Leave empty for no button on this panel.' }
+                      hint: 'What this panel\u2019s Enquire button starts in the live chat (or on ' +
+                            'WhatsApp when the live chat is off). Leave empty for no button on this ' +
+                            'panel. The other Enquire buttons\u2019 messages are in Settings > Live Chat.' }
                   ] },
 
                 { type: 'note', name: 'starterNote',

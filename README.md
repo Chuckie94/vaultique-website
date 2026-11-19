@@ -204,7 +204,8 @@ psql -d <scratch db> -f tests/analytics-fixture.sql -f supabase-rewards.sql -f t
 node tests/visit-where.test.cjs           where a visit came from: Netlify's place, no internet address, or the town the visitor named
 node tests/places.test.cjs                country, province, town: the lists behind "Where are you browsing from?"
 node tests/where-ask.browser.cjs          "Where are you browsing from?" as a visitor sees it
-node tests/chat-push.test.cjs             the phone buzz as it leaves: urgent, one per conversation, still decrypts
+node tests/chat-push.test.cjs             the phone buzz as it leaves: urgent, one per conversation, still decrypts;
+                                          and a customer told the shop has replied, within the hours set (build 83)
 node tests/chat-alerts.browser.cjs        the desk chimes at once: admin in the background, or on any admin page
 psql -d <scratch db> -f tests/analytics-fixture.sql -f supabase-analytics.sql -f supabase-cart-pieces.sql \
      -f tests/cart-pieces.sql             which pieces were added to carts
@@ -248,13 +249,19 @@ node tests/pay-readiness.browser.cjs     Settings > Payments: the keys, the webh
 node tests/admin-session.browser.cjs     the admin's sign-in kept apart from the shop's (build 80)
 node tests/online-refund.test.cjs        the platform's online refunds: sent once, the test key, Flutterwave's
                                          answer, a lost answer never sent again, notices asked about (build 81)
+node tests/enquire-chat.browser.cjs      every Enquire button opens the live chat with its own message, the
+                                         shop's own words from Settings > Live Chat; WhatsApp when it is off (82, 83)
+node tests/chat-notify.browser.cjs       a customer told the shop has replied: Notify me, the offer on closing,
+                                         the note by the chat button, the count in the tab (build 83)
+node tests/chat-settings.browser.cjs     Settings > Live Chat: the Enquire messages and the reply notification (build 83)
 bash tools/db-check.sh                   supabase-hardening.sql on a stand-in Supabase: the 28 files, the
                                          hardening twice, the files made after it (build 80) twice each and the
                                          hardening again, the older files refusing, then tests/hardening.sql,
                                          which also holds visitors to the functions on the hardening's list,
                                          and tests/after-the-hardening.sql: the till's door, an order's steps,
                                          the customer's buttons, the payment history, closing an account and
-                                         the online refunds (builds 76 to 81; one-time setup in
+                                         the online refunds (builds 76 to 81), and telling a customer the
+                                         shop has replied (build 83; one-time setup in
                                          tests/supabase-standin/README.txt)
 bash tools/sql-tests.sh                  every psql chain above, each on a fresh database (build 79), and the
                                          till's door, the payment history and an order's progress

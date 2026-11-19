@@ -27,6 +27,9 @@ const vapidPublic = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x, 'base64u
 
 let chatSettings = {};
 const pushes = [];
+/* Build 83: a customer's browsers, and when they last wrote. */
+let replySubs = [], lastCustomerAt = new Date().toISOString(), convStatus = 'open';
+const replyDeleted = [];
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x'), p = u.pathname;
   const chunks = [];
@@ -37,10 +40,21 @@ const server = http.createServer((req, res) => {
     if (p.endsWith('/site_settings_private')) return send([{ data: { vapidPrivate: jwk.d, vapidPublic, secret: 'hook', subject: 'mailto:shop@test' } }]);
     if (p.endsWith('/chat_conversations')) {
       const id = (u.searchParams.get('id') || '').replace('eq.', '');
-      return send([{ id, name: id === 'c1' ? 'Precious' : 'Mutale', assigned_to: null, status: 'open' }]);
+      return send([{ id, name: id === 'c1' ? 'Precious' : 'Mutale', assigned_to: null, status: id === 'r1' ? convStatus : 'open' }]);
     }
-    if (p.endsWith('/site_settings')) return send([{ data: chatSettings }]);
-    if (p.endsWith('/chat_messages')) return send([{ body: 'Is the black tote still available in Livingstone?' }]);
+    if (p.endsWith('/site_settings')) {
+      if (u.searchParams.get('key') === 'eq.general') return send([{ data: { businessName: 'Vaultique Boutique Point' } }]);
+      return send([{ data: chatSettings }]);
+    }
+    if (p.endsWith('/chat_messages')) {
+      if (u.searchParams.get('sender') === 'eq.customer') return send([{ created_at: lastCustomerAt }]);
+      return send([{ body: 'Is the black tote still available in Livingstone?' }]);
+    }
+    if (p.endsWith('/chat_reply_push')) {
+      if (req.method === 'DELETE') { replyDeleted.push(u.searchParams.get('id')); return send([]); }
+      if (req.method === 'GET') return send(replySubs);
+      return send([]);
+    }
     if (p.endsWith('/chat_notes')) return send([{ author_id: 'a1', body: '@you can you take this', mentions: ['11111111-1111-1111-1111-111111111111'] }]);
     if (p.endsWith('/chat_agents')) return send([{ display_name: 'Mwila' }]);
     if (p.endsWith('/chat_push') && req.method === 'GET') {
@@ -103,6 +117,68 @@ const server = http.createServer((req, res) => {
     chatSettings = { pushPreview: false };
     await call({ kind: 'message', conversation: 'c1', message: 'm4' });
     is(open(pushes[4].body).body === 'Tap to answer.', 'the message itself stays off the lock screen');
+
+    /* ---- build 83: the customer told the shop has replied ---- */
+    console.log('\nThe shop replies, and the customer asked to be told');
+    chatSettings = {};
+    const here = 'http://127.0.0.1:' + server.address().port + '/push/customer';
+    replySubs = [{ id: 'rs1', endpoint: here, p256dh: ua.getPublicKey().toString('base64url'),
+                   auth: authSecret.toString('base64url'), fails: 0, created_at: new Date().toISOString() }];
+    lastCustomerAt = new Date(Date.now() - 20 * 60000).toISOString();     // they wrote twenty minutes ago
+    let before = pushes.length;
+    r = await call({ kind: 'reply', conversation: 'r1', message: 'm9' });
+    const told = pushes[before];
+    const says = told ? open(told.body) : {};
+    is(JSON.parse(r.body).sent === 1 && told && /\/push\/customer$/.test(here),
+       'their browser is told (and nobody in the shop is)', r.body);
+    is(says.title === 'Vaultique Boutique Point' && says.body === 'We have replied to your message. Tap to read it.' &&
+       says.url === '/?chat=open' && says.tag === 'reply-r1',
+       'that the shop has replied, opening the chat when tapped', JSON.stringify(says));
+    is(!/black tote/.test(JSON.stringify(says)), 'and never what was said: it shows on a locked screen');
+
+    console.log('\nWithin the hour, as the owner asked');
+    lastCustomerAt = new Date(Date.now() - 90 * 60000).toISOString();     // an hour and a half ago
+    before = pushes.length;
+    r = await call({ kind: 'reply', conversation: 'r1', message: 'm10' });
+    is(JSON.parse(r.body).sent === 0 && pushes.length === before, 'a reply more than an hour after their message is not announced', r.body);
+    chatSettings = { replyPushWithin: 3 };
+    r = await call({ kind: 'reply', conversation: 'r1', message: 'm11' });
+    is(JSON.parse(r.body).sent === 1, 'with three hours set in Settings > Live Chat, it is', r.body);
+    chatSettings = { replyPushWithin: 0 };
+    lastCustomerAt = new Date(Date.now() - 20 * 3600000).toISOString();   // yesterday
+    r = await call({ kind: 'reply', conversation: 'r1', message: 'm12' });
+    is(JSON.parse(r.body).sent === 1, 'and with 0, at any time while the chat is open', r.body);
+    /* But not after the customer's own browser has let the conversation go
+       (chat.js keeps it three days while notifications are on): tapping it
+       would only open an empty chat. */
+    lastCustomerAt = new Date(Date.now() - 4 * 24 * 3600000).toISOString();   // four days ago
+    before = pushes.length;
+    r = await call({ kind: 'reply', conversation: 'r1', message: 'm12a' });
+    is(JSON.parse(r.body).sent === 0 && pushes.length === before,
+       'and with 0, not four days after their last message, when their browser no longer has the chat', r.body);
+    /* An emptied box is saved as '' (settings-ui.js), and Number('') is 0:
+       it must mean the hour, not "any time". */
+    lastCustomerAt = new Date(Date.now() - 90 * 60000).toISOString();
+    for (const blank of ['', null]) {
+      chatSettings = { replyPushWithin: blank };
+      before = pushes.length;
+      r = await call({ kind: 'reply', conversation: 'r1', message: 'm12b' });
+      is(JSON.parse(r.body).sent === 0 && pushes.length === before,
+         'a box left ' + (blank === '' ? 'empty' : 'unset') + ' means the hour, not any time', r.body);
+    }
+
+    console.log('\nSwitched off, or the chat ended');
+    chatSettings = { replyPush: false };
+    lastCustomerAt = new Date().toISOString();
+    r = await call({ kind: 'reply', conversation: 'r1', message: 'm13' });
+    is(JSON.parse(r.body).sent === 0, 'Settings > Live Chat off: nobody is told', r.body);
+    chatSettings = {};
+    convStatus = 'closed';
+    before = pushes.length;
+    r = await call({ kind: 'reply', conversation: 'r1', message: 'm14' });
+    is(JSON.parse(r.body).sent === 0 && pushes.length === before && replyDeleted.some((x) => /rs1/.test(x || '')),
+       'a chat the customer ended tells nobody, and its browsers are let go', JSON.stringify([r.body, replyDeleted]));
+    convStatus = 'open';
   } catch (e) { is(false, 'threw: ' + (e && e.stack)); }
   server.close();
   console.log(failures ? '\n  ✗ ' + failures + ' of ' + checks + ' checks FAILED' : '\n  the phone buzz: all ' + checks + ' checks passed');

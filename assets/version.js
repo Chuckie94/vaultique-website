@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.52.0',
-  build: 82,
-  builtAt: '2026-11-19T05:44:32Z',
-  notes: 'Every ask us button says Enquire and opens the website live chat instead of WhatsApp, with the message ready to send: Shopping made personal, the help panels, delivery, the FAQ, the policies page, sold-out and price-on-request pieces. WhatsApp only when the live chat is off. Buying on WhatsApp unchanged. No SQL.'
+  version: '1.53.0',
+  build: 83,
+  builtAt: '2026-11-19T14:00:33Z',
+  notes: 'Each Enquire button starts its own message again, and every message is written in Settings > Live Chat > Enquire buttons. A customer who writes in the live chat can ask to be notified when the shop replies, offered again if they close the chat while still waiting, with a note by the chat button and the count in the tab while the site is open: only within an hour of their message unless Settings > Live Chat says otherwise, and never with what was said. GitHub test logs now say what a failing check found. One SQL file: supabase-chat-reply-push.sql, run once.'
 };

@@ -311,7 +311,7 @@ select hchk(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p
                          where n.nspname = 'public' and p.prokind = 'f'
                            and not exists (select 1 from unnest(coalesce(p.proconfig, '{}'::text[])) c where c like 'search_path=%')),
   'search path: every function says where to look');
-select hchk(exists (select 1 from public.schema_migrations where version = '081-hardening'),
+select hchk(exists (select 1 from public.schema_migrations where version = '083-hardening'),
   'the record: this file is written down as run');
 
 -- ======================================================= 15. the email password (build 77)
@@ -408,7 +408,9 @@ create temp table visitor_list as select unnest(array[
   'vbp_pos_order_complete', 'vbp_pos_progress', 'vbp_pos_order_progress', 'vbp_pos_order_refund',
   'order_progress_link',
   -- build 81: the online refunds, through the same door and key
-  'vbp_pos_refund_find', 'vbp_pos_refund_request', 'vbp_pos_refunds']::text[]) as name;
+  'vbp_pos_refund_find', 'vbp_pos_refund_request', 'vbp_pos_refunds',
+  -- build 83: "tell me when the shop replies", each with its conversation's own token
+  'chat_reply_push_key', 'chat_reply_push_save', 'chat_reply_push_has', 'chat_reply_push_drop']::text[]) as name;
 select hchk(count(*) = 0, 'visitors: every function they can call is on the list' ||
             coalesce(' — not on it: ' || string_agg(distinct p.proname, ', '), ''))
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace

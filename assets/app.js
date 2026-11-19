@@ -455,13 +455,32 @@
     if (!t || (oldDefault && oldDefault.test(t)) || /whats\s*app/i.test(t)) return 'Enquire';
     return t;
   }
-  /* What a question about a piece starts with in the live chat: the same
-     piece and code the WhatsApp message carried, without the greeting
-     (the chat is already with the shop). */
-  function pieceQuestion(p) {
-    return onRequest(p)
-      ? 'Could you tell me the price of ' + p.name + ' (SKU: ' + p.sku + ')?'
-      : 'I\u2019m interested in ' + p.name + ' (SKU: ' + p.sku + '). Will it be available again?';
+  /* WHAT EACH ENQUIRE BUTTON STARTS WITH. Settings > Live Chat >
+     "Enquire buttons", one box each, read below in loadWebsiteData. These
+     are the words used until the shop has saved its own, and exactly the
+     admin's defaults (assets/admin/settings/chat.js), so saving that page
+     unchanged changes nothing. A piece's {product}, {sku} and {price} are
+     filled in. The help panels each carry their own, in Customer Care. */
+  var ENQ_DEFAULTS = {
+    enquireShop: 'I\'d like to shop with you.',
+    enquireDelivery: 'I have a question about delivery.',
+    enquireFaq: 'I have a question.',
+    enquirePolicies: 'I have a question about your policies.',
+    enquireSoldOut: 'I\'m interested in {product} (SKU: {sku}). Will it be available again?',
+    enquirePrice: 'Could you tell me the price of {product} (SKU: {sku})?'
+  };
+  var ENQ = {};
+  function enquiryText(kind, p) {
+    var t = String(ENQ[kind] == null ? '' : ENQ[kind]).trim() || ENQ_DEFAULTS[kind] || '';
+    if (!p) return t;
+    var vars = { product: p.name, sku: p.sku, price: priceLine(p) };
+    return t.replace(/\{(\w+)\}/g, function (whole, k) {
+      return Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k]) : whole;
+    });
+  }
+  function pieceEnquiry(p) {
+    return onRequest(p) ? { kind: 'enquirePrice', piece: p, num: enquiryNumber() }
+                        : { kind: 'enquireSoldOut', piece: p, num: orderNumber() };
   }
 
   /* EVERY "ASK US" BUTTON OPENS THE LIVE CHAT.
@@ -474,13 +493,13 @@
      chat to open: switched off in Settings > Live Chat, or hidden outside
      chat hours. Ordering is not an enquiry and is unchanged: Buy and
      Continue on WhatsApp still go to WhatsApp. */
-  function enquireLink(a, text, waHref, label) {
+  function enquireLink(a, how, label) {
     if (!a) return a;
     a.classList.add('btn-chat');
     a.innerHTML = chatIcon() + esc(label || 'Enquire');
-    if (waHref) { a.href = waHref; a.target = '_blank'; a.rel = 'noopener'; }
-    else { a.href = '#'; a.removeAttribute('target'); }
-    a.setAttribute('data-enquire-text', text || '');
+    a.__how = how || {};
+    a.setAttribute('data-enquire-kind', a.__how.kind || 'panel');
+    paintEnquire(a);
     if (a.__enquire) return a;
     a.__enquire = true;
     a.addEventListener('click', function (e) {
@@ -500,6 +519,22 @@
       });
     });
     return a;
+  }
+  /* The words, and the WhatsApp address behind them for when the chat is
+     off, worked out from the button's description and the shop's current
+     settings. Done again for every button on the page when Settings > Live
+     Chat arrives, which can be after the buttons are drawn. */
+  function paintEnquire(a) {
+    var how = a.__how || {};
+    var text = how.kind ? enquiryText(how.kind, how.piece) : String(how.text || '');
+    a.setAttribute('data-enquire-text', text);
+    var num = how.num || enquiryNumber();
+    var out = num ? waUrl(num, waSay(text)) : '';
+    if (out) { a.href = out; a.target = '_blank'; a.rel = 'noopener'; }
+    else { a.href = '#'; a.removeAttribute('target'); }
+  }
+  function refreshEnquiries() {
+    $all('[data-enquire-kind]').forEach(paintEnquire);
   }
   function waGeneral(text) {
     return waUrl(orderNumber(), waSay(text));
@@ -1252,7 +1287,7 @@
 
       if (card.ask) {
         var wa = el('a', 'btn btn-wa care-wa');
-        enquireLink(wa, card.ask, waUrl(enquiryNumber(), waSay(card.ask)));
+        enquireLink(wa, { text: card.ask, num: enquiryNumber() });
         cell.appendChild(wa);
       }
       grid.appendChild(cell);
@@ -1329,7 +1364,7 @@
     foot.innerHTML = '';
     if (CARESET.faqAskEnabled !== false) {
       var a = el('a', 'btn btn-wa');
-      enquireLink(a, 'I have a question.', waUrl(enquiryNumber(), waSay('I have a question.')),
+      enquireLink(a, { kind: 'enquireFaq', num: enquiryNumber() },
                   ownWords(CARESET.faqAskText, /^(still not sure\? )?ask us on whatsapp$/i));
       foot.appendChild(a);
     }
@@ -1448,7 +1483,7 @@
       var num = deliversAnywhere() ? deliveryNumber() : pickupNumber();
       if (num) {
         var a = el('a', 'btn btn-wa');
-        enquireLink(a, 'I have a question about delivery.', waUrl(num, waSay('I have a question about delivery.')));
+        enquireLink(a, { kind: 'enquireDelivery', num: num });
         foot.appendChild(a);
       }
       if (hasDeliveryPolicy()) {
@@ -3249,6 +3284,17 @@
         }
       })
       .catch(function () {}).then(done);
+    /* Settings > Live Chat, for the Enquire buttons' words. Not counted
+       among the seventeen: the buttons work with the built-in words, and
+       take the shop's own the moment they land. */
+    fetch(base + '/rest/v1/site_settings?key=eq.chat&select=data', { headers: h })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rows) {
+        var d = (rows && rows[0] && rows[0].data) || {};
+        Object.keys(ENQ_DEFAULTS).forEach(function (k) { ENQ[k] = typeof d[k] === 'string' ? d[k] : ''; });
+        refreshEnquiries();
+      })
+      .catch(function () {});
     fetch(base + '/rest/v1/site_settings?key=eq.contact&select=data', { headers: h })
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (rows) { CONTACT = (rows && rows[0] && rows[0].data) || null; })
@@ -3692,7 +3738,7 @@
         wa.innerHTML = waIcon() + esc(checkoutLabel());
         wa.addEventListener('click', function (e) { startOrder(e, p); });
       } else {
-        enquireLink(wa, pieceQuestion(p), waLink(p), askLabel(p, false));
+        enquireLink(wa, pieceEnquiry(p), askLabel(p, false));
       }
       waLine.appendChild(wa);
       /* Beneath the buy button, not instead of it. A piece that can be
@@ -4525,7 +4571,7 @@
         var C = window.VBP_CHAT;
         if (C && C.enquire && !(C.state && C.state() === 'off')) closeQuickView();
       });
-      enquireLink(qb, pieceQuestion(p), waLink(p), askLabel(p, true));
+      enquireLink(qb, pieceEnquiry(p), askLabel(p, true));
     }
     if (qb && canBuy(p)) qb.addEventListener('click', function (e) {
       closeQuickView();
@@ -4672,7 +4718,7 @@
     if (sd) sd.addEventListener('click', function () { shareProduct(p, sd); });
     var bd = $('#buyDetail');
     if (bd && canBuy(p)) bd.addEventListener('click', function (e) { startOrder(e, p); });
-    else if (bd) enquireLink(bd, pieceQuestion(p), waLink(p), askLabel(p, true));
+    else if (bd) enquireLink(bd, pieceEnquiry(p), askLabel(p, true));
     var cs = $('#cartSlot', host);
     if (cs) cs.parentNode.replaceChild(cartButton(p), cs);
     if (related.length) { var rg = $('#relGrid'); related.forEach(function (rp, i) { rg.appendChild(productCard(rp, i, false)); }); }
@@ -5316,8 +5362,7 @@
   function bindWa() {
     $all('[data-wa]').forEach(function (a) { a.href = waGeneral(a.getAttribute('data-wa') || ''); });
     $all('[data-enquire]').forEach(function (a) {
-      var t = a.getAttribute('data-enquire') || '';
-      enquireLink(a, t, waEnquiry(t));
+      enquireLink(a, { kind: a.getAttribute('data-enquire') || 'enquireShop', num: enquiryNumber() });
     });
     paintRewards();
     $all('[data-wa-enq]').forEach(function (a) { a.href = waEnquiry(a.getAttribute('data-wa-enq') || ''); });
@@ -5983,7 +6028,7 @@
       });
       html += '</div></section>';
     });
-    html += '<div class="pol-help"><p class="serif">Still have a question?</p><a class="btn btn-wa btn-chat" data-enquire="I have a question about your policies.">Enquire</a></div></div>';
+    html += '<div class="pol-help"><p class="serif">Still have a question?</p><a class="btn btn-wa btn-chat" data-enquire="enquirePolicies">Enquire</a></div></div>';
     host.innerHTML = html;
     var hb = host.querySelector('[data-home]'); if (hb) hb.addEventListener('click', goHome);
     bindWa();

@@ -50,6 +50,7 @@
      coming back the same afternoon still finds their thread; a stranger
      the next morning gets a clean window. */
   var REMEMBER_FOR = 4 * 60 * 60 * 1000;   // Settings > Live Chat may change this
+  var NOTIFY_KEEP  = 72 * 60 * 60 * 1000;  // kept this long while reply notifications are on
   /* THE TIMER IS NO LONGER HOW A REPLY ARRIVES. It is what catches one
      if the socket is not there — a project without the realtime file run,
      Realtime switched off, a browser with no crypto.subtle to work out
@@ -99,7 +100,9 @@
     hours: null,
     hideOutsideHours: false,
     outsideHoursText: 'We are closed just now — leave a message and we will reply when we open',
-    rememberHours: 4
+    rememberHours: 4,
+    /* Build 83: offer "Notify me when you reply". Settings > Live Chat. */
+    replyPush: true
   };
 
   /* The shop's own clock, needed the moment chat hours are used. Without
@@ -185,8 +188,13 @@
   }
   function memoSet(v) {
     /* Stamped as it is written, so that reading it can tell a
-       conversation somebody is having from one somebody had. */
-    var withTime = v ? { token: v.token, at: Date.now() } : null;
+       conversation somebody is having from one somebody had. Whether the
+       customer asked to be told about replies is carried along with the
+       same conversation, unless this says otherwise. */
+    var prev = v ? memoGet() : null;
+    var notify = v && ('notify' in v) ? v.notify === true
+               : !!(v && prev && prev.token === v.token && prev.notify === true);
+    var withTime = v ? { token: v.token, at: Date.now(), notify: notify } : null;
     try { localStorage.setItem(MEMO, JSON.stringify(withTime)); }
     catch (e) { mem[MEMO] = withTime; }
   }
@@ -196,7 +204,12 @@
     var saved = memoGet();
     if (!saved || !saved.token) return null;
     var at = Number(saved.at) || 0;
-    if (!at || (Date.now() - at) > REMEMBER_FOR) { memoSet(null); return null; }
+    /* A customer who asked to be told when the shop replies is coming
+       back for that reply, perhaps the next morning, so the conversation
+       is kept for three days rather than a few hours. They chose it, on
+       their own device, by allowing notifications. */
+    var life = saved.notify === true ? Math.max(REMEMBER_FOR, NOTIFY_KEEP) : REMEMBER_FOR;
+    if (!at || (Date.now() - at) > life) { memoSet(null); return null; }
     return saved;
   }
 
@@ -640,6 +653,173 @@
     });
   }
 
+  /* "NOTIFY ME WHEN YOU REPLY" (build 83).
+     The owner: "the customer who opens a chat should be able to receive a
+     notification when there is a response". Offered once the customer has
+     written, on a browser that can be told things with the website shut
+     (Chrome, Edge and Firefox, and Safari on an iPhone with the site on the
+     home screen). Pressing it asks the browser's permission, then gives the
+     browser's address for notifications to the database, for this
+     conversation only (supabase-chat-reply-push.sql). When somebody in the
+     shop replies, the website's notification function tells that browser
+     that the shop has replied, and never what was said: a notification
+     shows on a locked screen. Tapping it opens the chat. Turning it off
+     forgets the address. The browser's own subscription is never
+     cancelled here: on the shop's own phone it may be the same one that
+     buzzes for new customers. */
+  var notifyState = 'unknown';   // unknown | off | on | busy | blocked | none
+  var notifyFor = null;          // the conversation that state is about
+  var pushKey = null;
+  var notifySaid = '';
+  function pushWorks() {
+    try {
+      return !!(navigator.serviceWorker && window.PushManager && window.Notification) &&
+             window.isSecureContext !== false;
+    } catch (e) { return false; }
+  }
+  function keyBytes(b64) {
+    var pad = '='.repeat((4 - b64.length % 4) % 4);
+    var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    var out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  /* Whether a subscription already in this browser (the shop's own phone,
+     say, from Live Chats > Notify me here) was made with the shop's key
+     as it is now: the same test as madeWith in assets/admin/chat-alerts.js.
+     One made with a pair since retired can never be reached again, by the
+     shop's notifications or by these, so it is replaced rather than saved
+     for a reply that would never arrive. A browser that cannot say is
+     taken at its word. */
+  function madeWith(sub, key) {
+    try {
+      var had = sub && sub.options && sub.options.applicationServerKey;
+      if (!had) return true;
+      var a = new Uint8Array(had), b = keyBytes(key);
+      if (a.length !== b.length) return false;
+      for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+      return true;
+    } catch (e) { return true; }
+  }
+  function askPermission() {
+    return new Promise(function (resolve) {
+      try {
+        var r = Notification.requestPermission(function (p) { resolve(p); });
+        if (r && r.then) r.then(resolve, function () { resolve('default'); });
+      } catch (e) { resolve('default'); }
+    });
+  }
+  function worker() {
+    return navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(function () { return navigator.serviceWorker.ready; });
+  }
+  /* Where this browser stands for this conversation: once per
+     conversation, and only once there is one. */
+  function checkNotify() {
+    notifyFor = token;
+    notifyState = 'busy';
+    rpc('chat_reply_push_key', {}).then(function (k) {
+      pushKey = typeof k === 'string' && k.length > 20 ? k : null;
+      if (!pushKey) { notifyState = 'none'; paintNotify(); return; }
+      if (Notification.permission === 'denied') { notifyState = 'blocked'; paintNotify(); return; }
+      if (Notification.permission !== 'granted') { notifyState = 'off'; paintNotify(); return; }
+      return navigator.serviceWorker.getRegistration('/').then(function (reg) {
+        return reg && reg.pushManager ? reg.pushManager.getSubscription() : null;
+      }).then(function (sub) {
+        if (!sub) { notifyState = 'off'; paintNotify(); return; }
+        return rpc('chat_reply_push_has', { p_token: token, p_endpoint: sub.endpoint }).then(function (yes) {
+          notifyState = yes === true ? 'on' : 'off';
+          paintNotify();
+        });
+      });
+    }).catch(function () { notifyState = 'none'; paintNotify(); });
+  }
+  function turnNotifyOn() {
+    notifyState = 'busy'; notifySaid = ''; paintNotify();
+    return askPermission().then(function (p) {
+      if (p !== 'granted') {
+        notifyState = p === 'denied' ? 'blocked' : 'off';
+        paintNotify();
+        return;
+      }
+      return worker().then(function (reg) {
+        var fresh = function () {
+          return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(pushKey) });
+        };
+        return reg.pushManager.getSubscription().then(function (sub) {
+          if (sub && madeWith(sub, pushKey)) return sub;
+          return sub ? Promise.resolve(sub.unsubscribe()).catch(function () {}).then(fresh) : fresh();
+        });
+      }).then(function (sub) {
+        var j = (sub && sub.toJSON) ? sub.toJSON() : {};
+        var k = j.keys || {};
+        return rpc('chat_reply_push_save', { p_token: token, p_endpoint: sub.endpoint,
+                                             p_p256dh: k.p256dh || '', p_auth: k.auth || '' });
+      }).then(function (ok) {
+        notifyState = ok === true ? 'on' : 'off';
+        if (ok === true) memoSet({ token: token, notify: true });
+        else notifySaid = 'That did not work just now. Please try again.';
+        paintNotify();
+      });
+    }).catch(function () {
+      notifyState = 'off';
+      notifySaid = 'Notifications could not be set up in this browser.';
+      paintNotify();
+    });
+  }
+  function turnNotifyOff() {
+    notifyState = 'busy'; notifySaid = ''; paintNotify();
+    navigator.serviceWorker.getRegistration('/').then(function (reg) {
+      return reg && reg.pushManager ? reg.pushManager.getSubscription() : null;
+    }).then(function (sub) {
+      return sub ? rpc('chat_reply_push_drop', { p_token: token, p_endpoint: sub.endpoint }) : null;
+    }).then(function () {
+      notifyState = 'off';
+      memoSet({ token: token, notify: false });
+      paintNotify();
+    }).catch(function () { notifyState = 'on'; paintNotify(); });
+  }
+  function paintNotify() {
+    var panel = $('#chatPanel'), form = $('#chatForm');
+    if (!panel || !form) return;
+    var bar = $('#chatNotify');
+    var said = msgs.some(function (m) { return m.sender === 'customer'; });
+    var wanted = SET.replyPush !== false && !!token && said && status === 'open' && pushWorks();
+    if (wanted && notifyFor !== token) checkNotify();
+    if (!wanted || notifyState === 'none' || notifyState === 'unknown') {
+      if (bar) bar.style.display = 'none';
+      return;
+    }
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.className = 'chat-notify';
+      bar.id = 'chatNotify';
+      form.parentNode.insertBefore(bar, form);
+    }
+    bar.style.display = '';
+    bar.innerHTML = '';
+    var line = document.createElement('span');
+    line.className = 'chat-notify-q';
+    var act = null;
+    if (notifyState === 'on') {
+      line.textContent = 'We will send you a notification when we reply.';
+      act = document.createElement('button');
+      act.type = 'button'; act.className = 'chat-ask-no'; act.textContent = 'Turn off';
+      act.addEventListener('click', turnNotifyOff);
+    } else if (notifyState === 'blocked') {
+      line.textContent = 'Notifications are blocked for this site in your browser\u2019s settings.';
+    } else if (notifyState === 'busy') {
+      line.textContent = 'One moment\u2026';
+    } else {
+      line.textContent = notifySaid || 'Get a notification when we reply?';
+      act = document.createElement('button');
+      act.type = 'button'; act.className = 'chat-ask-ok'; act.textContent = 'Notify me';
+      act.addEventListener('click', turnNotifyOn);
+    }
+    bar.appendChild(line);
+    if (act) bar.appendChild(act);
+  }
+
   function say(text, kind) {
     var n = $('#chatNote');
     if (!n) return;
@@ -669,6 +849,7 @@
     followTheCustomer();
     panel.classList.add('open');
     panel.setAttribute('aria-hidden', 'false');
+    hideToast();
     var fab = $('#chatFab');
     if (fab) fab.classList.add('is-open');
     paint();
@@ -755,6 +936,94 @@
     var fab = $('#chatFab');
     if (fab) { fab.classList.remove('is-open'); fab.focus(); }
     beat();
+    offerOnClose();
+  }
+
+  /* CLOSED, NOT ENDED (build 83).
+     The owner: "Also notify if the customer closed the chat but did not end
+     it and the shop responds to the message within an hour." Closing the
+     window (the dash, or Escape) keeps the conversation. While the website
+     is still open, a reply then shows as a note by the chat button and as
+     the count in the tab's title. And a customer who closes the window
+     while still waiting for an answer is offered the notification there and
+     then, once, because that is when they need it: the notification reaches
+     them with the website shut, for a reply within the hour (chat-push.js). */
+  var offered = false;
+  function offerOnClose() {
+    if (offered || liveState === false) return;
+    if (!token || status !== 'open' || SET.replyPush === false || !pushWorks()) return;
+    if (notifyState !== 'off') return;
+    var lastCustomer = -1, lastShop = -1;
+    msgs.forEach(function (m, i) {
+      if (m.sender === 'customer') lastCustomer = i;
+      else if (m.sender === 'shop') lastShop = i;
+    });
+    if (lastCustomer < 0 || lastShop > lastCustomer) return;    // nothing waiting for an answer
+    offered = true;
+    toast('offer');
+  }
+  function toast(kind, words) {
+    var fab = $('#chatFab');
+    if (!fab) return;
+    var t = $('#chatToast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'chatToast';
+      t.className = 'chat-toast';
+      t.setAttribute('role', 'status');
+      document.body.appendChild(t);
+    }
+    t.innerHTML = '';
+    var line = document.createElement('span');
+    line.className = 'chat-toast-q';
+    var x = document.createElement('button');
+    x.type = 'button'; x.className = 'chat-toast-x'; x.setAttribute('aria-label', 'Close'); x.textContent = '\u00d7';
+    x.addEventListener('click', hideToast);
+    var go = null;
+    if (kind === 'reply') {
+      line.textContent = 'We have replied to your message.';
+      go = document.createElement('button');
+      go.type = 'button'; go.className = 'chat-ask-ok'; go.textContent = 'Open chat';
+      go.addEventListener('click', function () { hideToast(); show(); });
+    } else if (kind === 'offer') {
+      line.textContent = 'We will reply here soon. Get a notification when we do?';
+      go = document.createElement('button');
+      go.type = 'button'; go.className = 'chat-ask-ok'; go.textContent = 'Notify me';
+      go.addEventListener('click', function () {
+        line.textContent = 'One moment\u2026';
+        go.disabled = true;
+        turnNotifyOn().then(function () {
+          if (notifyState === 'on') toast('said', 'Done. We will send you a notification when we reply.');
+          else if (notifyState === 'blocked') toast('said', 'Notifications are blocked for this site in your browser\u2019s settings.');
+          else toast('said', notifySaid || 'Notifications were not turned on.');
+        });
+      });
+    } else {
+      line.textContent = words || '';
+      clearTimeout(toast.t);
+      toast.t = setTimeout(hideToast, 6000);
+    }
+    t.appendChild(line);
+    if (go) t.appendChild(go);
+    t.appendChild(x);
+    // How wide the chat button is now (round, or the Live chat pill), so
+    // the note sits just beside it on a computer (styles.css).
+    t.style.setProperty('--chat-fab-w', (fab.offsetWidth || 58) + 'px');
+    t.classList.add('in');
+  }
+  function hideToast() {
+    var t = $('#chatToast');
+    if (t) t.classList.remove('in');
+  }
+  /* "(1) Vaultique Boutique Point" while a reply waits unread. The page's
+     own title is whatever the shop front last set; only the count in front
+     of it is this file's. */
+  function paintTitle() {
+    try {
+      var clean = String(document.title || '').replace(/^\(\d+\)\s+/, '');
+      var want = unread > 0 && !open ? '(' + unread + ') ' + clean : clean;
+      if (document.title !== want) document.title = want;
+    } catch (e) {}
   }
 
   /* --------------------------------------------------------- the talking */
@@ -1022,8 +1291,12 @@
            is answering. */
         paintPresence();
         paintAsk();
+        paintNotify();
+        var hadUnread = unread;
         unread = open ? 0 : Number(r.unread) || 0;
         paintBadge();
+        if (!open && unread > hadUnread && token) toast('reply');
+        paintTitle();
         if (open && Number(r.unread)) markSeen();
       })
       .catch(function () { /* one missed ask is not worth a message */ });
@@ -1033,6 +1306,7 @@
     if (!token || !unread && !open) return;
     unread = 0;
     paintBadge();
+    paintTitle();
     rpc('chat_seen', { p_token: token }).catch(function () {});
   }
 
@@ -1169,6 +1443,7 @@
      said, then true or false. The Enquire buttons ask (VBP_CHAT.enquire). */
   var liveState = null;
   var liveWaiters = [];
+  var lastFill = '';          // the words the last Enquire put in the box
   function settleLive(on) {
     if (liveState !== null) return;
     liveState = !!on;
@@ -1230,6 +1505,25 @@
       ask().then(beat);
     }
 
+    /* Arrived by tapping "the shop has replied" (build 83, sw.js): the
+       conversation opens, and the address is tidied so a reload does not
+       open it again. A shop tab already open is told instead. */
+    if (/[?&]chat=open(&|$)/.test(location.search)) {
+      show();
+      try {
+        var here = new URL(location.href);
+        here.searchParams.delete('chat');
+        history.replaceState(history.state, '', here.pathname + here.search + here.hash);
+      } catch (e) {}
+    }
+    try {
+      if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
+        navigator.serviceWorker.addEventListener('message', function (e) {
+          if (e.data && e.data.type === 'chat-open-customer') { show(); ask(); }
+        });
+      }
+    } catch (e) {}
+
     /* The account layer arrives after this does, and a customer can sign
        in or out without the page reloading, so this is asked again each
        time that changes rather than once at start-up. */
@@ -1285,8 +1579,15 @@
         try {
           show();
           var box = $('#chatInput');
-          if (box && text && !box.value.trim()) {
+          /* Replaced when the box is empty, or still holds only what the
+             last Enquire put there. Build 82 kept anything at all that was
+             in the box, so the first Enquire's words, left unsent when the
+             chat was closed, became every other button's words too. What
+             the customer has typed or changed is still never touched. */
+          var now = box ? box.value : '';
+          if (box && text && (!now.trim() || now === lastFill)) {
             box.value = String(text).slice(0, MAX_LEN);
+            lastFill = box.value;
             grow();
             try { box.setSelectionRange(box.value.length, box.value.length); } catch (e) {}
           }

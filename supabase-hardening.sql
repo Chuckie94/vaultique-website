@@ -1363,7 +1363,10 @@ as $$
     'order_progress_link',
     -- build 81: the platform's online refunds, through the same door and key
     -- (supabase-online-refund.sql)
-    'vbp_pos_refund_find', 'vbp_pos_refund_request', 'vbp_pos_refunds']::text[];
+    'vbp_pos_refund_find', 'vbp_pos_refund_request', 'vbp_pos_refunds',
+    -- build 83: "tell me when the shop replies", from the chat window, each
+    -- with that conversation's own token (supabase-chat-reply-push.sql)
+    'chat_reply_push_key', 'chat_reply_push_save', 'chat_reply_push_has', 'chat_reply_push_drop']::text[];
 $$;
 
 do $$
@@ -1449,7 +1452,7 @@ alter table public.schema_migrations enable row level security;
 revoke all on public.schema_migrations from anon, authenticated;
 
 insert into public.schema_migrations (version, note)
-values ('081-hardening', 'supabase-hardening.sql, build 81')
+values ('083-hardening', 'supabase-hardening.sql, build 83')
 on conflict (version) do update set applied_at = now();
 
 notify pgrst, 'reload schema';
@@ -1470,6 +1473,7 @@ declare
   v_txt   text;
   v_two   boolean;
   v_req   boolean;
+  v_open  integer;
 begin
   -- Staff, one line each.
   for r in
@@ -1543,6 +1547,29 @@ begin
          else 'this shop''s own' end,
     case when v is not null and coalesce(v->>'vapidPublic', '') = ''
          then 'Sign in as the owner and open Live Chats: that makes the new keys. Then everybody who wants phone notifications presses "Notify me here" again.'
+         else '' end));
+
+  -- Build 83: telling a customer the shop has replied. Optional: a shop
+  -- that has not run supabase-chat-reply-push.sql is simply not offered
+  -- it. Once it has, its four doors must stay open to the chat window,
+  -- which this file's visitor list (vq_visitor_ok) sees to.
+  select count(*), count(*) filter (where has_function_privilege('anon', p.oid, 'execute'))
+    into v_n, v_open
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and p.proname in ('chat_reply_push_key', 'chat_reply_push_save', 'chat_reply_push_has', 'chat_reply_push_drop');
+  v_two := v_n >= 4 and to_regclass('public.chat_reply_push') is not null
+           and exists (select 1 from pg_trigger where tgname = 'chat_nudge_reply_t' and not tgisinternal)
+           and exists (select 1 from pg_trigger where tgname = 'chat_reply_push_forget_t' and not tgisinternal);
+  v_rows := v_rows || jsonb_build_array(jsonb_build_array(
+    'Chat notifications', 'Telling a customer you have replied',
+    case when not v_two then 'NOT RUN YET (optional)'
+         when v_open < 4 then 'CLOSED to the chat window'
+         else 'OK · the chat window can offer it' end,
+    case when not v_two
+           then 'To offer customers a notification when you reply: run supabase-chat-reply-push.sql (website 83), then this file again.'
+         when v_open < 4
+           then 'Run this file again; if it still says so, send this line to whoever looks after the website.'
          else '' end));
 
   select count(*) into v_n from public.subscribers where unsubscribed_at is not null;
@@ -1632,7 +1659,7 @@ begin
 
   select count(*) into v_n from public.schema_migrations;
   v_rows := v_rows || jsonb_build_array(jsonb_build_array(
-    'Database', 'This file', 'RECORDED (081-hardening)',
+    'Database', 'This file', 'RECORDED (083-hardening)',
     'The older supabase-*.sql files now refuse to run again. This one is safe to run again whenever you like.'));
 
   return query
