@@ -157,6 +157,12 @@ button{font-family:inherit;cursor:pointer}
 .btn-wa{background:var(--wa);color:#fff}
 .btn-wa:hover{background:var(--wa-d);transform:translateY(-2px)}
 .btn-wa svg{fill:#fff}
+/* Enquire: the live chat's button, navy like the Live chat pill, everywhere a
+   WhatsApp "ask" button used to be (assets/app.js, enquireLink). It keeps
+   .btn-wa beside it only for the sizes each place gives that class. */
+.btn-wa.btn-chat,.btn.btn-chat{background:var(--navy);color:#fff}
+.btn-wa.btn-chat:hover,.btn.btn-chat:hover{background:var(--navy-2)}
+.btn-chat svg{fill:none !important;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .link-more{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--navy);font-weight:500;display:inline-flex;align-items:center;gap:8px;border-bottom:1px solid var(--gold);padding-bottom:4px;transition:gap .3s}
 .link-more:hover{gap:14px;color:var(--gold-deep)}
 
@@ -604,6 +610,11 @@ img.img-fade.is-in{opacity:1}
 .wa-banner .inner{position:relative;padding:clamp(50px,8vw,86px) 26px}
 .wa-banner .ic{width:64px;height:64px;border-radius:50%;background:var(--wa);display:flex;align-items:center;justify-content:center;margin:0 auto 22px}
 .wa-banner .ic svg{width:34px;height:34px;fill:#fff}
+.wa-banner .ic.ic-chat{background:var(--gold)}
+.wa-banner .ic.ic-chat svg{width:30px;height:30px;fill:none;stroke:var(--navy);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+/* On the navy band a navy button would vanish: the gold one, as elsewhere on navy. */
+.wa-banner .btn.btn-chat{background:var(--btn);color:var(--btn-on)}
+.wa-banner .btn.btn-chat:hover{background:var(--btn-hover)}
 .wa-banner h2{font-family:var(--font-head);font-weight:500;font-size:clamp(30px,5vw,52px);line-height:1.05}
 .wa-banner p{max-width:520px;margin:16px auto 30px;color:rgba(255,255,255,.82)}
 
@@ -1590,6 +1601,7 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
   /* The cart's outline is 1px each side; the same, in the button's own
      green, keeps the two exactly the same width. */
   .card-info .wa-line .btn-wa{border:1px solid var(--wa)}
+  .card-info .wa-line .btn-wa.btn-chat{border-color:var(--navy)}
   .card-info .wa-line .btn-wa svg,.card-info .wa-line .btn-cart svg{display:none}
   .cards-bordered .card,.cards-shadow .card{padding:8px}
   .cards-framed .card{padding:9px}

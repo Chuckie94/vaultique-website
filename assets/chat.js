@@ -1165,12 +1165,22 @@
                                      : (open ? OPEN_EVERY : IDLE_EVERY));
   }
 
+  /* Whether this page has a chat to open: null until the settings have
+     said, then true or false. The Enquire buttons ask (VBP_CHAT.enquire). */
+  var liveState = null;
+  var liveWaiters = [];
+  function settleLive(on) {
+    if (liveState !== null) return;
+    liveState = !!on;
+    liveWaiters.splice(0).forEach(function (f) { try { f(liveState); } catch (e) {} });
+  }
+
   /* ------------------------------------------------------------ start up */
   function init() {
     /* No website Supabase project, no chat: there would be nowhere for a
        message to go. The button is not drawn rather than drawn dead. */
-    if (!CFG) return;
-    if (!build()) return;
+    if (!CFG) { settleLive(false); return; }
+    if (!build()) { settleLive(false); return; }
     /* The window is built either way and shown afterwards, so the shop's
        wording is in place before anybody can open it. A button that
        appears and then changes what it says under the customer's hand is
@@ -1179,8 +1189,8 @@
   }
 
   function start() {
-    if (!SET.enabled) return;                       // chat is switched off
-    if (SET.useHours && SET.hideOutsideHours && !withinHours()) return;
+    if (!SET.enabled) { settleLive(false); return; }        // chat is switched off
+    if (SET.useHours && SET.hideOutsideHours && !withinHours()) { settleLive(false); return; }
 
     var titleEl = document.querySelector('#chatPanel .chat-title');
     if (titleEl && SET.title) titleEl.textContent = SET.title;
@@ -1195,6 +1205,7 @@
 
     var fab = $('#chatFab');
     if (fab) fab.classList.remove('hide');
+    settleLive(true);
     /* "Live chat" beside the icon, or just the icon: Settings > Live Chat. */
     var fabWords = $('#chatFabLabel');
     var words = String(SET.fabText || '').trim() || 'Live chat';
@@ -1245,6 +1256,47 @@
     timer = null;
     dropChannel();
     try { close(); } catch (e) {}
+    liveState = false;
+  };
+
+  /* The shop's Enquire buttons (assets/app.js, enquireLink).
+
+     Every "ask us" button on the site opens this window rather than
+     WhatsApp. The words the WhatsApp message used to start with are put
+     in the box, not sent: the customer reads them, adds to them, and
+     presses send themselves. Anything already typed is left alone.
+
+     Answers true when the window opened, false when there is no chat to
+     open -- switched off in Settings > Live Chat, hidden outside chat
+     hours, or no website database -- so the button can go to WhatsApp as
+     it used to, and a customer is never left with a button that does
+     nothing. Asked before the settings have arrived, it waits for them,
+     a few seconds at most. */
+  window.VBP_CHAT.state = function () {
+    return liveState === null ? 'unknown' : (liveState ? 'on' : 'off');
+  };
+  window.VBP_CHAT.enquire = function (text) {
+    return new Promise(function (resolve) {
+      var done = false;
+      function go(on) {
+        if (done) return;
+        done = true;
+        if (!on) { resolve(false); return; }
+        try {
+          show();
+          var box = $('#chatInput');
+          if (box && text && !box.value.trim()) {
+            box.value = String(text).slice(0, MAX_LEN);
+            grow();
+            try { box.setSelectionRange(box.value.length, box.value.length); } catch (e) {}
+          }
+          resolve(true);
+        } catch (e) { resolve(false); }
+      }
+      if (liveState !== null) { go(liveState); return; }
+      liveWaiters.push(go);
+      setTimeout(function () { go(liveState === true); }, 5000);
+    });
   };
 
   if (document.readyState === 'loading') {

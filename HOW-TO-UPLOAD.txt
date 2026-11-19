@@ -30,12 +30,12 @@ B. THE BROWSER  (four drags, because GitHub takes 100 files at a time)
   Add file > Upload files, drag, then Commit changes. Four times:
 
   Drag 1 — two FOLDERS together:    assets   netlify           (99 files)
-  Drag 2 and 3 — the tests folder, in two parts (114 files in all):
+  Drag 2 and 3 — the tests folder, in two parts (115 files in all):
            First open your repository on GitHub and click the tests
            folder, so the page shows tests at the top. Then:
      Drag 2 — Add file > Upload files, and drag in, from inside your
            unzipped tests folder, every file whose name ends in
-           .browser.cjs (40 files). Typing browser.cjs into the
+           .browser.cjs (41 files). Typing browser.cjs into the
            folder's search box shows just those. Commit changes.
      Drag 3 — still inside tests on GitHub: Add file > Upload files,
            and drag in everything else inside your tests folder, the

@@ -100,7 +100,7 @@
 
     onRequestEnabled: true,
     onRequestText: 'Price on request',
-    onRequestButton: 'Ask about this piece',
+    onRequestButton: 'Enquire',
 
     promoEnabled: false,
     promoName: '',
@@ -250,10 +250,11 @@
                   half: true, maxLength: 40, placeholder: 'Price on request',
                   showIf: function (v) { return !!v.onRequestEnabled; } },
                 { type: 'text', name: 'onRequestButton', label: 'Button text', half: true,
-                  maxLength: 30, placeholder: 'Ask about this piece',
+                  maxLength: 30, placeholder: 'Enquire',
                   showIf: function (v) { return !!v.onRequestEnabled; },
-                  hint: 'The WhatsApp button asks rather than buys: nobody can agree to a ' +
-                        'price they have not been shown.' }
+                  hint: 'The button asks rather than buys: nobody can agree to a price they ' +
+                        'have not been shown. It opens the live chat (WhatsApp only when the ' +
+                        'live chat is off). Wording that names WhatsApp shows as Enquire.' }
               ]
             },
             {

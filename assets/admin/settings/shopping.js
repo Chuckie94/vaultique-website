@@ -142,7 +142,7 @@
             title: 'What customers can do',
             fields: [
               { type: 'toggle', name: 'enquiries', label: 'Product enquiries',
-                hint: 'The Enquire on WhatsApp button on a piece that is sold out.' },
+                hint: 'The Enquire button on a piece that is sold out. It opens the live chat.' },
               { type: 'toggle', name: 'wishlist', label: 'Wishlist',
                 hint: 'The heart on each piece, and the saved list behind it. Off also ' +
                       'removes the wishlist from the header.' },

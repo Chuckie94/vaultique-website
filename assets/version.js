@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.51.0',
-  build: 81,
-  builtAt: '2026-11-19T03:46:22Z',
-  notes: 'Online refunds for the platform\'s Online Refund: the platform finds the payment through its own door and asks for a refund; the website writes it down first, sends it to Flutterwave once with its own key (the test key for a test payment), and records the answer (pending, completed, failed or refused) with each date and time. Never more than was paid, never sent twice, a lost answer never sent again; an order not yet rung up is refunded whole and cancelled, and put back if Flutterwave says no. Refund notices are asked about, never believed alone; the fifteen-minute check follows refunds too. Admin > Orders shows each step in Payment history; the customer\'s refund email goes within seconds. One SQL file: supabase-online-refund.sql, run once.'
+  version: '1.52.0',
+  build: 82,
+  builtAt: '2026-11-19T05:44:32Z',
+  notes: 'Every ask us button says Enquire and opens the website live chat instead of WhatsApp, with the message ready to send: Shopping made personal, the help panels, delivery, the FAQ, the policies page, sold-out and price-on-request pieces. WhatsApp only when the live chat is off. Buying on WhatsApp unchanged. No SQL.'
 };

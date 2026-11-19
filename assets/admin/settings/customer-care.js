@@ -78,7 +78,7 @@
     faqSub: '',
     faqs: [],
     faqAskEnabled: true,
-    faqAskText: 'Still not sure? Ask us on WhatsApp'
+    faqAskText: 'Enquire'
   };
 
   A.store.registerDefaults('customer-care', DEFAULTS);
@@ -179,9 +179,9 @@
                       options: policyOptions(),
                       hint: 'Adds "Read the full policy" under the panel. The short answer ' +
                             'and the long one finally point at each other.' },
-                    { type: 'text', name: 'ask', label: 'WhatsApp message', maxLength: 120,
-                      hint: 'What the Ask on WhatsApp button starts. Leave empty for no ' +
-                            'button on this panel.' }
+                    { type: 'text', name: 'ask', label: 'Enquire message', maxLength: 120,
+                      hint: 'What the Enquire button starts in the live chat (or on WhatsApp ' +
+                            'when the live chat is off). Leave empty for no button on this panel.' }
                   ] },
 
                 { type: 'note', name: 'starterNote',
@@ -222,10 +222,10 @@
                       options: policyOptions() }
                   ] },
 
-                { type: 'toggle', name: 'faqAskEnabled', label: 'Offer WhatsApp at the end',
+                { type: 'toggle', name: 'faqAskEnabled', label: 'Offer Enquire at the end',
                   showIf: faqOn,
                   hint: 'A question you have not answered is the one somebody needs ' +
-                        'answered.' },
+                        'answered. The button opens the live chat.' },
                 { type: 'text', name: 'faqAskText', label: 'What the button says',
                   maxLength: 60, required: true,
                   showIf: function (v) { return faqOn(v) && !!v.faqAskEnabled; } }

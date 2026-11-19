@@ -140,7 +140,7 @@
     cards: [],
     faqEnabled: false, faqEyebrow: 'Questions', faqHeading: 'Frequently asked',
     faqSub: '', faqs: [], faqAskEnabled: true,
-    faqAskText: 'Still not sure? Ask us on WhatsApp'
+    faqAskText: 'Enquire'
   };
   // Settings > SEO. Empty by default: with nothing saved, every page falls
   // back to General's name and description, which is what it did before.
@@ -443,8 +443,63 @@
      for a conversation gets the shop's own wording; a sold out piece keeps
      the plain word. */
   function askLabel(p, long) {
-    if (onRequest(p) && PRICING.onRequestButton) return PRICING.onRequestButton;
-    return long ? 'Enquire on WhatsApp' : 'Enquire';
+    if (onRequest(p)) return ownWords(PRICING.onRequestButton, /^ask about this piece$/i);
+    return 'Enquire';
+  }
+  /* The shop's own words for an Enquire button, when it has typed some.
+     The old built-in wording, and any wording that names WhatsApp, read
+     "Enquire": the button opens the live chat now, so a label promising
+     WhatsApp would be wrong. */
+  function ownWords(text, oldDefault) {
+    var t = String(text || '').trim();
+    if (!t || (oldDefault && oldDefault.test(t)) || /whats\s*app/i.test(t)) return 'Enquire';
+    return t;
+  }
+  /* What a question about a piece starts with in the live chat: the same
+     piece and code the WhatsApp message carried, without the greeting
+     (the chat is already with the shop). */
+  function pieceQuestion(p) {
+    return onRequest(p)
+      ? 'Could you tell me the price of ' + p.name + ' (SKU: ' + p.sku + ')?'
+      : 'I\u2019m interested in ' + p.name + ' (SKU: ' + p.sku + '). Will it be available again?';
+  }
+
+  /* EVERY "ASK US" BUTTON OPENS THE LIVE CHAT.
+     The owner: "All the ask on WhatsApp should now have Enquire and route
+     to the website live chat instead of WhatsApp." So each of them says
+     Enquire and opens the chat window (assets/chat.js, VBP_CHAT.enquire)
+     with the words the WhatsApp message used to start with, ready to send.
+
+     WhatsApp stays behind each one as the way out, for when there is no
+     chat to open: switched off in Settings > Live Chat, or hidden outside
+     chat hours. Ordering is not an enquiry and is unchanged: Buy and
+     Continue on WhatsApp still go to WhatsApp. */
+  function enquireLink(a, text, waHref, label) {
+    if (!a) return a;
+    a.classList.add('btn-chat');
+    a.innerHTML = chatIcon() + esc(label || 'Enquire');
+    if (waHref) { a.href = waHref; a.target = '_blank'; a.rel = 'noopener'; }
+    else { a.href = '#'; a.removeAttribute('target'); }
+    a.setAttribute('data-enquire-text', text || '');
+    if (a.__enquire) return a;
+    a.__enquire = true;
+    a.addEventListener('click', function (e) {
+      var C = window.VBP_CHAT;
+      var said = a.getAttribute('data-enquire-text') || '';
+      var out = a.getAttribute('target') ? a.href : '';
+      if (!C || !C.enquire || (C.state && C.state() === 'off')) {
+        if (!out) e.preventDefault();        // nowhere to go: stay put
+        return;                              // WhatsApp, as before
+      }
+      e.preventDefault();
+      C.enquire(said).then(function (opened) {
+        if (opened || !out) return;
+        var w = null;
+        try { w = window.open(out, '_blank', 'noopener'); } catch (x) { w = null; }
+        if (!w) location.href = out;
+      });
+    });
+    return a;
   }
   function waGeneral(text) {
     return waUrl(orderNumber(), waSay(text));
@@ -1197,9 +1252,7 @@
 
       if (card.ask) {
         var wa = el('a', 'btn btn-wa care-wa');
-        wa.href = waUrl(enquiryNumber(), waSay(card.ask));
-        wa.target = '_blank'; wa.rel = 'noopener';
-        wa.textContent = 'Ask on WhatsApp';
+        enquireLink(wa, card.ask, waUrl(enquiryNumber(), waSay(card.ask)));
         cell.appendChild(wa);
       }
       grid.appendChild(cell);
@@ -1276,9 +1329,8 @@
     foot.innerHTML = '';
     if (CARESET.faqAskEnabled !== false) {
       var a = el('a', 'btn btn-wa');
-      a.href = waUrl(enquiryNumber(), waSay('I have a question.'));
-      a.target = '_blank'; a.rel = 'noopener';
-      a.innerHTML = waIcon() + esc(CARESET.faqAskText || 'Ask us on WhatsApp');
+      enquireLink(a, 'I have a question.', waUrl(enquiryNumber(), waSay('I have a question.')),
+                  ownWords(CARESET.faqAskText, /^(still not sure\? )?ask us on whatsapp$/i));
       foot.appendChild(a);
     }
     sec.classList.remove('hide');
@@ -1396,9 +1448,7 @@
       var num = deliversAnywhere() ? deliveryNumber() : pickupNumber();
       if (num) {
         var a = el('a', 'btn btn-wa');
-        a.href = waUrl(num, waSay('I have a question about delivery.'));
-        a.target = '_blank'; a.rel = 'noopener';
-        a.innerHTML = waIcon() + 'Ask about delivery';
+        enquireLink(a, 'I have a question about delivery.', waUrl(num, waSay('I have a question about delivery.')));
         foot.appendChild(a);
       }
       if (hasDeliveryPolicy()) {
@@ -3637,10 +3687,13 @@
     if (canBuy(p) || canAsk(p)) {
       var waLine = el('div', 'wa-line');
       var wa = el('a', 'btn btn-wa');
-      wa.href = buyHref(p);
-      if (!canBuy(p)) { wa.target = '_blank'; wa.rel = 'noopener'; }
-      wa.innerHTML = waIcon() + esc(canBuy(p) ? checkoutLabel() : askLabel(p, false));
-      if (canBuy(p)) wa.addEventListener('click', function (e) { startOrder(e, p); });
+      if (canBuy(p)) {
+        wa.href = buyHref(p);
+        wa.innerHTML = waIcon() + esc(checkoutLabel());
+        wa.addEventListener('click', function (e) { startOrder(e, p); });
+      } else {
+        enquireLink(wa, pieceQuestion(p), waLink(p), askLabel(p, false));
+      }
       waLine.appendChild(wa);
       /* Beneath the buy button, not instead of it. A piece that can be
          bought can also be gathered for later; one that can only be asked
@@ -4453,8 +4506,8 @@
           : 'Sold out') + '</div></div>' +
       '<div class="detail-cta" style="max-width:none">' +
       ((canBuy(p) || canAsk(p))
-        ? '<a class="btn btn-wa" id="qvBuy"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
-          waIcon() + esc(canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
+        ? '<a class="btn btn-wa' + (canBuy(p) ? '' : ' btn-chat') + '" id="qvBuy"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
+          (canBuy(p) ? waIcon() : chatIcon()) + esc(canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       '<span id="qvCartSlot"></span>' +
       '<button class="btn btn-outline" id="qvFull">View full details</button></div>';
@@ -4465,6 +4518,15 @@
     if (qcs && canBuy(p)) qcs.parentNode.replaceChild(cartButton(p), qcs);
     else if (qcs) qcs.parentNode.removeChild(qcs);
     var qb = body.querySelector('#qvBuy');
+    if (qb && !canBuy(p)) {
+      /* The quick view sits above the chat window, so it steps aside
+         first; otherwise the chat would open behind it. */
+      qb.addEventListener('click', function () {
+        var C = window.VBP_CHAT;
+        if (C && C.enquire && !(C.state && C.state() === 'off')) closeQuickView();
+      });
+      enquireLink(qb, pieceQuestion(p), waLink(p), askLabel(p, true));
+    }
     if (qb && canBuy(p)) qb.addEventListener('click', function (e) {
       closeQuickView();
       startOrder(e, p);
@@ -4552,8 +4614,8 @@
          as a form, not a boutique. */
       '<div class="cta-main">' +
       ((canBuy(p) || canAsk(p))
-        ? '<a class="btn btn-wa" id="buyDetail"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
-          waIcon() + esc(canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
+        ? '<a class="btn btn-wa' + (canBuy(p) ? '' : ' btn-chat') + '" id="buyDetail"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
+          (canBuy(p) ? waIcon() : chatIcon()) + esc(canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       (canBuy(p) ? '<span id="cartSlot"></span>' : '') +
       '</div><div class="cta-sub">' +
@@ -4610,6 +4672,7 @@
     if (sd) sd.addEventListener('click', function () { shareProduct(p, sd); });
     var bd = $('#buyDetail');
     if (bd && canBuy(p)) bd.addEventListener('click', function (e) { startOrder(e, p); });
+    else if (bd) enquireLink(bd, pieceQuestion(p), waLink(p), askLabel(p, true));
     var cs = $('#cartSlot', host);
     if (cs) cs.parentNode.replaceChild(cartButton(p), cs);
     if (related.length) { var rg = $('#relGrid'); related.forEach(function (rp, i) { rg.appendChild(productCard(rp, i, false)); }); }
@@ -5106,6 +5169,10 @@
   function waIcon() {
     return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>';
   }
+  /* The live chat's own bubble (index.html, #chatFab), for Enquire. */
+  function chatIcon() {
+    return '<svg class="ic-chat" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>';
+  }
   function heartIcon() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>'; }
 
   // ------------------------------------------------------------------ sample data (preview only)
@@ -5248,6 +5315,10 @@
 
   function bindWa() {
     $all('[data-wa]').forEach(function (a) { a.href = waGeneral(a.getAttribute('data-wa') || ''); });
+    $all('[data-enquire]').forEach(function (a) {
+      var t = a.getAttribute('data-enquire') || '';
+      enquireLink(a, t, waEnquiry(t));
+    });
     paintRewards();
     $all('[data-wa-enq]').forEach(function (a) { a.href = waEnquiry(a.getAttribute('data-wa-enq') || ''); });
     /* The chat panel needs the same number, and it is a separate file
@@ -5912,7 +5983,7 @@
       });
       html += '</div></section>';
     });
-    html += '<div class="pol-help"><p class="serif">Still have a question?</p><a class="btn btn-wa" data-wa="I have a question about your policies.">Ask on WhatsApp</a></div></div>';
+    html += '<div class="pol-help"><p class="serif">Still have a question?</p><a class="btn btn-wa btn-chat" data-enquire="I have a question about your policies.">Enquire</a></div></div>';
     host.innerHTML = html;
     var hb = host.querySelector('[data-home]'); if (hb) hb.addEventListener('click', goHome);
     bindWa();

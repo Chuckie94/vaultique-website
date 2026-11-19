@@ -1,8 +1,38 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 81
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 82
 ====================================================
-The whole site, cumulative: everything in build 80 (build 79, with the
-work of the other website line's builds 74 to 78 carried onto it), and
-the online refunds for the platform. Upload this and you are up to date.
+The whole site, cumulative: everything in build 81 (and so build 80,
+with the other website line's builds 74 to 78 carried onto it), and
+Enquire buttons that open the live chat. Upload this and you are up to
+date.
+
+NEW IN 82 — NO SQL. Just upload.
+  If build 81's steps are not done yet (supabase-online-refund.sql),
+  do them as build 81 says below; this build changes nothing there.
+
+  * Every "ask us" button on the shop now says ENQUIRE and opens the
+    website's live chat instead of WhatsApp, with the words the
+    WhatsApp message used to start with already in the box, ready to
+    send:
+      - Shopping made personal (was "Chat on WhatsApp"; its line now
+        says "Message us here")
+      - Size, delivery & returns, each panel (was "Ask on WhatsApp")
+      - Delivery (was "Ask about delivery")
+      - the end of the FAQ (was "Still not sure? Ask us on WhatsApp")
+      - the policies page (was "Ask on WhatsApp")
+      - a sold-out piece (was "Enquire on WhatsApp"), and a piece
+        whose price is on request (was "Ask about this piece"); the
+        chat starts with the piece's name and code.
+    Anything the customer has already typed in the chat is kept.
+  * Wording you typed yourself for the FAQ button or the price-on-
+    request button is kept; wording that names WhatsApp shows as
+    Enquire.
+  * With the live chat switched off (Settings > Live Chat), or hidden
+    outside chat hours, Enquire goes to WhatsApp as these buttons did
+    before, so a customer is never left with a button that does nothing.
+  * Not changed: buying (Buy on WhatsApp, Continue on WhatsApp), the
+    round green WhatsApp button in the corner, "WhatsApp us" in the
+    menu, "Notify me on WhatsApp" on an empty collection, and the
+    closed-shop notice (the chat is not open while the shop is shut).
 
 NEW IN 81 — ONLINE REFUNDS, FOR THE PLATFORM'S "ONLINE REFUND".
   ONE SQL FILE: supabase-online-refund.sql, new, run once.

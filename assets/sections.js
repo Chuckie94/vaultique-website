@@ -45,7 +45,7 @@
     { id: 'faq',             label: 'Frequently asked questions',
       note: 'Hidden until you write a question. Also at /faq.' },
     { id: 'rewards',         label: 'Rewards programme' },
-    { id: 'wabanner',        label: 'WhatsApp banner' },
+    { id: 'wabanner',        label: 'Shopping made personal (Enquire)' },
     { id: 'newsletter',      label: 'Newsletter' },
     { id: 'visit',           label: 'Find us' }
   ];
