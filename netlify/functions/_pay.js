@@ -24,6 +24,27 @@
 //
 //   4. Card details never come here at all. The customer types them into
 //      Flutterwave's own page.
+//
+//   5. Money Flutterwave confirms always reaches its order, and the emails
+//      about it go once. The order is switched to paid with a conditional
+//      update (orderPaid), and only the call that made that switch sends
+//      the emails, whichever of the return page, the webhook or the
+//      check-up got there first. If the switch fails part-way, the payment
+//      row still says paid and the check-up finishes the job.
+//
+//   6. Nobody has to come back for a payment to count. pay-reconcile.js
+//      asks Flutterwave every fifteen minutes about every attempt of the
+//      last three days that has not been heard back about (build 77: and
+//      about the ones Flutterwave itself reported failed, because a
+//      customer can try again on the same page and pay).
+//
+//   7. BUILD 77 · A piece paid for online is held until the till rings its
+//      order up, or the order is completed or cancelled, for at most seven
+//      days: a second customer is not charged for a piece the first one has
+//      already paid for. The feed and the price rules are not touched; the
+//      hold is worked out here, from this website's own orders.
+//
+//   (Build 81: refunds keep rules of their own, in _refund.js.)
 // =====================================================================
 const fs = require('fs');
 const path = require('path');
@@ -929,7 +950,7 @@ function siteOrigin(event) {
 
 module.exports = {
   json, formats, shopSettings, onlineOn, priceOrder, cleanItems,
-  deliveryCharge, svc, serviceKey, flw, flwKey, paymentOptions, hashMatches, newTxRef,
+  deliveryCharge, svc, serviceKey, flw, flwKey, flwBase, paymentOptions, hashMatches, newTxRef,
   settle, failPayment, confirmByEmail, siteOrigin,
   previewOk, closedFor, priceWhatsApp, customerFrom, clientAddr, recordOrder,
   testAllowed, ownerFrom, TEST_ONLY,

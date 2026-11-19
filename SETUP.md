@@ -40,8 +40,16 @@ You will do five short steps. It takes about 10 minutes.
 > 29 supabase-pos-orders.sql       the platform's till: shows its door key ONCE
 > 30 supabase-payment-history.sql  every online payment's history
 > 31 supabase-order-progress.sql   an order's progress and the customer's buttons
+>  and one more (build 81):
+> 32 supabase-online-refund.sql    the platform's online refunds
 >                                  then supabase-hardening.sql once more
 > ```
+>
+> **Build 81, on a shop already running:** upload, then run
+> `supabase-online-refund.sql` once. The hardening is not run again for it:
+> the file opens its own three doors to the platform. Whenever the hardening
+> is run from now on, this build's copy (or a later one) keeps them open, and
+> its report has a fourth Platform line, for 32.
 >
 > **Build 80, on a shop already running:** run `supabase-hardening.sql` once
 > more, this build's copy. Its report has a line for each of 29 to 31: each
@@ -422,6 +430,11 @@ Push the updated folder to your repo (or run `netlify deploy --build --prod`).
 
 ## Using the admin
 - Go to **https://your-site.netlify.app/admin.html** and sign in.
+- **The admin signs in on its own**, apart from the shop. Signing in to the
+  shop as a customer, in the same browser, never changes who is signed in to
+  the admin, and signing out of one leaves the other as it was. After the
+  upload that brought this (build 80), everybody signs in to the admin once
+  more.
 - **Products & Photos:** every product from the POS is listed. Upload a main
   photo plus extra photos (up to 10 in total) and up to 2 short videos per
   product, mark items Featured or New, hide a product from the site, or write a
@@ -757,6 +770,68 @@ confirmation goes to the customer and to you automatically.
 
 **To stop taking online payments**, switch **Take payments online** off. The
 button goes at once. Any payment already under way still completes and is recorded.
+
+#### Is it connected? (the top of Settings > Payments)
+
+The line at the top checks the connection without charging anybody, and
+never shows a key:
+- **Each key** is looked at: a test secret key starts `FLWSECK_TEST-`, a live
+  one `FLWSECK-`. One that does not look right is named, with where to find
+  the right one in Flutterwave's dashboard.
+- **The webhook:** when Flutterwave last reached it, and whether something
+  reached it with the wrong secret hash, which is how a phrase typed
+  differently in Netlify and in Flutterwave shows up.
+- **Check the keys with Flutterwave** asks Flutterwave whether it accepts the
+  keys. It charges nothing.
+
+#### The fifteen-minute check-up
+
+Every fifteen minutes the website asks Flutterwave about every payment of the
+last three days it has not heard back about, and about any Flutterwave itself
+reported failed (a customer can try again on the same page and pay). A payment
+found paid is recorded exactly as if the customer had come back: the order
+says Paid, and the emails go once. So a customer who pays by mobile money and
+puts the phone away is never left with an order cancelled as walked away from.
+It needs nothing from you: Netlify runs it on its own (`netlify.toml`), and it
+does nothing until the keys are set. From build 81 it also follows any online
+refund still on its way.
+
+#### Refunds through the platform (build 81)
+
+The platform's **Sales › Online Refund** (platform 510) refunds a payment made
+online, through this website, so the Flutterwave keys never leave this
+website's Netlify.
+
+1. The platform finds the payment through its own door: by the order number,
+   the receipt or invoice number it gave the sale, or Flutterwave's references.
+2. It asks for the refund: the amount, the reason, who asked and their role.
+   The website writes it down **before** anything is sent, and refuses more
+   than can still be refunded, or a second refund of an order while the first
+   is waiting for Flutterwave's answer.
+3. `pay-refund.js` sends it to Flutterwave with the key for the payment's own
+   mode (a test payment with the test key), and records the answer: **pending**
+   (on its way), **completed**, **failed** or **refused** (nothing refunded,
+   with Flutterwave's words). Each step has its date and time.
+4. An answer lost on the line is **never sent again**. The website asks
+   Flutterwave what happened, and finds it in Flutterwave's own list of
+   refunds. Only when that list has shown nothing, twice, half an hour after it
+   was sent, is it taken as never made.
+5. **Completed** comes from Flutterwave. Switch on Flutterwave's refund
+   webhook (**Settings > Webhooks**, the same address as the payment webhook),
+   and it arrives at once. Without it, the website asks Flutterwave whenever
+   the platform asks, and every fifteen minutes. A refund notice is never
+   believed on its own: the website always asks Flutterwave.
+
+An order the platform has not rung up yet is refunded **whole**, and cancelled
+at once so it can never be rung up afterwards. If Flutterwave says no, it is put
+back as it was. The order then says **Refunded** or **Part refunded** on the
+customer's page and in Admin › Orders, and **Payment history** shows each step.
+The customer gets the refund email (build 78's words) when the shop ticked it:
+within seconds while the platform follows the refund, otherwise at the
+fifteen-minute check.
+
+Nobody can delete a refund or change what it asked for, and where it stands
+only moves forward. Administrators can read the refunds; nobody else can.
 
 **Limits** (build 77): one phone number can start 5 payments an hour, and one
 connection 8 (the connection limit needs `supabase-hardening.sql`, build 76 or

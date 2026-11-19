@@ -1,9 +1,10 @@
 -- ===========================================================================
--- AFTER THE HARDENING: THE PLATFORM'S TILL AND AN ORDER'S PROGRESS (build 80)
+-- AFTER THE HARDENING: THE PLATFORM'S TILL, AN ORDER'S PROGRESS, REFUNDS (builds 80, 81)
 --
 -- Runs on the database tools/db-check.sh has built: the 28 setup files, the
--- hardening, the three files made after it (supabase-pos-orders.sql,
--- supabase-payment-history.sql, supabase-order-progress.sql), the hardening
+-- hardening, the four files made after it (supabase-pos-orders.sql,
+-- supabase-payment-history.sql, supabase-order-progress.sql and, from build
+-- 81, supabase-online-refund.sql), the hardening
 -- once more, and tests/hardening.sql. Everything the hardening closed must
 -- stay closed, and what the platform and the customers use must still work:
 -- the till's door with its own key, an order's steps, the customer's two
@@ -78,8 +79,8 @@ select achk(not has_table_privilege('anon', 'public.pos_door_key', 'select')
             and not has_table_privilege('authenticated', 'public.pos_door_key', 'select')
             and not has_table_privilege('service_role', 'public.pos_door_key', 'select'),
   'the door''s key: nobody can read even its fingerprint');
-select achk(exists (select 1 from public.schema_migrations where version = '080-hardening'),
-  'the record: this build''s hardening (080-hardening) is written down');
+select achk(exists (select 1 from public.schema_migrations where version = '081-hardening'),
+  'the record: this build''s hardening (081-hardening) is written down');
 
 -- ================================================ 2. the till's door
 select achk(count(*) = 9, 'the door: open to the platform''s public key (' || count(*) || ' of 9 doors)')
@@ -201,6 +202,59 @@ select achk(exists (select 1 from public.orders where ref = 'VB-AH808' and custo
   'closing an account: the order stays, without its owner');
 select achk((select count(*)::text from public.admins) = current_setting('ah.admins'),
   'closing an account: the admin list is untouched');
+
+-- ================================================ 6. online refunds (build 81)
+-- An order paid online and rung up by the platform; the platform asks for
+-- part of it back through its door, and the payment service records what
+-- Flutterwave said, with the service key.
+reset role;
+insert into public.orders (id, ref, name, phone, email, total, currency, status, fulfilment, created_at,
+                           payment_method, payment_status, pay_ref, paid_amount, paid_at)
+values ('aaaaaaaa-8181-0000-0000-000000000001', 'VB-AH811', 'Refund Customer', '0970000811', 'refund@mail.test', 500, 'ZMW',
+        'completed', 'delivery', now(), 'online', 'paid', 'VB-AH811-0a1b2c3d4e', 500, now())
+on conflict (id) do nothing;
+update public.orders set pos_sale_id = 'S-AH811', pos_receipt_no = 'R-AH811', pos_completed_at = now() where ref = 'VB-AH811';
+insert into public.payments (order_id, tx_ref, mode, status, amount, currency, phone, provider_tx_id, channel, detail)
+values ('aaaaaaaa-8181-0000-0000-000000000001', 'VB-AH811-0a1b2c3d4e', 'live', 'paid', 500, 'ZMW', '0970000811', '811811', 'card',
+        '{"flw_ref":"FLW-AH811"}');
+select achk(count(*) = 3, 'online refunds: the three doors are open to the platform''s public key (' || count(*) || ' of 3)')
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.proname in ('vbp_pos_refund_find', 'vbp_pos_refund_request', 'vbp_pos_refunds')
+   and has_function_privilege('anon', p.oid, 'execute');
+select achk(count(*) = 0, 'online refunds: their own helpers are closed to visitors and signed-in people'
+            || coalesce(' — open: ' || string_agg(p.proname, ', '), ''))
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.proname in ('refund_out', 'refund_state_of', 'refunds_guard', 'refunds_to_order')
+   and (has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('authenticated', p.oid, 'execute'));
+set role anon;
+select pg_temp.as_anon();
+select achk(public.vbp_pos_refund_find('k80-0123456789abcdef0123456789abcdeX', 'VB-AH811') ->> 'why' = 'refused',
+  'online refunds: a wrong key is refused');
+select achk((public.vbp_pos_refund_find(ak(), 'R-AH811') -> 'refund' ->> 'left')::numeric = 500,
+  'online refunds: with its key, the platform finds the payment by its receipt, and all K500 to refund');
+select achk(public.vbp_pos_refund_request(ak(), 'VB-AH811', 200, false, 'Wrong size', 'A. Manager', 'Store Manager',
+              'ORF-2026-0001', 'orf-ah811-0000000001', true) -> 'refund' ->> 'state' = 'new',
+  'online refunds: "refund this" is written down');
+select achk(pg_temp.err('select count(*) from public.refunds') like '%permission denied%',
+  'online refunds: the refunds are closed to visitors');
+reset role;
+set role service_role;
+update public.refunds set state = 'sending', sent_at = now() where request_key = 'orf-ah811-0000000001';
+update public.refunds set state = 'pending', flw_refund_id = 'RF-AH811', accepted_at = now() where request_key = 'orf-ah811-0000000001';
+reset role;
+select achk(refund_state = 'part' and refund_amount = 200,
+  'online refunds: the payment service records Flutterwave''s answer, and the order says Part refunded')
+  from public.orders where ref = 'VB-AH811';
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000c3', 'aal1');
+select achk((select count(*) from public.refunds) = 0, 'online refunds: a customer sees none of them');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f6', 'aal1');
+select achk((select count(*) from public.refunds) = 0,
+  'online refunds: an Administrator with the password alone sees none of them');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f6', 'aal2');
+select achk((select count(*) from public.refunds where order_ref = 'VB-AH811') = 1
+            and (select count(*) from public.payment_events where what = 'refund' and tx_ref = 'VB-AH811-0a1b2c3d4e') = 3,
+  'online refunds: the same Administrator after the code reads them, and each step is in the payment history');
 
 reset role;
 select case when ok then '  ✓ ' else '  ✗ ' end || what from after_checks order by n;

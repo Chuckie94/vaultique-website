@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.50.0',
-  build: 80,
-  builtAt: '2026-11-18T16:41:53Z',
-  notes: 'Build 79 with the work of the other website builds 74 to 78 carried onto it: the order number at the start of the WhatsApp message and points kept on it; orders rung up at the platform\'s till, with the receipt to download; an order\'s progress (preparing, on its way or ready, delivered), Confirm delivery and Ask for more time, its private link and its emails; payment safety (the fifteen-minute check-up, only the exact amount counts as paid, payment needs attention, the payment history, a piece paid for online held); the admin keeps its own sign-in, says Not saved when nothing was saved, and asks in its own dialogs; closing an account now removes the login too, and is refused for any admin login. One SQL file: supabase-hardening.sql, run once more.'
+  version: '1.51.0',
+  build: 81,
+  builtAt: '2026-11-19T03:46:22Z',
+  notes: 'Online refunds for the platform\'s Online Refund: the platform finds the payment through its own door and asks for a refund; the website writes it down first, sends it to Flutterwave once with its own key (the test key for a test payment), and records the answer (pending, completed, failed or refused) with each date and time. Never more than was paid, never sent twice, a lost answer never sent again; an order not yet rung up is refunded whole and cancelled, and put back if Flutterwave says no. Refund notices are asked about, never believed alone; the fifteen-minute check follows refunds too. Admin > Orders shows each step in Payment history; the customer\'s refund email goes within seconds. One SQL file: supabase-online-refund.sql, run once.'
 };

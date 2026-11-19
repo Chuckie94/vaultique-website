@@ -62,6 +62,7 @@ secret. The files starting `_` are shared by the others.
 | `pay-reconcile` | Every fifteen minutes (build 80): asks Flutterwave about any payment the site has not heard back about |
 | `order-progress` | Every fifteen minutes (build 80): an order's emails (on its way, the reminder, delivered, refunded), and marking delivered when the days run out |
 | `account-delete` | Closing a customer's account, the login included; never a login on the admin list (build 80) |
+| `pay-refund` | The platform's online refunds (build 81): sends a refund the platform's door wrote down to Flutterwave, once, and records the answer; only with the door's key |
 | `account-signup` | Creating a customer account; the confirm link goes through the shop's own email |
 | `send-email` | The admin's "Send a test email" and "Send welcome" |
 | `newsletter` | Joining the newsletter, and the link that puts somebody who left back on it |
@@ -245,16 +246,20 @@ node tests/order-progress.browser.cjs    an order's steps, Confirm delivery, the
 node tests/payment-return.browser.cjs    the page after paying: needs attention, left the page, two minutes (build 80)
 node tests/pay-readiness.browser.cjs     Settings > Payments: the keys, the webhook, asking Flutterwave (build 80)
 node tests/admin-session.browser.cjs     the admin's sign-in kept apart from the shop's (build 80)
+node tests/online-refund.test.cjs        the platform's online refunds: sent once, the test key, Flutterwave's
+                                         answer, a lost answer never sent again, notices asked about (build 81)
 bash tools/db-check.sh                   supabase-hardening.sql on a stand-in Supabase: the 28 files, the
                                          hardening twice, the files made after it (build 80) twice each and the
                                          hardening again, the older files refusing, then tests/hardening.sql,
                                          which also holds visitors to the functions on the hardening's list,
                                          and tests/after-the-hardening.sql: the till's door, an order's steps,
-                                         the customer's buttons, the payment history and closing an account
-                                         (builds 76 to 80; one-time setup in tests/supabase-standin/README.txt)
+                                         the customer's buttons, the payment history, closing an account and
+                                         the online refunds (builds 76 to 81; one-time setup in
+                                         tests/supabase-standin/README.txt)
 bash tools/sql-tests.sh                  every psql chain above, each on a fresh database (build 79), and the
                                          till's door, the payment history and an order's progress
-                                         (tests/order-progress-db.sh) (build 80)
+                                         (tests/order-progress-db.sh) (build 80), and the online refunds
+                                         (tests/online-refund-db.sh) (build 81)
 ```
 
 The browser ones need Playwright (`npm ci` in `tests/`), the SQL ones any

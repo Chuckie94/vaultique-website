@@ -1690,6 +1690,25 @@
       }
       return 'Payment: ' + (from || '—') + ' → ' + to;
     }
+    if (e.what === 'refund') {
+      /* BUILD 81 · an online refund the platform sent through the website
+         (supabase-online-refund.sql), each step as Flutterwave answered. */
+      var amt = n.amount != null ? ' \u00b7 ' + fmtMoney(Number(n.amount)) : '';
+      var fref = n.flwRef || n.flwRefundId;
+      var said = n.message ? ' \u00b7 ' + n.message : '';
+      var rw = {
+        'new': 'Refund asked for' + amt + (n.test ? ' (test mode)' : '') +
+               (n.by ? ' \u00b7 by ' + n.by + (n.role ? ' (' + n.role + ')' : '') : '') +
+               (n.reason ? ' \u00b7 ' + n.reason : '') + (n.platformRef ? ' \u00b7 ' + n.platformRef : ''),
+        sending: 'Refund sent to Flutterwave' + amt,
+        pending: 'Refund accepted by Flutterwave' + amt + (fref ? ' \u00b7 ' + fref : '') + ' \u00b7 on its way to the customer',
+        completed: 'Refund completed' + amt + (fref ? ' \u00b7 ' + fref : ''),
+        failed: 'Refund failed at Flutterwave' + amt + said,
+        refused: 'Refund refused by Flutterwave' + amt + said + ' \u00b7 nothing was refunded',
+        unknown: 'Refund: no answer from Flutterwave yet' + amt + ' \u00b7 asking it what happened'
+      };
+      return rw[to] || ('Refund: ' + (from || '\u2014') + ' \u2192 ' + (to || '\u2014'));
+    }
     if (e.what === 'order-payment') {
       var pw = { awaiting: 'Order sent to pay online', paid: 'Order marked paid',
                  failed: 'Order: payment failed', expired: 'Order: payment not completed',

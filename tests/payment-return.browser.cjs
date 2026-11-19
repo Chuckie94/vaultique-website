@@ -89,6 +89,12 @@ const EVENTS = [
   { at: at(60), what: 'payment', from_state: null, to_state: 'started', note: { amount: 300, currency: 'ZMW', mode: 'test' } },
   { at: at(58), what: 'payment', from_state: 'started', to_state: 'paid', note: { flw_ref: 'FLW-9001', amount: 300 } },
   { at: at(58), what: 'order-payment', from_state: 'awaiting', to_state: 'paid', note: { paid: 300, channel: 'card' } },
+  // Website 81: an online refund the platform sent, step by step.
+  { at: at(30), what: 'refund', from_state: null, to_state: 'new',
+    note: { amount: 100, currency: 'ZMW', by: 'A. Manager', role: 'Store Manager', reason: 'Wrong size', platformRef: 'ORF-2026-0001' } },
+  { at: at(30), what: 'refund', from_state: 'new', to_state: 'sending', note: { amount: 100 } },
+  { at: at(30), what: 'refund', from_state: 'sending', to_state: 'pending', note: { amount: 100, flwRef: 'URF_501', flwRefundId: '501' } },
+  { at: at(20), what: 'refund', from_state: 'pending', to_state: 'completed', note: { amount: 100, flwRef: 'URF_501' } },
 ];
 let HISTORY_TABLE = true;
 
@@ -296,7 +302,12 @@ const said = async (page) => page.evaluate(() => {
     is(paid && paid.boxOpen && /Order sent to pay online/.test(paid.box) && /Payment started · K300 \(test mode\)/.test(paid.box) &&
        /Paid · K300 · Flutterwave FLW-9001/.test(paid.box) && /Order marked paid/.test(paid.box),
        'Payment history, opened: started, paid with Flutterwave\'s reference, the order sent and marked paid', J(lines));
-    is(lines.length === 4 && lines.every(l => /\d\d:\d\d$/.test(l.at)), 'four lines, each with its date and time', J(lines));
+    is(lines.length === 8 && lines.every(l => /\d\d:\d\d$/.test(l.at)), 'eight lines, each with its date and time', J(lines));
+    is(/Refund asked for · K100 · by A\. Manager \(Store Manager\) · Wrong size · ORF-2026-0001/.test(paid.box) &&
+       /Refund sent to Flutterwave · K100/.test(paid.box) &&
+       /Refund accepted by Flutterwave · K100 · URF_501 · on its way to the customer/.test(paid.box) &&
+       /Refund completed · K100 · URF_501/.test(paid.box),
+       'website 81: an online refund in the history: who asked and why, sent, accepted with Flutterwave\'s reference, completed', J(lines));
 
     HISTORY_TABLE = false;
     await admin.evaluate(() => { location.hash = '#/dashboard'; });

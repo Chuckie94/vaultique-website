@@ -1,8 +1,87 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 80
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 81
 ====================================================
-The whole site, cumulative: everything in build 79 (and so builds 73
-to 78 of this line), with the work of the other website line's builds
-74 to 78 carried onto it. Upload this and you are up to date.
+The whole site, cumulative: everything in build 80 (build 79, with the
+work of the other website line's builds 74 to 78 carried onto it), and
+the online refunds for the platform. Upload this and you are up to date.
+
+NEW IN 81 — ONLINE REFUNDS, FOR THE PLATFORM'S "ONLINE REFUND".
+  ONE SQL FILE: supabase-online-refund.sql, new, run once.
+  The platform's coming Online Refund (platform 510) sends a refund to
+  Flutterwave through this website: the Flutterwave keys stay in this
+  website's Netlify, as now. About ten minutes.
+  Do these in order. Each one says how you know it is done.
+
+  A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete.
+     Done when: Netlify > Deploys shows it as Published.
+
+  B. RUN supabase-online-refund.sql in the WEBSITE's Supabase (not the
+     platform's): SQL Editor > New query > paste the whole file > Run.
+     The SQL is also in the chat. It keeps every order, payment and
+     setting, and is safe to run again.
+     Done when: its one line of result says
+       refunds OK | doors OK · the platform can reach them with its own key
+     You do not need to run supabase-hardening.sql again. If you ever
+     do, use this build's copy (or a later one): it keeps the refund
+     doors open, and its report has a fourth Platform line for them.
+
+  C. FLUTTERWAVE, so "Completed" arrives at once: in your Flutterwave
+     dashboard, Settings > Webhooks. Where it offers a webhook for
+     refunds, switch it on, with the same address as the payment
+     webhook (https://YOUR-SITE/.netlify/functions/pay-webhook).
+     Without it, the website asks Flutterwave itself whenever the
+     platform asks, and every fifteen minutes.
+     Done when: the refunds webhook is on, or your dashboard has no
+     such setting.
+
+  D. THE PLATFORM: nothing yet. Online Refund comes with platform 510,
+     which needs one more setting in the platform's Netlify (its notes
+     say which). Until then nothing calls the new function.
+
+  E. WATCH THE CHECKS ON GITHUB (Actions > Tests).
+     Done when: the newest Tests run has a green tick.
+
+  F. CHECK THE LIVE SITE FROM OUTSIDE (node tools/live-check.cjs
+     https://YOUR-SITE). Part 8 should say the live site is build 81.
+     Done when: it ends "nothing to fix".
+
+  WHAT CHANGED
+    * ONLINE REFUNDS. The platform finds the payment through its own
+      door (by the order number, its receipt or invoice number, or
+      Flutterwave's references), asks for a refund, and this website
+      sends it to Flutterwave with its own key and records Flutterwave's
+      answer: pending, completed, failed or refused, each with its date
+      and time. (supabase-online-refund.sql, netlify/functions/
+      pay-refund.js and _refund.js)
+    * NEVER TWICE, NEVER MORE THAN WAS PAID. Each refund is written down
+      before anything is sent; the same request again is the same
+      refund; two at once still send once; a second refund of an order
+      waits for the first one's answer; a refund whose answer was lost
+      on the line is never sent again: the website asks Flutterwave
+      what happened to it. A test payment is refunded with the test key.
+    * BEFORE THE TILL: an order paid online that the platform has not
+      rung up yet is refunded whole, and cancelled at once, so it can
+      never be rung up afterwards. If Flutterwave says no, it is put
+      back as it was.
+    * NOBODY CHANGES A REFUND. It is never deleted, what it asked for
+      never changes, and where it stands only moves forward. Only
+      administrators can read it.
+    * ADMIN > ORDERS: the order says Refunded or Part refunded, as since
+      build 78, and Payment history shows each step of each refund:
+      who asked and why, sent, accepted, completed (or refused, with
+      Flutterwave's words).
+    * THE CUSTOMER'S EMAIL is the refund email from build 78, word for
+      word. It now goes within seconds while the platform follows the
+      refund, and otherwise at the fifteen-minute check, as before.
+    * FLUTTERWAVE'S REFUND NOTICES come to the payment webhook (C above)
+      and, like payment notices, are never believed on their own: the
+      website asks Flutterwave. The fifteen-minute check follows any
+      refund still on its way.
+    * supabase-hardening.sql keeps the three refund doors open, and
+      records itself as 081-hardening.
+    * New: supabase-online-refund.sql; netlify/functions/pay-refund.js
+      and _refund.js; tests/online-refund.sql, online-refund-db.sh (run
+      by tools/sql-tests.sh) and online-refund.test.cjs.
+    * assets/version.js says build 81 (version 1.51.0).
 
 NEW IN 80 — BUILD 79, WITH EVERYTHING FROM THE OTHER LINE'S 74 TO 78.
   ONE SQL FILE: supabase-hardening.sql, this build's copy, run once more.

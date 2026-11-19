@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-# Vaultique Boutique Point — the SQL checks, chain by chain (build 79)
+# Vaultique Boutique Point — the SQL checks, chain by chain (build 81)
 # ---------------------------------------------------------------------
 # For whoever looks after the website, not for the shop. Each chain is
 # what README.md lists: a fixture, the supabase-*.sql file it checks, and
@@ -88,18 +88,25 @@ as "dropdb --if-exists $DB" >/dev/null 2>&1
 # tests/order-progress.sql, then runs the file a third time with orders in
 # it, and checks it refuses the platform's database and a website without
 # the till's door, creating nothing.
-chains=$((chains + 1))
-o=$(bash "$here/tests/order-progress-db.sh" 2>&1); rc=$?
-pass=$(printf '%s\n' "$o" | grep -c '✓')
-fail=$(printf '%s\n' "$o" | grep -c '✗')
-total=$((total + pass))
-if [ $rc -eq 0 ] && [ "$fail" -eq 0 ] && [ "$pass" -gt 0 ]; then
-  printf '  ✓ %-18s %4s checks\n' order-progress "$pass"
-else
-  failed=$((failed + 1))
-  printf '  ✗ %-18s %4s passed, %s failed\n' order-progress "$pass" "$fail"
-  printf '%s\n' "$o" | grep -E '✗|ERROR' | head -8 | sed 's/^/        /'
-fi
+script() {
+  local name="$1" file="$2" o rc pass fail
+  chains=$((chains + 1))
+  o=$(bash "$here/$file" 2>&1); rc=$?
+  pass=$(printf '%s\n' "$o" | grep -c '✓')
+  fail=$(printf '%s\n' "$o" | grep -c '✗')
+  total=$((total + pass))
+  if [ $rc -eq 0 ] && [ "$fail" -eq 0 ] && [ "$pass" -gt 0 ]; then
+    printf '  ✓ %-18s %4s checks\n' "$name" "$pass"
+  else
+    failed=$((failed + 1))
+    printf '  ✗ %-18s %4s passed, %s failed\n' "$name" "$pass" "$fail"
+    printf '%s\n' "$o" | grep -E '✗|ERROR' | head -8 | sed 's/^/        /'
+  fi
+}
+script order-progress tests/order-progress-db.sh
+# Build 81 · the online refunds (supabase-online-refund.sql), the same way:
+# the chain, the file run three times, and its two refusals.
+script online-refund tests/online-refund-db.sh
 
 echo
 if [ $failed -eq 0 ]; then

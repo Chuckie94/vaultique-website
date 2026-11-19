@@ -14,7 +14,10 @@
 //      collected by itself.
 //   4. emails that it was delivered, once; not when the customer said so
 //      themselves.
-//   5. emails a refund the platform recorded (build 510), once.
+//   5. emails a refund the platform recorded (build 510), once. From
+//      website 81 the platform's Online Refund sends it sooner, while the
+//      refund is being followed (tellRefunds, below, called by
+//      _refund.js); this stays for any not sent that way.
 //
 // Without the service key, or before supabase-order-progress.sql has been
 // run, it stops at once and changes nothing. Without email set up in
@@ -156,13 +159,7 @@ async function run() {
   const refunds = await P.svc('GET', 'orders?select=' + COLS + '&refund_mailed_at=is.null&refund_at=gt.' + enc(fresh) +
                               '&limit=' + MAX_PER_STEP).catch(() => []);
   if ((refunds || []).length) {
-    let money = (v) => String(v);
-    try {
-      const s = await P.shopSettings();
-      const F = P.formats();
-      const style = F.moneyStyle(s.general, s.pricing);
-      money = (v) => F.money(v, style);
-    } catch (e) { /* the figure as it is */ }
+    const money = await moneyFn();
     for (const o of refunds) {
       if (late()) break;
       if (!o.email || !o.refund_state) continue;
@@ -182,4 +179,45 @@ exports.handler = async function () {
     return { statusCode: 500, body: JSON.stringify({ error: String((e && e.message) || e).slice(0, 200) }) };
   }
 };
-exports._internals = { run, when, link, FRESH_HOURS, MAX_PER_STEP };
+/* The shop's way of writing an amount, as the page writes it. */
+async function moneyFn() {
+  try {
+    const s = await P.shopSettings();
+    const F = P.formats();
+    const style = F.moneyStyle(s.general, s.pricing);
+    return (v) => F.money(v, style);
+  } catch (e) {
+    return (v) => String(v);   // the figure as it is
+  }
+}
+
+/* BUILD 81 · The refund email (step 5, word for word), for these orders
+   only, as soon as their refund is accepted. Each is taken first, so the
+   15-minute check does not send it too; one that could not be sent is put
+   back for the check to send. budget: how long it may take, in ms. */
+async function tellRefunds(ids, budget) {
+  const list = (ids || []).filter(Boolean).slice(0, 3);
+  if (!list.length || !P.serviceKey()) return 0;
+  const began = Date.now();
+  const fresh = iso(began - FRESH_HOURS * 3600000);
+  const due = await P.svc('GET', 'orders?select=' + COLS + '&id=in.(' + list.map(enc).join(',') +
+                          ')&refund_mailed_at=is.null&refund_at=gt.' + enc(fresh)).catch(() => []);
+  const todo = (due || []).filter((o) => o.email && o.refund_state);
+  if (!todo.length) return 0;
+  const money = await moneyFn();
+  let n = 0;
+  for (const o of todo) {
+    if (Date.now() - began > (budget || 4000)) break;
+    const took = await P.svc('PATCH', 'orders?id=eq.' + enc(o.id) + '&refund_mailed_at=is.null',
+                             { refund_mailed_at: iso(Date.now()) }).catch(() => null);
+    if (!(took && took.length)) continue;
+    if (await M.shopMail(o.email, 'Your refund for order ' + o.ref, ['Hello ' + first(o.name) + ','].concat(refunded(o, money)))) {
+      n++;
+    } else {
+      await P.svc('PATCH', 'orders?id=eq.' + enc(o.id), { refund_mailed_at: null }, 'return=minimal').catch(() => {});
+    }
+  }
+  return n;
+}
+
+exports._internals = { run, when, link, tellRefunds, FRESH_HOURS, MAX_PER_STEP };

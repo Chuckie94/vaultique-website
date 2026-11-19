@@ -1,7 +1,7 @@
 -- =====================================================================
--- Vaultique Boutique Point — website database HARDENING (builds 76 to 80)
+-- Vaultique Boutique Point — website database HARDENING (builds 76 to 81)
 -- ---------------------------------------------------------------------
--- UPLOAD THE WEBSITE FIRST (build 80 or later), AND WAIT UNTIL NETLIFY
+-- UPLOAD THE WEBSITE FIRST (build 81 or later), AND WAIT UNTIL NETLIFY
 -- SAYS "PUBLISHED". The admin and the shop need their own new pages to
 -- work with what this file changes. An admin page from before build 76
 -- would take the database's new questions for a refusal and sign people
@@ -21,9 +21,11 @@
 -- private link open to visitors (section 12: each opens only with its own
 -- key), and its report says whether the three files made after this one
 -- have been run (supabase-pos-orders.sql, supabase-payment-history.sql,
--- supabase-order-progress.sql). A project that ran an earlier version runs
--- this one too: it is the same file, grown, and is safe to run over the
--- old one.
+-- supabase-order-progress.sql). Build 81 keeps the platform's three refund
+-- doors open the same way (supabase-online-refund.sql), and its report says
+-- whether that file has been run too. A project that ran an earlier version
+-- runs this one too: it is the same file, grown, and is safe to run over
+-- the old one.
 --
 -- WHAT IT DOES. Each line is a finding from the build 73 audit.
 --    1. Two-factor is checked by the database, not only by the page,
@@ -1358,7 +1360,10 @@ as $$
     'vbp_pos_orders', 'vbp_pos_order', 'vbp_pos_order_claim', 'vbp_pos_order_release',
     'vbp_pos_order_complete', 'vbp_pos_progress', 'vbp_pos_order_progress', 'vbp_pos_order_refund',
     -- build 80: an order's private link, opened only with that order's own key
-    'order_progress_link']::text[];
+    'order_progress_link',
+    -- build 81: the platform's online refunds, through the same door and key
+    -- (supabase-online-refund.sql)
+    'vbp_pos_refund_find', 'vbp_pos_refund_request', 'vbp_pos_refunds']::text[];
 $$;
 
 do $$
@@ -1444,7 +1449,7 @@ alter table public.schema_migrations enable row level security;
 revoke all on public.schema_migrations from anon, authenticated;
 
 insert into public.schema_migrations (version, note)
-values ('080-hardening', 'supabase-hardening.sql, build 80')
+values ('081-hardening', 'supabase-hardening.sql, build 81')
 on conflict (version) do update set applied_at = now();
 
 notify pgrst, 'reload schema';
@@ -1596,10 +1601,12 @@ begin
   -- Build 80: the three files made after the hardening, which the
   -- platform's till and an order's progress stand on, and whether the
   -- platform can reach them. A file never run says so, with what to do.
+  -- Build 81: and the online refunds (supabase-online-refund.sql).
   for r in select * from (values
       (1, 'The platform''s till (supabase-pos-orders.sql, website 76)', 'public.vbp_pos_orders(text,text,text)', true),
       (2, 'The payment history (supabase-payment-history.sql, website 77)', null, false),
-      (3, 'An order''s progress (supabase-order-progress.sql, website 78)', 'public.vbp_pos_progress(text,text,text)', true)
+      (3, 'An order''s progress (supabase-order-progress.sql, website 78)', 'public.vbp_pos_progress(text,text,text)', true),
+      (4, 'Online refunds (supabase-online-refund.sql, website 81)', 'public.vbp_pos_refunds(text,text[],timestamptz)', true)
     ) as f(n, what, door, open_to_platform) order by n
   loop
     if r.door is null then
@@ -1614,7 +1621,9 @@ begin
              then 'CLOSED to the platform'
            when r.open_to_platform then 'OK · the platform''s till can reach it with its own key'
            else 'OK' end,
-      case when not v_two
+      case when not v_two and r.n = 4
+             then 'Run supabase-online-refund.sql (after the three above), then this file again.'
+           when not v_two
              then 'Run ' || substring(r.what from '\((supabase-[a-z-]+\.sql)') || ' (all three, in the order 76, 77, 78), then this file again.'
            when r.open_to_platform and not has_function_privilege('anon', to_regprocedure(r.door), 'execute')
              then 'Run this file again; if it still says so, send this line to whoever looks after the website.'
@@ -1623,7 +1632,7 @@ begin
 
   select count(*) into v_n from public.schema_migrations;
   v_rows := v_rows || jsonb_build_array(jsonb_build_array(
-    'Database', 'This file', 'RECORDED (080-hardening)',
+    'Database', 'This file', 'RECORDED (081-hardening)',
     'The older supabase-*.sql files now refuse to run again. This one is safe to run again whenever you like.'));
 
   return query

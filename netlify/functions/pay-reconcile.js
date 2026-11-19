@@ -15,8 +15,13 @@
 // email included. It also makes sure every paid payment's order says paid.
 // Nothing here takes anybody's word but Flutterwave's, asked with the
 // secret key.
+//
+// BUILD 81 · It also asks Flutterwave about every online refund still on
+// its way, or whose answer was lost on the line (_refund.js, sweep): the
+// back-up for the platform's own asking and Flutterwave's refund notice.
 // =====================================================================
 const P = require('./_pay');
+const R = require('./_refund');
 
 const LOOK_BACK_HOURS = 72;   // money that arrives late is still the customer's
 const QUIET_MINUTES = 3;      // somebody may still be on the payment page
@@ -105,6 +110,10 @@ async function run() {
 
   // 3) The three-hour tidy-up, now that anything paid has been found.
   await P.svc('POST', 'rpc/pay_expire_stale', {}, 'return=minimal').catch(() => {});
+
+  // 4) BUILD 81 · Refunds still on their way, or whose answer was lost.
+  //    Before supabase-online-refund.sql is run there are none to read.
+  try { out.refunds = await R.sweep(began + 26000); } catch (e) { out.refunds = { asked: 0, changed: 0 }; }
   return out;
 }
 

@@ -29,8 +29,8 @@ B. THE BROWSER  (four drags, because GitHub takes 100 files at a time)
 -----------------------------------------------------------------------
   Add file > Upload files, drag, then Commit changes. Four times:
 
-  Drag 1 — two FOLDERS together:    assets   netlify           (97 files)
-  Drag 2 and 3 — the tests folder, in two parts (111 files in all):
+  Drag 1 — two FOLDERS together:    assets   netlify           (99 files)
+  Drag 2 and 3 — the tests folder, in two parts (114 files in all):
            First open your repository on GitHub and click the tests
            folder, so the page shows tests at the top. Then:
      Drag 2 — Add file > Upload files, and drag in, from inside your
@@ -39,10 +39,10 @@ B. THE BROWSER  (four drags, because GitHub takes 100 files at a time)
            folder's search box shows just those. Commit changes.
      Drag 3 — still inside tests on GitHub: Add file > Upload files,
            and drag in everything else inside your tests folder, the
-           supabase-standin folder among it (71 files). Commit changes.
+           supabase-standin folder among it (74 files). Commit changes.
   Drag 4 — back at the top of your repository: two FOLDERS, and every
            loose file at the top level:
-           images   tools   and the 43 files beside them      (56 files)
+           images   tools   and the 44 files beside them      (56 files)
            and the .github folder with them, if you can see it
 
   (Until build 79 the tests folder went in one drag. Build 80 brings
@@ -100,6 +100,10 @@ Netlify rebuilds on its own, usually within a minute or two. Then follow
 the steps at the top of START-HERE.txt: uploading runs no SQL, and it never
 deletes a file. When a build takes a file away, START-HERE names it, and it
 has to be deleted from your repository by hand.
+
+BUILD 81: UPLOAD FIRST, SQL SECOND. Wait until Netlify > Deploys shows
+this upload as Published, then run supabase-online-refund.sql, once
+(START-HERE.txt, NEW IN 81, step B). The hardening is not run again.
 
 BUILD 80: UPLOAD FIRST, SQL SECOND. Wait until Netlify > Deploys shows
 this upload as Published, then run supabase-hardening.sql once more, this

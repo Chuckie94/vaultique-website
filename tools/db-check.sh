@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-# Vaultique Boutique Point — the database, checked (builds 76 to 80)
+# Vaultique Boutique Point — the database, checked (builds 76 to 81)
 # ---------------------------------------------------------------------
 # For whoever looks after the website, not for the shop. Builds a scratch
 # database the way a real project got here and checks it:
@@ -9,9 +9,10 @@
 #   2. the 28 supabase-*.sql files, in the order SETUP.md gives them
 #   3. supabase-hardening.sql, twice: it must be safe to run again
 #   4. build 80: the three files made after the hardening (the platform's
-#      till, the payment history, an order's progress), each twice, then
-#      supabase-hardening.sql once more: they must sit beside it, and it
-#      must leave the till's door and an order's private link open
+#      till, the payment history, an order's progress), and build 81's
+#      online refunds, each twice, then supabase-hardening.sql once more:
+#      they must sit beside it, and it must leave the till's door, an
+#      order's private link and the refund doors open
 #   5. every one of the 28 files again: each must now refuse, untouched
 #   6. tests/hardening.sql: every check from the audit, one line each
 #   7. tests/after-the-hardening.sql: the platform's till, an order's steps,
@@ -61,15 +62,15 @@ for n in 1 2; do
 done
 [ $fail -eq 0 ] && echo "   ran, and ran again"
 
-echo "3. The files made after the hardening (build 80), twice each, then the hardening once more"
-AFTER="supabase-pos-orders.sql supabase-payment-history.sql supabase-order-progress.sql"
+echo "3. The files made after the hardening (builds 80 and 81), twice each, then the hardening once more"
+AFTER="supabase-pos-orders.sql supabase-payment-history.sql supabase-order-progress.sql supabase-online-refund.sql"
 for f in $AFTER; do
   for n in 1 2; do
     out=$(run "$here/$f") || { echo "   FAILED  $f (run $n)"; echo "$out" | grep -E 'ERROR|LINE' | head -3 | sed 's/^/           /'; fail=1; }
   done
 done
 out=$(run "$here/supabase-hardening.sql") || { echo "   FAILED: the hardening after them"; echo "$out" | grep -E 'ERROR|LINE|CONTEXT' | head -4 | sed 's/^/           /'; fail=1; }
-[ $fail -eq 0 ] && echo "   all 3 ran, twice, and the hardening ran after them"
+[ $fail -eq 0 ] && echo "   all 4 ran, twice, and the hardening ran after them"
 
 echo "4. Each older file again: each must refuse"
 refused=0
@@ -88,7 +89,7 @@ summary=$(echo "$out" | grep -E 'checks passed|checks FAILED' | tail -1)
 echo "   ${summary:-no summary: the test file did not finish}"
 echo "$summary" | grep -q 'checks passed' || fail=1
 
-echo "6. tests/after-the-hardening.sql (build 80: the platform's till, an order's progress, closing an account)"
+echo "6. tests/after-the-hardening.sql (builds 80 and 81: the platform's till, an order's progress, closing an account, online refunds)"
 out=$(as "psql -X -d $DB -f -" < "$here/tests/after-the-hardening.sql" 2>&1)
 echo "$out" | grep -E '✗|ERROR' | sed 's/^/   /'
 summary=$(echo "$out" | grep -E 'checks passed|checks FAILED' | tail -1)

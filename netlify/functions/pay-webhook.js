@@ -8,7 +8,13 @@
 // flutterwave-signature header) is ignored. A call with it is still not
 // believed on its own: settle() asks Flutterwave directly before anything
 // is marked paid.
+//
+// BUILD 81 · Flutterwave's refund notices come here too (Settings >
+// Webhooks, "webhook for refunds", the same address). A refund notice is
+// never believed on its own either: the refunds it may be about are asked
+// about at once (_refund.js), and nothing else is done with it.
 const P = require('./_pay');
+const R = require('./_refund');
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: '' };
@@ -27,6 +33,14 @@ exports.handler = async function (event) {
 
   let body;
   try { body = JSON.parse(raw || '{}'); } catch (e) { return { statusCode: 400, body: '' }; }
+  if (R.isRefundNotice(body)) {
+    try {
+      await R.onNotice(body);
+      return { statusCode: 200, body: '' };
+    } catch (e) {
+      return { statusCode: 500, body: '' };   // Flutterwave sends it again later
+    }
+  }
   const d = body.data || body;
   const txRef = String(d.tx_ref || d.txRef || '');
   if (!txRef) return { statusCode: 200, body: '' };
