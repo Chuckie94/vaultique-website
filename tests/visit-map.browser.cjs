@@ -18,7 +18,10 @@ const { chromium } = require('playwright');
 
 const ROOT = path.resolve(__dirname, '..');
 let LEAFLET = null;
-try { LEAFLET = path.dirname(require.resolve('leaflet/dist/leaflet.js')); } catch (e) {}
+// Build 75 keeps Leaflet in the folder, so the three-shop map no longer needs npm.
+const VENDORED_LEAFLET = path.join(ROOT, 'assets', 'vendor', 'leaflet-1.9.4');
+if (fs.existsSync(path.join(VENDORED_LEAFLET, 'leaflet.js'))) LEAFLET = VENDORED_LEAFLET;
+else try { LEAFLET = path.dirname(require.resolve('leaflet/dist/leaflet.js')); } catch (e) {}
 
 let checks = 0, failures = 0;
 const ok   = m => { checks++; console.log('  ✓ ' + m); };

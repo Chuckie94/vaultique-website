@@ -122,6 +122,9 @@ const server = http.createServer(async (req, res) => {
     return send(200, PRIV[key] ? [{ data: PRIV[key] }] : []);
   }
   if (p === '/web/rest/v1/product_meta') return send(200, META);
+  // Website 80: the preview key is the database's to check, and the connection's throttle too.
+  if (p === '/web/rest/v1/rpc/preview_ok') return send(200, JSON.parse(body || '{}').p_key === 'shop-preview');
+  if (p === '/web/rest/v1/rpc/throttle') return service ? send(204) : send(401, {});
   if (p === '/web/rest/v1/rpc/place_order') {
     const b = JSON.parse(body);
     const id = 'ord-' + (++seq);
@@ -174,7 +177,10 @@ const server = http.createServer(async (req, res) => {
   const hook = require(path.join(F, 'pay-webhook')).handler;
   const status = require(path.join(F, 'pay-status')).handler;
   const reconcile = () => require(path.join(F, 'pay-reconcile'))._internals.run();
-  const post = (fn, b, headers) => fn({ httpMethod: 'POST', body: JSON.stringify(b), headers: headers || {} })
+  /* Since website 79's line (decision Q3) Test mode is the shop's alone: these
+     requests carry the shop's preview key, the way the owner tests. */
+  const post = (fn, b, headers) => fn({ httpMethod: 'POST',
+    body: JSON.stringify('preview' in b ? b : Object.assign({ preview: 'shop-preview' }, b)), headers: headers || {} })
     .then(r => ({ code: r.statusCode, body: r.body ? JSON.parse(r.body) : null }));
   const get = (fn, q, headers) => fn({ httpMethod: 'GET', queryStringParameters: q, headers: headers || {} })
     .then(r => ({ code: r.statusCode, body: r.body ? JSON.parse(r.body) : null }));
@@ -206,7 +212,11 @@ const server = http.createServer(async (req, res) => {
     let run = await reconcile();
     is(payOf(tx).status === 'paid' && orderOf(tx).payment_status === 'paid' && orderOf(tx).status === 'pending',
        'the check-up asks about it again, finds it paid, and brings its order back', JSON.stringify([run, payOf(tx).status, orderOf(tx)]));
-    is(MAIL.length === 2 && MAIL[0].to === 'buyer@example.com' && /Payment received/.test(MAIL[0].subject),
+    // Website 80, restated: in Test mode the emails say TEST (build 79's line,
+    // W-04), and the shop's begins [CHECK STOCK]: the order had been
+    // cancelled when the first try failed, so nothing was set aside meanwhile.
+    is(MAIL.length === 2 && MAIL[0].to === 'buyer@example.com' && /Test payment/.test(MAIL[0].subject) &&
+       /^\[CHECK STOCK\]/.test(MAIL[1].subject),
        'and the customer and the shop are told, once', JSON.stringify(MAIL.map(m => m.subject)));
     run = await reconcile();
     is(MAIL.length === 2, 'the next run sends nothing twice');

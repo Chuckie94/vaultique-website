@@ -25,6 +25,8 @@ const J = o => JSON.stringify(o);
 
 let SUPABASE_JS = null;
 for (const p of [
+  // Website 80: the copy the site itself loads (build 79's line keeps it in assets/vendor).
+  () => path.join(ROOT, 'assets', 'vendor', 'supabase-js-2.118.0.js'),
   () => require.resolve('@supabase/supabase-js/dist/umd/supabase.js'),
   () => path.resolve(ROOT, '..', 'vendor', 'node_modules', '@supabase', 'supabase-js', 'dist', 'umd', 'supabase.js'),
 ]) {

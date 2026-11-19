@@ -6,6 +6,79 @@ never touches it. Products keep coming from the POS automatically.
 
 You will do five short steps. It takes about 10 minutes.
 
+> ### The SQL files, and the order they go in (build 76)
+>
+> **A shop that is already running** — this one — runs **only
+> `supabase-hardening.sql`** from build 76 on: it is safe to run again, as
+> often as you like, and ends with a report. Once it has been run, the older
+> `supabase-*.sql` files **refuse to run** and say so, changing nothing,
+> because each of them would quietly put back something the hardening took
+> away. Wherever this guide says an older file "is safe to run again", that
+> was true before build 76; it is not needed any more.
+>
+> **A brand-new Supabase project** runs every file once, in this order, then
+> the hardening last:
+>
+> ```
+>  1 supabase-setup.sql            15 supabase-chat-jobs.sql
+>  2 supabase-chat.sql             16 supabase-chat-realtime.sql
+>  3 supabase-chat-phase2.sql      17 supabase-chat-photos.sql
+>  4 supabase-chat-phase3.sql      18 supabase-payments.sql
+>  5 supabase-chat-phase4.sql      19 supabase-chat-mentions.sql
+>  6 supabase-chat-phase5.sql      20 supabase-chat-handover.sql
+>  7 supabase-chat-phase6.sql      21 supabase-analytics-live.sql
+>  8 supabase-chat-phase7.sql      22 supabase-analytics-sources.sql
+>  9 supabase-chat-phase8.sql      23 supabase-rewards.sql
+> 10 supabase-chat-phase9.sql      24 supabase-signup.sql
+> 11 supabase-chat-phase10.sql     25 supabase-new-arrivals.sql
+> 12 supabase-fixes.sql            26 supabase-sold-out.sql
+> 13 supabase-product-pulse.sql    27 supabase-browsing-towns.sql
+> 14 supabase-analytics.sql        28 supabase-cart-pieces.sql
+>                                  then supabase-hardening.sql
+>
+>  then, the three made after it (build 80):
+> 29 supabase-pos-orders.sql       the platform's till: shows its door key ONCE
+> 30 supabase-payment-history.sql  every online payment's history
+> 31 supabase-order-progress.sql   an order's progress and the customer's buttons
+>                                  then supabase-hardening.sql once more
+> ```
+>
+> **Build 80, on a shop already running:** run `supabase-hardening.sql` once
+> more, this build's copy. Its report has a line for each of 29 to 31: each
+> should say OK; one that says NOT RUN YET is run then (in that order), and
+> the hardening once more after it. Those three are safe to run again.
+>
+> Upload the website **before** running `supabase-hardening.sql`, and wait for
+> Netlify to say Published: the admin pages from before build 76 would take the
+> database's new two-factor questions for a refusal. (`supabase-safety-check.sql`,
+> from build 74, is not in the list: the hardening's report replaces it.)
+
+> ### Netlify's variables, all of them (build 79)
+>
+> Netlify › your site › Site configuration › **Environment variables**. A
+> changed variable reaches the site at the next deploy (Deploys › Trigger
+> deploy). Nothing else in the website reads a variable: this is the whole list.
+>
+> | Variable | Set it? | What it is | Read by |
+> |---|---|---|---|
+> | `SUPABASE_SERVICE_ROLE_KEY` | **yes** | This website's Supabase **service_role** key (secret: Project Settings › API) | every function that writes: orders, payments, staff logins, sign-up, email, rewards, the newsletter, the product pulse, the nightly clean-up |
+> | `WEB_SUPABASE_SERVICE_KEY` | no | The older name for the same key; either one is enough | the same |
+> | `WEB_SUPABASE_URL`, `WEB_SUPABASE_ANON_KEY` | only if the build log says the functions cannot read `config.js` | This website's Supabase address and public key | every function (`_seo-data.js`); the build step |
+> | `SITE_SUPABASE_URL`, `SITE_SUPABASE_ANON_KEY` | no | Older names for the two above | every function |
+> | `POS_REWARDS_KEY` | for Vaultique Rewards | The platform's rewards door's own key (its `tools/vbp-rewards-door.sql`) | `rewards.js`, `rewards-check.js` |
+> | `FLW_SECRET_KEY_TEST` | for online payment in Test mode | Flutterwave's **test** secret key | the payment functions |
+> | `FLW_SECRET_KEY_LIVE` | for online payment in Live mode | Flutterwave's **live** secret key | the payment functions |
+> | `FLW_WEBHOOK_HASH` | for online payment | The phrase set as the webhook's secret hash in Flutterwave | `pay-webhook.js`, `pay-status.js` |
+> | `POS_SUPABASE_URL` | no (the platform's address is built in) | The business platform's Supabase address | `products.js`, `product-pulse.js`, the rewards |
+> | `POS_PUBLIC_KEY` | no (built in) | The platform's **publishable** key, public already | the same |
+> | `POS_STATE_ROW` | no (100) | The platform's row the products are in, for the old way only | `products.js`, `product-pulse.js` |
+> | `LOW_STOCK_AT` | no (3) | How few left counts as "only a few left" | `products.js` |
+> | `ANALYTICS_KEEP_DAYS` | no (400) | How many days of raw visit records the nightly clean-up keeps | `site-prune.js` |
+> | `CSP_REPORTS` | no | `off` stops the security policy's reports; the policy stays | the build step |
+> | `URL` | never: Netlify sets it | The site's main address | sign-up links, the page after paying |
+> | `FLW_API_BASE` | **never** | Where Flutterwave's API is; only the tests point it elsewhere | the payment functions |
+> | `POS_SUPABASE_KEY` | **must not be there** | The platform's **secret** key, unused since build 77. Netlify will not publish the website while it holds one. | the build step (to refuse it); `rewards-check.js` (to say so) |
+
 ---
 
 ## 1. Create a new Supabase project (separate from the POS)
@@ -141,8 +214,10 @@ rather than trusting the page.
 
 **Changing somebody's role** is the dropdown on their row. **New password**
 gives them a fresh temporary one and makes them choose their own again — that
-is what to press when somebody cannot get in. **Switch off** stops them
-signing in and keeps their replies readable in the conversations they handled.
+is what to press when somebody cannot get in. **Switch off** stops them — at
+the database, not only on the page, once `supabase-hardening.sql` has been run
+(before build 76 it only hid the admin from them) — and keeps their replies
+readable in the conversations they handled.
 **Remove** takes away their access and leaves their login alone: it may be a
 customer account as well, and deleting it would take their orders with it.
 
@@ -177,6 +252,13 @@ a server-side function ever holds it.
 Until you do that, the page still lists people, changes their roles and
 switches them on and off — it only needs the key to *create* a login or set a
 new password, and it tells you exactly this if you try without it.
+
+**Since build 76 the website needs this key for two more things.** WhatsApp
+orders are recorded in the Orders tab by the website's own `place-order`
+function, which prices them from the catalogue and writes them with this key;
+after `supabase-hardening.sql` nothing else may write an order. Without the key
+the WhatsApp message still goes, so no sale is lost, but the order never reaches
+the Orders tab. The newsletter's "send me a link to rejoin" email uses it too.
 
 **If you ran an earlier version.** There used to be a second kind of login that
 signed in at `/agent.html`. That page is gone and so is the separate list. The
@@ -221,8 +303,13 @@ the panel closed and the phone in a pocket.
 
 **Each person turns on their own device.** Open **Live Chats** on the phone
 that should buzz and press **Notify me here**. That is it — there is nothing to
-copy, no key to paste, and no Netlify variable to add. The keys were generated
-for this shop and are already in the file.
+copy, no key to paste, and no Netlify variable to add. The shop's notification
+keys are made by the owner's own browser the first time the owner opens **Live
+Chats** after running **supabase-hardening.sql** (build 76), so nobody else ever
+holds them; until then *Notify me here* says to ask the owner to open it.
+(Up to build 75 the keys came written into the file, the same in every copy of
+the website; build 76 retires those, and every device has to press *Notify me
+here* once more.)
 
 Do the same on every device that should buzz. A phone, a laptop and a tablet
 are three separate presses; turning one off leaves the others alone.
@@ -253,22 +340,23 @@ Only the shop owner's browser can set it, and that is a real boundary rather
 than tidiness: a secret travels to that address, so somebody who could point it
 elsewhere would be handed it.
 
-So the order is: run the file, upload the folder, **open Live Chats once**, then
-press *Notify me here*.
+So the order is: run the file and **supabase-hardening.sql**, upload the folder,
+**the owner opens Live Chats once**, then everybody presses *Notify me here*.
 
 **If the phones never buzz**, in this order:
 
 1. Was **Notify me here** actually pressed on that device? It says *Notifying
    this device* when it is on.
 2. On an iPhone — was it opened from the Home Screen icon, or from a tab?
-3. Has the owner opened Live Chats at least once since running the file? That
-   is what fills the address in. Check with:
+3. Has the owner opened Live Chats at least once since running the files? That
+   is what fills the address in and makes the keys. Check with:
    ```sql
-   select data->>'siteUrl' from public.site_settings_private where key = 'chat_push';
+   select data->>'siteUrl' as address, public.chat_push_key() is not null as has_keys
+     from public.site_settings_private where key = 'chat_push';
    ```
-   Blank means nobody has, and blank means no notifications at all — on purpose,
-   because a wrong address would fail silently and a blank one is a state that
-   fixes itself.
+   A blank address or `has_keys = false` means the owner has not — and that
+   means no notifications at all, on purpose: a wrong address would fail
+   silently, and a blank one is a state that fixes itself.
 4. Supabase > **Database** > **Extensions**: `pg_net` should be enabled. The
    file turns it on, but a project can refuse.
 
@@ -328,7 +416,7 @@ Nothing to switch on and nothing to set. Two things worth knowing:
 4. Save the file.
 
 ## 5. Redeploy the website
-Push the updated folder to your repo (or run `netlify deploy --prod`).
+Push the updated folder to your repo (or run `netlify deploy --build --prod`).
 
 ---
 
@@ -639,14 +727,9 @@ confirmation goes to the customer and to you automatically.
    | Key | Value |
    |---|---|
    | `FLW_SECRET_KEY_TEST` | Flutterwave dashboard > Settings > API keys, **test** secret key (starts `FLWSECK_TEST-`) |
-   | `FLW_SECRET_KEY_LIVE` | the **live** secret key, once Flutterwave has approved you (starts `FLWSECK-`) |
+   | `FLW_SECRET_KEY_LIVE` | the **live** secret key, once Flutterwave has approved you |
    | `FLW_WEBHOOK_HASH` | a long random phrase you make up, such as 30 mixed letters and numbers |
    | `SUPABASE_SERVICE_ROLE_KEY` | already there if you set up logins (see above) |
-
-   **Copy the Secret key, not the other two.** The API keys page shows three:
-   the Public key (`FLWPUBK…`), the Secret key (`FLWSECK…`) and the Encryption
-   key. Only the Secret key goes in Netlify. The website uses Flutterwave's
-   **v3** keys: if the page offers **Switch to v4 API keys**, do not switch.
 
    Then **Deploys** > **Trigger deploy**.
 4. **In Flutterwave** > Settings > **Webhooks**: URL
@@ -656,23 +739,30 @@ confirmation goes to the customer and to you automatically.
    test email works, because that is what sends the confirmations.
 6. **Settings > Payments > Online payment**: switch it on, leave the mode on
    **Test**, and save. The line at the top should show ✓ against every item.
-   Press **Check the keys with Flutterwave**: it should say **Test key:
-   accepted ✓**. If it says refused, copy the Secret key again. If the line
-   says a key does not look like a secret key, the Public or Encryption key
-   was pasted by mistake.
-7. **Try it** on your phone: add something to the cart, press **Pay now**, and pay
-   with one of Flutterwave's test cards or test mobile money numbers (listed in
-   their documentation under "Testing"). Check the order shows **Paid ✓**.
-   Back in Settings > Payments, the line now says when **Flutterwave last
-   reached the webhook**. If instead it says a webhook arrived **with a secret
-   hash that does not match**, make the hash in Flutterwave and
-   `FLW_WEBHOOK_HASH` exactly the same.
-8. When you are ready, set the mode to **Live**, save, press **Check the keys
-   with Flutterwave** again (**Live key: accepted ✓**), and make one small real
+   **While the mode is Test, only you can pay online** (build 77): customers
+   see no **Pay now** at all and order on WhatsApp as usual. You see it by
+   opening the shop with your preview key, `https://YOUR-SITE/?preview=YOUR-KEY`
+   (**Settings > General > Preview key**). The website itself refuses a test
+   payment from anybody else, whatever their browser sends.
+7. **Try it** on your phone: open the shop with your preview key, add something
+   to the cart, press **Pay now**, and pay with one of Flutterwave's test cards
+   or test mobile money numbers (listed in their documentation under
+   "Testing"). Check the order shows **Paid ✓**, and beside it **TEST · no money
+   moved** (build 76, once `supabase-hardening.sql` has been run). Test payments
+   are not counted in the Dashboard's or Analytics' sales, the page after paying
+   says **Test payment received**, and both confirmation emails begin
+   **[TEST]** and say no money was taken (build 77).
+8. When you are ready, set the mode to **Live**, save, and make one small real
    purchase yourself.
 
 **To stop taking online payments**, switch **Take payments online** off. The
 button goes at once. Any payment already under way still completes and is recorded.
+
+**Limits** (build 77): one phone number can start 5 payments an hour, and one
+connection 8 (the connection limit needs `supabase-hardening.sql`, build 76 or
+later).
+The whole shop's ceiling is 1,000 an hour, there only as a backstop. Nobody
+paying normally meets any of them.
 
 #### Delivery in online payments
 
@@ -729,19 +819,10 @@ fees, the same town listed twice, or a medium limit below the small one.
 **Payments nobody finished.** If a customer opens the payment page and walks
 away, the order shows **Awaiting payment**. After three hours it is marked
 **Payment not completed** and cancelled, so it no longer counts as a sale. If the
-money arrives late after all, the order comes back as **Paid**.
-
-**Payments nobody came back from.** Every fifteen minutes the website asks
-Flutterwave about any payment it has not heard back about from the last three
-days (`pay-reconcile`, which Netlify runs on its own; nothing to set up). So a
-customer who pays by mobile money and puts their phone away, or a webhook that
-did not get through, still ends with the order marked **Paid ✓** and both
-confirmation emails sent, never cancelled as walked away from.
-
-**A price that changes during checkout.** The customer pays the total on the
-quote they pressed **Pay** on, or nothing. If a price changes in between (a
-promotion ends, a price is changed at the till), they are shown the new total
-and asked to look again before anything is charged.
+money arrives late after all, the order comes back as **Paid**. Nothing was set
+aside for it meanwhile, so the shop's email about it then begins **[CHECK
+STOCK]** (build 78): check the piece is still there before confirming the
+order, and if it is not, refund the customer from your Flutterwave dashboard.
 
 ### Vaultique Rewards on the website
 
@@ -764,10 +845,11 @@ list out.
    **platform's** Supabase, and put the key it shows once into Netlify as
    **POS_REWARDS_KEY**. **SUPABASE_SERVICE_ROLE_KEY** (this website's own)
    must be there too. Open `/api/rewards-check`: it should say
-   `"source":"door"`. Then **POS_SUPABASE_KEY** can be deleted from Netlify
-   (deploy again afterwards). Until the door is set up, the rewards read the
-   old way, with **POS_SUPABASE_KEY** as the platform's **secret** key
-   (`sb_secret_…`); a publishable key is refused for that on purpose.
+   `"source":"door"`. Since build 77 the door is the only way: the old one,
+   reading the whole business with the platform's secret key
+   (**POS_SUPABASE_KEY**), is gone, and Netlify will not publish the website
+   while that key is still among its variables. Until the door is set up, the
+   rewards say they cannot be reached just now.
 3. **Settings > Notifications** must be able to send email: the code goes
    by email.
 4. **Customer accounts** must be on (Settings > Customer Accounts).
@@ -802,11 +884,17 @@ list out.
 The announcement bar, the hero, your story, the core values, and which
 sections appear in what order.
 
-- **Announcement bar.** On or off, and what it says. `<b>bold</b>` works.
+- **Announcement bar.** On or off, and what it says. `<b>bold</b>`, `<i>italics</i>`,
+  `<u>underline</u>`, a line break (`<br>`) and a link (`<a href="#/shop">…</a>`)
+  work. Any other tag is taken out, keeping only its words (build 78): no
+  picture, script or styling can be slipped in through it.
 - **Hero.** On or off, the three rotating photos, the small line, both heading
   lines, the subtitle, and the button. Leave the button's link blank and it goes
-  to the shop as it always has; `#/policies` sends it to a page on your site, and
-  a full `https://` address opens elsewhere in a new tab.
+  to the shop as it always has; `#/policies` or `/policies` sends it to a page on
+  your site, a full `https://` address opens elsewhere in a new tab, and
+  `mailto:` and `tel:` work too. Any other kind of link is ignored by the shop
+  front (build 78), even one written straight into the database, and the button
+  goes to the shop. The promotional banner's button works the same way.
 - **Our story.** The heading and two paragraphs. Clear a paragraph and it goes
   rather than reverting to the words the site shipped with.
 - **Core values.** The row of promises under the story. Leave the list empty to
@@ -1051,9 +1139,23 @@ Whether customers can have an account, and what one is worth having.
 
 #### Verifying
 
-**Email verification** works straight away; Supabase sends the message. Someone
-can sign in but cannot check out until they have clicked the link, and the site
-tells them so on the page rather than letting them reach a dead conversation.
+**Email verification** works straight away; Supabase sends the message (once
+`supabase-signup.sql` has been run, the website sends it itself, through your
+email in Settings > Notifications). Someone can sign in but cannot check out
+until they have clicked the link, and the site tells them so on the page rather
+than letting them reach a dead conversation.
+
+**The same answer for every address** (build 77). With email verification on,
+creating an account says exactly the same thing whether or not the address
+already has an account, so nobody can use the form to find out who shops with
+you. The difference is in the email, which only the owner of the address
+reads: a new address gets its link; one already waiting to be confirmed gets
+a link that confirms it and signs in; one already in use is told so, with
+where to sign in and how to choose a new password. Nothing typed into the form
+is put in those emails, and no account's password is changed by it. With email
+verification **off** the account is ready at once and signed straight in, so
+the form has to say when an address is already in use, as Supabase's own
+sign-up does: switching verification on is what closes that.
 
 **Phone verification** has its own switch, but it needs an SMS provider
 connected to Supabase (Authentication → Providers → Phone, with Twilio or
@@ -1371,8 +1473,8 @@ so a quiet Tuesday reads as a quiet Tuesday rather than as something broken.
 | Product views | Pieces opened to read about |
 | Added to cart | Pieces gathered to buy |
 | Checkouts begun | People setting off to WhatsApp to order |
-| Orders | Orders the website took today |
-| Order value | What those orders came to |
+| Orders | Orders confirmed today, or paid online (build 78), with any still waiting to be confirmed said beneath |
+| Order value | What those orders came to, likewise |
 | Registered customers | Everybody with an account, and how many joined this month |
 | Newsletter subscribers | Everybody still subscribed, and how many joined this month |
 
@@ -1384,11 +1486,15 @@ Orders and what they came to, for **today**, **this week** (from Monday) and
 **this month**, with the last seven days drawn underneath. The chart shows one
 measure at a time — press **Orders** or **Order value** to change which.
 
-> **This is not a sales figure and is not meant to be.** The website takes no
-> payment: every method under Settings > Payments is settled off the site — cash
-> in person, a transfer, mobile money, on delivery. So this is *what customers
-> asked the shop for*, not money that has arrived. Your books are the Business
-> Platform's. A cancelled order is not counted here at all.
+> **What is counted (build 78, decision Q4).** An order counts once you have
+> confirmed it (Confirmed, Ready, On its way, Delivered, or the older
+> Completed), or once it has been paid online for real. An order still
+> **Received** is not counted yet, since nobody has checked the piece is there
+> and anybody could have placed it: the number still waiting to be confirmed is
+> shown beside the figures instead. A cancelled order, a test payment and an
+> order still on the payment page are not counted at all. Most orders are
+> settled off the site, so this is still not money in the bank: your books are
+> the Business Platform's.
 
 #### Needs attention
 
@@ -1446,7 +1552,8 @@ How many people came to the website, what they looked at, and on what.
 
 **Orders** and **Sales** come from the Orders tab. To remove a test order from
 these figures, open **Orders**, find it, and press **Delete** (or set its status
-to **Cancelled**; cancelled orders are not counted).
+to **Cancelled**; cancelled orders are not counted). An order paid online in
+Test mode is left out by itself (build 76).
 
 **Added to cart** (build 70). Press **See which pieces** under the number, or
 open the **Added to cart** card: every piece added to a cart in the dates shown,
@@ -1476,8 +1583,10 @@ asked of the visitor and no internet address is kept. The country is very
 reliable. The town is right for most visitors, but a phone on a mobile network
 is sometimes placed at its network's hub (Lusaka, for somebody nearby). It never
 shows anything finer than a town. It uses the service key already in Netlify,
-**SUPABASE_SERVICE_ROLE_KEY** (there if you set up staff logins) or
-**WEB_SUPABASE_SERVICE_KEY**, and counts visits from the day it is switched on.
+**SUPABASE_SERVICE_ROLE_KEY** (there if you set up staff logins), and counts
+visits from the day it is switched on. (Since build 77 every function reads the
+service key the same way and understands either name, SUPABASE_SERVICE_ROLE_KEY
+or the older WEB_SUPABASE_SERVICE_KEY, so one of the two is enough.)
 
 **Where visitors say they are (build 69).** A town cannot be read from a
 connection in Zambia: Airtel, MTN and Zamtel send every phone on mobile data
@@ -1535,10 +1644,14 @@ the chosen dates into:
 
 It also says how much of the online money was delivery fees.
 
-**An online order counts as a sale only once it is paid**, in Orders and Sales
-here and on the Dashboard. One still on the payment page is not counted, and is
-not shown as "waiting" for you either. WhatsApp orders count as they always
-have, until cancelled.
+**What counts as a sale (build 78, decision Q4)**, in Orders and Sales here and
+on the Dashboard: an online order once it is paid, and a WhatsApp order once you
+have confirmed it. WhatsApp orders still **Received** are said beside the
+figures as waiting to be confirmed, and are not counted until you confirm them.
+An online order still on the payment page, a cancelled order and a test payment
+are not counted at all. (Until `supabase-hardening.sql` from build 78 has been
+run, Analytics counts the way it did before, Received orders included, and says
+so.)
 
 **Nothing here works until you run one file.** Open the **SQL Editor** for this
 website's Supabase project > **New query**, paste in the whole of
@@ -1805,10 +1918,12 @@ These are not the same thing and the difference matters.
 - **Unsubscribe** records that they left. The address stays in the list, greyed
   out, and you are handed your unsubscribe wording, ready to send back to them.
   **Nothing on your site puts them back by accident** — the tick-box beside a
-  new account will not, however many times they open one. The one thing that
-  will is the person typing their own address into the newsletter box
-  themselves, because that is them asking, and telling somebody they had
-  rejoined while quietly leaving them off would be worse than either.
+  new account will not, however many times they open one. Since build 76, nor
+  does typing the address into the newsletter box: anybody could type anybody's
+  address. Instead the website emails that address a link (through Settings >
+  Notifications, the same email as "Send a test email"), and only the person
+  who opens it and presses the button is put back. If the shop's email is not
+  set up, the form tells them to contact you instead.
 - **Delete** erases them completely. Use it when somebody asks to be forgotten
   entirely. Afterwards nothing stops the address being added again.
 
@@ -1882,10 +1997,20 @@ failed — a wrong password and an unreachable host need completely different
 fixes.
 
 - Most providers use **port 587 with STARTTLS**, or **465 with SSL/TLS**.
-- Your **SMTP password is kept in the private table**, with your bank details,
-  where the website cannot read it. It never reaches a customer's browser.
+- Your **SMTP password**, once saved, is kept where only the website's own
+  functions can read it (build 77, once `supabase-hardening.sql` has been run
+  again): not a customer's browser, not the admin, not even yours. The box
+  stays empty and says **Saved and hidden**; type in it only to change the
+  password. Backups made from then on leave it out by themselves, so after
+  restoring one on a new project, type it in once more.
 - Save your changes before testing — the test uses what is stored, not what is
-  on screen.
+  on screen, and is sent by the website itself to the address you type.
+- **Who can send:** the test, anybody whose role is ticked for **Settings**;
+  **Send welcome** in Subscribers, anybody ticked for **Subscribers**, and only
+  to an address on the subscriber list (build 77). If one fails, the message
+  says which part failed (the server's address, its security setting, the
+  sign-in, the sender, the recipient...). The mail server's own words go to the
+  function's log only: Netlify > Logs > Functions > send-email.
 
 > The test only works on your live website address. Opening `admin.html` from a
 > folder on your computer means the sender is not there to answer.
@@ -1920,15 +2045,35 @@ Press **Set up two factor**, scan the square with Google Authenticator, Microsof
 Authenticator, Authy or any app of that kind, then type the code it shows. From
 then on, signing in asks for a code as well.
 
-> **Keep the app.** If you lose the phone and have no other way in, only Supabase
-> can let you back into your own admin. Most authenticator apps can back
-> themselves up — turn that on when you set it up.
+> **Keep the app, and keep the setup code.** When you set it up, the admin shows
+> a code under the square (a line of capital letters and figures). Write it down
+> and keep it somewhere safe away from the phone: typed into a new phone's
+> authenticator app, it gives the same six-digit codes. Most authenticator apps
+> can also back themselves up — turn that on.
 
 This is checked **every time you sign in**, including when you come back to a tab
-that was already open. It is enforced by this admin page, which is what stops a
-person with your password. Someone who bypassed the page entirely and spoke to
-the database directly would not be stopped by it — if you ever want that closed
-too, say so and I will add the database rule for it.
+that was already open — and since build 76 (`supabase-hardening.sql`) it is
+checked by the **database** too, so somebody who has your password but not your
+phone gets nothing, however they ask.
+
+**Required, not optional, for some people (build 76).** Two-factor is required
+for the owner, and for anybody whose role is ticked for **Settings**, **Orders**
+or **Subscribers** (Settings > Users & Roles says so under each role). The first
+time they sign in after the hardening, the admin shows them how to set it up
+before anything else, and the button to turn it off is not offered to them. For
+anybody else, an Agent who only answers chats for instance, it stays optional.
+
+**Lost the phone and the setup code?** In the website's Supabase, SQL Editor:
+
+```sql
+delete from auth.mfa_factors
+ where user_id = (select id from auth.users where email = 'THE-PERSON@EXAMPLE.COM');
+```
+
+They then sign in with their password, and the admin asks them to set
+two-factor up again, on the new phone. The owner can do this for anybody on the
+staff. Only somebody who can sign in to Supabase itself can run it, which is the
+point.
 
 #### Signing in
 
@@ -1939,11 +2084,6 @@ too, say so and I will add the database rule for it.
   and closing the browser always signs you out.
 - **Slow down repeated failed sign-ins** makes this device wait after several
   wrong passwords.
-- **The admin and the shop sign in separately** (since build 75). You can be
-  signed in to the shop as a customer, to try an order or Rewards, and to the
-  admin as yourself, in the same browser, and neither changes the other. Before
-  build 75 they shared one sign-in, so a customer sign-in on the shop quietly
-  turned an open admin into that customer.
 
 Be clear about that last one: it stops somebody **guessing at your own counter**.
 It does not stop a real attacker, who would just open a different browser.
@@ -2025,9 +2165,15 @@ every upload.**
 - **Download a backup** saves every setting on every page of this admin into one
   file: business details, prices, delivery, payment details, the lot. Take one
   before big changes.
-- The file holds your **bank account and mobile money details in plain readable
-  text**. Anyone who opens it can read them. Keep it somewhere only you can get
-  to and do not email it to anyone. You are warned before it downloads.
+- The file holds your **bank account and mobile money details, and your preview
+  key, in plain readable text**. Anyone who opens it can read them. Keep it
+  somewhere only you can get to and do not email it to anyone. You are warned
+  before it downloads.
+- It **never** holds the **email password** or the **phone-notification keys**
+  (build 78), and restoring a backup never writes them back, even an older
+  backup that has them: the ones in use stay as they are. After restoring onto
+  a new project, type the email password again in Settings > Notifications, and
+  open Live Chats as the owner to make new notification keys.
 - It does **not** include product photos, orders, customers or reviews. Those
   stay in the database, which Supabase backs up itself.
 - **Restore from a backup** reads a file back. It shows you which sections will
@@ -2060,7 +2206,9 @@ Until now the notice was only a notice: the page hid itself, but the product
 feed carried on handing out the whole catalogue, an order sent straight at the
 database was accepted, a chat could still be started, and a search engine that
 does not run JavaScript saw the shop rather than the notice. All four are shut
-now:
+now (the order one completely since build 76's `supabase-hardening.sql`: before
+it, an order written straight into the orders table, rather than through the
+checkout, still got in):
 
 - `/api/products` returns nothing while the shop is shut.
 - The database refuses an order and refuses to start a chat.
@@ -2083,11 +2231,13 @@ You get the real shop — products, checkout, chat, all of it working — while
 everybody else still gets the notice. The key is remembered for that tab, so
 you can click around without repeating it, and closing the tab forgets it.
 
-**Be clear about what it is.** It is a door key, not a password. It sits in the
-same settings the storefront reads, so it is not a secret and is not meant to
-be one. What it stops is a customer wandering in while you work, which is the
-thing that actually happens. If you leave it empty, nobody gets past the notice
-— including you.
+**Be clear about what it is.** It is a door key, not a password: anybody you
+send the link to can use it. Until build 76 it sat in the same settings every
+visitor's browser downloads, so anybody who looked could find it; since
+`supabase-hardening.sql` it is kept with the private settings (like the bank
+details), only people who may open Settings see it, and the database checks it
+when somebody uses it. If you leave it empty, nobody gets past the notice —
+including you.
 
 Change it whenever you like; the old one stops working the moment you save.
 - **Reviews:** every review left on the site appears here. Mark a review as

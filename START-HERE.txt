@@ -1,215 +1,802 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 78
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 80
 ====================================================
-The whole site, cumulative (includes everything in builds 75, 76 and 77).
-Upload this and you are up to date.
+The whole site, cumulative: everything in build 79 (and so builds 73
+to 78 of this line), with the work of the other website line's builds
+74 to 78 carried onto it. Upload this and you are up to date.
 
-NEW IN 78 — AN ORDER'S PROGRESS, FROM THE TILL TO THE CUSTOMER
-(goes with the platform's build 509)
-ONE SQL FILE IN THIS WEBSITE'S SUPABASE. Nothing on the platform's.
+NEW IN 80 — BUILD 79, WITH EVERYTHING FROM THE OTHER LINE'S 74 TO 78.
+  ONE SQL FILE: supabase-hardening.sql, this build's copy, run once more.
+  Two lines of builds had both used the numbers 74 to 78: this line's
+  safety work, and the other line's online orders, till and payment work.
+  Build 80 is build 79, every part of it kept, with all of that other
+  work carried onto it. About twenty minutes.
+  Do these in order. Each one says how you know it is done.
 
-  * Once the platform's till has rung an order up, one whose goods are
-    still to go says Preparing, not Completed. One the customer took at
-    the counter says Completed, as before.
-  * The customer sees where the order is, step by step, on their account
-    page: Paid, Preparing, On its way (or Ready for collection), Delivered
-    (or Collected), with the shop's note and the dates.
-  * While it is on its way, the customer has two buttons: Confirm
-    delivery, and Ask for more time (3 more days, up to 2 times, as the
-    platform's Settings say). Otherwise it is marked delivered by itself
-    after the days run out, with a reminder 2 days before. Collection
-    orders are never marked collected by themselves.
-  * A private link to the order, in the customer's email, works without
-    signing in: the same steps and the same two buttons.
-  * Emails, each once: on its way, the reminder, delivered, refunded.
-  * Admin > Orders says where each order rung up at the shop is.
-  * Every SQL file is now hidden from visitors.
-  * The admin's sign-in check asks the database's own administrator rule
-    before it ever says no, and names the login it refused.
+  A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
+     browser it is now four drags (the tests folder is in two parts);
+     with GitHub Desktop it is one commit, as before.
+     Done when: Netlify > Deploys shows it as Published.
 
-  THE STEPS
+  B. RUN supabase-hardening.sql AGAIN in the WEBSITE's Supabase (not
+     the platform's): SQL Editor > New query > paste the whole file,
+     this build's copy > Run. Confirm if Supabase asks. The SQL is also
+     in the chat. It keeps every order, customer and setting.
+     Why: the platform's till reaches this website through a door of
+     its own (supabase-pos-orders.sql, from the other line's build 76),
+     and an order's private link through another. Build 79's copy of
+     this file did not know about them, so wherever it was run after
+     them it closed both. This build's copy keeps them open, and still
+     closes everything else.
+     Three lines in its report are new, one for each file the till and
+     an order's progress stand on:
+       Platform | The platform's till (supabase-pos-orders.sql ...)
+       Platform | The payment history (supabase-payment-history.sql ...)
+       Platform | An order's progress (supabase-order-progress.sql ...)
+     Each should say OK. One that says NOT RUN YET says what to do: run
+     those files, in the order 76, 77, 78, then this file again. (The
+     first time supabase-pos-orders.sql is run it shows the platform's
+     door key once: keep it for the platform's Netlify, VBP_WEB_ORDERS_KEY.)
+     Done when: the three lines say OK, and the last line says
+       This file | RECORDED (080-hardening).
 
-  1. THIS WEBSITE'S SUPABASE (not the platform's), after
-     supabase-pos-orders.sql: SQL Editor > New query > paste
-     supabase-order-progress.sql > Run. The SQL is also in the chat.
-     Its last result is one row: progress_columns OK, doors OK,
-     customer_buttons OK, guard OK, and administrators. FIND YOUR OWN
-     LOGIN IN administrators (its email shortened). If it is not there,
-     the admin will not open for it: run the SQL from 16 November
-     ("signing in to the admin with your own login again") first.
-     Run in the wrong Supabase, it stops at once and creates nothing.
-     Safe to run again.
-  2. UPLOAD this website (78).
-  3. Then the platform's build 509, as its notes say.
+  C. SIGN IN TO THE ADMIN. It asks for the code from your authenticator
+     app straight after the password (build 79's way in), and if two-
+     factor is not set up yet it walks you through it, once. Everybody
+     is asked to sign in once more after this upload: the admin now
+     keeps its sign-in in a place of its own, apart from the shop's, so
+     signing in to the shop as a customer can never again turn the open
+     admin into that customer.
+     Done when: you are in the admin, and Admin > Orders lists orders.
 
-  Until step 1 is done, 78 works as 77 did: no steps, no buttons, and
-  the 15-minute check does nothing.
+  D. THE PLATFORM: Sales > Online Orders. Orders from this website show
+     there again, and paid ones ring up by themselves (the platform's
+     build 509). If it still names a setting, that setting is the thing
+     to correct, in the platform's Netlify.
+     Done when: Online Orders shows the website's orders.
 
+  E. WATCH THE CHECKS ON GITHUB (Actions > Tests), as in build 79.
+     Done when: the newest Tests run has a green tick.
 
-NEW IN 77 — ONLINE PAYMENT MADE SAFER (after the payment audit)
-ONE SQL FILE IN THIS WEBSITE'S SUPABASE. Nothing on the platform.
+  F. CHECK THE LIVE SITE FROM OUTSIDE, with Node 18 or later, from this
+     folder:
+        node tools/live-check.cjs https://YOUR-SITE
+     Part 8 should say the live site is build 80.
+     Done when: it ends "nothing to fix".
 
-  * The 15-minute check-up also asks about payments Flutterwave reported
-    failed. A customer whose first try fails can try again on the same
-    page and pay; if word of that payment never arrived, the order used
-    to stay cancelled with the money taken. Now it is found and the order
-    comes back, with its emails.
-  * Only the exact amount counts as paid. A payment of more, less or in
-    another currency "needs attention": it is never marked paid, its
-    order is never cancelled by the three-hour tidy-up, the shop gets one
-    email, and Admin > Orders shows "Payment needs attention" with what
-    came in. Check it in your Flutterwave dashboard and contact the
-    customer.
-  * The payment status page asks Flutterwave about one payment at most
-    once every five seconds, however often it is asked.
-  * Every online payment keeps a history nobody can change: Admin >
-    Orders, "Payment history" on an order paid online.
-  * The page after paying says "Nothing has been taken" only when
-    Flutterwave says the payment failed. A customer who left Flutterwave's
-    page is told an approval on the phone may still arrive, and not to
-    pay again. The page checks for two minutes instead of 20 seconds.
-  * A piece paid for online is held: a second customer cannot pay for it
-    until the first order is rung up, completed or cancelled (seven days
-    at most). The feed and the prices are not touched.
+  WHAT CHANGED (all of it from the other line's builds 74 to 78, unless
+  it says build 80)
+    * WHATSAPP ORDERS carry their number at the top of the message
+      ("Order VB-3F9K2"), the number the shop types into the platform's
+      Online Orders. Points a customer uses are promised on that same
+      number. The order is still recorded the build 79 way: priced by
+      the website's own function from the catalogue.
+    * THE PLATFORM'S TILL can find, ring up and complete a website
+      order through its own door, with its own key. An order rung up
+      says "Rung up at the shop · Receipt ..." in Admin > Orders, and a
+      customer with an account sees the receipt and can download it as
+      a PDF. An order still waiting for its online payment cannot be
+      rung up.
+    * AN ORDER'S PROGRESS: once rung up, an order with goods still to
+      go says Preparing, then On its way (or Ready for collection),
+      then Delivered (or Collected), with the shop's note and the dates,
+      on the customer's account page and in Admin > Orders (which can
+      list each step). The customer has Confirm delivery and Ask for
+      more time; otherwise it is marked delivered by itself when the
+      days run out, with a reminder first. A private link in the
+      customer's email shows the same without signing in. Emails, once
+      each: on its way, the reminder, delivered, refunded.
+    * PAYMENT SAFETY: a check every fifteen minutes asks Flutterwave
+      about any payment the site has not heard back about, so a paid
+      order is never cancelled as walked away from. Only the exact
+      amount counts as paid: more, less or another currency "needs
+      attention", is never marked paid, keeps its order open, and the
+      shop is told once (Admin > Orders and the Dashboard show it).
+      Every online payment keeps a history nobody can change (Admin >
+      Orders, Payment history). A piece paid for online is held for
+      its order. A price that changed between the quote and Pay is
+      shown again before anybody pays. The page after paying says
+      "Nothing has been taken" only on Flutterwave's word, and keeps
+      checking for two minutes. Build 79's rules stay: Test mode is the
+      shop's own, a test payment says TEST, and a payment arriving after
+      its order lapsed tells the shop [CHECK STOCK].
+    * SETTINGS > PAYMENTS says whether each Flutterwave key looks like
+      the right one, when Flutterwave last reached the site, and can
+      ask Flutterwave whether it accepts the keys, charging nothing.
+    * THE ADMIN keeps its own sign-in (C above), says "Not saved" when
+      the database did not make a change rather than "Saved ✓", names
+      the login it turns away, and asks its questions in its own
+      dialog, never the browser's box. Analytics shows page names as
+      words ("Shop — PU Male Shoes", not %20).
+    * BUILD 80 · CLOSING AN ACCOUNT now removes the login too, so the
+      customer can no longer sign in with the same email and password
+      afterwards. Their profile, saved addresses and rewards link go
+      with it; their orders stay, without their name on the account.
+      A login on the admin list, active or not, the owner's included,
+      cannot be closed from the shop: that is Settings > Users & Roles.
+      (netlify/functions/account-delete.js)
+    * BUILD 80 · supabase-hardening.sql keeps the till's door and the
+      private link open (B above) and reports on the three files.
+    * New: supabase-pos-orders.sql, supabase-payment-history.sql,
+      supabase-order-progress.sql, assets/progress.js, and in
+      netlify/functions account-delete.js, order-progress.js and
+      pay-reconcile.js (both of those last two every fifteen minutes,
+      netlify.toml). Twenty new checks in tests/, among them
+      after-the-hardening.sql, account-delete.test.cjs and
+      order-progress-db.sh (now run by tools/sql-tests.sh).
+    * assets/version.js says build 80 (version 1.50.0).
 
-  THE STEP
+NEW IN 79 — SAFETY WORK, PART 6: THE CHECKS AND THE GUIDES. No SQL.
+  Nothing a customer or the admin sees changes. The website's own
+  checks now run on GitHub every time you upload, and the guides say
+  how it all fits together. About fifteen minutes, most of it waiting.
+  If you have not done build 78's steps yet (below), do them first.
+  Do these in order. Each one says how you know it is done.
 
-  1. THIS WEBSITE'S SUPABASE (not the platform's), after
-     supabase-payments.sql: SQL Editor > New query > paste
-     supabase-payment-history.sql > Run. The SQL is also in the chat.
-     Its last result is one row: asked_at OK, history OK, recorders OK.
-     Run in the wrong Supabase, it stops at once and creates nothing.
-     Safe to run again.
-  2. UPLOAD this website (77).
+  A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
+     browser the three drags are grouped differently from before (the
+     tests folder grew), and there may be one file to make by hand:
+     HOW-TO-UPLOAD.txt, "B. THE BROWSER", says which and how.
+     Done when: Netlify > Deploys shows it as Published, and your
+     repository on GitHub has a folder called .github, with
+     workflows/tests.yml inside it.
 
-  Until step 1 is done, 77 works as 76 did on two points only: the status
-  page asks Flutterwave every time, and there is no payment history.
-  Everything else in 77 works at once.
+  B. NO SQL. supabase-hardening.sql is the same as build 78's. If its
+     report ended  This file | RECORDED (078-hardening)  when you ran
+     it for 78, there is nothing to run. Running it again is harmless.
 
-  KEEP ONLINE PAYMENT SWITCHED OFF until the trial payments in the build
-  notes are done (test mode first, then a few small live ones).
+  C. WATCH THE CHECKS ON GITHUB. Open your repository on GitHub, then
+     the Actions tab. A run called Tests starts by itself a few seconds
+     after each upload. It has three parts, which run side by side:
+        Node tests                     two or three minutes
+        Browser tests                  about twenty minutes
+        Database (stand-in Supabase)   about five minutes
+     If you uploaded in the browser, a run for an earlier drag may show
+     as cancelled (grey): each upload stops the run before it, so only
+     the finished upload is checked in full. That is expected.
+     Done when: the newest Tests run has a green tick.
+     A green tick with a yellow warning names a browser check that
+     passed only on its second try: nothing is wrong with the shop, but
+     mention it with your next request so it can be made steadier.
+     A red cross instead: open the run, then the part with the cross.
+     The lines with ✗ say which check failed and why. Send me those
+     lines, or the whole log (the ⚙ menu on that page > Download log
+     archive). The shop is not affected: Netlify publishes as before,
+     whatever the checks say.
 
+  D. KNOW WHAT THE CHECKS COST. GitHub counts the minutes they use. A
+     public repository uses none. A private one on GitHub's free plan
+     has 2,000 minutes a month, and each upload uses about 25
+     (the three parts are counted separately), so roughly 70
+     uploads a month. When they run out, the checks stop until the
+     next month; GitHub only charges if you have set it up to pay for
+     more.
+     To stop the checks: Actions > Tests (on the left) > the ··· menu >
+     Disable workflow. Enable workflow, in the same place, starts them
+     again.
+     Done when: you know which kind your repository is (GitHub shows
+     Private or Public beside its name).
 
-NEW IN 76 — WEBSITE ORDERS AT THE TILL (goes with the platform's build 508)
-ONE SQL FILE IN THIS WEBSITE'S SUPABASE, AND THREE SETTINGS IN THE
-PLATFORM'S NETLIFY. The steps are just below this list.
+  E. CHECK THE LIVE SITE FROM OUTSIDE, with Node 18 or later, from this
+     folder:
+        node tools/live-check.cjs https://YOUR-SITE
+     Part 8 should say the live site is build 79.
+     Done when: it ends "nothing to fix".
 
-  * The customer's WhatsApp message now starts with the order number,
-    for example "Order VB-3F9K2". That is the number the shop types into
-    the platform, Sales > Online Orders, to ring the order up.
-  * Points a customer uses on a WhatsApp order are promised on that same
-    number, so the till finds them with the order and takes them there.
-  * Once the platform's till has rung the order up, the order says
-    Completed on the website, by itself. A customer with an account sees
-    "Completed at the shop · Receipt ..." on the order, and a "Download
-    receipt" button: a PDF of the receipt the till printed.
-  * Admin > Orders shows "Rung up at the shop · Receipt ... · Invoice ..."
-    on such an order, and "Being rung up at the shop by ..." while a till
-    has it open. Its status reads "Completed — rung up at the shop".
-  * An order still waiting for its online payment cannot be rung up, so a
-    customer can never pay twice. An order only counts as paid online when
-    the payment service's own record of the payment says paid.
-  * Nothing else changes: WhatsApp ordering, online payment, the emails
-    and the Orders tab work as before. If the order number cannot be had
-    within six seconds, the message goes without it, as it always did.
+  WHAT CHANGED
+    * THE CHECKS RUN ON GITHUB (.github/workflows/tests.yml): every
+      Node check, every browser check in Chromium, the 28 SQL files and
+      supabase-hardening.sql on a stand-in Supabase made fresh each
+      time, the SQL checks, and the browser-to-database round trip. It
+      needs no keys or secrets, and touches nothing of the shop's: not
+      Netlify, not either Supabase, not Flutterwave, not the email
+      account.
+    * ONE COMMAND FOR EACH KIND OF CHECK, from the tests folder:
+      npm run test:node, test:browser and test:sql (THE AUTOMATED
+      CHECKS, at the bottom of this file). tests/package.json pins the
+      versions they use, so every computer runs the same ones. It sits
+      in tests, not at the top, so Netlify never installs anything for
+      it; tests/.gitignore keeps what npm downloads out of GitHub.
+    * A NEW DATABASE CHECK: a visitor can call exactly the functions on
+      supabase-hardening.sql's list (section 12) and nothing else, so a
+      later SQL file cannot quietly hand one out (tests/hardening.sql,
+      now 93 checks).
+    * THE GUIDES: SETUP.md has one table of every setting Netlify may
+      hold (which to set, which are built in, which must never be
+      there). README.md describes the website as it is now: how it fits
+      together, every folder, the functions, the tests, deploying.
+    * THE PAYMENT AND REWARDS CHECKS wait for what they check rather
+      than for set times, so a slow computer makes them slower, never
+      wrong. And a browser check that fails is run once more: passing
+      then, it is named as a warning (step C); failing again, the run
+      goes red.
+    * HOW-TO-UPLOAD.txt: the browser drags regrouped to stay under
+      GitHub's 100 files at a time, and how to add the workflow file by
+      hand.
+    * New: .github/workflows/tests.yml, tests/package.json,
+      tests/package-lock.json, tests/.gitignore, tests/run-tests.js and
+      tools/sql-tests.sh. Changed: README.md, SETUP.md, START-HERE.txt,
+      HOW-TO-UPLOAD.txt, tests/payments.browser.cjs,
+      tests/rewards.browser.cjs and tests/hardening.sql. Nothing else in
+      assets/, netlify/ or any supabase-*.sql file changed.
+    * assets/version.js says build 79.
 
-  THE STEPS, IN THIS ORDER
+  WHAT IS NOT IN THIS BUILD, AND COMES NEXT (part 7, the last: what
+  only the live site can prove)
+    Done on the real site, with you: two-factor and the roles tried
+    with real sign-ins, the payment paths in Flutterwave's sandbox
+    (paid, failed, cancelled, late, twice, the wrong amount), the
+    throttles under a burst, Supabase's Security Advisor, a backup
+    restored on a copy, and the security policy switched from
+    report-only to enforced once its reports have been quiet for a
+    week: send what csp-report logged (build 75, step D) with your next
+    request. Keep every zip of the website private, this one included.
 
-  1. THIS WEBSITE'S SUPABASE (not the platform's): SQL Editor > New query
-     > paste supabase-pos-orders.sql > Run. The SQL is also in the chat.
-     Its last result is one row:
-        door_key_for_platform   a long line of letters and figures
-        orders_columns          OK
-        doors                   OK
-        guard                   OK
-     COPY THE KEY NOW. It is shown this once; the database keeps only a
-     fingerprint of it. Run in the platform's Supabase by mistake, it
-     stops at once and creates nothing. Safe to run again: it then says
-     "made before: use the one you saved".
+NEW IN 78 — SAFETY WORK, PART 5: THE ADMIN AND THE SHOP FRONT. Upload,
+  then the SQL file from 77, grown again, run once more. About twenty
+  minutes. If you have not done build 77's steps yet (below), do them
+  first: its step A (the platform's secret key) has to be done before
+  any upload from 77 on will publish.
+  Do these in order. Each one says how you know it is done.
 
-  2. THE PLATFORM'S NETLIFY (the platform's site, not this website's):
-     Site configuration > Environment variables > Add a variable, three
-     times:
-        VBP_WEB_URL               this website's Supabase address, as in
-                                  config.js (https://....supabase.co)
-        VBP_WEB_PUBLISHABLE_KEY   this website's public key, as in
-                                  config.js (SUPABASE_ANON_KEY)
-        VBP_WEB_ORDERS_KEY        the key from step 1
+  A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
+     browser it is three drags, as before.
+     Done when: Netlify > Deploys shows it as Published.
 
-  3. UPLOAD both: this website (76) and the platform (508). Netlify reads
-     new settings only when it deploys, so upload after step 2.
+  B. RUN supabase-hardening.sql AGAIN in the WEBSITE's Supabase (not
+     the platform's): SQL Editor > New query > paste the whole file,
+     this build's copy > Run. Confirm if Supabase asks.
+     It adds one thing: what counts as a sale (C below), decided in one
+     place for the Dashboard and Analytics alike.
+     One line in the report is new:
+       Orders | What counts as a sale: if it says some orders are still
+         "Received", open Admin > Orders and confirm or cancel them.
+     Done when: the last line says  This file | RECORDED (078-hardening).
+     It is safe to run again whenever you like.
 
-  Nothing is lost if the steps are done late: until they are, the
-  platform's Online Orders says the website cannot be reached yet, and
-  everything else works as today.
+  C. LOOK AT THE DASHBOARD AND ANALYTICS. Orders and Order value (Sales
+     in Analytics) now count an order once you have confirmed it
+     (Confirmed, Ready, On its way, Delivered, or the older Completed),
+     or once it was paid online. An order still "Received" is not
+     counted yet: it is said beside the figures, as "· 2 waiting to be
+     confirmed". So the figures may read lower than yesterday's: that
+     is the change, not a fault.
+     Done when: you have seen the figures, and confirmed or cancelled
+     any orders still waiting.
 
+  D. TAKE A NEW SETTINGS BACKUP: Settings > System & Maintenance >
+     Download a backup. From this build a backup never holds the email
+     password or the phone-notification keys. Backup files you saved
+     before do hold them: delete those, or keep them somewhere only you
+     can get to.
+     Done when: you have the new file, and the old ones are gone or
+     locked away.
 
-NEW IN 75 — NO SQL. Just upload, then sign in to the admin once more.
+  E. OPEN THE SHOP and press the big button on the homepage, and the
+     sale banner's button if you use one. Each should go where you set
+     it in Settings > Homepage. One that now goes to the shop instead
+     has a link of a kind the shop no longer follows: correct it there
+     (a page here starts #/ or /; another site, https://).
+     Done when: both go where you expect.
 
-  * Admin > Rewards: "Link" said "not permitted". The admin and the
-    shop front kept their sign-in in the same place in the browser, so
-    signing in to the shop as a customer (to try Rewards, say) quietly
-    turned the open admin into that customer, and the database rightly
-    refused a customer. Reloading the admin then signed both out. The
-    admin now keeps a sign-in of its own, apart from the shop's.
-    Because it has moved, the admin asks everybody to sign in once more
-    after this upload. Customers on the shop are not signed out.
-  * Admin > Orders: changing an order's status said "Saved ✓" even when
-    nothing had been saved, which is why an order marked Confirmed still
-    said Pending on the customer's page. Same cause as above: the admin
-    was acting as the customer signed in on the shop, and the database
-    quietly changes nothing for a customer. Order status, policies and
-    subscribers now check the change was really made, and say "Not
-    saved", with the reason, when it was not.
-  * No more browser boxes ("vaultiqueboutique.com says"). Admin >
-    Rewards asks and answers in the admin's own dialog, and a refusal
-    says who may do it and where that is set (Settings > Users &
-    Roles). A customer's "Not you?" on their rewards card is asked in
-    the card itself. Nothing on the site uses the browser's box now.
-  * The welcome email after Link gives the customer number the way the
-    till prints it (VB-CUS-0006), rather than with the dashes taken
-    out. Points are found either way, as before.
+  F. CHECK THE LIVE SITE FROM OUTSIDE, with Node 18 or later, from this
+     folder:
+        node tools/live-check.cjs https://YOUR-SITE
+     Part 8 should say the live site is build 78.
+     Done when: it ends "nothing to fix".
 
-NEW IN 74 — NO SQL. Just upload.
+  WHAT CHANGED
+    * THE HOMEPAGE BUTTONS only follow the kinds of link Settings >
+      Homepage accepts: a page on this site (#/... or /...), a web
+      address (https:// or http://), mailto: or tel:. Anything else, a
+      javascript: link written straight into the database say, is
+      ignored, and the button goes to the shop. The payment page a
+      customer is sent to is only ever an https:// one.
+    * THE ANNOUNCEMENT BAR keeps its bold, italics, underline, line
+      breaks and links; any other tag is taken out, keeping its words,
+      so nothing in it can run. Button words from the settings ("Buy on
+      WhatsApp", "Enquire", the FAQ's "Ask us") are shown as words.
+    * THE ADMIN shows a product's photo and video addresses, and the
+      database's error messages, as text.
+    * WHAT COUNTS AS A SALE (your decision Q4): see C. Best selling on
+      the Dashboard counts the same orders. A cancelled order, a test
+      payment and an order still on the payment page are not counted.
+    * A PAYMENT THAT ARRIVES LATE, after its order had lapsed, still
+      brings the order back as paid, and your email about it now begins
+      [CHECK STOCK]: nothing was set aside meanwhile, so check the piece
+      before confirming, and refund through Flutterwave if it has sold.
+    * BACKUPS never hold the email password or the notification keys,
+      and restoring one, even an older one that has them, never writes
+      them back: the ones in use stay as they are.
+    * New: tests/safe-links.browser.cjs, tests/admin-escaping.browser.cjs
+      and tests/backup.browser.cjs. Changed: supabase-hardening.sql
+      (item 15, in section 6), assets/app.js, assets/admin/shell.js,
+      dashboard.js, analytics.js, settings/homepage.js and
+      settings/system-maintenance.js, netlify/functions/_pay.js,
+      pay-start.js, pay-status.js and pay-webhook.js, and the tests
+      for them.
+    * assets/version.js says build 78.
 
-  Online payment, made ready for the day you connect Flutterwave.
-  Nothing changes until then: checkout and WhatsApp ordering work
-  exactly as before.
+  WHAT IS NOT IN THIS BUILD, AND COMES NEXT (part 6: quality gates)
+    A test setup anybody can run with one command, the checks run
+    automatically on every upload to GitHub, the browser tests made to
+    wait for what they check, and one setup guide naming every Netlify
+    variable. Then the checks only the live site can prove. The security
+    policy is still report-only: send what csp-report logged (build 75,
+    step D) with your next request. Keep every zip of the website
+    private, this one included.
 
-  * A payment check every fifteen minutes. If a customer pays by
-    mobile money and puts the phone away, or Flutterwave's message to
-    the site does not get through, the site now asks Flutterwave
-    itself and marks the order paid, confirmation emails included.
-    Before, that order was cancelled after three hours with the
-    money already taken. Money that arrives late brings a cancelled
-    order back. Until a Flutterwave key is in Netlify the check does
-    nothing at all.
-  * A paid order always says paid, and the emails about it go once,
-    whichever gets there first: the customer coming back, Flutterwave's
-    message, or the fifteen-minute check.
-  * If a price changes between the customer seeing the total and
-    pressing Pay, they see the new total first and press Pay again.
-    Nobody is charged a total they were not shown.
-  * If Flutterwave cannot be reached when the customer presses Pay,
-    the attempt is closed cleanly: no order is left waiting, and they
-    can try again or order on WhatsApp.
-  * A customer who comes back from Flutterwave in a different tab
-    still has the cart emptied once the payment is confirmed.
-  * A payment can only be marked failed by Flutterwave's answer about
-    that same payment, never by someone else's.
-  * Flutterwave's newer way of signing its messages is accepted, as
-    well as the secret hash.
-  * Settings > Payments: a wrongly pasted key (the public or encryption
-    key instead of the secret key) is pointed out; the button "Check
-    the keys with Flutterwave" asks Flutterwave whether the keys work;
-    and the panel says when Flutterwave last reached the site, with a
-    warning if a message came with the wrong secret hash.
-  * The order form: typing the instant it opens no longer jumps to the
-    first box part-way through.
-  * SETUP.md, "Online payment", has the steps for connecting it.
+NEW IN 77 — SAFETY WORK, PART 4: THE WEBSITE'S FUNCTIONS. One key to
+  delete before the upload, and the SQL file from 76, grown, run once
+  more after it. About half an hour. If you have not done build 76's
+  steps yet (below), do them as well: its step C is this build's step C
+  (the same file), so run that once, here, after the upload.
+  Do these in order. Each one says how you know it is done.
 
-  Admin > Analytics:
-  * Page names read properly: "Shop — PU Male Shoes" instead of
-    "/shop/PU%20Male%20Shoes", and the same for pieces and policies.
+  A. BEFORE YOU UPLOAD: THE PLATFORM'S DOORS, THEN ITS SECRET KEY.
+     From this build the website never uses POS_SUPABASE_KEY, the
+     business platform's SECRET key, which opens the whole business.
+     Netlify will not publish this build while that key is still among
+     its variables. So first, on the site that is live now:
+       1. Open  https://YOUR-SITE/api/products
+          Near the very end it must say  "source":"door"
+       2. Open  https://YOUR-SITE/api/rewards-check
+          It must say  "source":"door"  (if you do not use Vaultique
+          Rewards on the website, Settings > Shopping, it does not
+          matter what it says).
+     Both right: Netlify > your site > Site configuration > Environment
+     variables > POS_SUPABASE_KEY > Delete (if it asks which deploy
+     contexts, all of them). If it is not in the list, nothing to do.
+     Done when: POS_SUPABASE_KEY is not in the list.
+     EITHER SAYS ANYTHING ELSE ("row", "none", an error): do not delete
+     it and do not upload this build yet. Send me what both pages say.
+     (Uploading anyway does no harm: the deploy shows Failed, its log
+     ends "BUILD STOPPED: Netlify still holds POS_SUPABASE_KEY", and
+     build 76 stays live.)
+
+  B. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
+     browser it is three drags, as in 76.
+     Done when: Netlify > Deploys shows it as Published.
+     If it says Failed, open it: the last lines begin "BUILD STOPPED:".
+     If they name POS_SUPABASE_KEY, step A is not finished: finish it,
+     then Deploys > Trigger deploy > Deploy site.
+     WAIT FOR PUBLISHED BEFORE C. Build 76's functions read the email
+     password from where C moves it, so until this build is live the
+     shop's emails (order confirmations, sign-up links, rewards codes)
+     would not go.
+
+  C. RUN supabase-hardening.sql AGAIN in the WEBSITE's Supabase (not
+     the platform's): SQL Editor > New query > paste the whole file,
+     this build's copy, it has grown > Run. Confirm if Supabase asks.
+     It keeps everything 76's run did, and adds: the email password
+     moved to where only the website's functions can read it, and
+     higher shop-wide ceilings for chats and orders (true backstops
+     now).
+     Read the report. Two lines are new:
+       Email | Password: "saved; only the website itself can read it".
+         "none saved": type the password in step D. "email not set
+         up": nothing to do unless you send email from the website.
+       Payments | Online payment: OFF, ON · LIVE, or
+         ON · TEST MODE: only the shop can use it (step E).
+     Done when: the last line says  This file | RECORDED (077-hardening).
+     It is safe to run again whenever you like.
+
+  D. EMAIL: Admin > Settings > Notifications. The password box is now
+     empty and says "Saved and hidden": nobody can read the password
+     back any more, not even you. Type in it only to change it. Press
+     "Send a test email" (to your own address).
+     Done when: it arrives. If not, the message now says which part
+     failed (the server's address, its security setting, the sign-in,
+     the sender...). If you use the newsletter: Subscribers > "Send
+     welcome" beside your own address works the same way (join the
+     newsletter on the website first if you are not on the list).
+     Who may press them: the test, anybody whose role is ticked for
+     Settings; Send welcome, anybody ticked for Subscribers.
+
+  E. ONLINE PAYMENT IN TEST MODE IS YOURS ONLY. While Settings >
+     Payments is on and in Test mode, customers are not offered "Pay
+     now"; they order on WhatsApp. To try it yourself, open the shop
+     with your preview key:  https://YOUR-SITE/?preview=YOUR-KEY
+     (Settings > General > Preview key). Both confirmation emails of a
+     test payment begin [TEST] and say no money was taken.
+     Done when: if online payment is in Test mode, a stranger's browser
+     (a private window, no preview key) shows no "Pay now". If it is
+     Off or Live, nothing to do.
+
+  F. CHECK THE LIVE SITE FROM OUTSIDE, with Node 18 or later, from this
+     folder:
+        node tools/live-check.cjs https://YOUR-SITE
+     New: part 8 says which build is live (it should say 77), and part
+     3 now expects "POS_SUPABASE_KEY is gone from Netlify".
+     Done when: it ends "nothing to fix".
+
+  WHAT CHANGED
+    * TEST-MODE PAYMENTS: the website refuses them unless your preview
+      key comes with the request, or you are signed in as the owner with
+      two-factor. A stranger can no longer make orders look paid with
+      Flutterwave's test cards.
+    * PAYMENT LIMITS: one connection can start 8 payments an hour,
+      beside the 5 for one phone number; the whole shop's ceiling is
+      1,000 an hour, there only as a backstop.
+    * TEST PAYMENT EMAILS say [TEST] in the subject, "TEST payment, no
+      money taken" in the text, and are not receipts. The page after
+      paying says "Test payment received".
+    * THE ADMIN'S EMAILS ("Send a test email", "Send welcome") are sent
+      by the website from the stored settings, only for people allowed
+      to, and the welcome only to somebody on the subscriber list. Staff
+      can no longer use the shop's email account to write to anybody
+      about anything, or point it at other mail servers; only the owner
+      can still send with account details typed in by hand, to try them
+      before saving. A failure says which part failed, in plain words;
+      the mail server's own reply goes to the function's log only.
+    * THE EMAIL PASSWORD can be replaced but never read back, by
+      anybody signed in. Backups made from now on leave it out; restore
+      an older backup that has it and it goes straight back into its
+      private place.
+    * REWARDS CODES: each guess uses up one of the five tries before it
+      is checked, so many guesses sent at once get no more than five.
+    * THE PLATFORM'S SECRET KEY is not used at all: the products and the
+      rewards are read only through the platform's doors, and Netlify
+      will not publish the website while it still holds that key. If a
+      door ever stops answering, the shop says it cannot read the
+      products just now; it never shows an empty shop.
+    * CREATING AN ACCOUNT with an address that already has one gives
+      exactly the same answer as a new address, so nobody can use the
+      form to find out who shops with you. The address's owner gets an
+      email saying so, with where to sign in. (With "Verify email
+      addresses" off, Settings > Customer Accounts, the form still has
+      to say an address is taken: the account would be signed straight
+      in. Switching verification on closes that.)
+    * ONE NAME FOR THE SERVICE KEY: every function reads
+      SUPABASE_SERVICE_ROLE_KEY. The older WEB_SUPABASE_SERVICE_KEY still
+      works; one of the two is enough.
+    * New: tests/send-email.test.cjs and tests/one-key.test.cjs; part 8
+      of tools/live-check.cjs. Changed: supabase-hardening.sql (section
+      11, the email password); 18 files in netlify/functions (send-email,
+      _mail, _pay, pay-start, pay-quote, pay-status, pay-webhook,
+      rewards, _rewards, rewards-check, products, product-pulse,
+      account-signup, admin-users, chat-push, site-prune, visit-where,
+      _seo-data); tools/build-site.cjs; assets/app.js, assets/account.js
+      and two admin files; and the older supabase-*.sql files, only the
+      message they give when they refuse to run.
+    * assets/version.js says build 77.
+
+  WHAT IS NOT IN THIS BUILD, AND COMES NEXT (part 5: the admin and the
+  storefront)
+    Every link that comes from the settings checked before a page uses
+    it; the admin's lists made safe against text that looks like code;
+    the Dashboard and Analytics counting sales by the rule you choose;
+    backups leaving out the chat notification secret. The security
+    policy is still report-only: send what csp-report logged (build 75,
+    step D) with your next request. Keep every zip of the website
+    private, this one included.
+
+NEW IN 76 — SAFETY WORK, PART 3: THE DATABASE. ONE SQL FILE, RUN AFTER
+  THE UPLOAD. About forty minutes, most of it checking. If you have not
+  done build 74's and 75's steps yet (below), do those as well.
+  Do these in order. Each one says how you know it is done.
+
+  A. TWO CHECKS BEFORE YOU START.
+     1. Netlify: your website's site > Site configuration > Environment
+        variables > SUPABASE_SERVICE_ROLE_KEY (this website's
+        service_role key; build 74, step E). From this build on,
+        WhatsApp orders reach the Orders tab only through it. If you add
+        it now, the upload in B deploys it.
+     2. The WEBSITE's Supabase: Authentication > Multi-Factor (the menu
+        may call it Sign In / Providers > Multi-Factor): "TOTP (App
+        Authenticator)" must be Enabled. It usually is. If it were off,
+        nobody who must use two-factor could get in after step C.
+     Done when: both are as described.
+
+  B. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
+     browser it is three drags, as in 75.
+     Done when: Netlify > Deploys shows it as Published.
+     WAIT FOR PUBLISHED BEFORE C. The admin pages from build 75 cannot
+     work with what C changes: they would sign you out. (If that happens
+     anyway, wait for Published and sign in again.)
+
+  C. RUN supabase-hardening.sql in the WEBSITE's Supabase (not the
+     platform's): SQL Editor > New query > paste the whole file > Run.
+     If Supabase asks you to confirm because it sees words like "drop"
+     or "delete": confirm. The file replaces old rules with new ones,
+     retires the notification keys every copy of the website shared
+     (and the phone sign-ups made with them), and clears its own
+     two-day count of visits for the throttles. No order, customer,
+     product, chat, review or subscriber is deleted.
+     It ends with a report, one line per thing worth knowing. Do what
+     its last column says, and keep a copy (a screenshot is fine).
+     Done when: the last line says  This file | RECORDED (076-hardening).
+     It is safe to run again whenever you like; it then only reports.
+     If it stops at once saying "Nothing was changed", read the message:
+     it names the file to run first, or says what to send me.
+
+  D. SIGN IN TO THE ADMIN AS THE OWNER. You are shown "Set up
+     two-factor" with a square code. Scan it with an authenticator app
+     on your phone (Google Authenticator, Microsoft Authenticator,
+     Authy, 1Password...). WRITE DOWN the line of letters and figures
+     under the square, and keep it safe away from the phone: it is your
+     way back in if the phone is lost. Then type the six-digit code.
+     Done when: you are in the admin. Every sign-in now asks for a code.
+     Everybody whose role is ticked for Settings, Orders or Subscribers
+     is shown the same at their next sign-in. Agents who only answer
+     chats are not made to (Settings > Security still lets them).
+
+  E. CHECK THE ROLES: Settings > Users & Roles. What each role is ticked
+     for is now enforced by the database, not only by which tabs show,
+     and each role says whether two-factor is required for it. Somebody
+     who can no longer open something they need: tick it for their role.
+     Switch off now really stops a person; Remove still works as well.
+     Done when: each person can open what they need, and nothing more.
+
+  F. PHONE NOTIFICATIONS: as the owner, open Live Chats once. That makes
+     the shop's own notification keys, in your browser; nobody else ever
+     holds them. Then everybody who wants notifications opens Live Chats
+     on each phone or computer and presses "Notify me here" again.
+     Done when: the button says "Notifying this device", and a message
+     sent from the website's chat buzzes the phone.
+
+  G. ONE TEST ORDER: on the website, put a piece in the cart and check
+     out by WhatsApp (you need not send the WhatsApp message). In
+     Admin > Orders it appears at the catalogue price. Then set it to
+     Cancelled.
+     Done when: you have seen it at the right price, and cancelled it.
+
+  H. CHECK THE LIVE SITE FROM OUTSIDE, with Node 18 or later, from this
+     folder:
+        node tools/live-check.cjs https://YOUR-SITE
+     New: part 7 checks the place-order and newsletter functions are
+     there, the hardening is in, and the preview key is not public.
+     Done when: it ends "nothing to fix".
+
+  I. IN A DAY OR TWO, CHECK THE LIMITS CAN TELL VISITORS APART. In the
+     website's Supabase, SQL Editor:
+        select bucket, key = 'unknown' as no_address, count(*)
+          from public.rate_events group by 1, 2 order by 1, 2;
+     Mostly false under no_address: the per-visitor limits work. Mostly
+     true: only the shop-wide limits apply; send me the result.
+     Done when: you have sent it, or seen mostly false.
+
+  IF YOU LOSE YOUR PHONE: type the code you wrote down in D into a new
+  phone's authenticator app. Without it, in the website's Supabase,
+  SQL Editor, with your own email in it:
+        delete from auth.mfa_factors
+         where user_id = (select id from auth.users where email = 'YOU@EXAMPLE.COM');
+  then sign in with your password and set two-factor up again. The same
+  line with their email does it for a member of staff.
+
+  WHAT CHANGED
+    * TWO-FACTOR IS CHECKED BY THE DATABASE, and required for the owner
+      and for any role ticked for Settings, Orders or Subscribers. Until
+      now only the admin page asked, so a stolen password used outside
+      the page got in.
+    * ROLE TICKS ARE RULES. An Agent ticked only for Live Chats reads the
+      chats and none of the shop's other records, however they ask.
+    * SWITCH OFF really switches somebody off.
+    * ONLY THE OWNER can change roles, or the chat notification settings.
+    * WHATSAPP ORDERS are priced by the website from the catalogue (the
+      code that prices online payments) and recorded with the service
+      key. Nobody can write an order straight into the Orders tab any
+      more, at K1 or any other price. A piece priced on request is
+      recorded without a price, for you to settle in the chat.
+    * LIMITS on how fast one visitor can start chats and send messages,
+      post reviews, join the newsletter or place orders, and a ceiling
+      for the whole shop. Nobody using the site normally meets them; the
+      chat says "please wait a minute" to anybody who does.
+    * TEST PAYMENTS SAY SO: "TEST · no money moved" in Orders, and left
+      out of the Dashboard's and Analytics' sales.
+    * THE PREVIEW KEY is kept with the private settings; only people who
+      may open Settings can see it.
+    * NOTIFICATION KEYS: each shop makes its own (step F). The shared
+      pair, and the owner's email address, are gone from every file.
+    * THE NEWSLETTER: somebody who unsubscribed is put back only through
+      a link sent to their own inbox, by your email in Settings >
+      Notifications. New addresses join at once, as before.
+    * VISITORS can call only the 23 database functions the website uses.
+      The internal ones are closed to them, and the daily clean-up runs.
+    * THE OLDER SQL FILES refuse to run once the hardening is in, and
+      change nothing. SETUP.md lists the order for a new project.
+    * New: supabase-hardening.sql; netlify/functions/place-order.js and
+      newsletter.js; tools/db-check.sh; seven test files and a stand-in
+      Supabase for them.
+    * assets/version.js says build 76.
+
+  WHAT IS NOT IN THIS BUILD, AND COMES NEXT (part 4: the functions)
+    Test mode usable only by you (until then keep online payment Off or
+    Live on the live site); "[TEST]" in the payment emails; the email
+    password kept out of browsers, with "Send a test email" and the
+    Subscribers tab's "Send welcome" sent by the website itself (until
+    then "Send welcome" works only for people who may open Settings);
+    and the old secret-key paths removed once everything says "door". The security policy is still report-only: send what
+    csp-report logged (build 75, step D) with your next request. Keep
+    every zip of the website private, this one included.
+
+NEW IN 75 — SAFETY WORK, PART 2: WHAT NETLIFY PUBLISHES. No SQL.
+  Nothing a customer sees changes. Upload, then check: about fifteen
+  minutes. If you have not done build 74's steps A to H yet (below),
+  do them as well; they matter more than this.
+
+  A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
+     browser it is now three drags, not two: the file says which.
+     From now on Netlify runs a short build step before it publishes:
+     tools/build-site.cjs copies the website, and only the website,
+     into a folder called dist/, and Netlify publishes that folder.
+     It happens on Netlify. You upload exactly as before.
+     Done when: Netlify > Deploys shows the new deploy as Published.
+     If it says Failed, open it. The log ends with "BUILD STOPPED:" and
+     the reason in plain words, and the site that was live before stays
+     live. The likely reason is that config.js is not in your
+     repository: put yours back beside index.html and upload again.
+
+  B. CHECK THE LIVE SITE FROM OUTSIDE, with Node 18 or later, from this
+     folder:
+        node tools/live-check.cjs https://YOUR-SITE
+     New since 74: part 2 now expects the safety headers and the
+     security policy on every page, and part 6 checks that Netlify ran
+     the build step.
+     Done when: it ends "nothing to fix". A "!" about
+     Strict-Transport-Security is worth telling me about, but it is not
+     urgent.
+
+  C. USE THE SHOP AND THE ADMIN ONCE, as you normally would: open a
+     product, add it to the cart, open Settings and Live Chats.
+     Everything should look and work exactly as before.
+
+  D. IN ABOUT A WEEK, LOOK AT WHAT THE SECURITY POLICY REPORTED:
+     Netlify > your site > Logs & metrics > Functions > csp-report.
+     Every line there is something the policy would have blocked if it
+     were switched on. For now it only reports; it blocks nothing.
+     Look two or three times during the week, because Netlify keeps
+     these logs for a limited time. Then send what you saw with your
+     request for the next build, or say the log was empty. That record
+     decides when the policy is switched on.
+     Done when: you have a copy, or know it was empty.
+
+  WHAT CHANGED
+    * WHAT IS PUBLISHED: index.html, admin.html, config.js, sw.js,
+      manifest.webmanifest, assets/ and images/, and nothing else. The
+      setup SQL, the notes, the tests, the tools and the functions'
+      source are no longer published at all, whatever they are called.
+      Build 74's 404 rules stay, as a second lock.
+    * SAFETY HEADERS on every page. No other website can show the shop
+      or the admin inside a frame of its own. A file only ever runs as
+      what it says it is. The camera, microphone, location, payment
+      sheet and USB are refused to every page (the site uses none).
+    * A SECURITY POLICY (Content Security Policy), report-only for now:
+      it lists where scripts, pictures and data may come from. Step D.
+    * THE SUPABASE LIBRARY AND THE MAP ARE KEPT IN THE SITE ITSELF
+      (assets/vendor/), at fixed versions, instead of being fetched
+      from a public CDN at whatever version was newest that day.
+    * THE ADMIN'S MAIN SCRIPT MOVED out of admin.html into
+      assets/admin/shell.js, unchanged, so the policy needs no
+      exception for it.
+    * AFTER A DEPLOY, a browser fetches a changed script at once
+      instead of up to an hour later: every script address in the two
+      pages now carries a fingerprint of the file.
+    * New: tools/build-site.cjs, netlify/functions/csp-report.js,
+      assets/vendor/ (supabase-js 2.118.0 and Leaflet 1.9.4, with
+      their licences), assets/admin/shell.js, and three tests.
+    * netlify.toml: the build step, the safety headers, and a 404 for
+      dist/_headers.
+    * assets/version.js says build 75.
+
+  NEVER UPLOAD A FOLDER CALLED dist. Netlify makes it on every deploy.
+  If you ever deploy with the Netlify command line instead of GitHub:
+        netlify deploy --build --prod
+  (--build runs the build step; without it there is nothing to publish.)
+
+  IF THE csp-report FUNCTION IS EVER CALLED MORE THAN YOU WANT TO PAY
+  FOR: Netlify > Environment variables > add CSP_REPORTS with the value
+  off, then Deploys > Trigger deploy. The policy stays; only the reports
+  stop.
+
+  WHAT IS NOT IN THIS BUILD, AND COMES NEXT
+    The database fixes for who can see what (two-factor, role ticks,
+    orders written straight into the table), test payments marked TEST,
+    and new push keys. Until then build 74's safeguards still apply:
+    Remove (not Switch off) anybody who should not have access, keep
+    online payment off or in Live, and keep every zip of the website
+    private, this one included.
+
+NEW IN 74 — SAFETY WORK, PART 1. Nothing a customer sees changes.
+  One SQL file to run, four files to delete, and some checking: about
+  half an hour. This is the urgent first part of the plan that came out
+  of the build 73 audit; later builds do the rest. Do the steps in
+  order. Each one says how you know it is done.
+
+  A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Then DELETE these four
+     files from your website repository. They are the Business
+     Platform's own working notes and were never part of the website:
+        DEFECT-FIX-PLAN-342.md
+        DEFECTS-342-ADDENDUM.md
+        PHASE-0-DECISIONS-342.md
+        tools/phase-0-diagnose.cjs
+     Pasting a folder over yours never deletes anything, which is why
+     these have to go by hand. GitHub Desktop: delete them from the
+     repository folder, then Commit and Push. Browser: open each file
+     on GitHub, choose Delete file, and commit.
+     Done when: none of the four is in your repository.
+
+  B. RUN supabase-safety-check.sql in the WEBSITE's Supabase:
+     SQL Editor > New query > paste the whole file > Run.
+     It changes ONE thing: the chat notifications get a new secret,
+     because every old zip carries the old one. The phones keep
+     buzzing; nothing needs copying anywhere. Then it shows a list of
+     what needs your attention. Do what its last column says.
+     Done when: the first line says "REPLACED just now". It is safe to
+     run again at any time, as a check.
+
+  C. ONLINE PAYMENT. If the list says "ON · TEST MODE": today, turn
+     online payment off, or switch it to Live, in Settings > Payments.
+     In Test mode anybody can "pay" with the test cards Flutterwave
+     publishes, and the order shows Paid.
+     Done when: the list says OFF or ON · LIVE.
+
+  D. STAFF. The list shows everybody who can sign in to the admin.
+     Anybody marked SWITCHED OFF, and anybody who should not be there:
+     Settings > Users & Roles > Remove. Switch off only hides the admin
+     from them; it does not stop them reading the database. Remove
+     does. Then turn on two-factor for yourself: Settings > Security.
+     (Later builds make the database insist on it too.)
+     Done when: the list shows only people who work here, and
+     "two-factor ON" against you.
+
+  E. NETLIFY: your website's site > Site configuration > Environment
+     variables. These should be there:
+        SUPABASE_SERVICE_ROLE_KEY   this website's service_role key
+        WEB_SUPABASE_SERVICE_KEY    the same key again (the product
+                                    live update reads this name)
+        POS_REWARDS_KEY             from build 68
+        FLW_SECRET_KEY_LIVE and FLW_WEBHOOK_HASH, only if you take
+                                    payments online
+     And POS_SUPABASE_KEY should NOT be there once /api/rewards-check
+     says "door" (build 68, STEP 5 below). A changed variable needs a
+     redeploy: Deploys > Trigger deploy > Deploy site.
+     Done when: step G shows no ✗ in parts 3 and 4.
+
+  F. SUPABASE SIGN-IN SETTINGS, in the WEBSITE's project, under
+     Authentication (the names in Supabase's menus may differ a little):
+        If the list says customer accounts are OFF: turn OFF "Allow new
+        users to sign up". While it is on, anybody can make an account
+        through Supabase directly, whatever the website says.
+        If they are ON: leave sign-ups on, and make sure "Confirm email"
+        is on.
+        Multi-Factor: TOTP should be enabled (it usually is), or step D's
+        two-factor cannot be turned on.
+     Done when: the two match what the list says.
+
+  G. CHECK THE LIVE SITE FROM OUTSIDE. With Node 18 or later, from this
+     folder:
+        node tools/live-check.cjs https://YOUR-SITE
+     It only reads, the way any visitor's browser could. Once this build
+     is live, part 1 should be all ✓: no setup file, note or function
+     source readable by anybody. (Build 74 alone left part 2 listing
+     missing safety headers; with build 75 live, part 2 is all ✓ too.)
+     Done when: it ends "nothing to fix".
+
+  H. SUPABASE SECURITY ADVISOR, in the WEBSITE's project: Advisors >
+     Security Advisor. Keep a copy of what it lists; the next builds
+     work through it.
+     Done when: you have the list.
+
+  WHAT CHANGED IN THE FOLDER
+    * New: supabase-safety-check.sql (step B) and tools/live-check.cjs
+      (step G).
+    * Gone: the four files in step A.
+    * netlify.toml: five setup files added in builds 65 to 70
+      (supabase-signup, -new-arrivals, -sold-out, -browsing-towns and
+      -cart-pieces) could be read by anybody who asked for them by
+      name, and so could the functions' source code under
+      /netlify/functions/. Both now answer 404. The functions themselves
+      run exactly as before.
+    * assets/version.js says build 74.
+
+  WHAT IS NOT IN THIS BUILD, AND COMES NEXT
+    The safety headers, the database fixes for who can see what, the
+    two-factor fix, test payments marked TEST, and new push keys. Until
+    then: Remove (not Switch off) anybody who should not have access,
+    keep online payment off or in Live, and keep every zip of the
+    website private, this one included: supabase-chat-phase7.sql still
+    holds the push keys until a later build replaces them. (Step B has
+    already made the old chat secret in it useless.)
 
 NEW IN 73 — NO SQL. Just upload.
 
@@ -290,6 +877,8 @@ NEW IN 68 — THE REWARDS DOOR (goes with the platform's build 469)
     from Netlify (STEP 5). The website then holds no key that opens the
     business.
   * Until the door is set up, the rewards keep working the old way.
+    (Until build 76. From build 77 there is no old way: without the
+    door, the rewards say they cannot be reached just now.)
   * Customers see exactly the same points and the same screens.
   * No SQL in THIS website's Supabase this time.
 
@@ -329,7 +918,7 @@ Every line of each check must say OK.
     Contact > Business email) is told when a request is waiting.
   * Admin > Rewards shows staff why no code was emailed for a link.
 
-200 files. config.js is not in this folder, on purpose (see STEP 3).
+226 files. config.js is not in this folder, on purpose (see STEP 3).
 
 
 ================================================================
@@ -379,7 +968,8 @@ STEP 3 — UPLOAD  (see HOW-TO-UPLOAD.txt beside this file)
 GitHub Desktop: unzip, copy everything inside, paste into your repository
 folder, choose Replace, then Commit and Push. One commit.
 
-Browser: two drags, because GitHub takes 100 files at a time.
+Browser: three drags (HOW-TO-UPLOAD.txt), because GitHub takes 100 files
+at a time.
 
 config.js IS NOT IN THIS FOLDER, on purpose — it holds your Supabase keys
 and yours is the only correct copy. Pasting over your folder leaves it
@@ -426,9 +1016,12 @@ Then check again:
   /api/products        "source":"door" near the very end
   the shop             every piece is there, exactly as before
 
-Changed your mind? Add POS_SUPABASE_KEY back (it is still in the
-platform's Supabase, Project Settings > API Keys) and deploy again.
-Nothing is lost either way: the website only ever reads the platform.
+Changed your mind? Until build 76 you could add POS_SUPABASE_KEY back
+(it is still in the platform's Supabase, Project Settings > API Keys)
+and deploy again. FROM BUILD 77, DO NOT: nothing reads it any more, and
+Netlify will not publish the website while it is there (NEW IN 77,
+step A). Nothing is lost either way: the website only ever reads the
+platform.
 
 Only the website's copy of the key goes. Do NOT delete or change the key
 in Supabase itself: the platform's own nightly jobs may use it.
@@ -512,15 +1105,22 @@ platform's.
 ================================================================
 THE AUTOMATED CHECKS, IF YOU EVER WANT THEM
 ================================================================
-      npm install playwright
-      node tests/rewards-door.test.cjs         45 checks  (no browser)
-      node tests/product-door.test.cjs         36 checks  (no browser)
-      node tests/product-sync.test.cjs         41 checks  (no browser)
-      node tests/rewards-engine.test.cjs       11 checks  (no browser)
-      node tests/rewards-function.test.cjs     35 checks  (no browser)
-      node tests/payments.test.cjs             48 checks  (no browser)
-      node tests/receipt-pdf.test.cjs          14 checks  (no browser)
-      node tests/pos-orders.browser.cjs        36 checks
-      node tests/dashboard.browser.cjs        155 checks
-      node tests/cart-stock.browser.cjs        23 checks
-      node tests/live-update.browser.cjs       21 checks
+On GitHub they run by themselves on every push, once
+.github/workflows/tests.yml is in the repository (NEW IN 79). By hand,
+with Node 18 or later:
+
+      node tools/live-check.cjs https://YOUR-SITE   the live site, read only
+      cd tests
+      npm ci                            once: what the checks need
+      npx playwright install chromium   once: the browser they drive
+      npm run test:node                 every Node check
+                                        (build 79: 26 files, 702 checks)
+      npm run test:browser              every browser check
+                                        (build 79: 35 files, 972 checks)
+      npm run test:sql                  the database, on a stand-in Supabase:
+                                        needs PostgreSQL 16 and the one-time
+                                        setup in tests/supabase-standin/README.txt
+
+Each file ends by saying how many checks it ran, and the runner adds
+them up: the numbers above are build 79's, and what the runner prints
+is always current. README.md lists every file and what it checks.

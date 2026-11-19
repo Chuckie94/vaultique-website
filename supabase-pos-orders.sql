@@ -120,6 +120,7 @@ create index if not exists or_pos_open on public.orders (created_at desc) where 
 create or replace function public.orders_pos_guard()
 returns trigger
 language plpgsql
+set search_path = ''
 as $pg$
 begin
   if current_user in ('postgres', 'supabase_admin', 'service_role') then

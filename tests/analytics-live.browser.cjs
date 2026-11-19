@@ -92,7 +92,10 @@ const PLACES_TOLD = { data: { visits: 14, located: 12, told: 5, told_visitors: 4
            { country: 'ZA', country_name: 'South Africa', region: 'Gauteng', name: 'Johannesburg', lat: -26.2, lon: 28.04, visits: 1, visitors: 1, page_views: 2, told: 0, told_visitors: 0 }] } };
 
 let LEAFLET = null;
-try { LEAFLET = path.dirname(require.resolve('leaflet/dist/leaflet.js')); } catch (e) {
+// Build 75 keeps Leaflet in the folder, so the map checks no longer need npm.
+const VENDORED_LEAFLET = path.join(ROOT, 'assets', 'vendor', 'leaflet-1.9.4');
+if (fs.existsSync(path.join(VENDORED_LEAFLET, 'leaflet.js'))) LEAFLET = VENDORED_LEAFLET;
+else try { LEAFLET = path.dirname(require.resolve('leaflet/dist/leaflet.js')); } catch (e) {
   const local = path.resolve(ROOT, '..', 'vendor', 'node_modules', 'leaflet', 'dist');
   if (fs.existsSync(path.join(local, 'leaflet.js'))) LEAFLET = local;
 }

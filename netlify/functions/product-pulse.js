@@ -46,9 +46,6 @@ const { readConfig } = require('./_seo-data');
 
 const POS_URL =
   process.env.POS_SUPABASE_URL || 'https://xbrchpxdmptwuvivdiqj.supabase.co';
-const POS_KEY =
-  process.env.POS_SUPABASE_KEY ||
-  'sb_publishable_wj1gGEwOnLu_HlBRkbeZvA_tCHEk1vR';
 
 // The same row /api/products reads. See the note there about row 1 and row 100.
 const STATE_ROW = String(process.env.POS_STATE_ROW || '100').trim();
@@ -61,8 +58,12 @@ const STATE_ROW = String(process.env.POS_STATE_ROW || '100').trim();
 // the time the products' own row was last saved, so it moves when the
 // products could have, and not for a payslip or a leave request.
 //
-// Asked first. Anything but a proper answer and the pulse reads row 100's
-// time the way it always has, below.
+// Asked first. Anything but a proper answer and the pulse asks row 100's
+// time the old way, below, with the publishable key only. Since build 77 it
+// never uses POS_SUPABASE_KEY, the platform's secret key (W-24); app_state is
+// locked to that public key, so on this shop the old way finds nothing, and
+// the pulse simply waits for the bell (the storefront's slow refresh covers
+// it meanwhile).
 const DOOR = 'vbp_website_products';
 const PUBLIC_KEY =
   String(process.env.POS_PUBLIC_KEY || '').trim() ||
@@ -98,7 +99,8 @@ const PULSE_ID = 1;
 // timestamp) and nobody but the service role WRITE, so a visitor cannot invent
 // a change and make every browser in the shop refetch.
 function writeKey() {
-  return String(process.env.WEB_SUPABASE_SERVICE_KEY || '').trim();
+  // SUPABASE_SERVICE_ROLE_KEY or WEB_SUPABASE_SERVICE_KEY (build 77).
+  return require('./_seo-data').serviceKey();
 }
 
 async function posUpdatedAt() {
@@ -108,8 +110,8 @@ async function posUpdatedAt() {
     `${POS_URL}/rest/v1/app_state?id=eq.${STATE_ROW}&select=updated_at`,
     {
       headers: {
-        apikey: POS_KEY,
-        Authorization: `Bearer ${POS_KEY}`,
+        apikey: PUBLIC_KEY,
+        Authorization: `Bearer ${PUBLIC_KEY}`,
         Accept: 'application/json',
       },
     }

@@ -34,6 +34,8 @@ const J = o => JSON.stringify(o);
 
 let SUPABASE_JS = null;
 for (const p of [
+  // Website 80: the copy the site itself loads (build 79's line keeps it in assets/vendor).
+  () => path.join(ROOT, 'assets', 'vendor', 'supabase-js-2.118.0.js'),
   () => require.resolve('@supabase/supabase-js/dist/umd/supabase.js'),
   () => path.resolve(ROOT, '..', 'vendor', 'node_modules', '@supabase', 'supabase-js', 'dist', 'umd', 'supabase.js'),
 ]) {
@@ -181,6 +183,17 @@ const server = http.createServer((req, res) => {
     if (p.startsWith('/web/rest/v1/')) return send(200, []);
     if (p.startsWith('/web/')) return send(200, {});
 
+    /* Website 80: the order is recorded the build 79 way, by the website's
+       own function (netlify/functions/place-order.js), which prices it from
+       the catalogue and files it under the customer whose sign-in came
+       with it. Answered here as that function answers. */
+    if (p === '/.netlify/functions/place-order' && req.method === 'POST') {
+      PLACED.push({ as: usr ? usr.email : 'guest', order: body.order, items: body.items, via: 'function' });
+      const answer = () => send(200, { id: 'new-' + PLACED.length, ref: 'VB-N' + String(PLACED.length).padStart(4, '0'), total: 1150 });
+      if (PLACE === 'fail') return send(502, { error: 'The order was not recorded.' });
+      if (PLACE === 'slow') return setTimeout(answer, 7500);
+      return answer();
+    }
     if (p === '/.netlify/functions/rewards') {
       if (!usr) return send(401, { error: 'Please sign in to your account first.' });
       if (body.action === 'status') return send(200, { linked: true, number: 'VB0007', points: 100500, worth: 50.25,

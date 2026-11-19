@@ -35,12 +35,8 @@
    write a place of its own. A visitor who picks nothing is recorded
    exactly as before.
    ===================================================================== */
-const { readConfig } = require('./_seo-data');
+const { readConfig, serviceKey } = require('./_seo-data');
 const { readGeo } = require('./_geo');
-
-function serviceKey() {
-  return String(process.env.WEB_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-}
 
 const quiet = () => ({ statusCode: 204, headers: { 'Cache-Control': 'no-store' }, body: '' });
 

@@ -64,6 +64,76 @@
     return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
+  /* ---------------------------------------------- the shop's own keys
+
+     Every copy of the website up to build 75 shipped with the same key
+     pair for notifications, written into supabase-chat-phase7.sql, so
+     anybody with any zip held the private half. supabase-hardening.sql
+     (build 76) retires that pair, and the owner's own browser makes the
+     shop a new one: generated here, by the browser's own cryptography,
+     and handed to the database through an owner-only function that only
+     accepts it while there is none. Nobody else ever sees the private
+     half, and no file carries it again. */
+  function makeKeys() {
+    var C = window.crypto && window.crypto.subtle;
+    if (!C) return Promise.reject(new Error('This browser cannot make the notification keys. ' +
+                                            'Open the admin in a recent Chrome, Edge, Firefox or Safari.'));
+    return Promise.resolve(C.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']))
+      .then(function (pair) {
+        return Promise.all([C.exportKey('raw', pair.publicKey), C.exportKey('jwk', pair.privateKey)]);
+      })
+      .then(function (both) { return { pub: bytesToB64(both[0]), priv: both[1].d }; });
+  }
+
+  /* The public half of the shop's pair, making the pair first if this is
+     the owner and there is none yet. Anybody else, before the owner has
+     made it, is told who can. */
+  API.ensureKeys = function (sb) {
+    function missing(e) { return /function|schema cache/i.test((e && e.message) || ''); }
+    function read() {
+      return Promise.resolve(sb.rpc('chat_push_key')).then(function (res) {
+        if (res && res.error) {
+          if (missing(res.error)) {
+            throw new Error('The shop\u2019s notification keys are not set up yet. ' +
+                            'Run supabase-chat-phase7.sql in Supabase first.');
+          }
+          throw res.error;
+        }
+        return (res && res.data) || '';
+      });
+    }
+    return read().then(function (key) {
+      if (key) return key;
+      return makeKeys().then(function (k) {
+        return sb.rpc('chat_push_keys_set', { p_public: k.pub, p_private: k.priv });
+      }).then(function (r) {
+        if (r && r.error) {
+          if (/owner/i.test(r.error.message || '')) {
+            throw new Error('The shop\u2019s notification keys were renewed in build 76, and the owner ' +
+                            'has not opened Live Chats since. Ask them to, then press this again.');
+          }
+          if (missing(r.error)) {
+            throw new Error('The shop\u2019s notification keys are not set up yet. ' +
+                            'Run supabase-hardening.sql in Supabase first.');
+          }
+          throw r.error;
+        }
+        return read();
+      });
+    });
+  };
+
+  /* Whether a device's subscription was made with this key. One made with
+     the retired pair would never hear from the new one. A browser that
+     cannot say is taken at its word. */
+  function madeWith(sub, key) {
+    try {
+      var had = sub && sub.options && sub.options.applicationServerKey;
+      if (!had) return true;
+      return bytesToB64(had) === key;
+    } catch (e) { return true; }
+  }
+
   /* Roughly what this browser is, so somebody with three devices
      subscribed can tell which is which when turning one off. Guessed
      from the user agent, which is guesswork — but "Chrome on Android"
@@ -148,20 +218,19 @@
       if (!r) throw new Error('The notification helper could not start.');
       /* The public half of the shop's key pair. The database hands it
          out; the private half never leaves it. */
-      return sb.rpc('chat_push_key').then(function (res) {
-        if (res && res.error) throw res.error;
-        var key = res && res.data;
-        if (!key) {
-          throw new Error('The shop’s notification keys are not set up yet. ' +
-                          'Run supabase-chat-phase7.sql in Supabase first.');
-        }
+      return API.ensureKeys(sb).then(function (key) {
         return r.pushManager.getSubscription().then(function (existing) {
           /* A subscription made against a different key is dead to the
              new one and has to go before a new one can be made. */
-          if (!existing) return r.pushManager.subscribe({
+          if (existing && !madeWith(existing, key)) {
+            return Promise.resolve(existing.unsubscribe()).then(function () { return null; }, function () { return null; });
+          }
+          return existing;
+        }).then(function (existing) {
+          if (existing) return existing;
+          return r.pushManager.subscribe({
             userVisibleOnly: true, applicationServerKey: urlB64ToBytes(key)
           });
-          return existing;
         });
       });
     }).then(function (sub) {
@@ -209,6 +278,26 @@
   API.refresh = function (sb) {
     if (!supported() || Notification.permission !== 'granted') return Promise.resolve(false);
     return current().then(function (sub) {
+      if (!sub) return false;
+      /* Made with the pair build 76 retired: subscribed again with the
+         shop's new key. Notifications are already allowed on this device,
+         so nobody is asked anything. Before the owner has made the new
+         pair there is nothing to move to, and a sign-up to the old pair
+         can never buzz again, so it is let go: the button then says
+         "Notify me here" rather than claiming a device that will stay
+         silent. Pressing it says who has to open Live Chats first. */
+      return Promise.resolve(sb.rpc('chat_push_key')).then(function (res) {
+        if (!res || res.error) return sub;       // cannot tell: left as it is
+        var key = res.data || '';
+        if (key && madeWith(sub, key)) return sub;
+        return Promise.resolve(sub.unsubscribe()).catch(function () {}).then(function () {
+          if (!key) return null;
+          return worker().then(function (r) {
+            return r ? r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToBytes(key) }) : null;
+          });
+        });
+      }, function () { return sub; });
+    }).then(function (sub) {
       if (!sub) return false;
       var j = sub.toJSON ? sub.toJSON() : {};
       var keys = j.keys || {};

@@ -69,7 +69,7 @@ async function run() {
         out.paid++;
         if (r.fresh && r.pay && r.pay.order_id) {
           s = s || await P.shopSettings();
-          await P.confirmByEmail(s, r.pay.order_id);
+          await P.confirmByEmail(s, r.pay.order_id, r.pay.mode, r.late);
         }
       } else if (r.status === 'failed') {
         out.failed++;
@@ -97,7 +97,7 @@ async function run() {
         if (r.fresh) {
           out.repaired++;
           s = s || await P.shopSettings();
-          await P.confirmByEmail(s, pay.order_id);
+          await P.confirmByEmail(s, pay.order_id, pay.mode, r.late);
         }
       } catch (e) { /* the next run tries again */ }
     }

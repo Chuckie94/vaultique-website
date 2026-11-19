@@ -80,6 +80,7 @@ create policy payment_events_admin_read on public.payment_events
 create or replace function public.payment_events_frozen()
 returns trigger
 language plpgsql
+set search_path = ''
 as $fz$
 begin
   if current_user in ('postgres', 'supabase_admin') then

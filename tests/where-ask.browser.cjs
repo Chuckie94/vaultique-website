@@ -89,6 +89,8 @@ function serve() {
     if (opts.staff) await ctx.addInitScript(() => { try { localStorage.setItem('vbp_staff', '1'); } catch (e) {} });
     await ctx.route('**/fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
     await ctx.route('**/cdn.jsdelivr.net/**', (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
+    // Build 75 keeps supabase-js in assets/vendor/; stubbed there the same way.
+    await ctx.route('**/assets/vendor/supabase-js-*', (r) => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
     return ctx;
   };
   const open = async (ctx, url) => {

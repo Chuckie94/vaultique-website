@@ -125,6 +125,9 @@ const OWNER = { is_admin: true, is_owner: true, active: true, must_change_passwo
     });
     await ctx.route('**/fonts.googleapis.com/**', r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
     await ctx.route('**/cdnjs.cloudflare.com/**', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
+    // Build 75 keeps supabase-js and Leaflet in assets/vendor/; stubbed there the same way.
+    await ctx.route('**/assets/vendor/supabase-js-*', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: SUPA }));
+    await ctx.route('**/assets/vendor/leaflet-*/**', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
     const page = await ctx.newPage();
     page.on('pageerror', e => errors.push(String(e.message || e)));
     await page.goto(base + '/admin.html#/settings/payments', { waitUntil: 'domcontentloaded' });

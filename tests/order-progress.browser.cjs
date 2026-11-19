@@ -38,6 +38,8 @@ const J = o => JSON.stringify(o);
 
 let SUPABASE_JS = null;
 for (const p of [
+  // Website 80: the copy the site itself loads (build 79's line keeps it in assets/vendor).
+  () => path.join(ROOT, 'assets', 'vendor', 'supabase-js-2.118.0.js'),
   () => require.resolve('@supabase/supabase-js/dist/umd/supabase.js'),
   () => path.resolve(ROOT, '..', 'vendor', 'node_modules', '@supabase', 'supabase-js', 'dist', 'umd', 'supabase.js'),
 ]) {
@@ -61,6 +63,7 @@ const USERS = {
 const PASSWORD = 'the-right-password-1';
 const b64url = s => Buffer.from(s).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
 const TOKENS = {}, REFRESH = {};
+const CLOSES = [];            // website 80: every press of Close my account that reached the function
 let seq = 0;
 function userBody(u) {
   const at = new Date().toISOString();
@@ -226,6 +229,17 @@ const server = http.createServer((req, res) => {
     if (p.startsWith('/web/rest/v1/')) return send(200, []);
     if (p.startsWith('/web/')) return send(200, {});
     if (p === '/api/products') return send(200, { products: CATALOGUE, count: CATALOGUE.length, version: 't' });
+    /* Website 80: closing an account goes to the website's own function,
+       which answers by who is asking, as the real one does
+       (netlify/functions/account-delete.js; tests/account-delete.test.cjs). */
+    if (p === '/.netlify/functions/account-delete' && req.method === 'POST') {
+      const asker = who(req);
+      CLOSES.push({ email: asker ? asker.email : null });
+      if (!asker) return send(401, { error: 'Please sign in again, then close your account.' });
+      if (asker.admin) return send(403, { admin: true, error: 'This login is one of the shop\u2019s administrators, so it cannot ' +
+        'be closed from the shop. That is done in the admin, Settings > Users & Roles.' });
+      return send(200, { ok: true });
+    }
     if (p.startsWith('/.netlify/functions/')) return send(200, {});
     if (p.indexOf('/pic/') === 0) { res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end(PNG); }
     if (p === '/config.js') {
@@ -463,11 +477,43 @@ async function signIn(page, email) {
     await cust.fill('#email', 'buyer@example.com');
     await cust.fill('#password', PASSWORD);
     await cust.click('#loginBtn');
-    await cust.waitForFunction(() => /list of administrators/.test((document.getElementById('loginMsg') || {}).textContent || ''), null, { timeout: 15000 });
+    await cust.waitForFunction(() => /not an administrator of this shop/.test((document.getElementById('loginMsg') || {}).textContent || ''), null, { timeout: 15000 });
     const said = await cust.evaluate(() => document.getElementById('loginMsg').textContent);
-    is(/^The login buyer@example\.com is not on this shop's list of administrators, so the admin stays closed to it\. A customer account signs in on the shop itself, not here\.$/.test(said)
+    is(/^The login buyer@example\.com is not an administrator of this shop, so the admin stays closed to it\. A customer account signs in on the shop itself, not here\.$/.test(said)
        && !(await cust.$('#admin:not(.hide)')), 'a customer is kept out, and told which login was refused', said);
     await ctxB.close();
+
+    /* ------------------------------------------------------------------ 5 */
+    console.log('\n5. Closing an account (website 80)');
+    async function pressClose(page) {
+      await page.waitForSelector('.ac-danger', { timeout: 15000 });
+      await page.click('.ac-danger');                      // the first press asks again
+      await page.waitForFunction(() => /permanently/.test((document.querySelector('.ac-danger') || {}).textContent || ''), null, { timeout: 5000 });
+      await page.click('.ac-danger');                      // "Yes, close it permanently"
+    }
+    const ctxC = await context(browser);
+    const closer = await ctxC.newPage(); watch(closer);
+    await signIn(closer, 'buyer@example.com');
+    let before = CLOSES.length;
+    await pressClose(closer);
+    await closer.waitForFunction(() => !document.querySelector('.ac-order') && !!document.querySelector('input[type=password]'),
+      null, { timeout: 15000 }).catch(() => {});
+    const gone = await closer.evaluate(() => ({ orders: document.querySelectorAll('.ac-order').length,
+      signInShown: !!document.querySelector('input[type=password]') }));
+    is(CLOSES.length === before + 1 && CLOSES[before].email === 'buyer@example.com' && gone.orders === 0 && gone.signInShown,
+       'Close my account asks the website\'s function, as the customer, and leaves the page signed out', J({ calls: CLOSES.slice(before), gone }));
+    await ctxC.close();
+    const ctxAd = await context(browser);
+    const adminShop = await ctxAd.newPage(); watch(adminShop);
+    await signIn(adminShop, 'owner@example.com').catch(() => {});
+    before = CLOSES.length;
+    await pressClose(adminShop);
+    await adminShop.waitForFunction(() => /Users & Roles/.test(document.body.innerText), null, { timeout: 15000 }).catch(() => {});
+    const kept = await adminShop.evaluate(() => ({ said: /cannot be closed from the shop/.test(document.body.innerText),
+      stillIn: !document.querySelector('input[type=password]') }));
+    is(CLOSES.length === before + 1 && kept.said && kept.stillIn,
+       'an admin login pressing it on the shop is told why not, and stays signed in', J(kept));
+    await ctxAd.close();
 
     is(errors.length === 0, 'no script error on any page', errors.join(' | '));
   } catch (e) {

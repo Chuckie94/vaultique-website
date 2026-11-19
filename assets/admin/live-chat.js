@@ -531,6 +531,19 @@
           .then(function () {}, function () {});
       }
 
+      /* The shop's own notification keys, made by the owner's browser.
+         Up to build 75 every copy of the website shipped the same pair;
+         supabase-hardening.sql retires it, and the first time the owner
+         opens Live Chats afterwards this makes the new one (chat-alerts.js
+         ensureKeys), so the devices refreshed just after move to it.
+         Quiet either way: before the hardening has been run the shipped
+         pair is still there and nothing is made, and nobody but the
+         owner may make one. */
+      function ownKeys() {
+        if (!isOwner || !alerts || !alerts.ensureKeys) return Promise.resolve();
+        return alerts.ensureKeys(sb).then(function () {}, function () {});
+      }
+
       /* Everybody who is at the desk right now, named. An operator
          deciding whether to hand a conversation over needs to know who
          is actually there to take it. */
@@ -2217,6 +2230,7 @@
         .then(beatList)
         .then(startLive)
         .then(tellSiteAddress)
+        .then(ownKeys)
         .then(function () {
           /* A browser can quietly replace a subscription, at which point
              the row in the database points at an address that will

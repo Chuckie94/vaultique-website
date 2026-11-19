@@ -8,19 +8,15 @@
 // completely untouched.
 // ---------------------------------------------------------------------------
 
-// POS connection. These are the POS's own PUBLIC read key and URL.
-// They are kept server-side only. You may override them with Netlify
-// environment variables (Site settings > Environment variables) named
-// POS_SUPABASE_URL and POS_SUPABASE_KEY for cleaner separation.
+// The platform's address. Not a secret: it is in every page the platform
+// serves. Netlify's POS_SUPABASE_URL overrides it.
 //
-// POS_SUPABASE_KEY is only for the old way of reading, below the door (see
-// THE PRODUCTS-ONLY DOOR). Once /api/products says "source": "door" it is
-// not used at all, and it should be deleted from Netlify.
+// POS_SUPABASE_KEY, the platform's SECRET key, is not read by anything since
+// build 77 (W-24). It opens the whole business, and until then this file
+// fell back to it whenever the door below did not answer. If it is still in
+// Netlify, delete it: the build step refuses to publish while it is there.
 const POS_URL =
   process.env.POS_SUPABASE_URL || 'https://xbrchpxdmptwuvivdiqj.supabase.co';
-const POS_KEY =
-  process.env.POS_SUPABASE_KEY ||
-  'sb_publishable_wj1gGEwOnLu_HlBRkbeZvA_tCHEk1vR';
 
 // WHICH ROW THE SHOP'S LIVE DATA IS IN.
 //
@@ -58,9 +54,11 @@ const STATE_ROW = String(process.env.POS_STATE_ROW || '100').trim();
 // answers this site needs no secret key at all.
 //
 // Asked first, every time. Anything but a proper answer from it (not there
-// yet, an error, a reply of any other shape) and the feed reads the way it
-// always has, further down. So this file can go up before or after the door's
-// SQL is run, and the catalogue never stops.
+// yet, an error, a reply of any other shape) and the feed asks the old way,
+// further down, with the same publishable key and never the secret one. On
+// this shop's platform app_state is locked to that key, so the old way finds
+// nothing and the feed says it cannot read the products, which the
+// storefront meets by keeping what it already shows.
 const DOOR = 'vbp_website_products';
 const PUBLIC_KEY =
   String(process.env.POS_PUBLIC_KEY || '').trim() ||
@@ -445,7 +443,7 @@ function tryParse(s) {
 /* A shop that has told its customers it is shut should not still be
    handing out its catalogue. The settings say whether it is, and the
    preview key is how the owner still sees it while testing. */
-const { settings } = require('./_seo-data');
+const { settings, previewOk } = require('./_seo-data');
 // ADDED: the day a piece sold out, noted in the website's own database, for
 // "hide sold-out pieces after so many days". Never holds up or breaks the feed.
 const { stampSoldOut } = require('./_sold-out');
@@ -456,9 +454,10 @@ async function closedToThisCaller(event) {
     const closed = g.maintenanceMode === true ||
                    ['closed', 'coming-soon'].indexOf(g.websiteStatus || 'live') > -1;
     if (!closed) return false;
-    const key = String((g.previewKey || '')).trim();
+    /* Asked of the database since build 76: the key is in the private
+       settings now, where this function's public key cannot read it. */
     const asked = String(((event && event.queryStringParameters) || {}).preview || '').trim();
-    return !(key && asked === key);
+    return !(await previewOk(asked));
   } catch (e) {
     /* The settings could not be read. A shop that cannot be asked is
        treated as open: refusing every product because of a failed
@@ -509,15 +508,15 @@ exports.handler = async function (event) {
       };
     }
 
-    // THE OLD WAY, unchanged: the whole row, read with POS_KEY. Only reached
-    // when the door has not answered.
+    // THE OLD WAY: the row, asked with the PUBLISHABLE key. Only reached when
+    // the door has not answered. Since build 77 never with POS_SUPABASE_KEY.
     const res = await fetch(
       `${POS_URL}/rest/v1/app_state?id=eq.${STATE_ROW}&select=*`,
       {
         method: 'GET',
         headers: {
-          apikey: POS_KEY,
-          Authorization: `Bearer ${POS_KEY}`,
+          apikey: PUBLIC_KEY,
+          Authorization: `Bearer ${PUBLIC_KEY}`,
           Accept: 'application/json',
         },
       }

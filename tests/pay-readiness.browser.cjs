@@ -128,6 +128,9 @@ const PAYMENTS = { onlineEnabled: true, onlineMode: 'test', cashEnabled: true, m
       if (/supabase-js/.test(r.request().url())) return r.fulfill({ status: 200, contentType: 'text/javascript', body: SUPA });
       return r.fulfill({ status: 200, contentType: 'text/javascript', body: '' });
     });
+    // Website 80: the admin loads its own copy of supabase-js (build 79's line
+    // keeps it in assets/vendor), so the stand-in answers there as well.
+    await ctx.route(/\/assets\/vendor\/supabase-js-[0-9.]+\.js(\?.*)?$/, r => r.fulfill({ status: 200, contentType: 'text/javascript', body: SUPA }));
     await ctx.route('**/fonts.googleapis.com/**', r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
     await ctx.route('**/cdnjs.cloudflare.com/**', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
     const page = await ctx.newPage();

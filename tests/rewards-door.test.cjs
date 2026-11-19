@@ -11,15 +11,17 @@
      B. linking: the code goes to the email the door gives, and every case a
         number can be in still gets the same answer;
      C. a quote and a promise use the door's figures, and come out the same;
-     D. the old way, only while the door is not set up, never once the
-        secret key is deleted, and never because the door was busy;
-     E. /api/rewards-check says which way is in use, and nothing else;
+     D. no old way any more (build 77): with the door not answering, the
+        rewards say they cannot be reached, even while the secret key is
+        still set, and the business is never read whole instead;
+     E. /api/rewards-check says whether the door is in use, and nothing else;
      F. no key and no customer detail ever leaves in an answer.
 
    THE DOOR'S ANSWERS BELOW WERE NOT WRITTEN BY HAND. They are what the real
    door SQL (the platform's tools/vbp-rewards-door.sql) answered on a stand-in
-   database holding the shop below, recorded word for word. The old way reads
-   the same shop, so both ways must say the same thing.
+   database holding the shop below, recorded word for word. The website's
+   own formula, run on the same shop (the old way, until build 76), is the
+   yardstick: both must say the same thing.
    =========================================================================== */
 const path = require('path');
 process.env.WEB_SUPABASE_URL = 'https://site.test';
@@ -324,7 +326,13 @@ global.fetch = async (url, opts = {}) => {
     rows.push(Object.assign(dflt, row));
     return ok(null, 201);
   }
-  if (m === 'PATCH') { rows.filter((r) => match(r, q)).forEach((r) => Object.assign(r, JSON.parse(opts.body))); return ok(null, 204); }
+  if (m === 'PATCH') {
+    const hit = rows.filter((r) => match(r, q));
+    hit.forEach((r) => Object.assign(r, JSON.parse(opts.body)));
+    /* The changed rows, when asked for: how a conditional update tells
+       its caller whether it won (rewards verify, build 77). */
+    return /return=representation/.test((opts.headers || {}).Prefer || '') ? ok(hit.map((r) => Object.assign({}, r))) : ok(null, 204);
+  }
   if (m === 'DELETE') { DB[table] = rows.filter((r) => !match(r, q)); return ok(null, 204); }
 };
 require.cache[require.resolve(path.resolve(__dirname, '../netlify/functions/send-email.js'))] = {
@@ -419,18 +427,23 @@ const oldStanding = (no, promised) => R.standing(SHOP, R.customerByNumber(SHOP, 
      'and the balance shows them as promised, as the old way would', JSON.stringify(r.body));
   is(reads() === 0, 'still without reading the business');
 
-  console.log('\nD · The old way: only while the door is not set up');
+  console.log('\nD · No old way any more (build 77)');
   const before = JSON.stringify(Object.assign({ linked: true, number: 'VB0007' }, oldStanding('VB-0007')));
-  for (const [what, keys, mode, expectRead] of [
-    ['no door key yet', [null, SECRET], 'ok', true],
-    ['the door not in the platform yet', [DOORKEY, SECRET], 'missing', true],
-    ['the door refusing the key', [DOORKEY, SECRET], 'refused', true],
-    ['the door unable to read', [DOORKEY, SECRET], 'unreadable', true],
-    ['an answer of another shape', [DOORKEY, SECRET], 'shape', true]]) {
+  for (const [what, keys, mode] of [
+    ['no door key yet', [null, SECRET], 'ok'],
+    ['the door not in the platform yet', [DOORKEY, SECRET], 'missing'],
+    ['the door refusing the key', [DOORKEY, SECRET], 'refused'],
+    ['the door unable to read', [DOORKEY, SECRET], 'unreadable'],
+    ['an answer of another shape', [DOORKEY, SECRET], 'shape']]) {
     setKeys(keys[0], keys[1]); door = mode; fresh(); link('u-seven', 'VB-0007'); PLATFORM.length = 0;
     r = said(await call('tok-seven', { action: 'status' }));
-    is(JSON.stringify(r.body) === before && reads() === 1, what + ': the old way, with the same answer', JSON.stringify(r.body));
+    is(r.body.unavailable === true && reads() === 0 && !PLATFORM.some((p) => JSON.stringify(p).includes(SECRET)),
+       what + ', the secret key still set: unavailable, and the business is not read with it', JSON.stringify(r.body));
   }
+  setKeys(null, SECRET); door = 'ok'; fresh(); SENT.length = 0; PLATFORM.length = 0;
+  r = said(await call('tok-seven', { action: 'link', number: 'VB-0007' }));
+  is(SENT.length === 0 && reads() === 0 && PLATFORM.length === 0,
+     'nor is an email looked up the old way to link with: no code goes out', JSON.stringify(r.body) + ' sent=' + SENT.length);
   setKeys(DOORKEY, SECRET); door = 'busy'; fresh(); link('u-seven', 'VB-0007'); PLATFORM.length = 0;
   r = said(await call('tok-seven', { action: 'status' }));
   is(r.body.unavailable === true && reads() === 0, 'the door busy: "cannot be reached just now", and never the whole business instead', JSON.stringify(r.body));
@@ -451,7 +464,7 @@ const oldStanding = (no, promised) => R.standing(SHOP, R.customerByNumber(SHOP, 
   console.log('\nE · /api/rewards-check');
   setKeys(DOORKEY, SECRET); door = 'ok'; PLATFORM.length = 0;
   let c = said(await askCheck());
-  is(c.status === 200 && c.body.source === 'door' && c.body.secretKeyStillSet === true && /delete POS_SUPABASE_KEY/.test(c.body.next),
+  is(c.status === 200 && c.body.source === 'door' && c.body.secretKeyStillSet === true && /delete POS_SUPABASE_KEY/i.test(c.body.next),
      'door working, secret key still set: "door", and that the secret key can now go', c.raw);
   const cq = JSON.parse((asked('vbp_website_rewards')[0] || {}).body || '{}');
   is(cq.p_number === '' && asked('vbp_website_rewards').length === 1 && reads() === 0,
@@ -461,10 +474,11 @@ const oldStanding = (no, promised) => R.standing(SHOP, R.customerByNumber(SHOP, 
   is(c.body.source === 'door' && c.body.secretKeyStillSet === false, 'and once it is gone: "door", nothing more to do', c.raw);
   setKeys(DOORKEY, SECRET); door = 'missing';
   c = said(await askCheck());
-  is(c.body.source === 'row' && /SQL has not been run/.test(c.body.why), 'the SQL not run yet: still the old way, and why', c.raw);
+  is(c.body.source === 'none' && /SQL has not been run/.test(c.body.why) && reads() === 0,
+     'the SQL not run yet: "none" (there is no old way to fall back on), and why', c.raw);
   door = 'refused';
   c = said(await askCheck());
-  is(c.body.source === 'row' && /refused POS_REWARDS_KEY/.test(c.body.why), 'a wrong key in Netlify: said plainly', c.raw);
+  is(c.body.source === 'none' && /refused POS_REWARDS_KEY/.test(c.body.why), 'a wrong key in Netlify: said plainly', c.raw);
   setKeys(null, null); door = 'ok';
   c = said(await askCheck());
   is(c.body.source === 'none' && c.body.doorKeySet === false, 'neither key: "none"', c.raw);

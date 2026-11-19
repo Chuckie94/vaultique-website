@@ -1,7 +1,7 @@
 -- =====================================================================
--- Vaultique Boutique Point — website database HARDENING (builds 76 to 78)
+-- Vaultique Boutique Point — website database HARDENING (builds 76 to 80)
 -- ---------------------------------------------------------------------
--- UPLOAD THE WEBSITE FIRST (build 78 or later), AND WAIT UNTIL NETLIFY
+-- UPLOAD THE WEBSITE FIRST (build 80 or later), AND WAIT UNTIL NETLIFY
 -- SAYS "PUBLISHED". The admin and the shop need their own new pages to
 -- work with what this file changes. An admin page from before build 76
 -- would take the database's new questions for a refusal and sign people
@@ -17,8 +17,13 @@
 -- something this file took away.
 --
 -- Build 77 added item 14 below and raised two shop-wide limits; build 78
--- adds item 15. A project that ran an earlier version runs this one too:
--- it is the same file, grown, and is safe to run over the old one.
+-- adds item 15. Build 80 keeps the platform's till door and an order's
+-- private link open to visitors (section 12: each opens only with its own
+-- key), and its report says whether the three files made after this one
+-- have been run (supabase-pos-orders.sql, supabase-payment-history.sql,
+-- supabase-order-progress.sql). A project that ran an earlier version runs
+-- this one too: it is the same file, grown, and is safe to run over the
+-- old one.
 --
 -- WHAT IT DOES. Each line is a finding from the build 73 audit.
 --    1. Two-factor is checked by the database, not only by the page,
@@ -1346,7 +1351,14 @@ as $$
     -- the newsletter, the closed shop and its preview key
     'subscribe_email', 'shop_is_closed', 'preview_ok',
     -- asked by the database's own rules while a visitor reads or writes
-    'is_admin', 'chat_may_answer', 'review_auto_publish', 'chat_photo_slot_open']::text[];
+    'is_admin', 'chat_may_answer', 'review_auto_publish', 'chat_photo_slot_open',
+    -- build 80: the platform's till, through the door its own key opens
+    -- (supabase-pos-orders.sql, supabase-order-progress.sql); a wrong key
+    -- is refused inside each, and the key is kept only as a fingerprint
+    'vbp_pos_orders', 'vbp_pos_order', 'vbp_pos_order_claim', 'vbp_pos_order_release',
+    'vbp_pos_order_complete', 'vbp_pos_progress', 'vbp_pos_order_progress', 'vbp_pos_order_refund',
+    -- build 80: an order's private link, opened only with that order's own key
+    'order_progress_link']::text[];
 $$;
 
 do $$
@@ -1432,7 +1444,7 @@ alter table public.schema_migrations enable row level security;
 revoke all on public.schema_migrations from anon, authenticated;
 
 insert into public.schema_migrations (version, note)
-values ('078-hardening', 'supabase-hardening.sql, build 78')
+values ('080-hardening', 'supabase-hardening.sql, build 80')
 on conflict (version) do update set applied_at = now();
 
 notify pgrst, 'reload schema';
@@ -1581,9 +1593,37 @@ begin
   v_rows := v_rows || jsonb_build_array(jsonb_build_array(
     'Database', 'Throttles', 'on: chats, reviews, newsletter, orders; and, from the website, starting payments and the admin''s emails', ''));
 
+  -- Build 80: the three files made after the hardening, which the
+  -- platform's till and an order's progress stand on, and whether the
+  -- platform can reach them. A file never run says so, with what to do.
+  for r in select * from (values
+      (1, 'The platform''s till (supabase-pos-orders.sql, website 76)', 'public.vbp_pos_orders(text,text,text)', true),
+      (2, 'The payment history (supabase-payment-history.sql, website 77)', null, false),
+      (3, 'An order''s progress (supabase-order-progress.sql, website 78)', 'public.vbp_pos_progress(text,text,text)', true)
+    ) as f(n, what, door, open_to_platform) order by n
+  loop
+    if r.door is null then
+      v_two := to_regclass('public.payment_events') is not null;
+    else
+      v_two := to_regprocedure(r.door) is not null;
+    end if;
+    v_rows := v_rows || jsonb_build_array(jsonb_build_array(
+      'Platform', r.what,
+      case when not v_two then 'NOT RUN YET'
+           when r.open_to_platform and not has_function_privilege('anon', to_regprocedure(r.door), 'execute')
+             then 'CLOSED to the platform'
+           when r.open_to_platform then 'OK · the platform''s till can reach it with its own key'
+           else 'OK' end,
+      case when not v_two
+             then 'Run ' || substring(r.what from '\((supabase-[a-z-]+\.sql)') || ' (all three, in the order 76, 77, 78), then this file again.'
+           when r.open_to_platform and not has_function_privilege('anon', to_regprocedure(r.door), 'execute')
+             then 'Run this file again; if it still says so, send this line to whoever looks after the website.'
+           else '' end));
+  end loop;
+
   select count(*) into v_n from public.schema_migrations;
   v_rows := v_rows || jsonb_build_array(jsonb_build_array(
-    'Database', 'This file', 'RECORDED (078-hardening)',
+    'Database', 'This file', 'RECORDED (080-hardening)',
     'The older supabase-*.sql files now refuse to run again. This one is safe to run again whenever you like.'));
 
   return query

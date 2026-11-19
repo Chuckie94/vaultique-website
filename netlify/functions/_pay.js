@@ -13,9 +13,8 @@
 //   2. Nothing is "paid" because somebody said so. Not the browser coming
 //      back from Flutterwave, not a webhook on its own. Flutterwave is
 //      asked directly, with the secret key, and the answer must name our
-//      reference, our currency and exactly our amount (build 77: to the
-//      ngwee; more, less or another currency "needs attention", see
-//      needsAttention below, and is never marked paid).
+//      reference, our currency and exactly our amount (build 77: more,
+//      less or another currency "needs attention", and is never paid).
 //
 //   3. The secret keys live in Netlify's environment and nowhere else:
 //        FLW_SECRET_KEY_TEST, FLW_SECRET_KEY_LIVE   from the Flutterwave dashboard
@@ -25,36 +24,22 @@
 //
 //   4. Card details never come here at all. The customer types them into
 //      Flutterwave's own page.
-//
-//   5. Money Flutterwave confirms always reaches its order, and the emails
-//      about it go once. The order is switched to paid with a conditional
-//      update (orderPaid), and only the call that made that switch sends
-//      the emails, whichever of the return page, the webhook or the
-//      check-up got there first. If the switch fails part-way, the payment
-//      row still says paid and the check-up finishes the job.
-//
-//   6. Nobody has to come back for a payment to count. pay-reconcile.js
-//      asks Flutterwave every fifteen minutes about every attempt of the
-//      last three days that has not been heard back about (build 77: and
-//      about the ones Flutterwave itself reported failed, because a
-//      customer can try again on the same page and pay).
-//
-//   7. BUILD 77 · A piece paid for online is held until the till rings its
-//      order up, or the order is completed or cancelled, for at most seven
-//      days: a second customer is not charged for a piece the first one has
-//      already paid for. The feed and the price rules are not touched; the
-//      hold is worked out here, from this website's own orders.
 // =====================================================================
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
-const { settings, readConfig, rows } = require('./_seo-data');
+const { settings, readConfig, rows, previewOk, serviceKey: siteServiceKey } = require('./_seo-data');
 
 const MAX_LINES = 50;
 const MAX_QTY = 99;
 const PER_PHONE_PER_HOUR = 5;
-const PER_SHOP_PER_HOUR = 300;
+// Build 77: one connection may start this many payments an hour, and the
+// whole shop this many. The shop-wide figure is a backstop against a
+// flood, not a working limit: at 300 anybody typing made-up phone numbers
+// could switch online payment off for everybody for an hour (W-11).
+const PER_CONNECTION_PER_HOUR = 8;
+const PER_SHOP_PER_HOUR = 1000;
 const HOLD_DAYS = 7;          // build 77: how long a piece paid for online is held at most
 const ASK_GAP_MS = 5000;      // build 77: the status page asks Flutterwave about one payment at most this often
 
@@ -139,14 +124,6 @@ async function shopSettings() {
     delivery: over(DELIVERY_DEFAULTS, delivery),
     contact: contact || {},
   };
-}
-
-function shopClosed(general, preview) {
-  const closed = general.maintenanceMode === true ||
-    ['closed', 'coming-soon'].indexOf(general.websiteStatus || 'live') > -1;
-  if (!closed) return false;
-  const key = String(general.previewKey || '').trim();
-  return !(key && String(preview || '').trim() === key);
 }
 
 function onlineOn(s) {
@@ -329,6 +306,7 @@ async function priceOrder(s, rawItems, fulfilment, preview, town) {
   };
 }
 
+// ---- the website's database, as the payment service ---------------------
 // ---- BUILD 77 · pieces paid for online, held ------------------------------
 // How many of each piece are already paid for online, on orders the till has
 // not rung up and nobody has completed or cancelled, placed in the last
@@ -364,7 +342,7 @@ async function heldPieces(skus) {
 }
 
 // ---- the website's database, as the payment service ---------------------
-function serviceKey() { return process.env.SUPABASE_SERVICE_ROLE_KEY || ''; }
+function serviceKey() { return siteServiceKey(); }   // either name (build 77, _seo-data.js)
 
 async function svc(method, pathAndQuery, body, prefer) {
   const { url } = readConfig();
@@ -478,6 +456,7 @@ function changedSince(expect, total) {
   return !isFinite(e) || Math.abs(e - Number(total)) > 0.004;
 }
 
+
 function newTxRef(orderRef) {
   return orderRef + '-' + crypto.randomBytes(5).toString('hex');
 }
@@ -497,7 +476,7 @@ async function settle(txRef, transactionId, opts) {
     // walked away from, with the money already taken. Whoever brings the
     // order up to date sends the emails (fresh), so they still go once.
     const caught = await orderPaid(pay, (pay.detail && pay.detail.amount) || pay.amount, pay.channel, pay.updated_at);
-    return { status: 'paid', pay, fresh: caught };
+    return { status: 'paid', pay, fresh: !!caught, late: caught === 'late' };
   }
   // BUILD 77 · A payment that needs attention stays so, whatever else
   // Flutterwave says about this reference (a failed try, nothing at all),
@@ -546,7 +525,9 @@ async function settle(txRef, transactionId, opts) {
     // make that happen (orderPaid), so they go exactly once however many
     // webhooks, return visits and check-ups arrive together.
     const caught = await orderPaid(row, d.amount, d.payment_type, now);
-    return { status: 'paid', pay: row, fresh: caught };
+    // late: the order had lapsed and been cancelled, and this brought it
+    // back. Its piece may have sold since, so the shop is told (build 78).
+    return { status: 'paid', pay: row, fresh: !!caught, late: caught === 'late' };
   }
 
   if (d.status === 'successful' && same) {
@@ -575,7 +556,8 @@ async function settle(txRef, transactionId, opts) {
 //
 // Answers whether THIS call is the one that marked it paid. The write only
 // touches an order that is not paid yet, so of two requests racing, one
-// gets the row back and the other gets nothing.
+// gets the row back and the other gets nothing. 'late' when it was also
+// the one that brought a lapsed order back (true otherwise, false if not).
 async function orderPaid(pay, amount, channel, when) {
   if (!pay || !pay.order_id) return false;
   const was = await svc('GET', 'orders?id=eq.' + pay.order_id + '&select=status,payment_status');
@@ -588,7 +570,8 @@ async function orderPaid(pay, amount, channel, when) {
     payment_status: 'paid', paid_amount: Number(amount), paid_at: when || now,
     pay_channel: String(channel || ''), updated_at: now,
   }, revive ? { status: 'pending' } : {}));
-  return !!(rows && rows.length);
+  if (!(rows && rows.length)) return false;
+  return revive ? 'late' : true;
 }
 
 // ---- BUILD 77 · the status page, not asking too often ----------------------
@@ -657,19 +640,21 @@ async function orderNeedsAttention(pay, now) {
 }
 
 // One email to the shop, whatever the notification settings say about paid
-// orders: this is money somebody has to look at, not news of a sale.
+// orders: this is money somebody has to look at, not news of a sale. Sent
+// from the shop's own account, read the one way every function reads it
+// (_mail.js, build 77). A test payment says so (build 77, W-04).
 async function attentionEmail(s, pay, d) {
-  const [pub, priv, orders] = await Promise.all([
-    settings('notifications'),
-    svc('GET', 'site_settings_private?key=eq.notifications&select=data'),
+  const M = require('./_mail');
+  const [account, orders] = await Promise.all([
+    M.mailAccount(),
     pay.order_id ? svc('GET', 'orders?id=eq.' + pay.order_id + '&select=*') : Promise.resolve([]),
   ]);
-  const n = pub || {};
-  const secret = (priv && priv[0] && priv[0].data) || {};
+  const n = account.pub;
   const o = (orders && orders[0]) || {};
-  if (!n.emailEnabled || !n.smtpHost || !n.senderEmail) return { sent: 0 };
+  if (!account.ready) return { sent: 0 };
   const shopTo = s.contact.email || n.replyTo || n.senderEmail;
   if (!shopTo) return { sent: 0 };
+  const test = pay.mode === 'test' || o.pay_mode === 'test';
   const F = formats();
   const style = F.moneyStyle(s.general, s.pricing);
   const money = (v) => F.money(v, style);
@@ -679,13 +664,12 @@ async function attentionEmail(s, pay, d) {
   const ref = o.ref || String(pay.tx_ref || '').split('-').slice(0, 2).join('-');
   const shop = s.general.businessName || 'Vaultique Boutique Point';
   const sendMail = require('./send-email')._internals.sendMail;
-  await sendMail({
-    smtpHost: n.smtpHost, smtpPort: n.smtpPort, encryption: n.encryption,
-    smtpUser: n.smtpUser, smtpPassword: secret.smtpPassword,
-    senderName: n.senderName || shop, senderEmail: n.senderEmail, replyTo: n.replyTo,
+  await sendMail(Object.assign(M.accountConfig(account), {
+    senderName: n.senderName || shop,
     to: shopTo,
-    subject: 'Payment needs attention: order ' + ref,
-    text: 'A payment came in for order ' + ref + ', but it does not match the order.\n\n' +
+    subject: (test ? '[TEST] ' : '') + 'Payment needs attention: order ' + ref,
+    text: (test ? 'A TEST payment, made in Test mode: no money moved.\n\n' : '') +
+      'A payment came in for order ' + ref + ', but it does not match the order.\n\n' +
       'The order: ' + money(Number(pay.amount)) + '\n' +
       'Received: ' + got + how + '\n' +
       (d.flw_ref ? 'Flutterwave reference: ' + d.flw_ref + '\n' : '') +
@@ -693,7 +677,7 @@ async function attentionEmail(s, pay, d) {
       'Nothing has been marked paid, and the order stays open. Check the payment in your ' +
       'Flutterwave dashboard, then contact the customer.\n\n' +
       'Customer: ' + (o.name || '') + '\nPhone: ' + (o.phone || '') + '\nEmail: ' + (o.email || ''),
-  });
+  }));
   return { sent: 1 };
 }
 
@@ -725,18 +709,24 @@ async function failPayment(pay, why) {
 }
 
 // ---- the confirmation email -------------------------------------------------
-async function confirmByEmail(s, orderId) {
+// mode is the payment's own ('test' or 'live'). A test payment says so in
+// both subjects and never calls itself paid (build 77, W-04): no money
+// moved, and an email that said otherwise could be forwarded as proof.
+async function confirmByEmail(s, orderId, mode, late) {
   try {
-    const [pub, priv, orders, items] = await Promise.all([
-      settings('notifications'),
-      svc('GET', 'site_settings_private?key=eq.notifications&select=data'),
+    // The shop's email account, read the one way every function reads it
+    // (_mail.js): since build 77 the password is in a row only the server
+    // can read.
+    const M = require('./_mail');
+    const [account, orders, items] = await Promise.all([
+      M.mailAccount(),
       svc('GET', 'orders?id=eq.' + orderId + '&select=*'),
       svc('GET', 'order_items?order_id=eq.' + orderId + '&select=name,qty,price'),
     ]);
-    const n = pub || {};
-    const secret = (priv && priv[0] && priv[0].data) || {};
+    const n = account.pub;
     const o = orders && orders[0];
-    if (!o || !n.emailEnabled || !n.smtpHost || !n.senderEmail) return { sent: 0 };
+    if (!o || !account.ready) return { sent: 0 };
+    const test = mode === 'test' || o.pay_mode === 'test';
 
     const F = formats();
     const style = F.moneyStyle(s.general, s.pricing);
@@ -751,25 +741,27 @@ async function confirmByEmail(s, orderId) {
       o.goods_total != null ? 'Items: ' + money(o.goods_total) : '',
       Number(o.tax_total) ? 'Tax: ' + money(o.tax_total) : '',
       Number(o.delivery_fee) ? 'Delivery: ' + money(o.delivery_fee) : '',
-      'Paid: ' + money(o.paid_amount) + (o.pay_channel ? ' (' + (o.pay_channel === 'card' ? 'card' : 'mobile money') + ')' : ''),
+      (test ? 'TEST payment, no money taken: ' : 'Paid: ') + money(o.paid_amount) +
+        (o.pay_channel ? ' (' + (o.pay_channel === 'card' ? 'card' : 'mobile money') + ')' : ''),
       '',
       o.fulfilment === 'collection' ? 'You are collecting this order in person.' : (o.address ? 'Delivering to: ' + o.address : ''),
     ].filter((l, i, a) => l !== '' || (a[i - 1] !== '' && i > 0));
 
     const sendMail = require('./send-email')._internals.sendMail;
-    const base = {
-      smtpHost: n.smtpHost, smtpPort: n.smtpPort, encryption: n.encryption,
-      smtpUser: n.smtpUser, smtpPassword: secret.smtpPassword,
-      senderName: n.senderName || shop, senderEmail: n.senderEmail, replyTo: n.replyTo,
-    };
+    const base = Object.assign(M.accountConfig(account), { senderName: n.senderName || shop });
     let sent = 0;
     if (s.pay.onlineConfirmEmail !== false && o.email) {
       try {
         await sendMail(Object.assign({}, base, {
           to: o.email,
-          subject: 'Payment received \u2014 order ' + o.ref,
-          text: 'Hello ' + (o.name || '') + ',\n\nThank you. We have received your payment.\n\n' +
-                parts.join('\n') + '\n\nWe will be in touch about your order shortly.\n\n' + (n.signature || shop),
+          subject: test ? '[TEST] Test payment \u2014 order ' + o.ref + ', no money taken'
+                        : 'Payment received \u2014 order ' + o.ref,
+          text: 'Hello ' + (o.name || '') + ',\n\n' +
+                (test ? 'This was a TEST payment, made while the shop was testing online payment. ' +
+                        'No money was taken, and this is not a receipt.'
+                      : 'Thank you. We have received your payment.') + '\n\n' +
+                parts.join('\n') + '\n\n' +
+                (test ? '' : 'We will be in touch about your order shortly.\n\n') + (n.signature || shop),
         }));
         sent++;
       } catch (e) { /* the payment stands whether or not the email goes */ }
@@ -779,8 +771,17 @@ async function confirmByEmail(s, orderId) {
       try {
         await sendMail(Object.assign({}, base, {
           to: shopTo,
-          subject: 'Paid online: order ' + o.ref + ' \u2014 ' + money(o.paid_amount),
-          text: 'A customer has paid online.\n\n' + parts.join('\n') + '\n\n' +
+          subject: (late ? '[CHECK STOCK] ' : '') +
+                   (test ? '[TEST] Test payment: order ' + o.ref + ' \u2014 no money moved'
+                         : 'Paid online: order ' + o.ref + ' \u2014 ' + money(o.paid_amount)),
+          text: (late ? 'PAID LATE. This payment arrived after the payment window had closed, when the order ' +
+                        'had already been cancelled for not being paid, and it has brought the order back. ' +
+                        'Nothing was set aside for it meanwhile, so the piece may have sold since: check it is ' +
+                        'still there before you confirm the order, and if it is not, refund the customer from ' +
+                        'your Flutterwave dashboard.\n\n' : '') +
+                (test ? 'A TEST payment was made on the website, in Test mode. No money moved: Flutterwave\'s ' +
+                        'test cards and numbers were used. The order is marked TEST in the Orders tab.'
+                      : 'A customer has paid online.') + '\n\n' + parts.join('\n') + '\n\n' +
                 'Customer: ' + (o.name || '') + '\nPhone: ' + (o.phone || '') + '\nEmail: ' + (o.email || '') +
                 (o.notes ? '\nNotes: ' + o.notes : '') + '\n\nOpen the Orders tab in your admin to confirm it.',
         }));
@@ -790,6 +791,130 @@ async function confirmByEmail(s, orderId) {
     return { sent };
   } catch (e) {
     return { sent: 0, error: e.message };
+  }
+}
+
+// ---- build 76: the things the database now decides ----------------------
+
+// Closed to this caller: closed, unless the preview key is right. Since
+// build 76 the key is checked by the database (_seo-data.previewOk), not
+// compared here, because it is no longer in the public settings.
+async function closedFor(general, preview) {
+  const closed = general.maintenanceMode === true ||
+    ['closed', 'coming-soon'].indexOf(general.websiteStatus || 'live') > -1;
+  if (!closed) return false;
+  return !(await previewOk(preview));
+}
+
+// A WhatsApp order, priced here (decision Q2). The same catalogue and price
+// rules as a payment, but a WhatsApp order is the start of a conversation,
+// not a charge, so nothing is refused: a piece priced on request, sold out
+// since, or no longer on sale is recorded as asked for, without a price, for
+// the shop to settle in the chat. The total is what the storefront calls
+// the order's total (orderTotal() in assets/app.js): the priced pieces times
+// their quantities, nothing else. The browser's own prices are not asked for.
+async function priceWhatsApp(s, rawItems, preview) {
+  const F = formats();
+  if (!Array.isArray(rawItems) || !rawItems.length) return { error: 'There is nothing in the order.' };
+  if (rawItems.length > MAX_LINES) return { error: 'That is too many different pieces for one order.' };
+  const items = [];
+  for (const it of rawItems) {
+    const sku = String((it && it.sku) || '').trim();
+    const qty = Math.floor(Number(it && it.qty));
+    if (!sku || sku.length > 60) return { error: 'A piece in the order could not be read.' };
+    if (!(qty >= 1 && qty <= MAX_QTY)) return { error: 'A quantity in the order could not be read.' };
+    items.push({ sku, qty, asked: String((it && it.name) || '').trim().slice(0, 200) });
+  }
+  const style = F.moneyStyle(s.general, s.pricing);
+  const [feed, meta] = await Promise.all([
+    catalogue(preview).catch(() => []),
+    productMeta(items.map((i) => i.sku)).catch(() => ({})),
+  ]);
+  const bySku = {};
+  feed.forEach((p) => { bySku[p.sku] = p; });
+  let total = 0;
+  const lines = items.map((it) => {
+    const base = bySku[it.sku];
+    const p = base ? withMeta(base, meta[it.sku], s.pricing) : null;
+    if (!p || p.hidden) return { sku: it.sku, name: it.asked || it.sku, price: null, qty: it.qty };
+    const v = F.priceView(p, s.pricing, style);
+    const unit = (v.onRequest || !(v.now > 0)) ? null : v.now;
+    if (unit !== null) total = round2(total + unit * it.qty);
+    return { sku: p.sku, name: p.name, price: unit, qty: it.qty };
+  });
+  return { lines, total, currency: style.currency };
+}
+
+// Who is signed in, asked of Supabase itself with the token the browser
+// sent: a browser can say anything about who it is. A token that does not
+// check out is a guest.
+async function customerFrom(event) {
+  const h = (event && event.headers) || {};
+  const bearer = String(h.authorization || h.Authorization || '').replace(/^Bearer\s+/i, '').trim();
+  const { url, key } = readConfig();
+  if (!bearer || !url || !key || bearer === key) return null;
+  try {
+    const res = await fetch(url.replace(/\/+$/, '') + '/auth/v1/user', {
+      headers: { apikey: key, Authorization: 'Bearer ' + bearer },
+    });
+    if (!res.ok) return null;
+    const u = await res.json();
+    return (u && u.id) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// ---- build 77: who may use Test mode (decision Q3) --------------------------
+// In Test mode anybody could "pay" with the test cards Flutterwave
+// publishes and be sent a paid-looking confirmation. On the live site it
+// is for the shop alone: whoever holds the preview key, or the owner,
+// signed in with two-factor.
+function claimsOf(token) {
+  try {
+    return JSON.parse(Buffer.from(String(token || '').split('.')[1] || '', 'base64url').toString('utf8')) || {};
+  } catch (e) { return {}; }
+}
+async function ownerFrom(event) {
+  const h = (event && event.headers) || {};
+  const bearer = String(h.authorization || h.Authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (!bearer || !serviceKey()) return false;
+  // The token is checked with Supabase first, so what it says can be read.
+  const id = await customerFrom(event);
+  if (!id || claimsOf(bearer).aal !== 'aal2') return false;
+  try {
+    const r = await svc('GET', 'admins?id=eq.' + encodeURIComponent(id) + '&role=eq.owner&select=id');
+    return !!(r && r.length);
+  } catch (e) { return false; }
+}
+async function testAllowed(event, preview) {
+  if (await previewOk(preview)) return true;
+  return ownerFrom(event);
+}
+const TEST_ONLY = 'Paying online is not available just now. Please order on WhatsApp instead.';
+
+// The visitor's address as Netlify saw it, for the database's throttle.
+function clientAddr(event) {
+  const h = (event && event.headers) || {};
+  const v = h['x-nf-client-connection-ip'] || String(h['x-forwarded-for'] || '').split(',')[0];
+  return String(v || '').trim().slice(0, 64) || null;
+}
+
+// The order, written by the database's place_order with the service key,
+// the only key it now answers. On a database where supabase-hardening.sql
+// has not been run yet, place_order still has its old three-part form, and
+// that is used instead, so no order is lost to the order things were done
+// in. The old form cannot be told who the customer was; such an order is
+// filed as a guest's until the SQL is run.
+async function recordOrder(order, items, preview, customer, client) {
+  try {
+    return await svc('POST', 'rpc/place_order', {
+      p_order: order, p_items: items, p_preview: preview || null,
+      p_customer: customer || null, p_client: client || null,
+    });
+  } catch (e) {
+    if (!/PGRST202|Could not find the function/i.test(String(e && e.message))) throw e;
+    return svc('POST', 'rpc/place_order', { p_order: order, p_items: items, p_preview: preview || null });
   }
 }
 
@@ -803,10 +928,12 @@ function siteOrigin(event) {
 }
 
 module.exports = {
-  json, formats, shopSettings, shopClosed, onlineOn, priceOrder, cleanItems,
+  json, formats, shopSettings, onlineOn, priceOrder, cleanItems,
   deliveryCharge, svc, serviceKey, flw, flwKey, paymentOptions, hashMatches, newTxRef,
+  settle, failPayment, confirmByEmail, siteOrigin,
+  previewOk, closedFor, priceWhatsApp, customerFrom, clientAddr, recordOrder,
+  testAllowed, ownerFrom, TEST_ONLY,
   signatureMatches, noteWebhook, payHealth, callerIsAdmin, changedSince,
-  settle, orderPaid, failPayment, abandon, confirmByEmail, siteOrigin,
-  heldPieces, askedJustNow, needsAttention,
-  PER_PHONE_PER_HOUR, PER_SHOP_PER_HOUR, HOLD_DAYS, ASK_GAP_MS,
+  orderPaid, abandon, heldPieces, askedJustNow, needsAttention, attentionEmail,
+  PER_PHONE_PER_HOUR, PER_CONNECTION_PER_HOUR, PER_SHOP_PER_HOUR, HOLD_DAYS, ASK_GAP_MS,
 };

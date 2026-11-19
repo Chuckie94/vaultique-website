@@ -72,7 +72,34 @@ run payments         tests/payments-fixture.sql supabase-payments.sql tests/paym
 run chat-photos      tests/chat-jobs-fixture.sql tests/chat-photos-fixture.sql supabase-chat-photos.sql tests/chat-photos.sql
 run chat-jobs        tests/chat-jobs-fixture.sql supabase-chat-jobs.sql tests/chat-jobs.sql
 run layby-settings   tests/layby-settings-fixture.sql @layby-setup-slice tests/layby-settings.sql
+# Build 80: the platform's till (supabase-pos-orders.sql) and the payment
+# history, each with the files they stand on. An order's progress
+# (supabase-order-progress.sql) is the last chain, below.
+POS="tests/pos-orders-fixture.sql supabase-setup.sql supabase-payments.sql tests/pos-orders-admins.sql supabase-rewards.sql supabase-pos-orders.sql"
+run pos-orders       $POS tests/pos-orders.sql
+run pos-orders-bare  tests/pos-orders-fixture.sql supabase-setup.sql supabase-pos-orders.sql tests/pos-orders-bare.sql
+run payment-history  $POS supabase-payment-history.sql supabase-payment-history.sql tests/payment-history.sql
+run pos-orders-80    $POS supabase-payment-history.sql supabase-order-progress.sql tests/pos-orders.sql
 as "dropdb --if-exists $DB" >/dev/null 2>&1
+
+# Build 80 · an order's progress (supabase-order-progress.sql). Its own
+# script, because two of its checks need a second database: it builds the
+# chain (the till's files, orders already there, the file run twice), runs
+# tests/order-progress.sql, then runs the file a third time with orders in
+# it, and checks it refuses the platform's database and a website without
+# the till's door, creating nothing.
+chains=$((chains + 1))
+o=$(bash "$here/tests/order-progress-db.sh" 2>&1); rc=$?
+pass=$(printf '%s\n' "$o" | grep -c '✓')
+fail=$(printf '%s\n' "$o" | grep -c '✗')
+total=$((total + pass))
+if [ $rc -eq 0 ] && [ "$fail" -eq 0 ] && [ "$pass" -gt 0 ]; then
+  printf '  ✓ %-18s %4s checks\n' order-progress "$pass"
+else
+  failed=$((failed + 1))
+  printf '  ✗ %-18s %4s passed, %s failed\n' order-progress "$pass" "$fail"
+  printf '%s\n' "$o" | grep -E '✗|ERROR' | head -8 | sed 's/^/        /'
+fi
 
 echo
 if [ $failed -eq 0 ]; then

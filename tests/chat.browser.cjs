@@ -46,6 +46,7 @@ const REAL_DESKTOP =
 let CHAT_SETTINGS = {};
 let POLL = null;
 let RPC_CALLS = [];
+let THROTTLED = false;   // the database's limit on how fast one connection writes (build 76)
 
 const body = req => new Promise(r => { let d=''; req.on('data',c=>d+=c); req.on('end',()=>r(d)); });
 
@@ -64,6 +65,10 @@ function serve() {
       if (p.indexOf('/rest/v1/rpc/') === 0) {
         const fn = p.slice('/rest/v1/rpc/'.length);
         RPC_CALLS.push({ fn, body: await body(req) });
+        if (fn === 'chat_send' && THROTTLED) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ code: 'P0429', message: 'Too many tries just now. Please wait a little and try again.' }));
+        }
         if (fn === 'chat_start') return json('tok-test-000000000001');
         if (fn === 'chat_poll') return json(POLL);
         return json(null);
@@ -355,6 +360,26 @@ const subLine = page => page.evaluate(() =>
          timer exists for, and the checks above are what prove it holds. */
       const asks = RPC_CALLS.filter(c => c.fn === 'chat_poll').length;
       is(asks >= 1, 'the timer is doing the work, as it does when the socket is not there');
+      await ctx.close();
+    }
+
+    /* ==================================================================== */
+    console.log('\nWriting faster than the database allows (build 76)');
+    {
+      const { ctx, page, errors } = await open({ enabled: true },
+        { status: 'open', unread: 0, named: true, seen: false, here: true, typing: false, messages: [] });
+      THROTTLED = true;
+      await page.click('#chatFab');
+      await page.fill('#chatInput', 'Hello again');
+      await page.press('#chatInput', 'Enter');
+      await page.waitForTimeout(1200);
+      const note = await page.evaluate(() => (document.querySelector('#chatNote') || {}).textContent || '');
+      const kept = await page.evaluate(() => (document.querySelector('#chatInput') || {}).value || '');
+      is(/wait a minute/.test(note) && !/connection/.test(note),
+         'the customer is asked to wait a minute, not sent to check a connection that is fine', note);
+      is(kept === 'Hello again', 'and what they wrote is kept in the box to send again');
+      THROTTLED = false;
+      is(errors.length === 0, 'with no script error' + (errors.length ? ': ' + errors[0] : ''));
       await ctx.close();
     }
 

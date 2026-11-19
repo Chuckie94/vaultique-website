@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.48.0',
-  build: 78,
-  builtAt: '2026-11-16T15:34:05Z',
-  notes: 'An order\'s progress, from the till to the customer: once the platform rings an order up, one still to go says Preparing (taken at the counter, Completed); then On its way (with the shop\'s note) or Ready for collection, then Delivered or Collected. The customer sees each step on their account page or behind a private link in their email, with Confirm delivery and Ask for more time; an order on its way is marked delivered after the shop\'s days, with a reminder before (collection orders never by themselves); refunds shown. Emails: on its way, the reminder, delivered, refunded. Orders shows where each order is. Every SQL file hidden from visitors. The admin sign-in check asks the database\'s own administrator rule before saying no, and names the login. SQL: supabase-order-progress.sql, once, in this website Supabase.'
+  version: '1.50.0',
+  build: 80,
+  builtAt: '2026-11-18T16:41:53Z',
+  notes: 'Build 79 with the work of the other website builds 74 to 78 carried onto it: the order number at the start of the WhatsApp message and points kept on it; orders rung up at the platform\'s till, with the receipt to download; an order\'s progress (preparing, on its way or ready, delivered), Confirm delivery and Ask for more time, its private link and its emails; payment safety (the fifteen-minute check-up, only the exact amount counts as paid, payment needs attention, the payment history, a piece paid for online held); the admin keeps its own sign-in, says Not saved when nothing was saved, and asks in its own dialogs; closing an account now removes the login too, and is refused for any admin login. One SQL file: supabase-hardening.sql, run once more.'
 };

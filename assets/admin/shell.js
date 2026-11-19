@@ -27,10 +27,20 @@
      Supabase's, for a link sent from anywhere else. */
   var recovering = /[?&]reset=1(&|$)/.test(location.search) ||
                    /(^#|&)type=recovery(&|$)/.test(location.hash);
+  /* The admin's sign-in has a place of its own in the browser.
+     Without a name of its own, supabase-js kept it where the shop front
+     keeps a customer's: one place per Supabase project, and both pages
+     use the same project from the same address. Signing in to the shop
+     as a customer, in another tab, then quietly turned the open admin
+     into that customer -- Admin > Rewards answered the owner "not
+     permitted" -- and the next reload signed both of them out. Apart,
+     neither can touch the other. (tests/admin-session.browser.cjs) */
+  var ADMIN_SESSION = 'vbp-admin-auth';
   var sb = SEC
     ? window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY,
-        { auth: { storage: SEC.sessionStore(), persistSession: true } })
-    : window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+        { auth: { storage: SEC.sessionStore(), persistSession: true, storageKey: ADMIN_SESSION } })
+    : window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY,
+        { auth: { storageKey: ADMIN_SESSION } });
   // The settings store and form kit reach the database through here.
   window.VBP_ADMIN = window.VBP_ADMIN || {};
   window.VBP_ADMIN.sb = sb;
@@ -142,7 +152,12 @@
   function adminVerdict() {
     return Promise.resolve(sb.from('admins').select('id').limit(1))
       .then(function (r) {
-        if (r && !r.error && r.data) return r.data.length ? 'yes' : 'no';
+        /* BUILD 78 · A row is an answer; no row, on its own, is not. A shop
+           whose admins table has no read rule hands every administrator an
+           empty list, and build 77 shut a shop's own owner out over exactly
+           that. So an empty list is taken to is_admin(), the test every
+           other rule in the database asks, and only its no is a no. */
+        if (r && !r.error && r.data && r.data.length) return 'yes';
         return viaFunction();
       }, viaFunction);
   }
@@ -184,9 +199,16 @@
           'Check your connection and try again.');
       return Promise.resolve();
     }
-    return Promise.resolve(sb.auth.signOut()).catch(function () {}).then(function () {
-      say('This account is not an administrator. A customer account signs in ' +
-          'on the shop itself, not here.');
+    /* BUILD 78 · which login, by name: "not an administrator" alone left an
+       owner signed in with the wrong one guessing at passwords. */
+    return Promise.resolve(sb.auth.getSession()).catch(function () { return null; }).then(function (res) {
+      var who = (res && res.data && res.data.session && res.data.session.user &&
+                 res.data.session.user.email) || '';
+      return Promise.resolve(sb.auth.signOut()).catch(function () {}).then(function () {
+        say((who ? 'The login ' + who + ' is' : 'This login is') +
+            ' not an administrator of this shop, so the admin stays closed to it. ' +
+            'A customer account signs in on the shop itself, not here.');
+      });
     });
   }
 
@@ -1620,13 +1642,180 @@
       paid:     ['pay-paid', 'Paid \u2713' + (how ? ' \u00b7 ' + how : '')],
       awaiting: ['pay-wait', 'Awaiting payment'],
       failed:   ['pay-fail', 'Payment failed'],
-      expired:  ['pay-fail', 'Payment not completed']
+      expired:  ['pay-fail', 'Payment not completed'],
+      review:   ['pay-fail', 'Payment needs attention']      // build 77
     };
     var b = map[o.payment_status] || ['pay-wait', 'Online payment'];
     /* Build 76: an order sent to pay while Settings > Payments was in Test
        mode says so, so a test card's "payment" is never taken for money. */
     var test = o.pay_mode === 'test' ? '<div class="pay-badge pay-test">TEST \u00b7 no money moved</div>' : '';
     return '<div class="pay-badge ' + b[0] + '">' + escapeHtml(b[1]) + '</div>' + test;
+  }
+  /* BUILD 77 · Under an order paid online: what needs attention, and the
+     payment's history (supabase-payment-history.sql: written by the
+     database as things happen, read by administrators only). */
+  function payAt(iso) {
+    var t = new Date(iso);
+    if (isNaN(t.getTime())) return '';
+    return shortDate(iso) + ' ' + ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2);
+  }
+  function payGot(n) {
+    /* What came in, in the order's currency when it is the same one. */
+    if (!n) return '';
+    var cur = String(n.currency || '').toUpperCase();
+    var want = String(n.expectedCurrency || '').toUpperCase();
+    return (!cur || cur === want) ? fmtMoney(Number(n.amount)) : cur + ' ' + n.amount;
+  }
+  function payEventWords(e) {
+    var n = e.note || {};
+    var to = e.to_state || '', from = e.from_state || '';
+    if (e.what === 'payment') {
+      if (!from && to === 'started') {
+        return 'Payment started' + (n.amount != null ? ' · ' + fmtMoney(Number(n.amount)) : '') +
+               (n.mode === 'test' ? ' (test mode)' : '');
+      }
+      if (to === 'paid') {
+        return 'Paid' + (n.amount != null ? ' · ' + fmtMoney(Number(n.amount)) : '') +
+               (n.flw_ref ? ' · Flutterwave ' + n.flw_ref : '');
+      }
+      if (to === 'failed') {
+        if (n.reason === 'failed') return 'Flutterwave: the payment failed';
+        if (n.reason === 'cancelled') return 'Flutterwave: the payment was cancelled';
+        return 'Stopped before the payment page';
+      }
+      if (to === 'expired') return 'Not completed within three hours';
+      if (to === 'review') {
+        return 'Needs attention: received ' + payGot(n) +
+               (n.expected != null ? ', the order is ' + fmtMoney(Number(n.expected)) : '');
+      }
+      return 'Payment: ' + (from || '—') + ' → ' + to;
+    }
+    if (e.what === 'order-payment') {
+      var pw = { awaiting: 'Order sent to pay online', paid: 'Order marked paid',
+                 failed: 'Order: payment failed', expired: 'Order: payment not completed',
+                 review: 'Order: payment needs attention' };
+      return pw[to] || ('Order payment: ' + (from || '—') + ' → ' + (to || '—'));
+    }
+    if (to === 'cancelled') return 'Order cancelled';
+    if (from === 'cancelled' && to === 'pending') return 'Order brought back';
+    var name = function (v) { return (NOTIFY.CHOICES && NOTIFY.CHOICES[v]) || v || '—'; };
+    return 'Order: ' + name(from) + ' → ' + name(to);
+  }
+  function payParts(o, d) {
+    if (o.payment_status === 'review') {
+      var attn = document.createElement('div');
+      attn.className = 'hint pay-attn';
+      attn.textContent = 'A payment came in that does not match this order. Nothing has been ' +
+        'marked paid. Check it in your Flutterwave dashboard, then contact the customer.';
+      d.appendChild(attn);
+      Promise.resolve(sb.from('payments').select('amount,currency,channel,detail')
+        .eq('order_id', o.id).eq('status', 'review').limit(1)).then(function (r) {
+        var p = r && !r.error && r.data && r.data[0];
+        if (!p || !p.detail) return;
+        var how = p.channel === 'card' ? ' by card' : (p.channel ? ' by mobile money' : '');
+        attn.textContent = 'A payment came in that does not match this order: received ' +
+          payGot(p.detail) + how + ', the order is ' + fmtMoney(Number(p.amount)) +
+          '. Nothing has been marked paid. Check it in your Flutterwave dashboard, then contact the customer.';
+      }, function () {});
+    }
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pay-hist-btn';
+    btn.textContent = 'Payment history';
+    var box = document.createElement('div');
+    box.className = 'pay-hist hide';
+    var loaded = false;
+    btn.addEventListener('click', function () {
+      var open = box.classList.contains('hide');
+      box.classList[open ? 'remove' : 'add']('hide');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (!open || loaded) return;
+      loaded = true;
+      box.textContent = 'Loading…';
+      Promise.resolve(sb.from('payment_events').select('at,what,from_state,to_state,note')
+        .eq('order_id', o.id).order('at', { ascending: true }).limit(100)).then(function (r) {
+        if (r && r.error) {
+          box.textContent = 'No payment history yet. It starts once supabase-payment-history.sql has been run.';
+          return;
+        }
+        var rows = (r && r.data) || [];
+        if (!rows.length) { box.textContent = 'No payment history recorded for this order.'; return; }
+        box.innerHTML = '';
+        rows.forEach(function (e) {
+          var line = document.createElement('div');
+          line.className = 'pay-hist-line';
+          var when = document.createElement('span');
+          when.className = 'pay-hist-at';
+          when.textContent = payAt(e.at);
+          var what = document.createElement('span');
+          what.textContent = payEventWords(e);
+          line.appendChild(when);
+          line.appendChild(what);
+          box.appendChild(line);
+        });
+      }, function () {
+        box.textContent = 'The payment history could not be read just now.';
+        loaded = false;
+      });
+    });
+    d.appendChild(btn);
+    d.appendChild(box);
+  }
+
+  /* BUILD 78 · where an order rung up at the shop is now, in a sentence
+     (supabase-order-progress.sql; the platform moves it on). */
+  function shortAt(iso) {
+    var t = new Date(iso);
+    if (isNaN(t.getTime())) return '';
+    return shortDate(iso) + ' ' + ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2);
+  }
+  function progressSays(o) {
+    var collect = o.fulfilment === 'collection';
+    if (o.status === 'delivered' && o.delivered_at) {
+      var by = { customer: 'confirmed by the customer', shop: 'marked by the shop',
+                 auto: 'marked automatically, the days having run out' }[o.delivered_by] || '';
+      return (collect ? 'Collected' : 'Delivered') + ' on ' + shortAt(o.delivered_at) + (by ? ', ' + by : '');
+    }
+    if (o.status === 'dispatched' && o.dispatched_at) {
+      return 'On its way since ' + shortAt(o.dispatched_at) + (o.ship_note ? ' (' + o.ship_note + ')' : '') +
+        (o.auto_deliver_at ? ' \u00b7 marked delivered automatically on ' + shortAt(o.auto_deliver_at) +
+                             ' unless the customer confirms first' : '') +
+        (Number(o.extend_used) ? ' \u00b7 more time asked ' + o.extend_used + ' of ' +
+                                 (o.extend_max == null ? 2 : o.extend_max) : '');
+    }
+    if (o.status === 'ready' && o.ready_at) {
+      return 'Ready for collection since ' + shortAt(o.ready_at) + (o.ship_note ? ' (' + o.ship_note + ')' : '');
+    }
+    if (o.pos_sale_id && o.status === 'confirmed') return 'Preparing: rung up at the shop, the goods still to go';
+    return '';
+  }
+  function refundSays(o) {
+    if (!o.refund_state) return '';
+    return (o.refund_state === 'part' ? 'Part refunded ' : 'Refunded ') + fmtMoney(o.refund_amount) +
+      (o.refund_at ? ' on ' + shortAt(o.refund_at) : '') + (o.refund_ref ? ' \u00b7 ' + o.refund_ref : '') +
+      (o.refund_note ? ' \u00b7 ' + o.refund_note : '');
+  }
+
+  /* BUILD 76 · what the till has done with an order, in a sentence. */
+  function tillSays(o) {
+    function at(iso) {
+      var t = new Date(iso);
+      if (isNaN(t.getTime())) return '';
+      return shortDate(iso) + ' ' + ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2);
+    }
+    if (o.pos_sale_id) {
+      return 'Rung up at the shop' +
+        (o.pos_receipt_no ? ' \u00b7 Receipt ' + o.pos_receipt_no : '') +
+        (o.pos_invoice_no ? ' \u00b7 Invoice ' + o.pos_invoice_no : '') +
+        (o.pos_completed_at ? ' \u00b7 ' + at(o.pos_completed_at) : '');
+    }
+    if (o.pos_claim_id) {
+      return 'Being rung up at the shop' +
+        (o.pos_claimed_by ? ' by ' + o.pos_claimed_by : '') +
+        (o.pos_claimed_at ? ', since ' + at(o.pos_claimed_at) : '');
+    }
+    return '';
   }
   function orderRow(o) {
     var d = document.createElement('div');
@@ -1646,6 +1835,26 @@
       (o.total == null ? '—' : escapeHtml(fmtMoney(o.total))) + '</b>' + payBadge(o) + '</div>';
     d.appendChild(head);
 
+    /* BUILD 76 · rung up at the shop, through the platform's Online Orders.
+       Written only by the platform (supabase-pos-orders.sql); shown here so
+       the Orders tab and the till say the same thing. */
+    var tillLine = tillSays(o);
+    if (tillLine) {
+      var till = document.createElement('div');
+      till.className = 'hint till-line';
+      till.style.marginTop = '4px';
+      till.textContent = tillLine;
+      d.appendChild(till);
+    }
+    [['progress-line', progressSays(o)], ['refund-line', refundSays(o)]].forEach(function (pair) {
+      if (!pair[1]) return;
+      var line = document.createElement('div');
+      line.className = 'hint ' + pair[0];
+      line.style.marginTop = '4px';
+      line.textContent = pair[1];
+      d.appendChild(line);
+    });
+
     /* An order paid online: how the total breaks down. */
     if (o.payment_method === 'online' && (Number(o.delivery_fee) || Number(o.tax_total))) {
       var brk = document.createElement('div');
@@ -1656,6 +1865,11 @@
         (Number(o.delivery_fee) ? ' · Delivery ' + fmtMoney(o.delivery_fee) : '');
       d.appendChild(brk);
     }
+
+    /* BUILD 77 · a payment that does not match the order, and the payment's
+       history. Both read only when there is something to show, and both
+       quietly say less on a shop that has not run the SQL for them. */
+    if (o.payment_method === 'online') payParts(o, d);
 
     var items = document.createElement('div');
     items.className = 'hint';
@@ -1695,8 +1909,15 @@
       sb.from('orders')
         .update({ status: sel.value, updated_at: new Date().toISOString() })
         .eq('id', o.id)
+        .select('id')
         .then(function (r) {
           if (r.error) { stat.textContent = 'Error'; stat.className = 'stat err'; return; }
+          if (notChanged(r)) {
+            sel.value = o.status || 'pending';
+            stat.textContent = 'Not saved'; stat.className = 'stat err';
+            tell(NOT_CHANGED('orders'), { title: 'Not saved' });
+            return;
+          }
           var wasStatus = o.status || 'pending';
           o.status = sel.value;
           stat.textContent = 'Saved ✓'; stat.className = 'stat ok';
@@ -1758,7 +1979,9 @@
                                 'off, set the status to Cancelled instead.' })
         .then(function (yes) {
           if (!yes) return;
-          sb.from('orders').delete().eq('id', o.id).then(function () {
+          sb.from('orders').delete().eq('id', o.id).select('id').then(function (r) {
+            if (r && r.error) { tell(r.error.message, { title: 'Not deleted' }); return; }
+            if (notChanged(r)) { tell(NOT_CHANGED('orders'), { title: 'Not deleted' }); return; }
             var a = AUDIT();
             if (a) a.record({ action: 'deleted', module: 'Orders', record: o.ref || 'an order' });
             d.remove();
@@ -1946,8 +2169,10 @@
       return sb.from('subscribers')
         .update({ unsubscribed_at: on ? null : new Date().toISOString() })
         .eq('email', x.email)
+        .select('email')
         .then(function (r) {
           if (r.error) { tell(r.error.message, { title: 'That did not save' }); return; }
+          if (notChanged(r)) { tell(NOT_CHANGED('subscribers'), { title: 'That did not save' }); return; }
           x.unsubscribed_at = on ? null : new Date().toISOString();
           var a = AUDIT();
           if (a) a.record({ action: 'changed', module: 'Subscribers', record: x.email,
@@ -2101,8 +2326,13 @@
       if (!upd.title) { stat.textContent = 'Title required'; stat.className = 'stat err'; return; }
       stat.textContent = 'Saving…'; stat.className = 'stat busy';
       var was = { section: p.section, title: p.title, body: p.body, sort: p.sort };
-      sb.from('policies').update(upd).eq('id', p.id).then(function (r) {
+      sb.from('policies').update(upd).eq('id', p.id).select('id').then(function (r) {
         if (r.error) { stat.textContent = 'Error'; stat.className = 'stat err'; return; }
+        if (notChanged(r)) {
+          stat.textContent = 'Not saved'; stat.className = 'stat err';
+          tell(NOT_CHANGED('policies'), { title: 'Not saved' });
+          return;
+        }
         stat.textContent = 'Saved ✓'; stat.className = 'stat ok';
         p.section = upd.section; p.title = upd.title; p.body = upd.body; p.sort = upd.sort;
         var a = AUDIT();
@@ -2176,4 +2406,17 @@
      folder can ask a question in the same voice. Held under the same
      names here, so every call site is unchanged. */
   var ask = window.VBP_DIALOGS.ask, tell = window.VBP_DIALOGS.tell;
+
+  /* A change the database did not make.
+     An update its rules do not allow is not an error to the database: it
+     changes no rows and says nothing. The admin used to read that silence
+     as "Saved \u2713" -- an order shown as Confirmed here stayed Pending on
+     the customer's page. These saves now ask for the changed row back, and
+     no row means it did not happen. */
+  function notChanged(r) { return !r || !r.data || (Array.isArray(r.data) && r.data.length === 0); }
+  function NOT_CHANGED(what) {
+    return 'The database did not accept this change, so nothing was saved. This sign-in may not change ' + what +
+           '. Sign out of the admin and sign in again with the shop owner\u2019s account, or ask the owner to ' +
+           'allow it for your role in Settings > Users & Roles.';
+  }
 })();

@@ -84,7 +84,9 @@
       rcard.appendChild(el('h3', null, 'Roles'));
       rcard.appendChild(el('p', 'grp-note',
         'Tick what each role can open. Changes apply to everybody with that ' +
-        'role the next time they load a page. The owner always has everything.'));
+        'role the next time they load a page. The owner always has everything. ' +
+        'Since build 76 the database holds every tick, not only this page: ' +
+        'somebody without one cannot reach that part of the shop by any route.'));
       var rlist = el('div', 'role-list');
       rcard.appendChild(rlist);
       var rbar = el('div', 'staff-bar');
@@ -372,10 +374,28 @@
             });
             lab.appendChild(cb);
             lab.appendChild(el('span', null, right.label));
-            if (right.hard) lab.appendChild(el('span', 'role-hard', 'enforced'));
             ticks.appendChild(lab);
           });
           box.appendChild(ticks);
+
+          /* What the database asks of this role at sign-in (build 76,
+             supabase-hardening.sql): a role that can open Settings,
+             Orders or Subscribers can reach bank details, customers or
+             the mailing list, so it must use two-factor. Said here, where
+             the tick that decides it is. */
+          var two = el('p', 'hint');
+          function paintTwo() {
+            var need = ['settings', 'orders', 'subscribers'].some(function (k) {
+              return r.permissions[k] === true;
+            });
+            two.textContent = need
+              ? 'Everybody with this role must use two-factor, because it can open ' +
+                'Settings, Orders or Subscribers. The admin asks them to set it up at sign-in.'
+              : 'Two-factor is optional for this role.';
+          }
+          ticks.addEventListener('change', paintTwo);
+          paintTwo();
+          box.appendChild(two);
           rlist.appendChild(box);
         });
       }

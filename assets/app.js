@@ -39,7 +39,7 @@
     websiteStatus: 'live',
     maintenanceMode: false,
     maintenanceMessage: '',
-    previewKey: ''
+    previewKey: ''     // never filled since build 76: the key stays in the database
   };
   var FMT = window.VBP_FORMAT || null;
   var THEME = window.VBP_THEME || null;
@@ -206,6 +206,57 @@
   }
   function slug(s) {
     return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+  /* A link typed into the settings, followed only if it is one of the kinds
+     Settings > Homepage accepts (settings/homepage.js): a page on this site
+     (#/... or /...), a web address (https:// or http://), an email
+     (mailto:) or a phone number (tel:). The admin's form checks that, but
+     the database cannot, so anything else written straight into it
+     (javascript:, data: and the like) comes back as '' and the button keeps
+     its own behaviour (build 78, W-13). Browsers skip tabs and line breaks
+     inside an address, so a link with any is refused outright. */
+  function safeHref(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (!s || /[\u0000-\u001f\u007f]/.test(s)) return '';
+    if (/^#\//.test(s)) return s;
+    if (/^\/(?![\/\\])/.test(s)) return s;
+    if (/^https?:\/\/[^\/\\\s]/i.test(s)) return s;
+    if (/^mailto:[^\s]/i.test(s) || /^tel:\+?[\d\s().-]+$/i.test(s)) return s;
+    return '';
+  }
+  /* The announcement bar is the one place the settings may carry a little
+     formatting: bold, italics, a line break, a link. Only that survives
+     (build 78): any other tag is reduced to its text (a script, a style or
+     a frame to nothing at all), every attribute is dropped, and a link
+     keeps its address only if safeHref accepts it. The text is read inside
+     a <template>, where nothing in it runs or loads, and the bar is built
+     from new elements rather than from the text itself. */
+  var SAFE_TAGS = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, SMALL: 1, SPAN: 1, BR: 1, A: 1 };
+  var DROP_TAGS = /^(SCRIPT|STYLE|TEMPLATE|IFRAME|FRAME|OBJECT|EMBED|NOSCRIPT|SVG|MATH|TEXTAREA|SELECT|TITLE)$/;
+  function fillSafe(target, html) {
+    target.textContent = '';
+    var t = document.createElement('template');
+    if (!('content' in t)) { target.textContent = String(html == null ? '' : html).replace(/<[^>]*>/g, ''); return; }
+    t.innerHTML = String(html == null ? '' : html);
+    (function copy(from, to) {
+      Array.prototype.forEach.call(from.childNodes, function (n) {
+        if (n.nodeType === 3) { to.appendChild(document.createTextNode(n.nodeValue)); return; }
+        if (n.nodeType !== 1) return;
+        var tag = String(n.tagName).toUpperCase();
+        if (DROP_TAGS.test(tag)) return;
+        if (!SAFE_TAGS[tag]) { copy(n, to); return; }
+        var e = document.createElement(tag.toLowerCase());
+        if (tag === 'A') {
+          var href = safeHref(n.getAttribute('href'));
+          if (href) {
+            e.setAttribute('href', href);
+            if (/^https?:/i.test(href)) { e.setAttribute('target', '_blank'); e.setAttribute('rel', 'noopener'); }
+          }
+        }
+        to.appendChild(e);
+        if (tag !== 'BR') copy(n, e);
+      });
+    })(t.content, target);
   }
   function moneyStyle() {
     if (MONEY) return MONEY;
@@ -715,7 +766,7 @@
       if (h.announceEnabled === false) bar.classList.add('hide');
       else {
         bar.classList.remove('hide');
-        if (h.announceText) bar.innerHTML = h.announceText;
+        if (h.announceText) fillSafe(bar, h.announceText);
       }
     }
 
@@ -760,7 +811,7 @@
     if (!btn) return;
     if (h.heroCtaText) btn.textContent = h.heroCtaText;
 
-    var link = (h.heroCtaLink || '').trim();
+    var link = safeHref(h.heroCtaLink);
     if (!link) return;                    // leave the built-in shop behaviour
     var a = document.createElement('a');
     a.className = btn.className;
@@ -965,13 +1016,21 @@
       if (!WEB || !email) return Promise.resolve();
       return webRpc('subscribe_email', { p_email: email }).catch(function () {});
     };
-    /* Recording an order needs the database, and a shop with accounts
-       switched off never asks for the client. The Orders tab is the
-       shop's own record either way, so the call is offered here as well,
-       plainly. */
-    ACCT.hooks.placeOrder = function (payload) {
-      if (!WEB) return Promise.reject(new Error('not configured'));
-      return webRpc('place_order', payload);
+    /* Recording an order (build 76): the website's place-order function
+       prices it from the catalogue and writes it, so the Orders tab holds
+       the shop's prices, not this page's. The customer's own sign-in goes
+       with it when there is one, for the function to check. */
+    ACCT.hooks.placeOrder = function (payload, token) {
+      var headers = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = 'Bearer ' + token;
+      return fetch('/.netlify/functions/place-order', {
+        method: 'POST', headers: headers, body: JSON.stringify(payload)
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (b) {
+          if (!r.ok) throw new Error((b && b.error) || 'The order was not recorded.');
+          return b;
+        });
+      });
     };
     /* The database refuses an order while the shop is shut. This is what
        lets the owner place one anyway while they are testing. */
@@ -1018,7 +1077,9 @@
   /* Fetches the Supabase client, but only for a shop that has accounts
      switched on. Everyone else never asks for it, so the library is not
      on the critical path of a page that would never use it. */
-  var CLIENT_SRC = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+  // Kept in this folder at a fixed version, not taken from a CDN as
+  // whatever release was newest that day: assets/vendor/README.txt.
+  var CLIENT_SRC = '/assets/vendor/supabase-js-2.118.0.js';
   function withClient(then) {
     if (!WEB || !ACCOUNTS.accountsEnabled) { then(null); return; }
     if (window.supabase && window.supabase.createClient) { then(webClient()); return; }
@@ -1026,7 +1087,7 @@
     tag.src = CLIENT_SRC;
     tag.async = true;
     tag.onload = function () { then(webClient()); };
-    /* A shop whose customers cannot reach the CDN still sells: the
+    /* A shop whose customers cannot load the library still sells: the
        account panel simply never appears, and guests carry on. */
     tag.onerror = function () { then(null); };
     document.head.appendChild(tag);
@@ -1217,7 +1278,7 @@
       var a = el('a', 'btn btn-wa');
       a.href = waUrl(enquiryNumber(), waSay('I have a question.'));
       a.target = '_blank'; a.rel = 'noopener';
-      a.innerHTML = waIcon() + (CARESET.faqAskText || 'Ask us on WhatsApp');
+      a.innerHTML = waIcon() + esc(CARESET.faqAskText || 'Ask us on WhatsApp');
       foot.appendChild(a);
     }
     sec.classList.remove('hide');
@@ -1378,7 +1439,7 @@
     if (cta) {
       if (HOME.promoCtaText) {
         cta.textContent = HOME.promoCtaText;
-        var link = (HOME.promoCtaLink || '').trim();
+        var link = safeHref(HOME.promoCtaLink);
         if (link) {
           cta.href = link;
           if (/^https?:/i.test(link)) { cta.target = '_blank'; cta.rel = 'noopener'; }
@@ -1892,12 +1953,10 @@
           name: d.name, phone: d.phone, email: d.email,
           address: d.address, notes: d.notes,
           fulfilment: d.how,
-          total: orderTotal(order),
-          currency: SETTINGS.currency,
+          /* Which pieces and how many. The prices and the total are the
+             server's to work out (build 76), from the same catalogue. */
           items: order.lines.map(function (l) {
-            var v = priceOf(l.product);
-            return { sku: l.product.sku, name: l.product.name,
-                     price: v.onRequest ? null : v.now, qty: l.qty };
+            return { sku: l.product.sku, name: l.product.name, qty: l.qty };
           })
         });
       }), ORDER_WAIT);
@@ -2026,9 +2085,14 @@
     } catch (e) {}
     return null;
   }
+  /* In Test mode only the shop may pay (build 77, decision Q3): anybody
+     else could "pay" with Flutterwave's published test cards. The shop
+     tests with its preview key (Settings > General); the payment
+     functions refuse everybody else as well, whatever this page shows. */
   function payOnline() {
     return !PREVIEW && !!PAY && PAY.onlineEnabled === true &&
-           (PAY.onlineCard !== false || PAY.onlineMobile !== false);
+           (PAY.onlineCard !== false || PAY.onlineMobile !== false) &&
+           (PAY.onlineMode === 'live' || previewing());
   }
   function payLabel() {
     if (PAY && PAY.onlineLabel) return PAY.onlineLabel;
@@ -2157,7 +2221,9 @@
       buyer: { name: d.name, phone: d.phone, email: d.email, address: d.address, notes: d.notes },
       expect: expect
     }).then(function (r) {
-      if (r._code === 200 && r.link) {
+      /* Flutterwave's own page, and nothing else: an address that is not
+         https:// is not followed, whoever sent it (build 78). */
+      if (r._code === 200 && /^https:\/\/[^\/\\\s]/i.test(String(r.link || ''))) {
         payMemo({ tx: r.txRef, cart: !order.single });
         location.href = r.link;
         return;
@@ -2237,10 +2303,13 @@
       if (!head) return;
       var memo = payMemo();
       if (how === 'paid') {
-        head.textContent = 'Payment received';
-        lead.textContent = 'Thank you. Order ' + (r.ref || '') + ' is paid' +
-          (r.amountText ? ' (' + r.amountText + ')' : '') +
-          '. A confirmation is on its way to your email, and we will be in touch about your order.';
+        head.textContent = r.test ? 'Test payment received' : 'Payment received';
+        lead.textContent = r.test
+          ? 'This was a TEST payment: no money was taken. Order ' + (r.ref || '') +
+            ' is marked TEST in the Orders tab, and the emails say TEST too.'
+          : 'Thank you. Order ' + (r.ref || '') + ' is paid' +
+            (r.amountText ? ' (' + r.amountText + ')' : '') +
+            '. A confirmation is on its way to your email, and we will be in touch about your order.';
         if (memo && memo.tx === q.tx_ref) {
           if (memo.cart) { cart = []; saveCart(); afterCartChange(); }
           payMemo(null);
@@ -2495,11 +2564,11 @@
      Held for the tab rather than carried in every link, so moving around
      the site does not need it repeated and closing the tab forgets it.
 
-     It is a door key, not a lock. It sits in the settings the storefront
-     already reads, so it is not a secret and is not meant to be one:
-     what it stops is a customer wandering in during an hour's work,
-     which is the thing that actually happens. Left empty, nobody walks
-     past the notice at all. */
+     Since build 76 it is kept in the private settings, where no visitor
+     can read it, and only the database says whether a key is right
+     (checkPreview below). What it stops is a customer wandering in during
+     an hour's work, which is the thing that actually happens. Left empty,
+     nobody walks past the notice at all. */
   var PREVIEW_MEMO = 'vbp_preview';
   function previewKey() {
     var given = '';
@@ -2512,13 +2581,22 @@
       return sessionStorage.getItem(PREVIEW_MEMO) || '';
     } catch (e) { return given; }
   }
-  /* Whether this browser may see the shop while it is shut. The database
-     asks the same question again of anything that writes, so a browser
-     saying yes to itself here buys nothing it should not have. */
-  function previewing() {
-    var want = String(SETTINGS.previewKey || '').trim();
-    return !!want && previewKey().trim() === want;
+  /* Whether this browser may see the shop while it is shut.
+
+     Asked of the database (build 76), once, while the settings load: the
+     key is no longer in the settings this page downloads, so there is
+     nothing here to compare it with, which is the point. On a database
+     from before supabase-hardening.sql, preview_ok still reads the public
+     settings, so the answer is the same either side of the upgrade. The
+     database asks the question again of anything that writes. */
+  var PREVIEW_OK = false;
+  function checkPreview() {
+    var k = previewKey().trim();
+    if (!k || !WEB) { PREVIEW_OK = false; return Promise.resolve(); }
+    return webRpc('preview_ok', { p_key: k })
+      .then(function (yes) { PREVIEW_OK = yes === true; }, function () { PREVIEW_OK = false; });
   }
+  function previewing() { return PREVIEW_OK; }
   window.VBP_PREVIEW = previewKey;      // the chat widget sends it too
 
   function gateReason() {
@@ -2869,8 +2947,8 @@
     tag.src = CLIENT_SRC;
     tag.async = true;
     tag.onload = function () { then(liveClient()); };
-    /* A visitor who cannot reach the CDN still sees a shop that updates,
-       just on the slower of the two routes. */
+    /* A visitor who cannot load the library still sees a shop that
+       updates, just on the slower of the two routes. */
     tag.onerror = function () { then(null); };
     document.head.appendChild(tag);
   }
@@ -2927,7 +3005,12 @@
      this), and finishLoad waits for whichever is slower. */
   var WEB_DATA = null;
   function websiteData(cb) {
-    if (!WEB_DATA) WEB_DATA = new Promise(function (resolve) { loadWebsiteData(resolve); });
+    if (!WEB_DATA) {
+      WEB_DATA = Promise.all([
+        new Promise(function (resolve) { loadWebsiteData(resolve); }),
+        checkPreview()
+      ]);
+    }
     WEB_DATA.then(function () { cb(); });
   }
   function finishLoad() {
@@ -3556,7 +3639,7 @@
       var wa = el('a', 'btn btn-wa');
       wa.href = buyHref(p);
       if (!canBuy(p)) { wa.target = '_blank'; wa.rel = 'noopener'; }
-      wa.innerHTML = waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, false));
+      wa.innerHTML = waIcon() + esc(canBuy(p) ? checkoutLabel() : askLabel(p, false));
       if (canBuy(p)) wa.addEventListener('click', function (e) { startOrder(e, p); });
       waLine.appendChild(wa);
       /* Beneath the buy button, not instead of it. A piece that can be
@@ -4371,7 +4454,7 @@
       '<div class="detail-cta" style="max-width:none">' +
       ((canBuy(p) || canAsk(p))
         ? '<a class="btn btn-wa" id="qvBuy"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
-          waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
+          waIcon() + esc(canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       '<span id="qvCartSlot"></span>' +
       '<button class="btn btn-outline" id="qvFull">View full details</button></div>';
@@ -4470,7 +4553,7 @@
       '<div class="cta-main">' +
       ((canBuy(p) || canAsk(p))
         ? '<a class="btn btn-wa" id="buyDetail"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
-          waIcon() + (canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
+          waIcon() + esc(canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       (canBuy(p) ? '<span id="cartSlot"></span>' : '') +
       '</div><div class="cta-sub">' +
@@ -5198,7 +5281,7 @@
   function setText(sel, val) { if (val == null || val === '') return; var e = $(sel); if (e) e.textContent = val; }
   function applyContent(c) {
     if (!c) c = {};
-    if (c.announce) { var a = $('#announceBar'); if (a) a.innerHTML = c.announce; }
+    if (c.announce) { var a = $('#announceBar'); if (a) fillSafe(a, c.announce); }
     if (c.hero) {
       setText('#heroEyebrow', c.hero.eyebrow);
       setText('#heroTitle', c.hero.title);
@@ -5270,8 +5353,8 @@
        - none looked up yet (a shop that has not saved General since this
          build): Google's map, searching for the address as written, which
          still puts the pin on the shop rather than on the country. */
-  var LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
-  var LEAFLET_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+  var LEAFLET_JS = '/assets/vendor/leaflet-1.9.4/leaflet.js';     // assets/vendor/README.txt
+  var LEAFLET_CSS = '/assets/vendor/leaflet-1.9.4/leaflet.css';
   function applyVisitMap(s) {
     var frame = $('#visitMap');
     if (!frame) return;
@@ -5660,7 +5743,14 @@
         }
         msg.className = 'rv-msg ok';
         setTimeout(closeReviewModal, live ? 1100 : 2200);
-      }).catch(function () { msg.textContent = 'Could not submit. Please try again.'; msg.className = 'rv-msg err'; });
+      }).catch(function (e) {
+        /* Since build 76 the database limits how many reviews one
+           connection can send in an hour; that is said as what it is. */
+        msg.textContent = /Too many/i.test(String((e && e.message) || ''))
+          ? 'Thank you, but that is a lot of reviews from here in a short time. Please try again later.'
+          : 'Could not submit. Please try again.';
+        msg.className = 'rv-msg err';
+      });
     });
     modal.classList.add('open'); document.body.style.overflow = 'hidden';
   }
@@ -5734,27 +5824,52 @@
         form.classList.add('hide');
         $('#nlSuccess').classList.add('show');
       };
-      /* Told the truth, both ways.
-      
-         This used to write straight at the table and count every answer
-         as a yes, so a visitor was thanked whether or not anything had
-         been written down — and somebody who had unsubscribed could
-         never get back on, because their row still holds the address and
-         the browser may only insert. The conflict read as success and
-         they stayed off the list.
-      
-         subscribe_email settles both. An address already on the list is
-         still a success, and still says nothing about who is on it; a
-         person typing their own address into this form is asking to
-         rejoin, so p_rejoin is set here and nowhere else; and a real
-         failure now reaches the person who can do something about it. */
-      var failed = function () {
+      /* Told the truth, both ways, and nobody put back on the list but
+         by themselves.
+
+         Build 76: the website's newsletter function decides. A new
+         address joins at once, and one already on the list is still a
+         plain "you are on the list", which says nothing about who is on
+         it. An address that unsubscribed earlier is no longer put back
+         by being typed here: a link goes to that inbox, and following it
+         is what puts it back, so a stranger cannot undo somebody's "stop
+         sending me these". A real failure reaches the person who can do
+         something about it. Before supabase-hardening.sql has been run
+         the function joins the old way, and without the function at all
+         (no service key in Netlify) the form does. */
+      var failed = function (msg) {
         if (!err) return;
-        err.textContent = 'That did not go through. Please check your connection and try again.';
+        err.textContent = msg || 'That did not go through. Please check your connection and try again.';
         err.classList.add('show');
       };
+      var said = function (text) {
+        done();
+        if (text) $('#nlSuccess').textContent = text;
+      };
+      var oldWay = function () {
+        webRpc('subscribe_email', { p_email: email, p_rejoin: true }).then(function () { done(); }, function () { failed(); });
+      };
       if (!WEB) { done(); return; }
-      webRpc('subscribe_email', { p_email: email, p_rejoin: true }).then(done, failed);
+      fetch('/.netlify/functions/newsletter', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email })
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (b) {
+          if (r.status === 503 && b && b.fallback) return oldWay();
+          if (r.status === 404) return oldWay();     // the function is not there
+          if (!r.ok) return failed(b && b.error);
+          if (b.state === 'confirm') {
+            return said('Nearly done: we have emailed a link to ' + email + '. Open it to confirm, and check the spam or junk folder if it is not there in a few minutes.');
+          }
+          if (b.state === 'wait') {
+            return said('We emailed a link to ' + email + ' a little while ago. Open it to confirm, and check the spam or junk folder.');
+          }
+          if (b.state === 'contact') {
+            return failed('We could not send the email to confirm that address just now. Please try again later, or contact us.');
+          }
+          done();
+        });
+      }, function () { failed(); });
     });
   }
 

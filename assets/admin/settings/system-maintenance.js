@@ -338,6 +338,29 @@
 
   /* ---- backup --------------------------------------------------------- */
 
+  /* WHAT A BACKUP NEVER HOLDS (build 78, W-14). Two things kept with the
+     private settings are keys, not settings: the phone-notification keys
+     and their secret (chat_push), and the email password (since build 77
+     in a row of its own, mail_secret, which nobody signed in can read).
+     Neither goes into the file, and neither is ever written back from
+     one: restoring an older backup that holds them puts back everything
+     else and leaves the keys and the password exactly as they are now. */
+  var NEVER_KEPT = { chat_push: 1, mail_secret: 1 };
+  var LEFT_OUT = 'The email password and the phone-notification keys are never in a backup. ' +
+                 'After restoring onto a new project, type the password again in Settings > ' +
+                 'Notifications, and open Live Chats as the owner to make new keys.';
+  function withoutSecrets(key, data) {
+    if (NEVER_KEPT[key]) return null;
+    if (key === 'notifications' && data && typeof data === 'object') {
+      var copy = {}, f;
+      for (f in data) {
+        if (Object.prototype.hasOwnProperty.call(data, f) && f !== 'smtpPassword' && f !== 'passwordSaved') copy[f] = data[f];
+      }
+      return copy;
+    }
+    return data;
+  }
+
   /* Everything in both settings tables, in one file. Sections that have
      never been saved are simply absent rather than written as empty, so
      restoring cannot blank a section that the backup never knew about. */
@@ -348,7 +371,8 @@
       version: stamp().version || '',
       build: stamp().build || 0,
       settings: {},
-      privateSettings: {}
+      privateSettings: {},
+      leftOut: LEFT_OUT
     };
 
     return ctx.sb.from('site_settings').select('key, data')
@@ -364,7 +388,9 @@
            the owner must be told rather than left to assume. */
         if (r.error) { out.privateFailed = errText(r.error); return out; }
         (r.data || []).forEach(function (row) {
-          if (row && row.key) out.privateSettings[row.key] = row.data || {};
+          if (!row || !row.key) return;
+          var kept = withoutSecrets(row.key, row.data || {});
+          if (kept) out.privateSettings[row.key] = kept;
         });
         return out;
       });
@@ -413,11 +439,21 @@
     }
     var priv = obj.privateSettings || {};
     for (k in priv) {
-      if (Object.prototype.hasOwnProperty.call(priv, k)) {
-        jobs.push(A.store.savePrivate(k, priv[k]));
-      }
+      if (!Object.prototype.hasOwnProperty.call(priv, k)) continue;
+      var kept = withoutSecrets(k, priv[k]);
+      if (!kept) continue;                     // keys: never written back
+      jobs.push(k === 'notifications' ? restoreNotifications(kept) : A.store.savePrivate(k, kept));
     }
     return Promise.all(jobs).then(function () { A.store.forget(); return jobs.length; });
+  }
+  /* A database from before build 77's SQL still keeps the email password
+     in the notifications row itself: the one there now is carried across,
+     so restoring cannot wipe it. */
+  function restoreNotifications(d) {
+    return A.store.loadPrivate('notifications').catch(function () { return {}; }).then(function (now) {
+      if (now && now.smtpPassword) d.smtpPassword = now.smtpPassword;
+      return A.store.savePrivate('notifications', d);
+    });
   }
 
   function sectionsIn(obj) {
@@ -937,6 +973,7 @@
         'A backup is a single file holding every setting on every page of this admin: ' +
         'your business details, prices, delivery, payment details, policies and the rest. ' +
         'Keep one somewhere safe before you make big changes.'));
+      back.appendChild(el('p', 'grp-note', LEFT_OUT));
 
       var whatNot = el('div', 'warn');
       whatNot.textContent =
@@ -971,9 +1008,10 @@
       showLastBackup();
 
       dlBtn.addEventListener('click', function () {
-        ask('This file will contain your bank account and mobile money details in ' +
-                'plain, readable text. Anyone who opens the file can read them. Save it ' +
-                'somewhere only you can get to, and do not email it to anyone.',
+        ask('This file will contain your bank account and mobile money details, and your ' +
+                'preview key, in plain, readable text. Anyone who opens the file can read them. ' +
+                'Save it somewhere only you can get to, and do not email it to anyone. (It does ' +
+                'not contain the email password or the phone-notification keys.)',
           { title: 'Before you download', okText: 'I understand, download it' })
           .then(function (yes) {
             if (!yes) return;
@@ -1026,7 +1064,8 @@
                   (names.length === 1 ? '' : 's') + ' of your settings' +
                   (priv ? ', including your payment details' : '') +
                   ' with what was saved on ' + (when(obj.takenAt) || 'the date in the file') +
-                  '. Anything not in the file is left alone. This cannot be undone.',
+                  '. Anything not in the file is left alone, and so are the email password ' +
+                  'and the phone-notification keys, whatever the file holds. This cannot be undone.',
             { title: 'Restore these settings?', danger: true, okText: 'Restore',
               note: names.join(', ') })
             .then(function (yes) {

@@ -121,6 +121,8 @@ const server = http.createServer((req, res) => {
       return r.fulfill({ status: 200, contentType: 'text/javascript', body: '' });
     });
     await ctx.route('**/fonts.googleapis.com/**', r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
+    // Build 75 keeps supabase-js and Leaflet in assets/vendor/; stubbed there the same way.
+    await ctx.route('**/assets/vendor/supabase-js-*', r => r.fulfill({ status: 200, contentType: 'text/javascript', body: SUPA }));
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', e => errors.push(String(e.message || e)));
@@ -252,7 +254,7 @@ const server = http.createServer((req, res) => {
       await page.check('#ac_consent');
       await page.click('.ac-body .btn-gold'); await page.waitForTimeout(500);
       is(/waiting to be confirmed/.test(await page.textContent('.ac-body')) && await page.isVisible('.ac-resend'),
-         'an address already waiting is offered the link again');
+         'an address already waiting is offered the link again (said only with "Verify email addresses" off, build 77)');
       is(errors.length === 0, 'with no page errors' + (errors.length ? ': ' + errors[0] : ''));
       await ctx.close();
     }

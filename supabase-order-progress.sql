@@ -101,6 +101,7 @@ create index if not exists or_progress_due on public.orders (auto_deliver_at) wh
 create or replace function public.orders_progress_guard()
 returns trigger
 language plpgsql
+set search_path = ''
 as $pg$
 begin
   if current_user in ('postgres', 'supabase_admin', 'service_role') then

@@ -16,6 +16,25 @@
    WHAT IT KEEPS. Only a count of links sent in the last hour, per address
    and per connection, as fingerprints (signup_sends), so nobody can use
    the shop to fill a stranger's inbox.
+
+   THE SAME ANSWER FOR EVERY ADDRESS (build 77). With "Verify email
+   addresses" on, signing up answers exactly the same whether or not the
+   address already has an account, so the form cannot be used to find out
+   who shops here. What differs is the email, which only the owner of the
+   address reads:
+     a new address           the confirm link, as before;
+     one waiting to confirm  a one-time link that confirms it and signs in.
+                             The password stays the one chosen first: it
+                             is never changed from here, or whoever signed
+                             up second could take the account over the
+                             moment its owner confirmed it;
+     one already in use      "you already have an account": how to sign
+                             in, and how to choose a new password if it is
+                             forgotten. Nothing about the account changes.
+   With "Verify email addresses" OFF the account is ready at once and the
+   customer is signed straight in, so the answer cannot be the same: an
+   address in use is said to be in use, as Supabase's own sign-up says it.
+   Switching verification on (Settings > Customer Accounts) closes that.
    ===================================================================== */
 'use strict';
 const crypto = require('crypto');
@@ -29,6 +48,8 @@ const PER_CONNECTION = 10; // sign-ups an hour from one connection
 const MAILISH = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SAY_RESENT = 'If that address has an account waiting to be confirmed, a new link is on its way. ' +
   'Check your inbox and the spam or junk folder.';
+const SAY_NOT_SENT = 'Your account was made, but the email with the link could not be sent. ' +
+  'Use "Send the link again" in a few minutes, or contact us.';
 
 function authBase() {
   const { url } = readConfig();
@@ -104,6 +125,40 @@ async function sendLink(to, link, name) {
   ]);
 }
 
+/* To the owner of an address that already has an account, when somebody
+   signs up with it again. Nothing typed into the form is put in it, not
+   even the name: whoever typed it may not be the owner. */
+async function tellOwner(to, known, event, s) {
+  const reset = s.passwordReset !== false
+    ? 'Forgotten your password? Press "Forgotten your password?" on the sign-in page and we will email you a link to choose a new one.'
+    : 'Forgotten your password? Reply to this email and we will help.';
+  if (known === 'waiting') {
+    /* A one-time sign-in link: opening it confirms the address. */
+    const g = await admin('POST', '/admin/generate_link', { type: 'magiclink', email: to, redirect_to: landing(event) });
+    if (!g.ok || !linkOf(g.body)) {
+      console.error('[account-signup] sign-in link not made:', g.status, says(g.body));
+      return false;
+    }
+    return shopMail(to, 'Confirm your email for {shop}', [
+      'Hello,',
+      'Somebody, most likely you, has just asked to create an account with {shop} using this email address. ' +
+        'An account for it was started earlier and is still waiting to be confirmed, so no second one was made.',
+      'Open this link to confirm it and sign in:',
+      linkOf(g.body),
+      'Your password is still the one chosen when the account was first started. ' + reset,
+      'The link works once, for 24 hours. If this was not you, ignore this email and nothing happens.'
+    ]);
+  }
+  return shopMail(to, 'You already have an account with {shop}', [
+    'Hello,',
+    'Somebody, most likely you, has just tried to create an account with {shop} using this email address. ' +
+      'There is already an account for it, so no new one was made.',
+    'Sign in here: ' + landing(event),
+    reset,
+    'If this was not you, ignore this email. Your account has not changed.'
+  ]);
+}
+
 exports.handler = async function (event) {
   if (event.httpMethod !== 'POST') return P.json(405, { error: 'POST only' });
   let body = {};
@@ -149,15 +204,16 @@ exports.handler = async function (event) {
     }
 
     const known = await stateOf(email);
-    if (known !== 'none') {
-      return P.json(409, { error: known === 'waiting'
-        ? 'There is already an account with that address waiting to be confirmed. Use "Send the link again" below.'
-        : 'There is already an account with that address. Try signing in.', waiting: known === 'waiting' });
-    }
     const meta = { name, consent_at: new Date().toISOString() };
 
-    /* The shop does not ask for confirmation: the account is ready now. */
+    /* The shop does not ask for confirmation: the account is ready now,
+       and an address already in use has to be said to be in use. */
     if (!verify) {
+      if (known !== 'none') {
+        return P.json(409, { error: known === 'waiting'
+          ? 'There is already an account with that address waiting to be confirmed. Use "Send the link again" below.'
+          : 'There is already an account with that address. Try signing in.', waiting: known === 'waiting' });
+      }
       const c = await admin('POST', '/admin/users', { email, password, email_confirm: true, user_metadata: meta });
       if (!c.ok) {
         console.error('[account-signup] not created:', c.status, says(c.body));
@@ -166,9 +222,16 @@ exports.handler = async function (event) {
       return P.json(200, { created: true, confirm: false });
     }
 
+    /* From here on, every address gets the same answer (see the top). It
+       says "made" for an address already in use too: saying anything
+       else would tell a stranger that the address shops here. */
     if (!(await allowed(fp('e', email), PER_ADDRESS))) {
       return P.json(429, { error: 'Too many links have been sent to that address. Please try again in an hour.' });
     }
+    const answer = (sent) => P.json(200, sent ? { created: true, confirm: true, emailed: true }
+                                              : { created: true, confirm: true, emailed: false, error: SAY_NOT_SENT });
+    if (known !== 'none') return answer(await tellOwner(email, known, event, s));
+
     /* Makes the account (not yet confirmed) and the link, and sends
        nothing: the link goes out through the shop's own email. */
     const g = await admin('POST', '/admin/generate_link', {
@@ -177,16 +240,13 @@ exports.handler = async function (event) {
     if (!g.ok || !linkOf(g.body)) {
       console.error('[account-signup] not created:', g.status, says(g.body));
       if (/already|exists|registered/i.test(says(g.body))) {
-        return P.json(409, { error: 'There is already an account with that address. Try signing in.' });
+        /* Made a moment ago, between the question above and this one. */
+        const now = await stateOf(email).catch(() => 'confirmed');
+        return answer(await tellOwner(email, now === 'waiting' ? 'waiting' : 'confirmed', event, s));
       }
       return P.json(g.status >= 500 ? 502 : 400, { error: 'Your account could not be created: ' + (says(g.body) || g.status) });
     }
-    const sent = await sendLink(email, linkOf(g.body), name);
-    if (!sent) {
-      return P.json(200, { created: true, confirm: true, emailed: false,
-        error: 'Your account was made, but the email with the link could not be sent. Use "Send the link again" in a few minutes, or contact us.' });
-    }
-    return P.json(200, { created: true, confirm: true, emailed: true });
+    return answer(await sendLink(email, linkOf(g.body), name));
   } catch (e) {
     console.error('[account-signup]', e && e.message);
     /* Most often: the SQL for this has not been run yet. Let the

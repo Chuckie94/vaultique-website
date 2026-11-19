@@ -344,12 +344,26 @@
 
       var pendingFactor = null;
 
+      /* Whether this account must keep two-factor (build 76: the owner,
+         and any role that can open Settings, Orders or Subscribers).
+         Turning it off would be turning off the only way the database
+         lets this person in, so the button is not offered. A database
+         from before build 76 has no such rule and the answer is no. */
+      var required = false;
+      var asked = Promise.resolve(sb.rpc('admin_gate')).then(function (r) {
+        var g = r && !r.error && r.data;
+        if (typeof g === 'string') { try { g = JSON.parse(g); } catch (e) { g = null; } }
+        required = !!(g && g.required);
+      }, function () {});
+
       function paintMfa(list) {
         if (list.length) {
           mfaVal.className = 'sys-value sys-ok';
-          mfaVal.textContent = '✓ On — a code is required every time you sign in';
+          mfaVal.textContent = required
+            ? '✓ On — required for your account, and asked for every time you sign in'
+            : '✓ On — a code is required every time you sign in';
           setupBtn.classList.add('hide');
-          offBtn.classList.remove('hide');
+          offBtn.classList[required ? 'add' : 'remove']('hide');
         } else {
           mfaVal.className = 'sys-value sys-warn';
           mfaVal.textContent = '! Off — your password is the only thing protecting the shop';
@@ -359,7 +373,7 @@
       }
 
       function refreshMfa() {
-        return S.factors(sb).then(paintMfa);
+        return asked.then(function () { return S.factors(sb); }).then(paintMfa);
       }
 
       setupBtn.addEventListener('click', function () {

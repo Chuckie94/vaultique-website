@@ -107,6 +107,35 @@ const SPLIT = { data: {
     is(v.rows.length === 3 && /Card.*1,300.*1 order.*43%/.test(v.rows[0]) && /Mobile money.*500/.test(v.rows[1]) && /WhatsApp/.test(v.rows[2]),
        'split into card, mobile money and WhatsApp', JSON.stringify(v.rows));
     is(/includes .*80 of delivery fees/.test(v.note), 'with the delivery paid online mentioned', v.note);
+
+    console.log('\nOnce supabase-hardening.sql (build 78) has been run: what counts as a sale (decision Q4)');
+    const notes = () => page.evaluate(() => {
+      const out = {};
+      document.querySelectorAll('.an-kpis:not(.an-pay-tiles) .an-kpi').forEach(k => {
+        out[k.querySelector('.an-kpi-l').textContent] = k.querySelector('.an-kpi-s').textContent;
+      });
+      return out;
+    });
+    v = await show({ 'rpc:site_stats': { data: Object.assign({}, STATS.data, { orders: 3, sales: 2400, waiting_orders: 2, waiting_value: 1750 }) },
+                     'rpc:pay_sales_split': { error: 'function does not exist' } });
+    let n = await notes();
+    is(v.kpi.Orders === '3' && /2,400/.test(v.kpi.Sales) && /Confirmed by the shop, or paid online\. 2 more are waiting to be confirmed\./.test(n.Orders) &&
+       /1,750 more is waiting/.test(n.Sales),
+       'Orders and Sales are the confirmed ones, with the 2 still "Received" (K1,750) said beneath, not added', JSON.stringify({ kpi: v.kpi, n }));
+    v = await show({ 'rpc:site_stats': { data: Object.assign({}, STATS.data, { orders: 3, sales: 2400, waiting_orders: 0, waiting_value: 0 }) },
+                     'rpc:pay_sales_split': { error: 'function does not exist' } });
+    n = await notes();
+    is(n.Orders === 'Confirmed by the shop, or paid online.' && n.Sales === 'What those came to.',
+       'with none waiting, nothing more is said', JSON.stringify(n));
+    v = await show({ 'rpc:site_stats': STATS, 'settings:payments': { data: { onlineEnabled: true } },
+                     'rpc:pay_sales_split': { data: Object.assign({}, SPLIT.data, { whatsapp_waiting: 1, whatsapp_waiting_value: 900 }) } });
+    n = await notes();
+    is(v.tiles.some(t => /1,200.*Confirmed on WhatsApp.*2 orders · 1 more waiting to be confirmed/.test(t)),
+       'How orders were paid: the WhatsApp tile is of confirmed orders, with the one waiting said apart', JSON.stringify(v.tiles));
+    is(/1 more is waiting to be confirmed/.test(n.Orders) && /900 more is waiting/.test(n.Sales),
+       'and the figures at the top say the same', JSON.stringify(n));
+    is(/once the shop has confirmed it/.test(v.note) && /test payments are not counted/.test(v.note),
+       'the note says what counts now', v.note);
     if (process.env.SHOT) {
       const card = await page.$('.an-pay');
       await card.screenshot({ path: process.env.SHOT });

@@ -39,9 +39,12 @@ let held = null;
 function readConfig() {
   if (held) return held;
 
+  /* WEB_SUPABASE_* is the one pair of names (build 77, plan 3.4).
+     admin-users.js used to read SITE_SUPABASE_* instead, so either is
+     still understood. Usually neither is set and config.js answers. */
   const env = {
-    url: process.env.WEB_SUPABASE_URL || '',
-    key: process.env.WEB_SUPABASE_ANON_KEY || '',
+    url: process.env.WEB_SUPABASE_URL || process.env.SITE_SUPABASE_URL || '',
+    key: process.env.WEB_SUPABASE_ANON_KEY || process.env.SITE_SUPABASE_ANON_KEY || '',
   };
   if (env.url && env.key) { held = env; return held; }
 
@@ -56,6 +59,16 @@ function readConfig() {
     } catch (e) { /* try the next one */ }
   }
   return { url: '', key: '' };
+}
+
+// The website's own service key, for every function that needs one (build
+// 77, plan 3.4). SETUP.md asks for SUPABASE_SERVICE_ROLE_KEY; the nightly
+// clean-up, the product pulse and the visitor map used to read
+// WEB_SUPABASE_SERVICE_KEY instead, so a shop that had set only one of the
+// two names had half its functions quietly doing nothing. Every function
+// asks here now, and either name works.
+function serviceKey() {
+  return String(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.WEB_SUPABASE_SERVICE_KEY || '').trim();
 }
 
 async function rows(table, query) {
@@ -85,4 +98,26 @@ function originFrom(event) {
   return host ? `${proto}://${host}` : '';
 }
 
-module.exports = { rows, settings, originFrom, readConfig };
+// Whether a preview key is right (build 76). Since supabase-hardening.sql
+// the key is in the private settings and only the database can say; on a
+// database from before that, preview_ok still reads the public settings.
+// Either way it is the same question, asked with the public key.
+async function previewOk(preview) {
+  const asked = String(preview || '').trim();
+  if (!asked) return false;
+  const { url, key } = readConfig();
+  if (!url || !key) return false;
+  try {
+    const res = await fetch(`${url.replace(/\/+$/, '')}/rest/v1/rpc/preview_ok`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_key: asked }),
+    });
+    if (!res.ok) return false;
+    return (await res.json()) === true;
+  } catch (e) {
+    return false;
+  }
+}
+
+module.exports = { rows, settings, originFrom, readConfig, previewOk, serviceKey };

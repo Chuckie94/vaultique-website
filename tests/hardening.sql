@@ -311,7 +311,7 @@ select hchk(not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p
                          where n.nspname = 'public' and p.prokind = 'f'
                            and not exists (select 1 from unnest(coalesce(p.proconfig, '{}'::text[])) c where c like 'search_path=%')),
   'search path: every function says where to look');
-select hchk(exists (select 1 from public.schema_migrations where version = '078-hardening'),
+select hchk(exists (select 1 from public.schema_migrations where version = '080-hardening'),
   'the record: this file is written down as run');
 
 -- ======================================================= 15. the email password (build 77)
@@ -402,7 +402,11 @@ create temp table visitor_list as select unnest(array[
   'chat_photo_start', 'chat_send_photo', 'chat_photos_on',
   'site_beat', 'site_gone', 'site_bye',
   'subscribe_email', 'shop_is_closed', 'preview_ok',
-  'is_admin', 'chat_may_answer', 'review_auto_publish', 'chat_photo_slot_open']::text[]) as name;
+  'is_admin', 'chat_may_answer', 'review_auto_publish', 'chat_photo_slot_open',
+  -- build 80: the till's door and an order's private link (each opened only by its own key)
+  'vbp_pos_orders', 'vbp_pos_order', 'vbp_pos_order_claim', 'vbp_pos_order_release',
+  'vbp_pos_order_complete', 'vbp_pos_progress', 'vbp_pos_order_progress', 'vbp_pos_order_refund',
+  'order_progress_link']::text[]) as name;
 select hchk(count(*) = 0, 'visitors: every function they can call is on the list' ||
             coalesce(' — not on it: ' || string_agg(distinct p.proname, ', '), ''))
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace

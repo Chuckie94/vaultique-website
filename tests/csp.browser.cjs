@@ -317,7 +317,8 @@ let base = '';
     {
       const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
       await ctx.addInitScript(WATCH);
-      await ctx.addInitScript(s => { try { if (!localStorage.getItem('sb-127-auth-token')) localStorage.setItem('sb-127-auth-token', s); } catch (e) {} }, session());
+      // The admin's own sign-in place since website 80 (assets/admin/shell.js, ADMIN_SESSION).
+      await ctx.addInitScript(s => { try { if (!localStorage.getItem('vbp-admin-auth')) localStorage.setItem('vbp-admin-auth', s); } catch (e) {} }, session());
       await otherSites(ctx);
       const page = await ctx.newPage();
       const consoleCsp = [], errors = [];
@@ -374,7 +375,8 @@ let base = '';
       GATE = { staff: true, owner: true, active: true, required: true, enrolled: false, aal: 'aal1', ok: false };
       const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
       await ctx.addInitScript(WATCH);
-      await ctx.addInitScript(s => { try { if (!localStorage.getItem('sb-127-auth-token')) localStorage.setItem('sb-127-auth-token', s); } catch (e) {} }, session());
+      // The admin's own sign-in place since website 80 (assets/admin/shell.js, ADMIN_SESSION).
+      await ctx.addInitScript(s => { try { if (!localStorage.getItem('vbp-admin-auth')) localStorage.setItem('vbp-admin-auth', s); } catch (e) {} }, session());
       await otherSites(ctx);
       const page = await ctx.newPage();
       const consoleCsp = [], errors = [];

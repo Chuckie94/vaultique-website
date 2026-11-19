@@ -12,22 +12,65 @@ A. GITHUB DESKTOP  (easiest, one commit)
   4. In GitHub Desktop: check "Current repository" says the website
   5. Type a summary, Commit to main, then Push origin
 
-  There is no .gitignore in this folder any more, on purpose. Yours is
-  longer and better, and the one that used to be in here overwrote it
-  every time you pasted — which is why it kept turning up as a change
-  you had to untick. Nothing to do about it now; it simply will not
-  appear.
+  There is no .gitignore at the top of this folder, on purpose. Yours
+  is longer and better, and the one that used to be in here overwrote
+  it every time you pasted — which is why it kept turning up as a
+  change you had to untick. Nothing to do about it now; it simply will
+  not appear. (The one inside tests, new in 79, is a different file:
+  it only keeps out what npm downloads for the checks.)
+
+  ON A MAC, Finder hides folders whose names begin with a dot, and
+  build 79 brings one: .github. Press Cmd+Shift+. (full stop) in the
+  open folder before selecting everything, so it is copied too. If it
+  is left behind anyway, make its one file by hand as in B, last step.
 
 
-B. THE BROWSER  (two drags, because GitHub takes 100 files at a time)
-----------------------------------------------------------------------
-  Drag 1 — the five FOLDERS together:
-             assets   images   netlify   tests   tools
-  Drag 2 — every loose file at the top level
+B. THE BROWSER  (four drags, because GitHub takes 100 files at a time)
+-----------------------------------------------------------------------
+  Add file > Upload files, drag, then Commit changes. Four times:
 
-  DRAG FOLDERS, NOT WHAT IS INSIDE THEM. GitHub keeps a folder's
-  structure when you drag the folder itself; open it first and the files
-  land in the wrong place.
+  Drag 1 — two FOLDERS together:    assets   netlify           (97 files)
+  Drag 2 and 3 — the tests folder, in two parts (111 files in all):
+           First open your repository on GitHub and click the tests
+           folder, so the page shows tests at the top. Then:
+     Drag 2 — Add file > Upload files, and drag in, from inside your
+           unzipped tests folder, every file whose name ends in
+           .browser.cjs (40 files). Typing browser.cjs into the
+           folder's search box shows just those. Commit changes.
+     Drag 3 — still inside tests on GitHub: Add file > Upload files,
+           and drag in everything else inside your tests folder, the
+           supabase-standin folder among it (71 files). Commit changes.
+  Drag 4 — back at the top of your repository: two FOLDERS, and every
+           loose file at the top level:
+           images   tools   and the 43 files beside them      (56 files)
+           and the .github folder with them, if you can see it
+
+  (Until build 79 the tests folder went in one drag. Build 80 brings
+  twenty more checks and it is now 111 files, over GitHub's 100 at a
+  time. Drags 2 and 3 land in the right place because the page is
+  inside tests when you drop them.)
+
+  DRAG FOLDERS, NOT WHAT IS INSIDE THEM, except in drags 2 and 3 above,
+  which are dropped while GitHub's page is inside tests. GitHub keeps a
+  folder's structure when you drag the folder itself; open it first and
+  the files land in the wrong place.
+
+  Last, once: if your repository has no .github folder after drag 4,
+  make the one file in it by hand. It is what runs the checks on
+  GitHub (START-HERE.txt, NEW IN 79).
+    1. Add file > Create new file
+    2. In the name box type   .github/workflows/tests.yml
+       Each / turns what you typed before it into a folder; that is
+       right.
+    3. Open .github/workflows/tests.yml from this folder in a plain
+       text editor (Notepad, or TextEdit), select all, copy, and paste
+       it into the big box. (On a Mac, press Cmd+Shift+. in Finder to
+       see the folder.) It is also in the notes that came with this
+       zip, BUILD-79-NOTES.md, ready to copy.
+    4. Commit changes
+  Later builds bring the file again, in the .github folder. If it does
+  not come along, the copy you made stays and keeps working; a build
+  that changes it will say so.
 
 
 YOUR config.js
@@ -37,7 +80,55 @@ and yours is the only correct copy. Pasting over your folder, or
 uploading only what is here, leaves it exactly where it is.
 
 
+NETLIFY'S BUILD STEP  (since build 75)
+--------------------------------------
+Before publishing, Netlify now runs tools/build-site.cjs, which copies
+the website, and only the website, into a folder called dist/. Netlify
+publishes that folder and nothing else. You upload exactly as before;
+never upload a folder called dist yourself.
+
+If a deploy ever says Failed: open it in Netlify > Deploys. The last
+lines of its log begin "BUILD STOPPED:" and say why, and the site that
+was live before stays live. Most likely config.js is missing from the
+repository, or (from build 77) Netlify still holds POS_SUPABASE_KEY, the
+business platform's secret key: START-HERE.txt, NEW IN 77, step A.
+
+
 AFTER UPLOADING
 ---------------
-Netlify rebuilds on its own, usually within a minute or two. Then run the
-two SQL files named in START-HERE.txt — uploading does not run them.
+Netlify rebuilds on its own, usually within a minute or two. Then follow
+the steps at the top of START-HERE.txt: uploading runs no SQL, and it never
+deletes a file. When a build takes a file away, START-HERE names it, and it
+has to be deleted from your repository by hand.
+
+BUILD 80: UPLOAD FIRST, SQL SECOND. Wait until Netlify > Deploys shows
+this upload as Published, then run supabase-hardening.sql once more, this
+build's copy (START-HERE.txt, NEW IN 80, step B). Nothing goes wrong
+the other way round: this is simply the order the checks were made in.
+
+BUILD 79: NO SQL. Upload, then open the Actions tab on GitHub and wait
+for the Tests run's green tick (START-HERE.txt, NEW IN 79, step C). The
+checks never hold up the shop: Netlify publishes as soon as its own
+build step is done, whatever the checks are still doing.
+
+BUILD 78: UPLOAD FIRST, SQL SECOND, as in 76 and 77. Wait until Netlify >
+Deploys shows this upload as Published, then run supabase-hardening.sql
+again (START-HERE.txt, NEW IN 78, step B). Nothing goes wrong the other
+way round; until both are done, the Dashboard and Analytics simply count
+sales two different ways.
+
+BUILD 77: THE DOORS FIRST, THEN THE UPLOAD, THEN THE SQL. Before you
+upload, check the two addresses in START-HERE.txt (NEW IN 77, step A)
+and delete POS_SUPABASE_KEY from Netlify; Netlify will not publish
+build 77 while it is there. Then upload, wait until Netlify > Deploys
+shows it as Published, and only then run supabase-hardening.sql again.
+The other way round, build 76's functions would look for the email
+password where the SQL has just moved it from, and the shop's emails
+would fail until the upload is live.
+
+BUILD 76: UPLOAD FIRST, SQL SECOND. Wait until Netlify > Deploys shows
+this upload as Published, and only then run supabase-hardening.sql in
+the website's Supabase (START-HERE.txt, step B). The other way round, the
+admin pages from build 75 would take the database's new two-factor
+questions for a refusal and sign you out. If that happens anyway: finish
+the upload, wait for Published, and sign in again.
