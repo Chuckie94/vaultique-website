@@ -27,6 +27,7 @@
 const P = require('./_pay');
 const L = require('./_lenco');
 const CR = require('./_cardroute');
+const RISK = require('./_risk');
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TX = /^VB-[A-Z0-9]{5}-[a-f0-9]{10}$/;
@@ -87,6 +88,7 @@ async function lencoStart(x) {
       if (r.state === 'successful' || r.state === 'failed') {
         const st = await P.settle(pay.tx_ref);
         out.status = st.status === 'paid' || st.status === 'review' || st.status === 'failed' ? st.status : undefined;
+        if (st.status === 'review' && st.held) out.held = true;
         if (st.status === 'failed') out.reason = L.customerReason(st.reason, 'mobile');
         if (st.status === 'paid' && st.fresh && st.pay && st.pay.order_id) {
           await P.confirmByEmail(s, st.pay.order_id, st.pay.mode, st.late, 'lenco');
@@ -134,8 +136,11 @@ async function again(row, s) {
   if (row.status === 'paid' || row.status === 'review' || row.status === 'failed') out.status = row.status;
   if (row.status === 'failed') {
     if (row.detail && row.detail.reason === 'customer-cancelled') out.status = 'cancelled';
+    else if (row.detail && row.detail.reason === 'risk-refused') { out.reason = RISK.REFUSED_SAID; out.refused = true; }
     else out.reason = L.customerReason(row.failure_reason || '', row.method);
   }
+  // BUILD 91 · held by the fraud check: the page says so in neutral words.
+  if (row.status === 'review' && row.detail && row.detail.risk_hold) out.held = true;
   if (row.method === 'card' && row.status === 'started') {
     const o = (await P.svc('GET', 'orders?select=name,email,phone&id=eq.' + row.order_id))[0] || {};
     const w = L.widget(row.mode);
@@ -242,6 +247,15 @@ async function retry(event, body, s, mode, route, x) {
     await P.failAttempt(pay, 'order moved on', { failure_reason: 'The order changed before this try could start.' }, { provider: 'lenco' });
     return restart('This order can no longer be paid for here. Please start again, or contact us.');
   }
+  // BUILD 91 · the fraud check, before Lenco is asked (_risk.js): a try again
+  // is a payment starting like any other.
+  const risk = await RISK.atStart({ order: now, pay, phone: now.phone, email: now.email, client: P.clientAddr(event),
+                                    customer: now.customer_id, total: Number(prev.amount) });
+  if (risk.refuse) {
+    await P.failAttempt(pay, 'risk-refused', { failure_reason: 'Refused by the fraud check before it started.' }, { provider: 'lenco' });
+    return P.json(403, { error: RISK.REFUSED_SAID, refused: true });
+  }
+  if (risk.carry) await RISK.carryTo(pay, risk.carry);
   return P.json(200, await lencoStart({
     s, mode, method: x.method, pay, order: now, total: Number(prev.amount), currency: prev.currency,
     buyer: { name: now.name, email: now.email, phone: now.phone }, network: x.network, momo: x.momo,
@@ -359,7 +373,12 @@ exports.handler = async function (event) {
     if ((mine || []).length >= P.PER_PHONE_PER_HOUR || (all || []).length >= P.PER_SHOP_PER_HOUR) {
       return P.json(429, { error: 'There have been a lot of payment attempts. Please wait a little and try again.' });
     }
-    if (q.problems) return P.json(409, { problems: q.problems, deliveryProblem: q.deliveryProblem });
+    if (q.problems) {
+      // BUILD 91 · a piece or quantity no checkout page sends: counted for
+      // this connection, one of the fraud check's signals (_risk.js).
+      if (RISK.unreadable(q.problems[0])) await RISK.noteRefused(P.clientAddr(event));
+      return P.json(409, { problems: q.problems, deliveryProblem: q.deliveryProblem });
+    }
     // The customer pressed "Pay K1,380" on a quote. If the price has moved
     // since (a promotion ending, a price changed at the till), nobody is
     // charged a figure they were not shown: they are shown the new one.
@@ -373,10 +392,11 @@ exports.handler = async function (event) {
       buyer.address = (buyer.address + ', ' + q.town).slice(0, 400);
     }
 
+    const who = await P.customerFrom(event);
     placed = await P.recordOrder(
       Object.assign({}, buyer, { fulfilment, total: q.total, currency: q.currency }),
       q.lines.map((l) => ({ sku: l.sku, name: l.name, price: l.unit, qty: l.qty })),
-      body.preview, await P.customerFrom(event), P.clientAddr(event));
+      body.preview, who, P.clientAddr(event));
 
     txRef = P.newTxRef(placed.ref);
     // The payment row is written BEFORE the gateway is asked for anything:
@@ -406,6 +426,20 @@ exports.handler = async function (event) {
     await P.svc('PATCH', 'orders?id=eq.' + placed.id, { pay_mode: mode }, 'return=minimal').catch(() => {});
     // BUILD 89 · the delivery instructions, onto the order (supabase-delivery.sql).
     if (fulfilment === 'delivery' && b.instructions) await P.saveInstructions(placed.id, b.instructions);
+
+    // BUILD 91 · The fraud check, before any gateway is asked (_risk.js).
+    // Acting, Critical is refused here with words that say nothing about why,
+    // and nothing is charged; High goes on, carried to the payment so that it
+    // is held once it is paid. Watching, off, or anything wrong in the check:
+    // the payment goes on exactly as before.
+    const risk = await RISK.atStart({ order: placed, pay: pay || { tx_ref: txRef }, phone: buyer.phone, email: buyer.email,
+                                      client: P.clientAddr(event), customer: who, total: q.total });
+    if (risk.refuse) {
+      await P.abandon(placed, pay || { tx_ref: txRef }, 'risk-refused');
+      placed = null;
+      return P.json(403, { error: RISK.REFUSED_SAID, refused: true });
+    }
+    if (risk.carry) await RISK.carryTo(pay || { tx_ref: txRef }, risk.carry);
 
     if (viaLenco) {
       const started = await lencoStart({

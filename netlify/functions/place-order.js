@@ -27,6 +27,7 @@
    ===================================================================== */
 'use strict';
 const P = require('./_pay');
+const RISK = require('./_risk');
 
 function cut(v, n) { return String(v == null ? '' : v).trim().slice(0, n); }
 
@@ -54,13 +55,25 @@ exports.handler = async function (event) {
       return P.json(403, { error: 'The shop is not taking orders at the moment.' });
     }
     const q = await P.priceWhatsApp(s, body.items, body.preview);
-    if (q.error) return P.json(400, { error: q.error });
+    if (q.error) {
+      // BUILD 91 · a piece or quantity no checkout page sends: counted for
+      // this connection, one of the fraud check's signals (_risk.js).
+      if (RISK.unreadable(q.error)) await RISK.noteRefused(P.clientAddr(event));
+      return P.json(400, { error: q.error });
+    }
 
+    const who = await P.customerFrom(event);
     const placed = await P.recordOrder(
       Object.assign({}, order, { total: q.total, currency: q.currency }),
-      q.lines, body.preview, await P.customerFrom(event), P.clientAddr(event));
+      q.lines, body.preview, who, P.clientAddr(event));
     // BUILD 89 · the delivery instructions, onto the order (supabase-delivery.sql).
     if (order.fulfilment === 'delivery' && o.instructions) await P.saveInstructions(placed.id, o.instructions);
+    // BUILD 91 · The fraud check (_risk.js): recorded, and the order marked
+    // with its level for Admin > Orders; never refused, because a WhatsApp
+    // order is confirmed by hand before anything is paid. Nothing it does,
+    // or fails to do, changes the answer below.
+    await RISK.atOrder({ order: placed, phone: order.phone, email: order.email, client: P.clientAddr(event),
+                         customer: who, total: q.total });
     return P.json(200, { id: placed.id, ref: placed.ref, total: q.total });
   } catch (e) {
     const m = String(e && e.message || '');

@@ -57,8 +57,17 @@ You will do five short steps. It takes about 10 minutes.
 >  and one more (build 90):
 > 38 supabase-shopping.sql         alerts, gift lists, reviews from buyers,
 >                                  answers, preferences, the policies' order
+>  and one more (build 91):
+> 39 supabase-risk.sql             the fraud check's cases and the sealed
+>                                  record
 >                                  then supabase-hardening.sql once more
 > ```
+>
+> **Build 91, on a shop already running:** upload, then run
+> `supabase-risk.sql` once (39 in the list above). The hardening is not run
+> again for it; this build's copy has Fraud & Risk among the rights that need
+> two-factor, which `supabase-risk.sql` adds by itself. ("The fraud check,
+> Fraud & Risk and the sealed record", below.)
 >
 > **Build 90, on a shop already running:** upload, then run
 > `supabase-shopping.sql` once (38 in the list above). The hardening is not
@@ -1952,6 +1961,89 @@ piece's reviews are written as before.
 
 Their alerts, gift list (whether it is shared, never the key), preferences
 and the reviews they wrote as buyers are in their *Download my personal data*.
+
+### The fraud check, Fraud & Risk and the sealed record (build 91)
+
+Needs `supabase-risk.sql` (39 in the list at the top). Until it is run, nothing
+is scored, Admin > Fraud & Risk says to run it, and orders and payments go on
+exactly as before.
+
+- **What is scored, and when.** On the server, never in the browser: before a
+  payment starts (Lenco's way and Flutterwave's, a first try and a try
+  again), when a gateway says a payment is made (before it is marked paid),
+  when a WhatsApp order is recorded, and when the platform asks for a
+  refund (before anything is sent). Every fifteen minutes the team's own
+  activity is scored too, person by person, from the sealed record.
+- **From what.** Records the website already keeps; nothing new is kept
+  about anybody to make the score. Orders in a day from one phone number,
+  one email address, one connection or one account; failed payments from
+  one phone; payment attempts on one order; a delivery address added in
+  the half hour before; an email address that is not real or is a throwaway
+  one; a phone number that does not look real; an order far above the
+  shop's usual (once there are 20 orders in 90 days to tell what usual is);
+  a piece or quantity no checkout page sends, refused from the same
+  connection that day (a piece selling out, or a price changing, is
+  ordinary and never counted); refunds for one customer in 90 days, a refund
+  soon after its payment, many refunds asked for by one person in a day, a
+  refund far above the usual order; and, for the team, many deletions,
+  changes to logins or roles, or settings changes in an hour.
+- **No single signal decides.** Each signal adds points, and a count at
+  twice its limit counts twice; the total gives Low, Medium (from 30 points),
+  High (from 60) or Critical (from 90). With the starting points no single
+  signal reaches High on its own, even at twice its limit. Every figure is
+  yours to change in **Settings > Fraud & Risk**, which is kept private: not
+  in the public settings, and the activity log records only that it changed.
+- **Watching first (decision D5).** The check starts in **Watch**: everything
+  is scored and kept, nothing is held or refused, and each case says what
+  acting would have done. Watch for 14 days, then look at those cases in
+  Admin > Fraud & Risk before you choose **Act**. **Off** asks nothing at all.
+- **Acting.** Low: nothing. Medium: kept and shown. **High**: a payment is
+  held when it comes in (marked "needs attention", which the platform's till
+  already leaves alone; the customer is told it is being checked, and is not
+  asked to pay again); a refund is not sent (the platform is told why, and
+  asks again once it is approved); a WhatsApp order is marked for you before
+  you confirm it. **Critical**: a payment is refused before it starts, with
+  words that say nothing about why and that nothing has been charged, and
+  you are emailed; a payment that gets through is held. A WhatsApp order is
+  never refused: you confirm it by hand before anything is paid.
+- **It never stops a sale by accident.** Off, before its SQL, or anything going
+  wrong inside the check itself: the payment goes on exactly as before. The
+  one deliberate exception: a payment already held stays held if its case
+  cannot be read for a moment.
+- **Admin > Fraud & Risk.** What the check is doing, the totals for 7, 30 or
+  90 days (scored, by level, held, refused, what acting would have held and
+  refused, waiting, failed payments, orders tried more than once, paid
+  twice, refunds), the spread of scores, the cases per day by level (and
+  every figure in a table), the cases waiting, and the latest cases. Each
+  case has its level, its points, every reason, and what was done.
+  **Approve**, **Reject** (say why) or **Escalate** (the owner is emailed
+  within fifteen minutes). Suspicious sign-ins are counted from build 92.
+- **A held payment.** Approving it never marks it paid by itself: the website
+  asks Lenco (or Flutterwave) about it once more and marks it paid on that
+  word, with the customer's confirmation email, at once, or within fifteen
+  minutes if the gateway could not be asked. Rejecting leaves it held:
+  refund the customer from the gateway's own account (Lenco has no refund
+  the website can send). Admin > Orders shows it as held by the fraud check.
+- **The emails.** One for each Critical case, and one for each payment held,
+  to the address in Settings > Fraud & Risk, or Contact & Social's when
+  that is empty. Escalations go to the owner.
+- **Who may open it.** The owner, and any role with **Fraud & Risk** ticked in
+  Settings > Users & Roles. That role must use two-factor (it can let a held
+  payment through). Without the right, the tab is not there and the database
+  answers nothing.
+- **The sealed record.** Every decision of the check, and every change to
+  orders, payments, refunds, the team's logins and roles, and settings, is
+  written by the database itself, each entry sealed with the one before it
+  (SHA-256), and the newest seal is copied aside every fifteen minutes.
+  Nobody signed in, nor the website's server, can change, remove or empty it.
+  A customer's details are named as changed, never written down; settings by
+  name, never their values. **Check the record now** goes through every
+  entry: an entry changed afterwards, one taken out, the newest cut off (once
+  the fifteen-minute copy has been made of them), or one added by hand, each
+  shows, with the entry's number. What it cannot
+  stop: whoever holds the database's own password (the Supabase owner) could
+  rewrite the record and its copies together. Build 95's copies kept off
+  Supabase close that.
 
 ### Settings > Pricing & Tax
 

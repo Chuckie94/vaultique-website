@@ -35,6 +35,7 @@
     { key: 'policies',    label: 'Policies' },
     { key: 'settings',    label: 'Settings' },
     { key: 'activity',    label: 'Activity Log' },
+    { key: 'risk',        label: 'Fraud & Risk' },
     { key: 'deleteChats', label: 'Delete a conversation', hard: true }
   ];
 
@@ -382,15 +383,16 @@
              supabase-hardening.sql): a role that can open Settings,
              Orders or Subscribers can reach bank details, customers or
              the mailing list, so it must use two-factor. Said here, where
-             the tick that decides it is. */
+             the tick that decides it is. Build 91: Fraud & Risk too, which
+             can let a held payment through (supabase-risk.sql). */
           var two = el('p', 'hint');
           function paintTwo() {
-            var need = ['settings', 'orders', 'subscribers'].some(function (k) {
+            var need = ['settings', 'orders', 'subscribers', 'risk'].some(function (k) {
               return r.permissions[k] === true;
             });
             two.textContent = need
               ? 'Everybody with this role must use two-factor, because it can open ' +
-                'Settings, Orders or Subscribers. The admin asks them to set it up at sign-in.'
+                'Settings, Orders, Subscribers or Fraud & Risk. The admin asks them to set it up at sign-in.'
               : 'Two-factor is optional for this role.';
           }
           ticks.addEventListener('change', paintTwo);

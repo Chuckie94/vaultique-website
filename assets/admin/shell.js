@@ -722,7 +722,7 @@
   // ---------- navigation ----------
   // Routes are hash based: #/policies, #/settings, #/settings/general.
   // With no hash the admin opens on Products & Photos, as it always has.
-  var TABS = ['dashboard', 'analytics', 'products', 'orders', 'rewards', 'chats', 'reviews', 'subscribers', 'policies', 'settings', 'activity'];
+  var TABS = ['dashboard', 'analytics', 'products', 'orders', 'rewards', 'chats', 'reviews', 'subscribers', 'policies', 'settings', 'activity', 'risk'];
   var pageCtx = null;
   var setIndexBuilt = false;
 
@@ -813,6 +813,7 @@
     if (which === 'analytics') renderPage('analytics', 'tab-analytics');
     if (which === 'rewards') renderPage('rewards', 'tab-rewards');
     if (which === 'activity') renderPage('activity', 'tab-activity');
+    if (which === 'risk') renderPage('risk', 'tab-risk');             // build 91
     if (which === 'chats') renderPage('chats', 'tab-chats');
     if (which === 'settings') renderSettings(sub);
   }
@@ -1653,6 +1654,14 @@
     var test = o.pay_mode === 'test' ? '<div class="pay-badge pay-test">TEST \u00b7 no money moved</div>' : '';
     return '<div class="pay-badge ' + b[0] + '">' + escapeHtml(b[1]) + '</div>' + test;
   }
+  /* BUILD 91 · The fraud check's level for the order (supabase-risk.sql),
+     when it is above Low: the word, never the colour alone. The cases and
+     their reasons are in Fraud & Risk. */
+  function riskBadge(o) {
+    var w = { medium: 'Medium', high: 'High', critical: 'Critical' }[o.risk_level];
+    if (!w) return '';
+    return '<div class="pay-badge rk-badge rk-badge-' + o.risk_level + '">Fraud check: ' + w + '</div>';
+  }
   /* BUILD 77 · Under an order paid online: what needs attention, and the
      payment's history (supabase-payment-history.sql: written by the
      database as things happen, read by administrators only). */
@@ -1699,6 +1708,11 @@
       if (to === 'review') {
         if (n.duplicate) return 'Paid twice: this second payment is not counted, refund it' +
                                 (n.lenco_ref ? ' · Lenco ' + n.lenco_ref : '');   // build 88
+        if (n.risk_hold) {                                                        // build 91
+          var lv = { low: 'Low', medium: 'Medium', high: 'High', critical: 'Critical' }[n.risk_hold.level] || '';
+          return 'Paid, and held by the fraud check' + (lv ? ' (' + lv + (n.risk_hold.score != null ? ', ' + n.risk_hold.score + ' points)' : ')') : '') +
+                 ': approve or reject it in Fraud & Risk';
+        }
         return 'Needs attention: received ' + payGot(n) +
                (n.expected != null ? ', the order is ' + fmtMoney(Number(n.expected)) : '');
       }
@@ -1738,8 +1752,12 @@
     if (o.payment_status === 'review') {
       var attn = document.createElement('div');
       attn.className = 'hint pay-attn';
-      attn.textContent = 'A payment came in that does not match this order. Nothing has been ' +
-        'marked paid. Check it in your payment gateway\u2019s dashboard, then contact the customer.';
+      /* Build 91: an order the fraud check marked High or Critical may be
+         held rather than mismatched, so it waits for the payment's row. */
+      attn.textContent = (o.risk_level === 'high' || o.risk_level === 'critical')
+        ? 'A payment for this order needs attention. Nothing has been marked paid.'
+        : 'A payment came in that does not match this order. Nothing has been ' +
+          'marked paid. Check it in your payment gateway\u2019s dashboard, then contact the customer.';
       d.appendChild(attn);
       Promise.resolve(sb.from('payments').select('amount,currency,channel,detail,provider')
         .eq('order_id', o.id).eq('status', 'review').limit(1)).then(function (r) {
@@ -1747,6 +1765,13 @@
         if (!p || !p.detail) return;
         var how = p.channel === 'card' ? ' by card' : (p.channel ? ' by mobile money' : '');
         var where = p.provider === 'lenco' ? 'Lenco account' : 'Flutterwave dashboard';    // build 88
+        /* BUILD 91 · paid exactly as asked, and held by the fraud check. */
+        if (p.detail.risk_hold) {
+          attn.textContent = 'Paid ' + fmtMoney(Number(p.amount)) + how + ', and held by the fraud check. It is not marked ' +
+            'paid, so the till leaves it alone. Approve it in Fraud & Risk and it is marked paid once ' +
+            (p.provider === 'lenco' ? 'Lenco' : 'Flutterwave') + ' confirms it again; reject it and refund the customer from your ' + where + '.';
+          return;
+        }
         attn.textContent = 'A payment came in that does not match this order: received ' +
           payGot(p.detail) + how + ', the order is ' + fmtMoney(Number(p.amount)) +
           '. Nothing has been marked paid. Check it in your ' + where + ', then contact the customer.';
@@ -2165,7 +2190,7 @@
       (o.customer_id ? ' · signed in' : ' · guest') +
       ' · ' + escapeHtml(o.fulfilment === 'collection' ? 'collection' : 'delivery') + '</div></div>' +
       '<div style="text-align:right"><b>' +
-      (o.total == null ? '—' : escapeHtml(fmtMoney(o.total))) + '</b>' + payBadge(o) + '</div>';
+      (o.total == null ? '—' : escapeHtml(fmtMoney(o.total))) + '</b>' + payBadge(o) + riskBadge(o) + '</div>';
     d.appendChild(head);
 
     /* BUILD 76 · rung up at the shop, through the platform's Online Orders.

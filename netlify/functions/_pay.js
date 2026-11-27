@@ -690,12 +690,21 @@ async function settleFlutterwave(pay, txRef, transactionId, review) {
     Math.abs(Number(d.amount) - Number(pay.amount)) < 0.005;
 
   if (d.status === 'successful' && ours) {
+    // BUILD 91 · The fraud check, before it is marked paid (_risk.js). Held:
+    // marked "review", as a payment that needs attention is, and nothing
+    // else happens until it is approved in Admin > Fraud & Risk.
+    const risk = await risky().atPaid(pay);
+    if (risk.hold) {
+      return riskHold(pay, { provider_tx_id: String(d.id || ''), channel: String(d.payment_type || '') },
+        { flw_ref: d.flw_ref || '', amount: d.amount, charged: d.charged_amount, app_fee: d.app_fee }, risk, 'Flutterwave');
+    }
     const now = new Date().toISOString();
     const won = await svc('PATCH', 'payments?tx_ref=eq.' + encodeURIComponent(txRef) + '&status=neq.paid', {
       status: 'paid', provider_tx_id: String(d.id || ''), channel: String(d.payment_type || ''),
       updated_at: now,
       detail: { flw_ref: d.flw_ref || '', amount: d.amount, charged: d.charged_amount, app_fee: d.app_fee },
     });
+    if (risk.release && won && won.length) await risky().released(risk.release);
     const row = (won && won[0]) || pay;
     // The emails go with the ORDER becoming paid, and only one request can
     // make that happen (orderPaid), so they go exactly once however many
@@ -790,6 +799,12 @@ async function settleLenco(pay, review) {
     const other = pay.order_id ? await svc('GET', 'payments?select=tx_ref&order_id=eq.' + pay.order_id +
       '&status=eq.paid&tx_ref=neq.' + encR(txRef) + '&limit=1') : [];
     if (other && other.length) return lencoAttention(pay, c, said, other[0].tx_ref);
+    // BUILD 91 · The fraud check, before it is marked paid (_risk.js).
+    const risk = await risky().atPaid(pay);
+    if (risk.hold) {
+      return riskHold(pay, Object.assign({ channel: c.type || pay.channel || '' }, said),
+                      keepRoute(pay, lencoDetail(c)), risk, 'Lenco');
+    }
     let won;
     try {
       won = await svc('PATCH', 'payments?tx_ref=eq.' + encR(txRef) + '&status=neq.paid', Object.assign({
@@ -805,6 +820,7 @@ async function settleLenco(pay, review) {
       }
       throw e;
     }
+    if (risk.release && won && won.length) await risky().released(risk.release);
     const row = (won && won[0]) || pay;
     const caught = await orderPaid(row, c.amount, c.type || pay.channel, now);
     return { status: 'paid', pay: row, fresh: !!caught, late: caught === 'late' };
@@ -868,6 +884,47 @@ async function lencoAttention(pay, c, said, dupOf) {
     });
   } catch (e) { /* the record stands whether or not the email goes */ }
   return { status: 'review', pay: row, fresh: true, duplicate: !!dupOf };
+}
+
+// ---- BUILD 91 · a payment the fraud check holds -------------------------------------
+// The gateway says it is paid, exactly as asked, and the fraud check (acting,
+// High or Critical) holds it: marked "review" with the case beside it
+// (detail.risk_hold), its order "needs attention", which the platform's till
+// leaves alone, exactly as for a payment that does not match. The write only
+// moves a payment not yet paid or under review, so of several messages about
+// it at once one makes the switch, and only that one emails the shop. Once
+// the case is approved, the next question to the gateway marks it paid
+// (atPaid lets it through), with the customer's confirmation email.
+const risky = () => require('./_risk');
+async function riskHold(pay, cols, detail, risk, gw) {
+  const now = new Date().toISOString();
+  const held = { case: risk.id || risk.case || null, level: risk.level || null, score: risk.score != null ? risk.score : null,
+                 at: (pay.detail && pay.detail.risk_hold && pay.detail.risk_hold.at) || now };
+  const got = await svc('PATCH', 'payments?tx_ref=eq.' + encR(pay.tx_ref) + '&status=in.(started,expired,failed)',
+    Object.assign({ status: 'review', updated_at: now }, cols || {},
+                  { detail: Object.assign({}, detail || {}, { risk_hold: held }) }));
+  const row = got && got[0];
+  if (!row) return { status: 'review', pay, held: true };
+  await orderNeedsAttention(row, now);
+  try { await risky().holdEmail(row, risk, gw); } catch (e) { /* the hold stands whether or not the email goes */ }
+  return { status: 'review', pay: row, fresh: true, held: true };
+}
+
+// BUILD 91 · Whether the signed-in caller may do something, asked of the
+// database with the caller's own sign-in (may_risk, supabase-risk.sql).
+async function callerMay(token, fn) {
+  if (!token || !/^[a-z_]{1,40}$/.test(String(fn || ''))) return false;
+  const { url, key } = readConfig();
+  if (!url || !key) return false;
+  try {
+    const res = await fetch(url.replace(/\/+$/, '') + '/rest/v1/rpc/' + fn, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (!res.ok) return false;
+    return (await res.json()) === true;
+  } catch (e) { return false; }
 }
 
 // The order a paid payment belongs to, marked paid if it is not already.
@@ -1299,4 +1356,6 @@ module.exports = {
   _resetLencoDb: () => { LENCO_DB = null; LENCO_DB_AT = 0; },
   // build 90: the catalogue as the shop prices it, for the product alerts
   catalogue, productMeta, withMeta,
+  // build 91: the fraud check's hold, and who may answer it
+  riskHold, callerMay,
 };

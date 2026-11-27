@@ -99,6 +99,14 @@
 [functions."product-alerts"]
   schedule = "*/30 * * * *"
 
+# The fraud check's watch (netlify/functions/risk-watch.js, build 91): the
+# team's activity in the sealed record, held payments approved in Admin >
+# Fraud & Risk, escalations to the owner, and an anchor for the record. About
+# 2,900 invocations a month; before supabase-risk.sql has been run, one quick
+# read.
+[functions."risk-watch"]
+  schedule = "*/15 * * * *"
+
 # Pretty path so the storefront calls /api/products
 [[redirects]]
   from = "/api/products"
@@ -465,6 +473,13 @@
 # Build 90: shopping (alerts, gift lists, buyers' reviews, the policies' order). Hidden like the others.
 [[redirects]]
   from = "/supabase-shopping.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+# Build 91: the fraud check and the sealed record. Hidden like the others.
+[[redirects]]
+  from = "/supabase-risk.sql"
   to = "/index.html"
   status = 404
   force = true

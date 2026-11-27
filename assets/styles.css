@@ -1222,6 +1222,7 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 /* An order: the words that tell the five apart, its own page. */
 .ac-status.is-requested{background:var(--cream);color:var(--muted)}
 .ac-status.is-awaiting{background:rgba(var(--accent-rgb),.2);color:var(--gold-deep-2)}
+.ac-status.is-checking{background:rgba(var(--accent-rgb),.2);color:var(--gold-deep-2)}
 .ac-status.is-unpaid{background:rgba(192,57,43,.1);color:#c0392b}
 .ac-status.is-paid{background:rgba(var(--ok-rgb),.16);color:#1f7a48}
 .ac-order-acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}

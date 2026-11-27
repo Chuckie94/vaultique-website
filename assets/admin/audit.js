@@ -30,7 +30,7 @@
   /* Settings categories whose values are private, and the individual
      fields elsewhere that are secret in their own right. Anything named
      here is recorded as "changed" with no before and no after. */
-  var PRIVATE_KEYS = ['payments', 'notifications'];
+  var PRIVATE_KEYS = ['payments', 'notifications', 'risk'];   // build 91: the fraud check's thresholds
   var SECRET_FIELDS = ['smtpPassword', 'password', 'secret', 'token', 'apiKey',
                        'bankAccountNumber', 'bankBranchCode', 'mobileAccounts'];
 
@@ -51,7 +51,8 @@
     newsletter: 'Settings · Newsletter',
     security: 'Settings · Security',
     roles: 'Settings · Users & Roles',
-    system: 'Settings · System & Maintenance'
+    system: 'Settings · System & Maintenance',
+    risk: 'Settings · Fraud & Risk'
   };
 
   function moduleFor(key) { return MODULES[key] || ('Settings · ' + key); }

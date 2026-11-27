@@ -205,6 +205,17 @@ async function send(id) {
     return { ok: true, again: false, refund: out(row) };
   }
 
+  // BUILD 91 · The fraud check, before anything is sent (_risk.js). Acting,
+  // a refund it scores High or Critical is not sent: it waits in Admin >
+  // Fraud & Risk, and once approved there it goes through when the platform
+  // asks for it again. Watching, off, or anything wrong in the check: it is
+  // sent exactly as before.
+  const risk = await require('./_risk').atRefund(row);
+  if (risk.refuse) {
+    row = await move(row, 'sending', { state: 'refused', flw_message: require('./_risk').refundHeldSaid(risk) });
+    return { ok: true, again: false, refund: out(row), held: true };
+  }
+
   const a = await flwTimed(row.mode, 'POST', '/transactions/' + enc(row.provider_tx_id) + '/refund',
                            { amount: Number(row.amount), comments: comments(row) }, T.send);
   const d = a.data && a.data.data;

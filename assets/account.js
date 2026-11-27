@@ -1717,6 +1717,10 @@
     if (o.payment_method === 'online' && (o.payment_status === 'failed' || o.payment_status === 'expired')) {
       return { key: 'unpaid', word: 'Payment not completed' };
     }
+    /* Build 91: money came in and the shop is checking it (it did not match
+       the order, or the shop's checks held it). Never "awaiting payment",
+       which would invite paying again. */
+    if (o.payment_method === 'online' && o.payment_status === 'review') return { key: 'checking', word: 'Payment being checked' };
     if (o.payment_method === 'online') return { key: 'awaiting', word: 'Awaiting payment' };
     return { key: 'requested', word: 'Requested' };
   }
@@ -1726,6 +1730,7 @@
     switch (st.key) {
       case 'requested': return 'You sent this order. We confirm it with you on WhatsApp before anything is paid.';
       case 'awaiting': return 'The payment was started but has not been confirmed yet.';
+      case 'checking': return 'We have received a payment for this order and are checking it. We will contact you; please do not pay again.';
       case 'unpaid': return 'The payment was not completed, so nothing was charged. You can order again at any time.';
       case 'paid': return 'Paid online. We are getting it ready.';
       case 'confirmed': return 'We have confirmed your order.';

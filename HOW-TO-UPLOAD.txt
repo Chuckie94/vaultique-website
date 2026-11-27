@@ -32,20 +32,22 @@ B. THE BROWSER  (four drags, because GitHub takes 100 files at a time)
   now 103 files, over GitHub's 100 at a time.)
 
   Drag 1 — at the top of your repository, three FOLDERS together:
-           assets   images   tools                          (78 files)
+           assets   images   tools                          (80 files)
   Drag 2 — at the top of your repository: the netlify FOLDER, the
            .github FOLDER if you can see it, and every loose file at
-           the top level (the 51 files beside the folders)    (95 files)
-  Drag 3 and 4 — the tests folder, in two parts (143 files in all):
+           the top level (the 52 files beside the folders)    (99 files)
+           (99: one under GitHub's 100. Build 91 adds four here; the
+           next build that adds one regroups the drags, and says so.)
+  Drag 3 and 4 — the tests folder, in two parts (146 files in all):
            First open your repository on GitHub and click the tests
            folder, so the page shows tests at the top. Then:
      Drag 3 — Add file > Upload files, and drag in, from inside your
            unzipped tests folder, every file whose name ends in
-           .browser.cjs (52 files). Typing browser.cjs into the
+           .browser.cjs (53 files). Typing browser.cjs into the
            folder's search box shows just those. Commit changes.
      Drag 4 — still inside tests on GitHub: Add file > Upload files,
            and drag in everything else inside your tests folder, the
-           supabase-standin folder among it (91 files). Commit changes.
+           supabase-standin folder among it (93 files). Commit changes.
 
   (Until build 79 the tests folder went in one drag. Build 80 brought
   twenty more checks and it went over GitHub's 100 at a time. Drags 3
@@ -102,6 +104,15 @@ Netlify rebuilds on its own, usually within a minute or two. Then follow
 the steps at the top of START-HERE.txt: uploading runs no SQL, and it never
 deletes a file. When a build takes a file away, START-HERE names it, and it
 has to be deleted from your repository by hand.
+
+BUILD 91: UPLOAD FIRST, SQL SECOND, as for the others. Wait until
+Netlify > Deploys shows this upload as Published, then run the SQL files
+START-HERE.txt names, in its order (supabase-risk.sql is this build's own,
+step G). The hardening is not run again (its copy in this folder has one
+line more, Fraud & Risk among the rights that need two-factor, which
+supabase-risk.sql adds by itself). For this file alone the other order
+would do no harm: the fraud check does nothing until its SQL is there,
+and its SQL changes nothing the older website uses.
 
 BUILD 90: UPLOAD FIRST, SQL SECOND. Wait until Netlify > Deploys shows
 this upload as Published, then run the SQL files START-HERE.txt names, in

@@ -458,6 +458,63 @@ select achk((select status from public.orders where ref = 'VB-AH871') = 'cancell
             and (select status || '|' || decided_from from public.order_requests where order_ref = 'VB-AH871') = 'done|admin',
   'requests: the order cancelled, the request done, decided in the admin');
 
+-- ================================================ 11. the fraud check (build 91)
+-- A role given Fraud & Risk and nothing else, with two-factor set up; the
+-- agent (chats only) and the customer from tests/hardening.sql.
+reset role;
+update public.site_settings set data = data || '{"fraud":{"label":"Fraud desk","permissions":{"risk":true}}}'::jsonb
+ where key = 'roles';
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000f9', 'fraud@shop.test') on conflict do nothing;
+insert into public.admins (id, email, role, active) values ('00000000-0000-0000-0000-0000000000f9', 'fraud@shop.test', 'fraud', true)
+on conflict (id) do update set role = excluded.role, active = excluded.active;
+insert into auth.mfa_factors (user_id, status) values ('00000000-0000-0000-0000-0000000000f9', 'verified');
+select set_config('request.jwt.claims', '{"role":"service_role"}', false);
+set role service_role;
+insert into public.risk_cases (id, moment, order_ref, score, level, reasons, mode, action, would, review_state)
+values ('aaaaaaaa-9191-0000-0000-000000000001', 'payment_start', 'VB-AH911', 95, 'critical',
+        '[{"signal":"ordersPhone","points":30,"said":"6 orders from this phone number in a day"}]', 'watch', 'none', 'refused', 'open');
+reset role;
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f9', 'aal1');
+select achk(public.two_factor_required() and (select count(*) from public.risk_cases) = 0,
+  'fraud check: a role with Fraud & Risk must use two-factor, and with the password alone reads no case');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f9', 'aal2');
+select achk((select count(*) from public.risk_cases where id = 'aaaaaaaa-9191-0000-0000-000000000001') = 1
+            and (public.risk_summary(7) ->> 'ok')::boolean,
+  'fraud check: after the code it reads the cases and the totals');
+select achk((select count(*) from public.orders) = 0 and (select count(*) from public.payments) = 0,
+  'fraud check: and nothing else (no orders, no payments): the right is its own');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000b2', 'aal1');
+select achk((select count(*) from public.risk_cases) = 0
+            and public.risk_decide('aaaaaaaa-9191-0000-0000-000000000001', 'approve', null) ->> 'why' = 'not_allowed',
+  'fraud check: the chats-only agent reads no case and cannot answer one');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000c3', 'aal1');
+select achk((select count(*) from public.risk_cases) = 0 and (select count(*) from public.audit_chain) = 0
+            and public.audit_verify(10) ->> 'why' = 'not_allowed',
+  'fraud check: a customer reads no case and nothing of the record');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f9', 'aal2');
+select achk((public.risk_decide('aaaaaaaa-9191-0000-0000-000000000001', 'escalate', 'For the owner') ->> 'state') = 'escalated',
+  'fraud check: the Fraud & Risk role answers a case');
+select achk((public.audit_verify(100000) ->> 'ok')::boolean,
+  'fraud check: the record, after every file and the hardening twice, checks out');
+reset role;
+set role anon;
+select pg_temp.as_anon();
+select achk(pg_temp.err('select count(*) from public.risk_cases') like '%permission denied%'
+            and pg_temp.err('select count(*) from public.audit_chain') like '%permission denied%',
+  'fraud check: closed to visitors');
+reset role;
+-- The counts that need the hardening's own table of connections.
+insert into public.rate_events (bucket, key) values ('order', '10.9.1.1'), ('order', '10.9.1.1'), ('order', '10.9.1.1'),
+                                                    ('refused', '10.9.1.1');
+select set_config('request.jwt.claims', '{"role":"service_role"}', false);
+set role service_role;
+select achk((r ->> 'ordersClient')::int = 3 and (r ->> 'refusedClient')::int = 1,
+  'fraud check: orders and refused pieces from one connection are counted from the throttle''s own record')
+  from (select public.risk_facts('{"client":"10.9.1.1"}'::jsonb) as r) x;
+reset role;
+select set_config('request.jwt.claims', '', false);
+
 reset role;
 select case when ok then '  ✓ ' else '  ✗ ' end || what from after_checks order by n;
 select case when count(*) filter (where not ok) = 0

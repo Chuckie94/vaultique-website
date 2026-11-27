@@ -2977,6 +2977,10 @@
         if (s.duplicate) {
           say('Payment Already Received', 'We have already received payment for order ' + oref + '. This second ' +
               'payment will be refunded to you, and we will contact you shortly.', '');
+        } else if (s.held) {
+          /* BUILD 91 · held by the shop's checks: received, being checked. */
+          say('Payment Under Review', 'We have received your payment for order ' + oref + '. Our team is checking it ' +
+              'before your order goes ahead, and will contact you shortly. Please do not pay again.', '');
         } else {
           say('Payment Under Review', 'We have received a payment for order ' + oref + ', but it does not match the ' +
               'order total. Our team will review it and contact you shortly. Please do not pay again.', '');
@@ -3259,8 +3263,11 @@
            shop has been told; the order is with them. Its cart goes, as for
            a paid order, so that nothing invites a second payment. */
         head.textContent = 'We need to check your payment';
-        lead.textContent = 'A payment for order ' + (r.ref || '') + ' has come in, but it does not ' +
-          'match the order. We will contact you about it. Please do not pay again.';
+        lead.textContent = r.held
+          ? 'Your payment for order ' + (r.ref || '') + ' has come in. Our team is checking it before your order ' +
+            'goes ahead, and will contact you shortly. Please do not pay again.'
+          : 'A payment for order ' + (r.ref || '') + ' has come in, but it does not ' +
+            'match the order. We will contact you about it. Please do not pay again.';
         if (memo && memo.tx === q.tx_ref) {
           if (memo.cart) { cart = []; saveCart(); afterCartChange(); }
           payMemo(null);

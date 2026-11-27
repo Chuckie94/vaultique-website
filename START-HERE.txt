@@ -1,4 +1,4 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 90
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 91
 ====================================================
 The whole site, cumulative: everything in build 83 (and so 82, 81 and
 80, with the other website line's builds 74 to 78 carried onto it),
@@ -6,30 +6,34 @@ build 84 (a deploy never publishes a build whose own checks fail),
 build 85 (checkout: the website or WhatsApp), build 86 (the customer
 portal), build 87 (customers' requests), build 88 (Lenco, and one
 checkout for every way of paying), build 89 (delivery: instructions,
-the courier and tracking number, the invoice) and build 90 (shopping,
-and the policies entered in a window). Upload this and you are up to
-date. Upload 90 only: it holds 89, 88, 87, 86, 85 and 84.
+the courier and tracking number, the invoice), build 90 (shopping,
+and the policies entered in a window) and build 91 (payments and
+fraud: the fraud check, its review queue, and the sealed record).
+Upload this and you are up to date. Upload 91 only: it holds 90, 89,
+88, 87, 86, 85 and 84.
 
-IF BUILD 89 IS ALREADY LIVE (https://vaultiqueboutique.com/api/health
-says "build":89) and you ran its four SQL files, steps B to E are done:
-do A, then F to N. If build 88 is live and you ran its three, B to D
-are done: do A, then E to N.
+IF BUILD 90 IS ALREADY LIVE (https://vaultiqueboutique.com/api/health
+says "build":90) and you ran its five SQL files, steps B to F are done:
+do A, then G to P. If build 89 is live and you ran its four, B to E
+are done: do A, then F to P.
 
-NEW IN 84 TO 90 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
-THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, DELIVERY, AND SHOPPING.
-  FIVE SQL FILES, each new, each run once, in this order:
+NEW IN 84 TO 91 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
+THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, DELIVERY, SHOPPING,
+AND THE FRAUD CHECK.
+  SIX SQL FILES, each new, each run once, in this order:
   supabase-test-orders.sql (build 85), supabase-customer-requests.sql
   (build 87), supabase-lenco.sql (build 88), supabase-delivery.sql
-  (build 89) and supabase-shopping.sql (build 90). About fifty minutes,
-  then Lenco's own setup when its keys are in hand (step J). Do these in
-  order. Each one says how you know it is done.
+  (build 89), supabase-shopping.sql (build 90) and supabase-risk.sql
+  (build 91). About an hour, then Lenco's own setup when its keys are in
+  hand (step K). Do these in order. Each one says how you know it is
+  done.
 
   A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
      browser it is four drags, grouped differently from before (the
      assets and netlify folders are now over GitHub's 100 files together).
      Done when: Netlify > Deploys shows it as Published.
      Its log (open the deploy) has, near the top:
-       Checks: node: 44 of 45 files passed, 1 skipped, ... before publishing.
+       Checks: node: 45 of 46 files passed, 1 skipped, ... before publishing.
      (the one skipped needs a database; it runs on GitHub's database job)
      and further down:
        Scripts: enforced. Only this site, its own inline scripts and
@@ -84,13 +88,21 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, DELIVERY, AND SHOPPING.
      are not offered, a piece's reviews are written as before, and the
      policies' new numbers are saved one row at a time.
 
-  G. OPEN https://vaultiqueboutique.com/api/health on your phone.
-     Done when: it says "status":"working" and "build":90.
+  G. RUN supabase-risk.sql the same way, in the WEBSITE's Supabase.
+     The SQL is also in the chat. It changes no order, payment, refund,
+     setting or key, and is safe to run again.
+     Done when: its result line says
+       OK · the fraud check can record | OK · the record is sealed
+     Until it is run, nothing is scored and Admin > Fraud & Risk says to
+     run it; orders and payments go on exactly as before.
 
-  H. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
+  H. OPEN https://vaultiqueboutique.com/api/health on your phone.
+     Done when: it says "status":"working" and "build":91.
+
+  I. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
      gold; the cart says Checkout, in gold. Press Buy, fill in the
      details: at the bottom, WhatsApp checkout, green. Until a payment
-     gateway is switched on and ready (step J) that is the only one.
+     gateway is switched on and ready (step K) that is the only one.
      If Settings > Shopping > "Checkout button text" still says Buy on
      WhatsApp, the shop shows Buy anyway; type Buy there and Save if you
      want the box to match.
@@ -99,14 +111,14 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, DELIVERY, AND SHOPPING.
      Done when: you have seen the gold Buy, the green WhatsApp checkout
      and the delivery instructions box.
 
-  I. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
+  J. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
      person at the top of the shop; not the admin): the navy top saying
      Welcome back, with your orders, wishlist and points, then My
      shopping, My Vault and Security and privacy. Tap My orders, then
      View order on one of them.
      Done when: you have seen the dashboard and an order's own page.
 
-  J. LENCO, WHEN YOUR LENCO KEYS ARE IN HAND (SETUP.md, "Online payment
+  K. LENCO, WHEN YOUR LENCO KEYS ARE IN HAND (SETUP.md, "Online payment
      with Lenco", has every step and Lenco's sandbox numbers and cards).
      1. From Lenco (the dashboard's Lenco Pay section, or support):
         the sandbox API token, sandbox public key and the SANDBOX API
@@ -140,7 +152,7 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, DELIVERY, AND SHOPPING.
         Trigger deploy, set the mode to Live, Save, and make one small
         real purchase yourself on each network you ticked, and by card.
 
-  K. CUSTOMERS' REQUESTS, WHEN YOU WANT THEM (you may leave this until
+  L. CUSTOMERS' REQUESTS, WHEN YOU WANT THEM (you may leave this until
      the platform has build 512). Admin > Settings > Customer Accounts:
      switch on "Let customers ask to cancel, return or exchange, or
      report a problem", check "Days after delivery to ask for a return
@@ -152,7 +164,7 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, DELIVERY, AND SHOPPING.
      Done when: signed in as a customer, one of your own orders that is
      not yet prepared shows Cancel this order (a minute after saving).
 
-  L. DELIVERY, ONCE STEP E IS DONE.
+  M. DELIVERY, ONCE STEP E IS DONE.
      1. Admin > Orders: an order for delivery that you have confirmed
         shows "Add courier and tracking". Fill in the courier, the
         tracking number, the courier's tracking page if it has one (an
@@ -173,7 +185,7 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, DELIVERY, AND SHOPPING.
      Done when: an order you gave a courier and tracking number shows
      them on the customer's order page.
 
-  M. SHOPPING AND THE POLICIES, ONCE STEP F IS DONE.
+  N. SHOPPING AND THE POLICIES, ONCE STEP F IS DONE.
      1. Admin > Policies: each policy has its number, 1, 2, 3 ..., in the
         order customers see them. Press Add policy: a window opens where
         you are. Type the title, the section and the text, and the number
@@ -195,9 +207,62 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, DELIVERY, AND SHOPPING.
      5. The alert emails go from your email (Settings > Notifications)
         within half an hour of a piece coming back or its price dropping.
 
-  N. WATCH THE CHECKS ON GITHUB (Actions > Tests).
+  O. THE FRAUD CHECK, ONCE STEP G IS DONE. It starts by WATCHING, as
+     you decided (D5): every payment, WhatsApp order and refund is scored
+     and recorded, and nothing is held or refused.
+     1. Admin > Fraud & Risk: what the check is doing (watching, day 1 of
+        14), the totals, the spread of scores, the cases per day, the
+        cases waiting for you, and the sealed record. Press "Check the
+        record now": it says Intact.
+     2. Each case waiting has its reasons and three buttons: Approve,
+        Reject (it asks why) and Escalate (the owner is emailed).
+     3. Who else may open it: Settings > Users & Roles, tick Fraud &
+        Risk for a role. That role must use two-factor.
+     4. After the 14 days, look at what acting would have held and
+        refused. If it looks right, Settings > Fraud & Risk > Mode > Act,
+        Save. From then on High is held for review (a payment marked
+        "needs attention", which the till leaves alone, and the customer
+        told it is being checked) and Critical is refused before the
+        payment starts. To stop it at once: Mode > Off, Save.
+     5. A held payment: Approve it in Fraud & Risk and the website asks
+        Lenco (or Flutterwave) about it again and marks it paid on that
+        word, with the customer's email; Reject it and refund the
+        customer from the gateway's own account.
+     Done when: Admin > Fraud & Risk shows "The check is watching", and
+     the record says Intact.
+
+  P. WATCH THE CHECKS ON GITHUB (Actions > Tests).
      Done when: the newest Tests run has a green tick. A minute later
-     GitHub > Code > Tags shows website-90 (Actions > Release tag).
+     GitHub > Code > Tags shows website-91 (Actions > Release tag).
+
+  WHAT CHANGED IN 91
+    * THE FRAUD CHECK: every payment (before it starts and when it is
+      paid, through Lenco or Flutterwave), every WhatsApp order and every
+      refund the platform asks for is scored on the server, from records
+      the site already keeps: orders in a day from one phone, email,
+      connection or account; failed payments; several attempts on one
+      order; a delivery address added just before; an email or phone that
+      does not look real; an order far above your usual; a piece or
+      quantity no checkout page sends; refunds for one customer, soon
+      after the payment, or many by one person; and the team's own
+      deletions, role and settings changes. No single signal decides.
+      Each case is kept with its reasons. Low, Medium, High or Critical.
+    * IT WATCHES FIRST (D5): nothing is held or refused until you switch
+      it to Act. Acting, High is held for review and Critical is refused
+      before the payment starts, with words that say nothing about why.
+      If the check itself fails, the payment goes on as before.
+    * ADMIN > FRAUD & RISK: the totals, the spread of scores, the trend,
+      the review queue (Approve, Reject, Escalate), the latest cases, and
+      the sealed record. Admin > Orders shows each order's level.
+    * THE SEALED RECORD: every decision, and every change to orders,
+      payments, refunds, the team and settings, written by the database
+      itself, each entry sealed with the one before it. Checking it shows
+      any entry changed or taken out.
+    * A NEW RIGHT, Fraud & Risk, in Users & Roles: it needs two-factor.
+    * A PAYMENT BEING CHECKED: on the customer's account, an order whose
+      payment came in and is being checked (it did not match, or the
+      check held it) says "Payment being checked", no longer "Awaiting
+      payment", which invited paying again.
 
   WHAT CHANGED IN 90
     * ADMIN > POLICIES, AS YOU ASKED: Add policy opens a window on the

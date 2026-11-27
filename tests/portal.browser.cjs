@@ -330,6 +330,12 @@ const until = async (page, fn, arg) => page.waitForFunction(fn, arg, { timeout: 
     is(J(badges) === J(Object.assign({}, ...Object.keys(badges).map(k => ({ [k]: want[k] })))) && Object.keys(badges).length === 10,
        'each order in its own words: Requested, Awaiting payment, Payment not completed, Paid, Confirmed, Preparing, On its way, Delivered, Completed, Cancelled', J(badges));
     is(!('VB-THEIRS' in badges), 'another customer\'s order is not there');
+    // Build 91: a payment that came in and is being checked (it did not match,
+    // or the fraud check held it) is never shown as awaiting payment.
+    const checking = await page.evaluate(() => (window.VBP_ACCOUNT && window.VBP_ACCOUNT.stage)
+      ? window.VBP_ACCOUNT.stage({ status: 'pending', payment_method: 'online', payment_status: 'review' }) : null);
+    is(checking && checking.key === 'checking' && checking.word === 'Payment being checked',
+       'a payment being checked says so, never "Awaiting payment" (build 91)', J(checking));
     is(/Requested: you sent it/.test(await pageText(page)), 'what the words mean is said under the list');
     await page.click('.ac-order[data-ref="VB-OPEN1"] .ac-view');
     await page.waitForSelector('.acd .ac-ref', { timeout: 15000 });

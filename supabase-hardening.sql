@@ -99,7 +99,8 @@ end $$;
 --
 -- WHO MUST USE TWO-FACTOR. The owner, and anybody whose role can open
 -- Settings (bank details, the email password), Orders (customers'
--- names, phones and addresses) or Subscribers (the mailing list). The
+-- names, phones and addresses) or Subscribers (the mailing list), and,
+-- since build 91, Fraud & Risk (it can let a held payment through). The
 -- built-in Administrator role has all three. A role that only answers
 -- chats is not forced, but if one of them sets it up anyway, it is
 -- honoured: their password alone is no longer enough either.
@@ -119,6 +120,7 @@ as $$
         or (r.data -> a.role -> 'permissions' ->> 'settings')    = 'true'
         or (r.data -> a.role -> 'permissions' ->> 'orders')      = 'true'
         or (r.data -> a.role -> 'permissions' ->> 'subscribers') = 'true'
+        or (r.data -> a.role -> 'permissions' ->> 'risk')        = 'true'
       from public.admins a
       left join public.site_settings r on r.key = 'roles'
      where a.id = auth.uid()), false);

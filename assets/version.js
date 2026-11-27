@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.60.0',
-  build: 90,
-  builtAt: '2026-11-26T11:13:03Z',
-  notes: 'Shopping, and the policies entered in a window. Admin > Policies: a compact list numbered in the order customers see it; Add policy and Edit open a window on the screen; choosing a number renumbers the rest by themselves, and the page stays where it was. For customers: Compare two to four pieces; Email me when it\'s back and Email me if the price drops (sent once by a half-hourly job); reviews from customers who bought the piece, marked Verified buyer; questions and answers on a piece, published from Admin > Reviews; the wishlist shared as a gift list; sizes and categories in Shopping preferences, with My sizes in the shop; Recently purchased and Order again. One SQL file: supabase-shopping.sql. Holds builds 89 to 84.'
+  version: '1.61.0',
+  build: 91,
+  builtAt: '2026-11-27T01:00:00Z',
+  notes: 'Payments and fraud. The fraud check scores every payment (before it starts and when it is paid, Lenco and Flutterwave), every WhatsApp order and every refund from records the site already keeps; no single signal decides. It starts by watching (D5): nothing held or refused, each case saying what acting would have done. Acting: High held for review, Critical refused before the payment starts. Admin > Fraud & Risk: the totals, the spread of scores, the trend, the review queue (Approve, Reject, Escalate; an approved payment is marked paid only on the gateway\'s word), and the sealed record of every decision and change, which shows if it is touched. One SQL file: supabase-risk.sql. Holds builds 90 to 84.'
 };

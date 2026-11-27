@@ -73,17 +73,17 @@ echo "$out" | grep -q "A test payment is never rung up.*NOT RUN YET" \
 echo "$out" | grep -q "Customer requests.*NOT RUN YET (optional)" \
   || { echo "   the report does not say customers' requests are not run yet"; fail=1; }
 
-echo "3. The files made after the hardening (builds 80, 81, 83, 85, 87, 88, 89 and 90), twice each, then the hardening once more"
+echo "3. The files made after the hardening (builds 80, 81, 83, 85, 87, 88, 89, 90 and 91), twice each, then the hardening once more"
 AFTER="supabase-pos-orders.sql supabase-payment-history.sql supabase-order-progress.sql supabase-online-refund.sql
 supabase-chat-reply-push.sql supabase-test-orders.sql supabase-customer-requests.sql supabase-lenco.sql supabase-delivery.sql
-supabase-shopping.sql"
+supabase-shopping.sql supabase-risk.sql"
 for f in $AFTER; do
   for n in 1 2; do
     out=$(run "$here/$f") || { echo "   FAILED  $f (run $n)"; echo "$out" | grep -E 'ERROR|LINE' | head -3 | sed 's/^/           /'; fail=1; }
   done
 done
 out=$(run "$here/supabase-hardening.sql") || { echo "   FAILED: the hardening after them"; echo "$out" | grep -E 'ERROR|LINE|CONTEXT' | head -4 | sed 's/^/           /'; fail=1; }
-[ $fail -eq 0 ] && echo "   all 10 ran, twice, and the hardening ran after them"
+[ $fail -eq 0 ] && echo "   all 11 ran, twice, and the hardening ran after them"
 # The hardening, run after supabase-delivery.sql, leaves the platform's new
 # door open to its key (build 89: it is on the hardening's own list).
 echo "select case when has_function_privilege('anon', 'public.vbp_pos_order_shipping(text, text, text, text, text, text)', 'execute')
@@ -156,6 +156,26 @@ out90=$(run "$here/supabase-shopping.sql") || fail=1
 echo "$out90" | grep -q "OK · shopping can be recorded" \
   && echo "   supabase-shopping.sql says: OK · shopping can be recorded" \
   || { echo "   supabase-shopping.sql does not say OK"; echo "$out90" | tail -4 | sed 's/^/           /'; fail=1; }
+
+# supabase-risk.sql's own check row (build 91) says OK after the hardening ran
+# again; the hardening keeps Fraud & Risk among the rights that need
+# two-factor, and leaves none of the check's functions open to visitors.
+out91=$(run "$here/supabase-risk.sql") || fail=1
+echo "$out91" | grep -q "OK · the fraud check can record" && echo "$out91" | grep -q "OK · the record is sealed" \
+  && echo "   supabase-risk.sql says: OK · the fraud check can record, OK · the record is sealed" \
+  || { echo "   supabase-risk.sql does not say OK"; echo "$out91" | tail -4 | sed 's/^/           /'; fail=1; }
+run "$here/supabase-hardening.sql" >/dev/null || fail=1
+echo "select case when pg_get_functiondef('public.two_factor_required()'::regprocedure) like '%''risk''%'
+              and not has_function_privilege('anon', 'public.risk_decide(uuid, text, text)', 'execute')
+              and not has_function_privilege('anon', 'public.risk_summary(integer)', 'execute')
+              and not has_function_privilege('anon', 'public.audit_verify(integer)', 'execute')
+              and not has_function_privilege('anon', 'public.risk_facts(jsonb)', 'execute')
+              and has_function_privilege('authenticated', 'public.risk_decide(uuid, text, text)', 'execute')
+              and (select count(*) from pg_trigger where tgname like 'zz_audit_%') >= 7
+              then 'kept' else 'LOST' end;" \
+  | as "psql -X -q -t -d $DB -f -" | grep -q kept \
+  && echo "   the hardening, run after it, keeps Fraud & Risk needing two-factor, the record's triggers, and the check closed to visitors" \
+  || { echo "   the hardening, run after supabase-risk.sql, lost part of the fraud check"; fail=1; }
 
 echo "4. Each older file again: each must refuse"
 refused=0

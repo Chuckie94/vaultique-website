@@ -80,8 +80,12 @@ function lencoSays(out, r) {
     out.retryAfter = holdLeft(pay);
   }
   if (r.status === 'review' && (r.duplicate || (pay.detail && pay.detail.duplicate))) out.duplicate = true;
+  if (heldNow(r)) out.held = true;
   return out;
 }
+// BUILD 91 · a payment the fraud check holds (_risk.js): the page says only
+// that it is being checked, never why.
+const heldNow = (r) => !!(r && r.status === 'review' && (r.held || (r.pay && r.pay.detail && r.pay.detail.risk_hold)));
 
 async function cancel(b) {
   const txRef = String(b.txRef || '').slice(0, 80);
@@ -239,6 +243,7 @@ exports.handler = async function (event) {
     // stays with the shop), whether the request is still on their phone and
     // when a new one could be sent, whether the customer cancelled it here,
     // and whether it was a second payment for an order already paid.
+    if (heldNow(r)) out.held = true;
     if (r.pay && r.pay.provider === 'lenco') lencoSays(out, r);
     return P.json(200, out);
   } catch (e) {

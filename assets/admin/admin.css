@@ -1067,3 +1067,66 @@
 .qa-row .row{margin-top:10px}
 .qaw-pub{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:14px;color:var(--ink);margin:4px 0 0}
 .qaw-pub input{width:auto}
+
+  /* Fraud & Risk (build 91) ---------------------------------------------
+     The four levels are one ordered ramp, a single warm hue from light to
+     dark, checked rather than chosen: the steps read light to dark, every
+     step is far enough from the next to see, and the lightest clears the
+     white card. A level is never told by its colour alone: every badge
+     says its word, the chart has a legend and a table with every figure.
+     The spread of scores is one series, in the Analytics blue. */
+  .rk-wrap{--rk-low:#CF9566;--rk-medium:#BB6A35;--rk-high:#97401E;--rk-critical:#661A0F}
+  .rk-wrap .card{margin-bottom:14px}
+  .rk-wrap .card h3{margin-bottom:6px}
+  .rk-status .btn{margin-top:10px}
+  .rk-low{background:var(--rk-low)}
+  .rk-medium{background:var(--rk-medium)}
+  .rk-high{background:var(--rk-high)}
+  .rk-critical{background:var(--rk-critical)}
+  .rk-lv{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--ink);
+         background:#fff;border:1px solid var(--line);border-radius:12px;padding:2px 9px 2px 7px}
+  .rk-lv::before{content:'';width:10px;height:10px;border-radius:2px;background:var(--rk-low);flex:none}
+  .rk-lv.rk-low,.rk-lv.rk-medium,.rk-lv.rk-high,.rk-lv.rk-critical{background:#fff}
+  .rk-lv.rk-medium::before{background:var(--rk-medium)}
+  .rk-lv.rk-high::before{background:var(--rk-high)}
+  .rk-lv.rk-critical::before{background:var(--rk-critical)}
+  .rk-hist,.rk-trend{display:flex;align-items:stretch;gap:2px;height:170px;margin-top:10px;border-bottom:1px solid var(--an-grid)}
+  .rk-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;cursor:default}
+  .rk-stack{flex:1 1 auto;display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch}
+  .rk-n{font-size:11px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums;min-height:15px}
+  .rk-b{background:var(--an-1);border-radius:4px 4px 0 0;margin:0 3px}
+  .rk-bars{display:flex;flex-direction:column;gap:2px;margin:0 3px;border-radius:4px 4px 0 0;overflow:hidden}
+  .rk-seg{flex:1 1 0;min-height:2px}
+  .rk-x{font-size:10.5px;color:var(--muted);text-align:center;padding-top:4px;white-space:nowrap;overflow:hidden;text-overflow:clip;height:19px;
+        position:relative;top:19px;margin-top:-19px}
+  .rk-hist,.rk-trend{margin-bottom:26px}
+  .rk-col:hover .rk-b,.rk-col:hover .rk-bars{filter:brightness(1.08)}
+  .rk-table{margin-top:10px;font-size:12.5px}
+  .rk-table summary{cursor:pointer;color:var(--navy)}
+  .rk-table table{border-collapse:collapse;margin-top:8px;width:100%}
+  .rk-table th,.rk-table td{border-bottom:1px solid var(--line);padding:5px 6px;text-align:right;font-variant-numeric:tabular-nums}
+  .rk-table th:first-child,.rk-table td:first-child{text-align:left}
+  .rk-case{border-top:1px solid var(--line);padding:12px 0}
+  .rk-case:first-of-type{border-top:none}
+  .rk-case-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .rk-score{font-size:12.5px;color:var(--navy);font-variant-numeric:tabular-nums}
+  .rk-what{font-size:13px;color:var(--navy);font-weight:400}
+  .rk-when{font-size:12px;color:var(--muted);margin-left:auto}
+  .rk-did{font-size:12.5px;color:var(--muted);margin-top:6px}
+  .rk-why{margin:6px 0 0 18px;font-size:13px;color:var(--ink)}
+  .rk-why li{margin:2px 0}
+  .rk-acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .rk-say{font-size:12.5px;color:var(--navy)}
+  .rk-said{margin-top:10px;font-size:13px}
+  .rk-said.ok{color:var(--ok)}
+  .rk-said.err{color:var(--err);font-weight:500}
+  @media(max-width:560px){
+    .rk-when{margin-left:0;flex-basis:100%}
+    .rk-x{font-size:9.5px}
+  }
+  /* The order's level, on its card in Orders (build 91) */
+  .rk-badge{background:#fff;color:var(--ink);border:1px solid var(--line);margin-left:4px}
+  .rk-badge::before{content:'';display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:0}
+  .rk-badge-medium::before{background:#BB6A35}
+  .rk-badge-high::before{background:#97401E}
+  .rk-badge-critical::before{background:#661A0F}

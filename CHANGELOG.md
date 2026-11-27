@@ -8,6 +8,76 @@ and GitHub tags every build that passes its checks (`website-84`, …).
 Builds before 84 are described in their own notes and in the `notes` line of
 `assets/version.js` as each was released.
 
+## Build 91 · 1.61.0 · payments and fraud: the fraud check, the review queue, the sealed record
+
+- **The fraud check** (`netlify/functions/_risk.js`), on the server only, asked
+  at four moments: before a payment starts (`pay-start`, a first try and a try
+  again, Lenco's way and Flutterwave's), when a gateway says a payment is made
+  (`settleLenco` and `settleFlutterwave` in `_pay.js`, before it is marked
+  paid), when a WhatsApp order is recorded (`place-order`), and when the
+  platform asks for a refund (`_refund.js`, before anything is sent).
+- **The signals**, from records the website already keeps: orders in a day
+  from one phone, one email, one connection or one account; failed payments
+  from one phone; payment attempts on one order; a delivery address added just
+  before; an email or phone that does not look real; an order far above the
+  shop's usual (once there are 20 orders to tell); a piece or quantity no
+  checkout page sends, refused from the same connection; refunds for one
+  customer, a refund soon after its payment, many refunds by one person, a
+  refund far above the usual; and the team's own deletions, role and settings
+  changes in an hour. **No single signal decides**: with the starting points
+  none reaches High on its own, even at twice its limit. Every score is kept
+  with its reasons, the order and the time (`risk_cases`).
+- **What each level does, acting**: Low nothing; Medium recorded and shown;
+  High held for review (a payment is marked "needs attention" when it comes in,
+  which the platform's till leaves alone, and the customer is told it is being
+  checked; a refund is not sent; a WhatsApp order is marked); Critical refused
+  before a payment starts, with words that say nothing about why and that
+  nothing was charged, and an email to the shop. **It starts by watching
+  (decision D5)**: everything scored and recorded, nothing held or refused,
+  each case saying what acting would have done. Settings › Fraud & Risk
+  switches it to Act, or Off. Off, before its SQL is run, or anything going
+  wrong in the check itself: the payment goes on exactly as before. A payment
+  already held stays held if its case cannot be read for a moment.
+- **Approving a held payment never marks it paid by itself**: the website asks
+  the gateway again (Lenco's status, Flutterwave's verify) and marks it paid
+  on that word, with the customer's confirmation email, once
+  (`risk-release`, at once; the fifteen-minute `risk-watch` as the back-up).
+  Rejecting leaves it held, to refund from the gateway's account; Escalating
+  emails the owner. A refund the check held goes through when the platform
+  asks again after it is approved.
+- **Admin › Fraud & Risk** (`assets/admin/risk.js`): what the check is doing
+  (watching, day n of 14), the totals (scored, by level, held, refused, what
+  acting would have held and refused, waiting, failed payments, orders tried
+  more than once, paid twice, refunds), the spread of scores, cases per day by
+  level (with a legend and every figure in a table), the cases waiting with
+  every reason and Approve, Reject or Escalate, the latest cases, and the
+  sealed record's check. Suspicious sign-ins are counted from build 92.
+  Admin › Orders shows the order's level, and a held payment says so.
+- **The sealed record** (E-07): every decision of the check, and every change
+  to orders, payments, refunds, the team and settings, written by the
+  database itself (`audit_chain`), each entry sealed with the one before it
+  (SHA-256), anchored every fifteen minutes, and frozen: nobody signed in, nor
+  the server, can change, remove or empty it. A customer's details are named
+  as changed, never written down; settings, by name only. Checking it shows
+  an entry changed, taken out, cut off the end or added by hand.
+- **Who sees it**: the owner, and any role with **Fraud & Risk** ticked in
+  Users & Roles, which must use two-factor (added to `two_factor_required` in
+  both `supabase-risk.sql` and `supabase-hardening.sql`). Settings › Fraud &
+  Risk is kept private: never in the public settings, never a value in the
+  activity log.
+- One SQL file: `supabase-risk.sql` (risk_cases, orders.risk_level,
+  audit_chain, audit_anchors, the record's triggers, and the functions). Safe
+  to run twice.
+- **A payment being checked**, on the customer's account: an order whose
+  payment came in and is being checked (it did not match, or the check held
+  it) says *Payment being checked*, no longer *Awaiting payment*, which
+  invited paying again.
+- Tests: `tests/risk.test.cjs` (79) and `tests/risk.browser.cjs` (35), both
+  critical; `tests/risk.sql` (58, with four tampering drills); new checks in
+  `tests/after-the-hardening.sql` (9), `tests/portal.browser.cjs` (1) and
+  `tools/db-check.sh`; 23 drills, each caught. Changed, each said why: `build-site.test.cjs`, 65 script and
+  stylesheet addresses fingerprinted (was 63: the two new admin scripts).
+
 ## Build 90 · 1.60.0 · shopping, and the policies entered in a window
 
 - **Admin › Policies** (`assets/admin/policies.js`), as the owner asked: "Adding
