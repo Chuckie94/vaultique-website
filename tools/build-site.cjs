@@ -68,6 +68,30 @@
                                      to anybody who asks, until the
                                      setting is deleted.
 
+     7. BUILD 88 · ENFORCES THE SCRIPTS PART OF THE POLICY. The whole policy
+        stays report-only, as in step 4, and beside it the part that decides
+        which scripts may run (script-src, with object-src, base-uri and
+        frame-ancestors) is enforced: a script from anywhere not on the list
+        (this site, the inline scripts by their contents, and Lenco's card
+        window at pay.lenco.co) is blocked by the browser, on the checkout as
+        everywhere. tests/csp.browser.cjs walks the shop and the admin with
+        the whole policy enforced, so the scripts part breaks nothing today.
+
+          CSP_SCRIPTS = report   back to report-only for scripts too, for a
+                                 day when something the reports did not see
+                                 is blocked. The health check says so.
+
+     8. BUILD 88 · REFUSES TO PUBLISH A SECRET, OR A CARD FIELD. Every file
+        about to be published is read before anything goes out:
+          - no secret key: the value of any secret Netlify holds (the
+            service key, Flutterwave's and Lenco's secret keys and webhook
+            hash, the platform's keys), and nothing shaped like one (a
+            Flutterwave secret key, a Supabase key whose role is
+            service_role). Public keys are public, and may be there.
+          - no card field: no box for a card number, expiry or security
+            code. Cards are typed only into the gateway's own window or page.
+        Either found, and the deploy stops, naming the file, never the key.
+
    It changes nothing outside dist/, reads nothing from the internet, and
    needs nothing installed but Node itself.
 
@@ -144,6 +168,8 @@ const POLICY = {
   'media-src': ["'self'", 'data:', 'blob:', 'https:'],
   'connect-src': ["'self'", 'https://nominatim.openstreetmap.org'],  // + Supabase
   'frame-src': ['https://www.google.com', 'https://maps.google.com'],
+  // build 88 · Lenco's card window: its script, and the window it opens
+  // (https://pay.lenco.co/js/v1/inline.js and the sandbox's).
   'worker-src': ["'self'"],
   'manifest-src': ["'self'"],
   'object-src': ["'none'"],
@@ -151,7 +177,18 @@ const POLICY = {
   'form-action': ["'self'"],
   'frame-ancestors': ["'none'"],
 };
+const LENCO_ORIGINS = ['https://pay.lenco.co', 'https://pay.sandbox.lenco.co'];
+POLICY['frame-src'] = POLICY['frame-src'].concat(LENCO_ORIGINS);
 const REPORT_TO = '/.netlify/functions/csp-report';
+
+/* BUILD 88 · step 8: what must never be published. The names of the
+   secrets Netlify may hold; their values are looked for in every file. */
+const SECRET_NAMES = ['SUPABASE_SERVICE_ROLE_KEY', 'WEB_SUPABASE_SERVICE_KEY', 'FLW_SECRET_KEY_LIVE', 'FLW_SECRET_KEY_TEST',
+  'LENCO_SECRET_KEY_LIVE', 'LENCO_SECRET_KEY_TEST', 'POS_REWARDS_KEY', 'POS_SUPABASE_KEY', 'VBP_WEB_ORDERS_KEY'];
+/* A phrase the shop chose itself, which could be an ordinary word on a page
+   (the shop's own name, say): found, it is named in the log, not a stop. */
+const SECRET_PHRASES = ['FLW_WEBHOOK_HASH'];
+const TEXT_FILE = /\.(html?|js|cjs|mjs|css|json|webmanifest|txt|svg|xml|map)$/i;
 
 let warnings = 0;
 const say = (m) => console.log('  ' + m);
@@ -455,6 +492,69 @@ function preparePage(page) {
   fs.writeFileSync(file, out);
 }
 
+/* --------------------------------------------- step 8: secrets, card fields */
+function filesUnder(dir) {
+  const out = [];
+  (function walk(d) {
+    for (const name of fs.readdirSync(d)) {
+      const p = path.join(d, name);
+      const st = fs.lstatSync(p);
+      if (st.isDirectory()) walk(p);
+      else if (st.isFile()) out.push(p);
+    }
+  }(dir));
+  return out;
+}
+function jwtRole(token) {
+  try {
+    return JSON.parse(Buffer.from(String(token).split('.')[1] || '', 'base64url').toString('utf8')).role || '';
+  } catch (e) { return ''; }
+}
+function noSecretsNoCardFields(dir) {
+  const secrets = SECRET_NAMES
+    .map((n) => [n, String(process.env[n] || '').trim()])
+    .filter(([, v]) => v.length >= 12);
+  const phrases = SECRET_PHRASES
+    .map((n) => [n, String(process.env[n] || '').trim()])
+    .filter(([, v]) => v.length >= 8);
+  const CARD_FIELD = /autocomplete\s*=\s*\\?["']cc-(number|csc|exp|exp-month|exp-year)\\?["']|<input\b[^>]*\b(name|id)\s*=\s*\\?["'][^"'\\]*(card-?number|cardnumber|cvv|cvc|card-?code|security-?code)/i;
+  for (const file of filesUnder(dir)) {
+    if (!TEXT_FILE.test(file)) continue;
+    const rel = path.relative(dir, file).split(path.sep).join('/');
+    const text = fs.readFileSync(file, 'utf8');
+    for (const [name, value] of secrets) {
+      if (text.indexOf(value) > -1) {
+        stop(rel + ' holds the value of ' + name + ', a secret key.\n' +
+             'Secret keys live in Netlify\'s environment variables and nowhere else: a key in a published file\n' +
+             'can be read by anybody. Take it out of that file, then change the key itself where it was made\n' +
+             '(it has to be treated as seen), put the new one in Netlify, and deploy again.');
+      }
+    }
+    for (const [name, value] of phrases) {
+      if (text.indexOf(value) > -1) {
+        warn(rel + ' has the words of ' + name + ' in it. Anybody can read that file: choose a new phrase in ' +
+             'Flutterwave (Settings > Webhooks) and put the same one in Netlify.');
+      }
+    }
+    if (/FLWSECK(_TEST)?-[A-Za-z0-9]{8,}/.test(text)) {
+      stop(rel + ' holds what looks like a Flutterwave secret key (FLWSECK...).\n' +
+           'Secret keys live in Netlify\'s environment variables and nowhere else. Take it out, change the key\n' +
+           'in Flutterwave, and deploy again.');
+    }
+    const jwts = text.match(/eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g) || [];
+    if (jwts.some((t) => jwtRole(t) === 'service_role')) {
+      stop(rel + ' holds a Supabase service key (its role is service_role), which opens the whole database.\n' +
+           'Only the public (anon) key belongs in config.js. Take it out, roll the service key in Supabase\n' +
+           '(Project Settings > API), put the new one in Netlify as SUPABASE_SERVICE_ROLE_KEY, and deploy again.');
+    }
+    if (/\.(html?|js)$/i.test(file) && CARD_FIELD.test(text)) {
+      stop(rel + ' has a box for a card number, expiry or security code.\n' +
+           'Cards are typed only into the payment gateway\'s own secure window or page, never into this\n' +
+           'website (build 88). Take the field out and deploy again.');
+    }
+  }
+}
+
 /* ----------------------------------------------------------------- build */
 
 (function build() {
@@ -504,23 +604,33 @@ function preparePage(page) {
   }
 
   for (const p of PAGES) preparePage(p);
+  noSecretsNoCardFields(OUT);
 
-  POLICY['script-src'] = POLICY['script-src'].concat(hashes);
+  POLICY['script-src'] = POLICY['script-src'].concat(hashes, LENCO_ORIGINS);   // build 88: Lenco's card window, after the hashes
   POLICY['connect-src'] = ["'self'", supabase.origin, supabase.socket].concat(POLICY['connect-src'].slice(1));
   const reports = !/^(off|no|false|0)$/i.test(String(process.env.CSP_REPORTS || '').trim());
   const policy = Object.keys(POLICY).map((k) => k + ' ' + POLICY[k].join(' '))
+    .concat(reports ? ['report-uri ' + REPORT_TO] : []).join('; ');
+
+  /* Step 7 (build 88): the scripts part, enforced beside the whole policy. */
+  const scriptsReport = /^(report|report-only|off|no|false|0)$/i.test(String(process.env.CSP_SCRIPTS || '').trim());
+  const scripts = ['script-src ' + POLICY['script-src'].join(' '), "object-src 'none'", "base-uri 'self'", "frame-ancestors 'none'"]
     .concat(reports ? ['report-uri ' + REPORT_TO] : []).join('; ');
 
   fs.writeFileSync(path.join(OUT, '_headers'),
     '# Written by tools/build-site.cjs on every deploy. Change that file, not this one.\n' +
     '# Every other header is in netlify.toml, and no header is set in both places.\n' +
     '/*\n' +
-    '  Content-Security-Policy-Report-Only: ' + policy + '\n');
+    '  Content-Security-Policy-Report-Only: ' + policy + '\n' +
+    (scriptsReport ? '' : '  Content-Security-Policy: ' + scripts + '\n'));
 
   say(copied + ' files published (' + (bytes / 1048576).toFixed(1) + ' MB); nothing else in the folder is published.');
   say(stamped + ' script and stylesheet addresses fingerprinted.');
   say('Security policy: report-only, ' + hashes.length + ' inline scripts allowed by their contents, ' +
       (reports ? 'reports to ' + REPORT_TO : 'reports switched off (CSP_REPORTS)') + '.');
+  say(scriptsReport ? '! Scripts: report-only too, because Netlify holds CSP_SCRIPTS = ' + process.env.CSP_SCRIPTS + '.'
+                    : 'Scripts: enforced. Only this site, its own inline scripts and Lenco\'s card window may run scripts.');
+  say('Checked: no secret key and no card field in anything published.');
   say('Supabase: ' + supabase.origin);
   if (warnings) say(warnings + ' thing' + (warnings === 1 ? '' : 's') + ' worth knowing, above. None stops the deploy.');
   if (checks === 'paused') console.log('\n  !!! ' + PAUSED_WORDS);

@@ -27,35 +27,37 @@ A. GITHUB DESKTOP  (easiest, one commit)
 
 B. THE BROWSER  (four drags, because GitHub takes 100 files at a time)
 -----------------------------------------------------------------------
-  Add file > Upload files, drag, then Commit changes. Four times:
+  Add file > Upload files, drag, then Commit changes. Four times.
+  (Build 88 groups them differently: assets and netlify together are
+  now 103 files, over GitHub's 100 at a time.)
 
-  Drag 1 — two FOLDERS together:    assets   netlify           (99 files)
-  Drag 2 and 3 — the tests folder, in two parts (117 files in all):
+  Drag 1 — at the top of your repository, three FOLDERS together:
+           assets   images   tools                          (75 files)
+  Drag 2 — at the top of your repository: the netlify FOLDER, the
+           .github FOLDER if you can see it, and every loose file at
+           the top level (the 49 files beside the folders)    (92 files)
+  Drag 3 and 4 — the tests folder, in two parts (133 files in all):
            First open your repository on GitHub and click the tests
            folder, so the page shows tests at the top. Then:
-     Drag 2 — Add file > Upload files, and drag in, from inside your
+     Drag 3 — Add file > Upload files, and drag in, from inside your
            unzipped tests folder, every file whose name ends in
-           .browser.cjs (43 files). Typing browser.cjs into the
+           .browser.cjs (48 files). Typing browser.cjs into the
            folder's search box shows just those. Commit changes.
-     Drag 3 — still inside tests on GitHub: Add file > Upload files,
+     Drag 4 — still inside tests on GitHub: Add file > Upload files,
            and drag in everything else inside your tests folder, the
-           supabase-standin folder among it (74 files). Commit changes.
-  Drag 4 — back at the top of your repository: two FOLDERS, and every
-           loose file at the top level:
-           images   tools   and the 45 files beside them      (57 files)
-           and the .github folder with them, if you can see it
+           supabase-standin folder among it (85 files). Commit changes.
 
-  (Until build 79 the tests folder went in one drag. Build 80 brings
-  twenty more checks and it is now 111 files, over GitHub's 100 at a
-  time. Drags 2 and 3 land in the right place because the page is
-  inside tests when you drop them.)
+  (Until build 79 the tests folder went in one drag. Build 80 brought
+  twenty more checks and it went over GitHub's 100 at a time. Drags 3
+  and 4 land in the right place because the page is inside tests when
+  you drop them.)
 
-  DRAG FOLDERS, NOT WHAT IS INSIDE THEM, except in drags 2 and 3 above,
+  DRAG FOLDERS, NOT WHAT IS INSIDE THEM, except in drags 3 and 4 above,
   which are dropped while GitHub's page is inside tests. GitHub keeps a
   folder's structure when you drag the folder itself; open it first and
   the files land in the wrong place.
 
-  Last, once: if your repository has no .github folder after drag 4,
+  Last, once: if your repository has no .github folder after drag 2,
   make the one file in it by hand. It is what runs the checks on
   GitHub (START-HERE.txt, NEW IN 79).
     1. Add file > Create new file

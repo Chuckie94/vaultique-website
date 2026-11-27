@@ -166,6 +166,10 @@ async function otherSites(ctx) {
     if (/\.(png|jpe?g)$/.test(u.pathname)) return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
     if (/\.mp4$/.test(u.pathname)) return route.fulfill({ status: 200, contentType: 'video/mp4', body: '' });
     if (u.host === 'nominatim.openstreetmap.org') return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    /* Build 88: Lenco's card window, as the checkout loads it. */
+    if (u.host === 'pay.lenco.co' || u.host === 'pay.sandbox.lenco.co') {
+      return route.fulfill({ status: 200, contentType: 'text/javascript', body: 'window.LencoPay = { getPaid: function () {} };' });
+    }
     return route.fulfill({ status: 404, body: '' });
   });
 }
@@ -248,6 +252,31 @@ let base = '';
       is(seen.some(s => /^script-src-elem inline/.test(s)), 'and the page hears about it', seen.join(' | '));
       await v.page.waitForTimeout(300);
       is(REPORTS.length > 0, 'and a report is posted, as the live site\'s would be to csp-report', REPORTS.length + ' reports');
+      await v.ctx.close();
+      REPORTS.length = 0;
+    }
+
+    console.log('\nBuild 88: the scripts part enforced, and Lenco\'s card window let in');
+    {
+      const scripts = (/^\s+Content-Security-Policy:\s*(.+)$/m.exec(headers) || [])[1] || '';
+      is(/script-src 'self' 'sha256-/.test(scripts) && /https:\/\/pay\.lenco\.co/.test(scripts) &&
+         /object-src 'none'/.test(scripts) && /base-uri 'self'/.test(scripts) && /frame-ancestors 'none'/.test(scripts) && !/default-src/.test(scripts),
+         'the deploy also sends the scripts part, enforced: this site, its own inline scripts, and Lenco\'s window', scripts);
+      is(/frame-src[^;]*https:\/\/pay\.lenco\.co/.test(ENFORCED) && /frame-src[^;]*https:\/\/pay\.sandbox\.lenco\.co/.test(ENFORCED),
+         'and the whole policy lets Lenco\'s window into its frame');
+      const v = await visit(browser, '/shop', () => document.querySelectorAll('#grid .card').length > 0, 'the shop, Lenco\'s script');
+      const got = await v.page.evaluate(() => Promise.all(['https://pay.lenco.co/js/v1/inline.js', 'https://pay.sandbox.lenco.co/js/v1/inline.js',
+        'https://evil.example.test/steal.js'].map((src) => new Promise((r) => {
+          const el = document.createElement('script');
+          el.src = src;
+          el.onload = () => r('loaded');
+          el.onerror = () => r('blocked');
+          document.head.appendChild(el);
+        }))));
+      is(got[0] === 'loaded' && got[1] === 'loaded', 'Lenco\'s window script loads, live and sandbox', JSON.stringify(got));
+      is(got[2] === 'blocked', 'a script from any other site is blocked by the browser', JSON.stringify(got));
+      const seen = await v.page.evaluate(() => window.__csp || []);
+      is(seen.some((x) => /evil\.example\.test/.test(x)) && !seen.some((x) => /lenco/.test(x)), 'and only that one is reported', seen.join(' | '));
       await v.ctx.close();
       REPORTS.length = 0;
     }

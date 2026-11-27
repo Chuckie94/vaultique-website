@@ -30,7 +30,10 @@ const POS = [
 ];
 const SETTINGS = {
   general: { businessName: 'Vaultique', currency: 'ZMW' },
-  payments: { onlineEnabled: false, onlineMode: 'test', onlineCard: true, onlineMobile: true },
+  payments: { onlineEnabled: false, onlineMode: 'test', onlineCard: true, onlineMobile: true,
+    /* build 88: Flutterwave takes payments only once switched on in its own
+       setting (flwEnabled), as the shop will once its account is approved */
+    flwEnabled: true },
   delivery: { payDelivery: true, standardFee: 80 },
   shopping: { requireName: true, requirePhone: true, requireEmail: false, requireAddress: false },
   contact: { orderNumber: '260970000000', whatsapp: '260970000000' },
@@ -526,7 +529,10 @@ const server = http.createServer(async (req, res) => {
       await page.click('#odPay');
       await page.waitForFunction(() => /WhatsApp/.test((document.getElementById('pqLead') || {}).textContent || ''), null, { timeout: 15000 });
       const lead = await page.textContent('#pqLead');
-      is(/collect in person, or order on WhatsApp/.test(lead) && /WhatsApp instead/.test(await page.textContent('#pqPay')),
+      /* Build 88: the button says "Complete your order via WhatsApp", the
+         owner's words on the payment screens (it said "Order on WhatsApp
+         instead" before). */
+      is(/collect in person, or order on WhatsApp/.test(lead) && /Complete your order via WhatsApp/.test(await page.textContent('#pqPay')),
          '"My town is not listed" is pointed to collection or WhatsApp, never charged a guess', lead);
       await ctx.close();
     }

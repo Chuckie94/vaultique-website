@@ -73,16 +73,16 @@ echo "$out" | grep -q "A test payment is never rung up.*NOT RUN YET" \
 echo "$out" | grep -q "Customer requests.*NOT RUN YET (optional)" \
   || { echo "   the report does not say customers' requests are not run yet"; fail=1; }
 
-echo "3. The files made after the hardening (builds 80, 81, 83, 85 and 87), twice each, then the hardening once more"
+echo "3. The files made after the hardening (builds 80, 81, 83, 85, 87 and 88), twice each, then the hardening once more"
 AFTER="supabase-pos-orders.sql supabase-payment-history.sql supabase-order-progress.sql supabase-online-refund.sql
-supabase-chat-reply-push.sql supabase-test-orders.sql supabase-customer-requests.sql"
+supabase-chat-reply-push.sql supabase-test-orders.sql supabase-customer-requests.sql supabase-lenco.sql"
 for f in $AFTER; do
   for n in 1 2; do
     out=$(run "$here/$f") || { echo "   FAILED  $f (run $n)"; echo "$out" | grep -E 'ERROR|LINE' | head -3 | sed 's/^/           /'; fail=1; }
   done
 done
 out=$(run "$here/supabase-hardening.sql") || { echo "   FAILED: the hardening after them"; echo "$out" | grep -E 'ERROR|LINE|CONTEXT' | head -4 | sed 's/^/           /'; fail=1; }
-[ $fail -eq 0 ] && echo "   all 7 ran, twice, and the hardening ran after them"
+[ $fail -eq 0 ] && echo "   all 8 ran, twice, and the hardening ran after them"
 # supabase-test-orders.sql's own check row (build 85) says OK.
 out85=$(run "$here/supabase-test-orders.sql") || fail=1
 echo "$out85" | grep -q "OK · a test payment is never rung up" \
@@ -105,6 +105,21 @@ echo "$out87" | grep -q "OK · customers can ask, the shop decides" \
 echo "$out" | grep -q "Customer requests.*OK · the platform's till can reach it with its own key" \
   && echo "   the report: customer requests, OK · the platform's till can reach it" \
   || { echo "   the report does not say customer requests are OK"; echo "$out" | grep "Customer requests" | sed 's/^/           /'; fail=1; }
+
+# supabase-lenco.sql's own check row (build 88) says OK, after the hardening ran again.
+out88=$(run "$here/supabase-lenco.sql") || fail=1
+echo "$out88" | grep -q "OK · Lenco payments can be recorded" \
+  && echo "   supabase-lenco.sql says: OK · Lenco payments can be recorded" \
+  || { echo "   supabase-lenco.sql does not say OK"; echo "$out88" | tail -4 | sed 's/^/           /'; fail=1; }
+echo "$out88" | grep -q "OK · an order is paid once" \
+  && echo "   supabase-lenco.sql says: OK · an order is paid once" \
+  || { echo "   supabase-lenco.sql does not say an order is paid once"; fail=1; }
+# Online refunds run again after it keep the build 88 rule (no_refund_api).
+run "$here/supabase-online-refund.sql" >/dev/null || fail=1
+echo "select case when pg_get_functiondef('public.refund_state_of(uuid)'::regprocedure) like '%no_refund_api%' then 'kept' else 'LOST' end;" \
+  | as "psql -X -q -t -d $DB -f -" | grep -q kept \
+  && echo "   supabase-online-refund.sql run again keeps the build 88 refund rule" \
+  || { echo "   supabase-online-refund.sql run again lost the build 88 refund rule"; fail=1; }
 
 echo "4. Each older file again: each must refuse"
 refused=0

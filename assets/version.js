@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.57.0',
-  build: 87,
-  builtAt: '2026-11-25T16:37:36Z',
-  notes: 'Customers\' requests. From their own order a signed-in customer can ask to cancel it (before the shop has started on it), return or exchange pieces (within the days set in Settings > Customer Accounts after it arrived, 7 unless set), or report a problem (once it is on its way, up to 30 days after it arrived), with a reason, the pieces, what instead, their words, and photos through the chat. The shop accepts or declines each, with a word for the customer, in the business platform\'s Online Orders (platform 512, behind the till\'s key) or in Admin > Orders; a cancel accepted cancels an order not paid online and not rung up, and one paid online is cancelled by its refund (Online Refund). The customer sees each step and can withdraw; the shop is emailed each new request and the customer each answer (the 15-minute check). Off until switched on in Settings. One SQL file: supabase-customer-requests.sql. Holds builds 86, 85 and 84.'
+  version: '1.58.0',
+  build: 88,
+  builtAt: '2026-11-26T04:33:57Z',
+  notes: 'Lenco, the primary payment gateway for Zambia, and one checkout for every way of paying. After the total the customer chooses Mobile Money (Airtel Money, MTN MoMo, Zamtel Kwacha: a request to their phone, approved with their PIN) or Debit / Credit Card (in Lenco\'s own secure window); never a gateway. The payment screens in the owner\'s words (Payment Authorisation Required, Payment Successful, Payment Unsuccessful), with Cancel payment, Didn\'t receive approval request? and a Contact us link to the chat; nobody is asked or charged twice for one order; cards ready to be routed by the customer\'s answer, Zambian or international, once DPO is connected (never a card detail typed on the website). Paid only on Lenco\'s own word, asked directly; webhooks signed and still checked; a failed try can be tried again on the same order, and an order is paid once. Settings > Payments: a switch for each gateway (Lenco; Flutterwave kept, off until approved), what Lenco has activated, its readiness, and payment activity. Which scripts may run is now enforced, and a deploy stops if a secret key or a card field would be published. One SQL file: supabase-lenco.sql. Holds builds 87 to 84.'
 };

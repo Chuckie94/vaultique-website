@@ -45,6 +45,25 @@
 //      hold is worked out here, from this website's own orders.
 //
 //   (Build 81: refunds keep rules of their own, in _refund.js.)
+//
+//   8. BUILD 88 · MORE THAN ONE GATEWAY. Lenco (_lenco.js) is the primary
+//      gateway for Zambia: mobile money (Airtel, MTN, Zamtel) by a prompt
+//      on the customer's phone, and cards in Lenco's own payment window.
+//      Flutterwave stays exactly as it was, switched on only by its own
+//      setting (flwEnabled), for when its merchant account is approved.
+//      Which gateway takes which way of paying is decided here (routes);
+//      the customer chooses a way of paying, never a gateway. Every rule
+//      above holds for both: the price is worked out here, nothing is paid
+//      until the gateway itself says so, the keys stay in Netlify, and
+//      card details never come here.
+//
+//   9. BUILD 88 · AN ORDER IS PAID ONCE. A customer whose mobile money
+//      payment failed (a wrong PIN, not enough money) can try again on the
+//      same order: each try is a payment of its own, none overwritten. If
+//      two of them are ever both paid, the second is never counted: it
+//      "needs attention", and the shop is told to refund it. The database
+//      itself refuses a second paid payment for one order
+//      (supabase-lenco.sql).
 // =====================================================================
 const fs = require('fs');
 const path = require('path');
@@ -119,6 +138,11 @@ const PRICING_DEFAULTS = {
 const PAY_DEFAULTS = {
   onlineEnabled: false, onlineMode: 'test', onlineCard: true, onlineMobile: true,
   onlineConfirmEmail: true, onlineNotifyShop: true,
+  // BUILD 88 · the gateways, each off until the shop switches it on. A
+  // network or cards are offered through Lenco only once the shop has ticked
+  // them as activated on its Lenco account: nothing is offered on trust.
+  lencoEnabled: false, lencoAirtel: false, lencoMtn: false, lencoZamtel: false, lencoCard: false,
+  flwEnabled: false,
 };
 const DELIVERY_DEFAULTS = {
   deliveryEnabled: true, pickupEnabled: true,
@@ -149,6 +173,107 @@ async function shopSettings() {
 
 function onlineOn(s) {
   return s.pay.onlineEnabled === true && (s.pay.onlineCard !== false || s.pay.onlineMobile !== false);
+}
+
+// ---- BUILD 88 · which gateway takes which way of paying -------------------------
+// The customer is offered ways of paying, never a gateway: Mobile Money,
+// Instant Bank Transfer, Debit / Credit Card. Each goes to the first gateway
+// that is switched on, ready for the mode, and able to take it: Lenco first
+// (the primary gateway for Zambia), then Flutterwave, only once the shop has
+// switched it on (its merchant account approved). A way of paying no
+// gateway can take is not offered at all.
+//
+//   via 'prompt'  Lenco: a request to the customer's phone (mobile money)
+//   via 'window'  Lenco: Lenco's own payment window opens over the page (cards)
+//   via 'page'    Flutterwave: the customer is sent to Flutterwave's page
+//
+// Instant Bank Transfer: neither gateway's API can take one today (Lenco's
+// takes card and mobile money only), so it is never offered. Its place in
+// the list is kept for a gateway that can.
+const METHODS = ['mobile', 'bank', 'card'];
+const METHOD_LABEL = { mobile: 'Mobile Money', bank: 'Instant Bank Transfer', card: 'Debit / Credit Card' };
+const lenco = () => require('./_lenco');
+function lencoNetworks(s) {
+  const L = lenco();
+  return L.NETWORK_KEYS.filter((k) => s.pay['lenco' + k.charAt(0).toUpperCase() + k.slice(1)] === true);
+}
+function shopCurrency(s) {
+  try { return String(formats().moneyStyle(s.general, s.pricing).currency || '').toUpperCase(); }
+  catch (e) { return String((s.general && s.general.currency) || 'ZMW').toUpperCase(); }
+}
+// dbReady: whether supabase-lenco.sql is in (lencoDbReady). Lenco keeps
+// what it says in columns that file adds, so without it Lenco is not offered.
+function routes(s, mode, dbReady) {
+  const L = lenco();
+  const out = {};
+  const lencoOn = s.pay.lencoEnabled === true && dbReady === true && shopCurrency(s) === 'ZMW';
+  const flwOn = s.pay.flwEnabled === true && !!flwKey(mode);
+  if (s.pay.onlineMobile !== false) {
+    const nets = lencoNetworks(s);
+    if (lencoOn && nets.length && L.ready(mode, 'mobile')) out.mobile = { provider: 'lenco', via: 'prompt', networks: nets };
+    else if (flwOn) out.mobile = { provider: 'flutterwave', via: 'page' };
+  }
+  if (s.pay.onlineCard !== false) {
+    if (lencoOn && s.pay.lencoCard === true && L.ready(mode, 'card')) out.card = { provider: 'lenco', via: 'window' };
+    else if (flwOn) out.card = { provider: 'flutterwave', via: 'page' };
+    // Zambian or international (_cardroute.js): the gateway for cards issued
+    // in Zambia, and the one for international cards, none until DPO is
+    // connected. Only with both does the checkout ask which the card is.
+    if (out.card) {
+      out.card.gateways = { local: out.card.provider, international: null };
+      out.card.needsChoice = require('./_cardroute').needsChoice(out.card.gateways);
+    }
+  }
+  return out;
+}
+// What the page is told: the ways of paying on offer, in the order they are
+// shown, with the networks for mobile money. Nothing about keys.
+// processor: who takes the payment, named on the page under Mobile Money.
+// Never for cards: a card's gateway is named only once its window opens,
+// because with a second card gateway the customer's answer decides (Zambian
+// or international, _cardroute.js). issuerChoice: whether to ask it.
+const PROCESSOR = { lenco: 'Lenco' };
+function publicMethods(r) {
+  const L = lenco();
+  return METHODS.filter((k) => r[k]).map((k) => Object.assign({
+    key: k, label: METHOD_LABEL[k], via: r[k].via,
+    networks: (r[k].networks || []).map((n) => ({ key: n, label: L.NETWORKS[n].label })),
+  }, k === 'card' ? { issuerChoice: !!r[k].needsChoice }
+     : (r[k].via === 'prompt' && PROCESSOR[r[k].provider] ? { processor: PROCESSOR[r[k].provider] } : {})));
+}
+// A page from before build 88 says no way of paying: it can only go the
+// Flutterwave way it always went, and only while Flutterwave takes everything
+// on offer. Otherwise it is asked to load the page again.
+function legacyRoute(r) {
+  const on = METHODS.filter((k) => r[k]);
+  if (on.length && on.every((k) => r[k].provider === 'flutterwave')) return { provider: 'flutterwave', via: 'page' };
+  return null;
+}
+// What Flutterwave's page offers for one payment: the way of paying chosen,
+// or (a page with no choice) everything Flutterwave takes, as before build 88.
+function flwOptions(r, method, s) {
+  if (method === 'card') return 'card';
+  if (method === 'mobile') return 'mobilemoneyzambia';
+  const out = [];
+  if (r.card && r.card.provider === 'flutterwave') out.push('card');
+  if (r.mobile && r.mobile.provider === 'flutterwave') out.push('mobilemoneyzambia');
+  return out.length ? out.join(', ') : paymentOptions(s);
+}
+
+// Whether supabase-lenco.sql has been run: one look for a column only it
+// makes, asked with no rows, remembered for a minute.
+let LENCO_DB = null, LENCO_DB_AT = 0;
+async function lencoDbReady() {
+  if (LENCO_DB !== null && Date.now() - LENCO_DB_AT < 60000) return LENCO_DB;
+  if (!serviceKey()) return false;
+  try {
+    await svc('GET', 'payments?select=client_key,provider_ref,failure_reason,verified_at&limit=0');
+    LENCO_DB = true;
+  } catch (e) {
+    LENCO_DB = /database: (400|404)/.test(String(e && e.message)) ? false : null;
+  }
+  LENCO_DB_AT = Date.now();
+  return LENCO_DB === true;
 }
 
 // ---- the catalogue: the POS feed, with the website's own rules on it ---
@@ -450,6 +575,25 @@ async function payHealth() {
   const got = await svc('GET', 'site_settings_private?key=eq.pay-health&select=data');
   return (got && got[0] && got[0].data) || {};
 }
+// BUILD 88 · the same record, for anything else worth the shop knowing: when
+// Lenco last reached its webhook, when something reached it unsigned, the
+// last error a gateway gave, and the fifteen-minute check-up's last run.
+// Counts are kept as counts, so a flood of forged webhooks fills nothing.
+async function noteHealth(patch, counts) {
+  const now = new Date().toISOString();
+  const got = await svc('GET', 'site_settings_private?key=eq.pay-health&select=data');
+  const data = Object.assign({}, (got && got[0] && got[0].data) || {}, patch || {});
+  Object.keys(counts || {}).forEach((k) => { data[k] = (Number(data[k]) || 0) + counts[k]; });
+  await svc('POST', 'site_settings_private', { key: 'pay-health', data, updated_at: now },
+    'resolution=merge-duplicates,return=minimal');
+}
+// A gateway's error, for Settings > Payments. Never a key: only what the
+// gateway said, already cut short by its adapter.
+function noteError(provider, message) {
+  const at = new Date().toISOString();
+  return noteHealth({ [provider + 'LastErrorAt']: at, [provider + 'LastError']: String(message || '').slice(0, 200) })
+    .catch(() => {});
+}
 
 // Whether the person behind a sign-in token is one of the shop's
 // administrators. Asked of the database with their own token, so the
@@ -515,6 +659,17 @@ async function settle(txRef, transactionId, opts) {
   // An attempt marked expired or failed is still asked about: money that
   // arrives late is still the customer's money, and still an order.
 
+  // BUILD 88 · The gateway the payment went to is the one asked: each knows
+  // only its own references. A payment from before build 88 says
+  // flutterwave (the column's default).
+  const provider = String(pay.provider || 'flutterwave');
+  if (provider === 'lenco') return settleLenco(pay, review);
+  if (provider !== 'flutterwave') return { status: review || 'pending', pay };
+  return settleFlutterwave(pay, txRef, transactionId, review);
+}
+
+// ---- Flutterwave's answer (unchanged since build 77, moved here in 88) -------
+async function settleFlutterwave(pay, txRef, transactionId, review) {
   const answer = transactionId && /^\d{1,20}$/.test(String(transactionId))
     ? await flw(pay.mode, 'GET', '/transactions/' + encodeURIComponent(transactionId) + '/verify')
     : await flw(pay.mode, 'GET', '/transactions/verify_by_reference?tx_ref=' + encodeURIComponent(txRef));
@@ -568,6 +723,151 @@ async function settle(txRef, transactionId, opts) {
     return { status: 'failed', pay };
   }
   return { status: review || 'pending', pay };
+}
+
+// ---- BUILD 88 · Lenco's answer -----------------------------------------------------
+// Lenco is asked about our reference (GET /collections/status/:reference)
+// and its answer is held to the same rules as Flutterwave's: only Lenco's
+// word, only about this reference, only exactly the amount and currency
+// asked. Each answer is kept on the payment: when Lenco was last asked
+// (verified_at), Lenco's own status, its references, and why it failed.
+const encR = encodeURIComponent;
+function lencoDetail(c, extra) {
+  // A card's BIN (first six digits, as Lenco gives it beside the last four,
+  // after the payment; never typed on this website) and whether a Zambian
+  // bank issued it, once CARD_BINS_ZM is set: how many international cards
+  // the shop gets (_cardroute.js).
+  const card = c.cardBin ? { card_bin: c.cardBin.slice(0, 6), card_issuer: require('./_cardroute').issuerOf(c.cardBin) || null } : {};
+  return Object.assign({
+    provider: 'lenco', lenco_ref: c.lencoReference || '', lenco_id: c.id || '', amount: c.amount,
+    fee: c.fee, type: c.type, operator: c.operator, operator_tx: c.operatorTxId, settlement: c.settlementStatus,
+  }, card, extra || {});
+}
+// The customer's answer for a card (Zambian or international) and the
+// gateway it chose, kept when the payment's record is written again; with
+// the card's issuer from its BIN, whether the answer was right.
+function keepRoute(pay, d) {
+  const r = pay && pay.detail && pay.detail.card_route;
+  if (!r) return d;
+  const out = Object.assign({ card_route: r }, d);
+  if (r.choice && out.card_issuer) out.card_choice_right = (r.choice === 'local') === (out.card_issuer === 'ZM');
+  return out;
+}
+// What Lenco said about a payment still on its way: kept, but never a
+// reason to change the payment. One write, and one that may fail quietly.
+function touchLenco(pay, patch) {
+  return svc('PATCH', 'payments?tx_ref=eq.' + encR(pay.tx_ref) + '&status=in.(started,expired)', patch, 'return=minimal')
+    .catch(() => {});
+}
+async function settleLenco(pay, review) {
+  const L = lenco();
+  const txRef = pay.tx_ref;
+  const now = new Date().toISOString();
+  const stay = () => ({ status: review || (pay.status === 'failed' ? 'failed' : 'pending'), pay });
+  const a = await L.ask(pay.mode, txRef);
+  if (!a.answered) {
+    await noteError('lenco', a.message);
+    return stay();
+  }
+  if (a.notFound) {
+    // Lenco has nothing under this reference: a card window opened and
+    // closed without paying, or a prompt that never reached Lenco. Nothing
+    // is decided on it; the three-hour tidy-up closes an attempt nobody paid.
+    await touchLenco(pay, { verified_at: now, provider_status: 'not-found' });
+    return Object.assign(stay(), { notFound: true });
+  }
+  const c = a.c;
+  // Lenco's answer is about this payment only if it names it.
+  if (c.reference !== txRef) return stay();
+  const ours = c.currency === String(pay.currency || '').toUpperCase() &&
+    Math.abs(Number(c.amount) - Number(pay.amount)) < 0.005;
+  const said = { provider_tx_id: c.id || null, provider_ref: c.lencoReference || null, provider_status: c.status,
+                 verified_at: now, provider_response: L.responseOf(c) };
+
+  if (a.state === 'successful' && ours) {
+    // Rule 9: an order already paid by another of its payments is not paid
+    // again. This one is money the shop has to give back.
+    const other = pay.order_id ? await svc('GET', 'payments?select=tx_ref&order_id=eq.' + pay.order_id +
+      '&status=eq.paid&tx_ref=neq.' + encR(txRef) + '&limit=1') : [];
+    if (other && other.length) return lencoAttention(pay, c, said, other[0].tx_ref);
+    let won;
+    try {
+      won = await svc('PATCH', 'payments?tx_ref=eq.' + encR(txRef) + '&status=neq.paid', Object.assign({
+        status: 'paid', channel: c.type || pay.channel || '', updated_at: now,
+        confirmed_at: c.completedAt || now, failure_reason: null, detail: keepRoute(pay, lencoDetail(c)),
+      }, said));
+    } catch (e) {
+      // The database's own lock (supabase-lenco.sql): another payment of this
+      // order was marked paid at the same moment. That one stands.
+      if (/23505|duplicate key|payments_one_paid/i.test(String(e && e.message))) {
+        const first = await svc('GET', 'payments?select=tx_ref&order_id=eq.' + pay.order_id + '&status=eq.paid&limit=1');
+        return lencoAttention(pay, c, said, (first && first[0] && first[0].tx_ref) || 'another payment');
+      }
+      throw e;
+    }
+    const row = (won && won[0]) || pay;
+    const caught = await orderPaid(row, c.amount, c.type || pay.channel, now);
+    return { status: 'paid', pay: row, fresh: !!caught, late: caught === 'late' };
+  }
+  if (a.state === 'successful') return lencoAttention(pay, c, said, null);   // paid, not what was asked
+  if (a.state === 'failed') {
+    if (review) return { status: 'review', pay };
+    if (pay.status !== 'failed') {
+      await failAttempt(pay, 'failed', Object.assign({ failure_reason: c.reason || 'failed' }, said),
+                        { provider: 'lenco', why: c.reason || '', lenco_ref: c.lencoReference || '' });
+    } else if (pay.provider_status !== 'failed') {
+      // Closed here first (the customer pressed Cancel payment): Lenco's own
+      // word is kept beside it, and ends the wait for a request still on the
+      // phone. Why it was closed stays as it was.
+      await svc('PATCH', 'payments?tx_ref=eq.' + encR(txRef) + '&status=eq.failed',
+        Object.assign({ updated_at: now }, said, pay.failure_reason ? {} : { failure_reason: c.reason || 'failed' }),
+        'return=minimal').catch(() => {});
+    }
+    // final: Lenco has decided; no request for this payment is live any more.
+    return { status: 'failed', pay, reason: c.reason || pay.failure_reason || '', final: true };
+  }
+  await touchLenco(pay, said);
+  return Object.assign(stay(), { providerState: c.status });
+}
+
+// BUILD 88 · An attempt that failed, for a gateway whose customer may try the
+// same order again (Lenco). Its order is cancelled only if this attempt is the
+// order's latest: a newer attempt already under way is left to finish.
+async function failAttempt(pay, why, cols, detail) {
+  const now = new Date().toISOString();
+  await svc('PATCH', 'payments?tx_ref=eq.' + encR(pay.tx_ref) + '&status=in.(started,expired)',
+    Object.assign({ status: 'failed', updated_at: now, detail: keepRoute(pay, Object.assign({ reason: why || 'failed' }, detail || {})) }, cols || {}),
+    'return=minimal');
+  if (pay.order_id) {
+    await svc('PATCH', 'orders?id=eq.' + pay.order_id + '&pay_ref=eq.' + encR(pay.tx_ref) + '&payment_status=in.(awaiting,expired)',
+      { payment_status: 'failed', status: 'cancelled', updated_at: now }, 'return=minimal');
+  }
+}
+
+// BUILD 88 · Lenco says paid, but not as asked (dupOf empty: another amount
+// or currency), or for an order another payment has already paid (dupOf: that
+// payment). Never paid; the shop is told once, by whichever request makes the
+// switch. A mismatch keeps its order open, as for Flutterwave; a second
+// payment leaves its order paid by the first.
+async function lencoAttention(pay, c, said, dupOf) {
+  const now = new Date().toISOString();
+  const got = await svc('PATCH', 'payments?tx_ref=eq.' + encR(pay.tx_ref) + '&status=in.(started,expired,failed)', Object.assign({
+    status: 'review', channel: c.type || pay.channel || '', updated_at: now,
+    detail: keepRoute(pay, lencoDetail(c, Object.assign({
+      mismatch: !dupOf, expected: Number(pay.amount), expectedCurrency: pay.currency,
+      currency: c.currency, tx_ref: c.reference,
+    }, dupOf ? { duplicate: true, duplicateOf: dupOf } : {}))),
+  }, said));
+  const row = got && got[0];
+  if (!row) return { status: 'review', pay, duplicate: !!dupOf };
+  if (!dupOf) await orderNeedsAttention(row, now);
+  try {
+    await attentionEmail(await shopSettings(), row, {
+      provider: 'lenco', amount: c.amount, currency: c.currency, payment_type: c.type,
+      lenco_ref: c.lencoReference || '', duplicateOf: dupOf || '',
+    });
+  } catch (e) { /* the record stands whether or not the email goes */ }
+  return { status: 'review', pay: row, fresh: true, duplicate: !!dupOf };
 }
 
 // The order a paid payment belongs to, marked paid if it is not already.
@@ -684,19 +984,28 @@ async function attentionEmail(s, pay, d) {
   const how = d.payment_type ? ' (' + (d.payment_type === 'card' ? 'card' : 'mobile money') + ')' : '';
   const ref = o.ref || String(pay.tx_ref || '').split('-').slice(0, 2).join('-');
   const shop = s.general.businessName || 'Vaultique Boutique Point';
+  // BUILD 88 · the gateway the payment went through; Flutterwave's words are
+  // exactly as they were.
+  const gw = d.provider === 'lenco' ? 'Lenco' : 'Flutterwave';
+  const twice = !!d.duplicateOf;
   const sendMail = require('./send-email')._internals.sendMail;
   await sendMail(Object.assign(M.accountConfig(account), {
     senderName: n.senderName || shop,
     to: shopTo,
-    subject: (test ? '[TEST] ' : '') + 'Payment needs attention: order ' + ref,
+    subject: (test ? '[TEST] ' : '') + (twice ? 'Paid twice, refund one: order ' : 'Payment needs attention: order ') + ref,
     text: (test ? 'A TEST payment, made in Test mode: no money moved.\n\n' : '') +
-      'A payment came in for order ' + ref + ', but it does not match the order.\n\n' +
+      (twice ? 'A second payment came in for order ' + ref + ', which another payment had already paid.\n\n'
+             : 'A payment came in for order ' + ref + ', but it does not match the order.\n\n') +
       'The order: ' + money(Number(pay.amount)) + '\n' +
       'Received: ' + got + how + '\n' +
       (d.flw_ref ? 'Flutterwave reference: ' + d.flw_ref + '\n' : '') +
-      'Our reference: ' + pay.tx_ref + '\n\n' +
-      'Nothing has been marked paid, and the order stays open. Check the payment in your ' +
-      'Flutterwave dashboard, then contact the customer.\n\n' +
+      (d.lenco_ref ? 'Lenco reference: ' + d.lenco_ref + '\n' : '') +
+      'Our reference: ' + pay.tx_ref + '\n' +
+      (twice ? 'The payment that paid the order: ' + d.duplicateOf + '\n' : '') + '\n' +
+      (twice ? 'The order is paid once and counted once. This second payment is not counted anywhere: ' +
+               'refund it to the customer from your ' + gw + ' account, then let them know.\n\n'
+             : 'Nothing has been marked paid, and the order stays open. Check the payment in your ' +
+               gw + ' dashboard, then contact the customer.\n\n') +
       'Customer: ' + (o.name || '') + '\nPhone: ' + (o.phone || '') + '\nEmail: ' + (o.email || ''),
   }));
   return { sent: 1 };
@@ -733,7 +1042,12 @@ async function failPayment(pay, why) {
 // mode is the payment's own ('test' or 'live'). A test payment says so in
 // both subjects and never calls itself paid (build 77, W-04): no money
 // moved, and an email that said otherwise could be forwarded as proof.
-async function confirmByEmail(s, orderId, mode, late) {
+async function confirmByEmail(s, orderId, mode, late, provider) {
+  // BUILD 88 · the gateway the payment went through, for the shop's email.
+  // Not given (Flutterwave's callers): Flutterwave, word for word as before.
+  const gw = provider === 'lenco' ? 'Lenco' : 'Flutterwave';
+  const gwTest = provider === 'lenco' ? 'Lenco\'s sandbox cards and numbers were used'
+                                      : 'Flutterwave\'s test cards and numbers were used';
   try {
     // The shop's email account, read the one way every function reads it
     // (_mail.js): since build 77 the password is in a row only the server
@@ -799,9 +1113,9 @@ async function confirmByEmail(s, orderId, mode, late) {
                         'had already been cancelled for not being paid, and it has brought the order back. ' +
                         'Nothing was set aside for it meanwhile, so the piece may have sold since: check it is ' +
                         'still there before you confirm the order, and if it is not, refund the customer from ' +
-                        'your Flutterwave dashboard.\n\n' : '') +
-                (test ? 'A TEST payment was made on the website, in Test mode. No money moved: Flutterwave\'s ' +
-                        'test cards and numbers were used. The order is marked TEST in the Orders tab.'
+                        'your ' + gw + (gw === 'Lenco' ? ' account' : ' dashboard') + '.\n\n' : '') +
+                (test ? 'A TEST payment was made on the website, in Test mode. No money moved: ' + gwTest +
+                        '. The order is marked TEST in the Orders tab.'
                       : 'A customer has paid online.') + '\n\n' + parts.join('\n') + '\n\n' +
                 'Customer: ' + (o.name || '') + '\nPhone: ' + (o.phone || '') + '\nEmail: ' + (o.email || '') +
                 (o.notes ? '\nNotes: ' + o.notes : '') + '\n\nOpen the Orders tab in your admin to confirm it.',
@@ -957,4 +1271,8 @@ module.exports = {
   signatureMatches, noteWebhook, payHealth, callerIsAdmin, changedSince,
   orderPaid, abandon, heldPieces, askedJustNow, needsAttention, attentionEmail,
   PER_PHONE_PER_HOUR, PER_CONNECTION_PER_HOUR, PER_SHOP_PER_HOUR, HOLD_DAYS, ASK_GAP_MS,
+  // build 88
+  METHODS, METHOD_LABEL, routes, publicMethods, legacyRoute, flwOptions, lencoNetworks, shopCurrency,
+  lencoDbReady, noteHealth, noteError, settleLenco, failAttempt, lencoAttention, touchLenco,
+  _resetLencoDb: () => { LENCO_DB = null; LENCO_DB_AT = 0; },
 };

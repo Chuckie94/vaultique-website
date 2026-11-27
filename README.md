@@ -58,8 +58,12 @@ secret. The files starting `_` are shared by the others.
 | `products` | The product feed, `/api/products`: the shop window, through the platform's products-only door |
 | `product-pulse` | Every five minutes: notices the catalogue changed and tells open pages to refresh |
 | `place-order` | A WhatsApp order, priced here from the catalogue and recorded |
-| `pay-quote`, `pay-start`, `pay-status`, `pay-webhook` | Online payment with Flutterwave: the price, the start, the page after paying, and Flutterwave's own word on it |
-| `pay-reconcile` | Every fifteen minutes (build 80): asks Flutterwave about any payment the site has not heard back about |
+| `pay-quote`, `pay-start`, `pay-status` | Online payment: the price, the start (with the gateway that takes the way of paying chosen, build 88), and where a payment is, on its gateway's own word; `pay-status?check=1` also says which ways of paying can be paid now; `pay-status` POST `cancel`: Cancel payment, from the page that started it, Lenco asked first (build 88) |
+| `_lenco.js` | Lenco, the primary gateway (build 88): mobile money requests, a payment's status, the signature on Lenco's webhooks, the card window's public settings; built from Lenco's API reference v2.0 |
+| `lenco-webhook` | Lenco's notices (build 88): signed, or refused; then Lenco is asked; each signed notice kept |
+| `_cardroute.js` | Which gateway takes a card (build 88, ready, routing nothing yet): by the customer's answer, a card issued in Zambia (Lenco) or an international card (DPO, once a later build connects it); never a card detail typed on the website |
+| `pay-webhook` | Flutterwave's notices, as before (Flutterwave is off until switched on, build 88) |
+| `pay-reconcile` | Every fifteen minutes (build 80): asks the gateway about any payment the site has not heard back about (Lenco's too from build 88) |
 | `order-progress` | Every fifteen minutes (build 80): an order's emails (on its way, the reminder, delivered, refunded), and marking delivered when the days run out; from build 87, customers' requests: the shop told of each new one, the customer of each answer |
 | `account-delete` | Closing a customer's account, the login included; never a login on the admin list (build 80) |
 | `account-portal` | The customer portal's records that only the shop may read, for the signed-in customer alone: the newsletter yes or no, refunds on their way, "Download my personal data" (build 86; their requests in it from 87) |
@@ -280,6 +284,23 @@ node tests/customer-requests.browser.cjs customers' requests: off until switched
                                          the form, every missing piece said; withdraw; Admin > Orders (decline
                                          needs a word, accept cancels or sends to Online Refund); the
                                          Settings switch and days (build 87)
+node tests/lenco.test.cjs                Lenco, against a stand-in that answers as Lenco's reference says:
+                                         what is offered; Airtel, MTN, Zamtel; paid only on Lenco's word;
+                                         failed; no answer; three hours; late; signed webhooks and forged
+                                         ones; the wrong amount, currency, reference; one press, a second
+                                         try, paid twice; Cancel payment and the 90-second hold; cards in
+                                         Lenco's window; Zambian or international cards, ready; refunds refused; the
+                                         check-up; Flutterwave kept and off (build 88)
+node tests/lenco-checkout.browser.cjs    the unified checkout, in the owner's words: the ways of paying,
+                                         Payment Authorisation Required, Didn't receive approval request
+                                         and Contact us, Payment Successful and View order details,
+                                         Payment Unsuccessful, Cancel payment, never two live requests,
+                                         Lenco's card window paid or closed, "Where was your card
+                                         issued?" ready for DPO, a dropped line (build 88)
+node tests/lenco-admin.browser.cjs       Settings > Payments: a switch for each gateway, what Lenco has
+                                         activated, Lenco's readiness, the payment activity (build 88)
+node tests/secure-publish.test.cjs       a deploy stops if a secret key or a card field would be published;
+                                         the scripts part of the policy enforced (build 88)
 bash tools/db-check.sh                   supabase-hardening.sql on a stand-in Supabase: the 28 files, the
                                          hardening twice, the files made after it (build 80) twice each and the
                                          hardening again, the older files refusing, then tests/hardening.sql,
@@ -293,8 +314,8 @@ bash tools/sql-tests.sh                  every psql chain above, each on a fresh
                                          till's door, the payment history and an order's progress
                                          (tests/order-progress-db.sh) (build 80), the online refunds
                                          (tests/online-refund-db.sh) (build 81), a test payment kept off the
-                                         till (build 85) and customers' requests (tests/customer-requests.sql,
-                                         build 87)
+                                         till (build 85), customers' requests (tests/customer-requests.sql,
+                                         build 87) and Lenco payments (tests/lenco.sql, build 88)
 ```
 
 The browser ones need Playwright (`npm ci` in `tests/`), the SQL ones any

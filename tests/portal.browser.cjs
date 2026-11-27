@@ -18,7 +18,7 @@
         (the orders, the wishlist, and the points as the platform gives
         them), then My shopping, My Vault and Security and privacy, as
         the screenshots have them, without Gift cards, My wallet and Product
-        alerts (decision D9, build 89). It fits a phone.
+        alerts (decision D9, build 90). It fits a phone.
      2. Every page at an address of its own, the phone's back button going
         back, and the way back on each page.
      3. My orders: the ten states an order can be in, each in its own words;
@@ -288,7 +288,7 @@ const until = async (page, fn, arg) => page.waitForFunction(fn, arg, { timeout: 
     is(J(d.cards) === J(['My orders Order history and tracking', 'Returns & refunds Manage order issues', 'My wishlist Saved products', 'Recently viewed Continue shopping']),
        'My shopping: orders, returns & refunds, wishlist, recently viewed, each with its line', J(d.cards));
     is(!d.cards.some(c => /Gift cards|Product alerts/.test(c)) && !d.rows.some(r => /My wallet/.test(r)),
-       'no Gift cards, My wallet or Product alerts: switched off in the platform (D9), alerts come with build 89', J([d.cards, d.rows]));
+       'no Gift cards, My wallet or Product alerts: switched off in the platform (D9), alerts come with build 90', J([d.cards, d.rows]));
     is(J(d.rows) === J(['Personal details', 'Address book', 'Rewards & membership', 'Customer support', 'Notifications']),
        'My Vault: details, address book, rewards, support, notifications', J(d.rows));
     is(J(d.safe) === J(['Password and authentication', 'Active devices and sessions', 'Privacy and marketing preferences', 'Download my personal data', 'Close my account']),

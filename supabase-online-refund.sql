@@ -326,6 +326,8 @@ create trigger refunds_to_order_t
 --   refunded       refunded in full already
 --   being_rung_up  not rung up yet, and a till is ringing it up now
 --   old_sale       completed before the platform's door existed
+--   no_refund_api  build 88: paid through a gateway this website cannot send
+--                  a refund to (Lenco); the shop refunds it from that account
 create or replace function public.refund_state_of(p_id uuid)
 returns jsonb
 language plpgsql
@@ -359,6 +361,8 @@ begin
   if coalesce(o.payment_method, '') <> 'online' then v_why := 'not_online';
   elsif o.payment_status = 'review' then v_why := 'review';
   elsif o.payment_status is distinct from 'paid' or pay.id is null then v_why := 'not_paid';
+  -- build 88: only through the gateway that took the money (supabase-lenco.sql)
+  elsif coalesce(pay.provider, 'flutterwave') <> 'flutterwave' then v_why := 'no_refund_api';
   elsif coalesce(btrim(pay.provider_tx_id), '') = '' then v_why := 'no_tx';
   elsif v_open > 0 then v_why := 'in_flight';
   elsif v_left <= 0.004 then v_why := 'refunded';
@@ -370,7 +374,8 @@ begin
     'pay', case when pay.id is null then null else jsonb_build_object(
         'txRef', pay.tx_ref, 'flwTxId', pay.provider_tx_id, 'flwRef', pay.detail ->> 'flw_ref',
         'amount', pay.amount, 'currency', pay.currency, 'channel', pay.channel, 'mode', pay.mode,
-        'test', pay.mode = 'test', 'paidAt', coalesce(o.paid_at, pay.updated_at)) end,
+        'test', pay.mode = 'test', 'paidAt', coalesce(o.paid_at, pay.updated_at),
+        'gateway', coalesce(pay.provider, 'flutterwave')) end,
     'paid', v_paid, 'refunded', round(v_acc, 2), 'left', v_left,
     'rungUp', o.pos_sale_id is not null, 'wholeOnly', o.pos_sale_id is null,
     'canRefund', v_why is null, 'why', v_why,

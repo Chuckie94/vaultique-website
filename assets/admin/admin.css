@@ -928,6 +928,22 @@
 .pay-ready-note{flex-basis:100%;color:var(--muted,#666);font-size:12px}
 .pay-ready-warn{color:#b3261e}
 .pay-ready .btn{margin-top:4px}
+/* build 88: Lenco's readiness, and the payment activity */
+.lenco-ready{display:flex;flex-wrap:wrap;gap:6px 14px;margin:4px 0 14px;font-size:12.5px}
+.lenco-ready .ok{color:#1e7d46}
+.lenco-ready .no{color:#b3261e}
+.lenco-ready-note{flex-basis:100%;color:var(--muted,#666);font-size:12px;word-break:break-word}
+.lenco-ready-warn{color:#b3261e}
+.lenco-ready .btn{margin-top:4px}
+.pay-act-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 12px}
+.pay-act-tab{border:1px solid var(--line,#ddd);background:transparent;border-radius:999px;padding:5px 11px;font-size:12px;cursor:pointer;color:inherit}
+.pay-act-tab.on{background:var(--navy,#0B1F3A);border-color:var(--navy,#0B1F3A);color:#fff}
+.pay-act-row{padding:8px 0;border-bottom:1px solid var(--line,#eee);font-size:12.5px}
+.pay-act-top{color:var(--muted,#666);font-size:11.5px;word-break:break-word}
+.pay-act-st{margin-top:2px;word-break:break-word}
+.pay-act-paid{color:#1e7d46}
+.pay-act-failed,.pay-act-expired,.pay-act-review{color:#b3261e}
+.pay-act-empty{color:var(--muted,#666);font-size:12.5px;padding:6px 0}
 .pay-key-said{font-size:12px;color:var(--navy,#0b1f3a);margin-left:6px}
 .pay-badge{display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;letter-spacing:.02em}
 .pay-paid{background:#e3f4ea;color:#1e7d46}

@@ -31,6 +31,19 @@
    that looks like an account number and says so, since that would put
    back exactly what the private table is for.
 
+   Online payment and its gateways (build 88)
+   ------------------------------------------
+   Customers choose a way of paying (Mobile Money, Debit / Credit Card,
+   and Instant Bank Transfer once a gateway offers one), never a gateway.
+   Each gateway has its own switch here, off until the shop switches it
+   on: Lenco, the primary gateway for Zambia, and Flutterwave, kept for
+   when its merchant account is approved. Lenco offers only what the shop
+   has ticked as activated on its Lenco account. The keys stay in Netlify;
+   this page only says whether each is there, and can ask the gateway
+   whether it accepts it. Payment activity, under the gateways, reads the
+   payments, Lenco's notices and the record of changes to this page,
+   administrators only.
+
    The layby estimate
    ------------------
    A deposit percentage and a number of months, public because the
@@ -76,6 +89,15 @@
     onlineLabel: '',
     onlineConfirmEmail: true,
     onlineNotifyShop: true,
+
+    // Build 88: each gateway off until switched on. Lenco offers only what is
+    // ticked as activated on the shop's Lenco account.
+    lencoEnabled: false,
+    lencoAirtel: false,
+    lencoMtn: false,
+    lencoZamtel: false,
+    lencoCard: false,
+    flwEnabled: false,
 
     codEnabled: false,
     codName: 'Payment on Delivery',
@@ -216,6 +238,301 @@
     return wrap;
   }
 
+  /* ---- BUILD 88 · Lenco's section, and the payment activity ------------- */
+  function findCard(host, title, cb) {
+    var tries = 0;
+    (function look() {
+      var cards = host.querySelectorAll('.card');
+      for (var i = 0; i < cards.length; i++) {
+        var h = cards[i].querySelector('h3');
+        if (h && h.textContent === title) { cb(cards[i]); return; }
+      }
+      if (tries++ < 60) setTimeout(look, 50);
+    })();
+  }
+  function whenIs(iso) {
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? String(iso || '') : d.toLocaleString();
+  }
+  function noteLine(parent, text, warn, cls) {
+    var n = document.createElement('div');
+    n.className = (cls || 'lenco-ready-note') + (warn ? ' lenco-ready-warn' : '');
+    n.textContent = text;
+    parent.appendChild(n);
+    return n;
+  }
+
+  /* Whether Lenco can take payments: each key there or not (never a value),
+     the database file, when Lenco last reached its webhook, anything that
+     reached it unsigned, Lenco's last error, and a button that asks Lenco
+     whether it accepts the tokens, charging nothing. */
+  function lencoReady(host, c) {
+    findCard(host, 'Lenco', function (box) {
+      var old = box.querySelector('.lenco-ready');
+      if (old) old.parentNode.removeChild(old);
+      var line = document.createElement('div');
+      line.className = 'lenco-ready';
+      var h3 = box.querySelector('h3');
+      h3.parentNode.insertBefore(line, h3.nextSibling);
+      if (!c) { noteLine(line, 'Lenco’s setup could not be checked from here.'); return; }
+      var ls = c.lencoSetup;
+      if (!ls) {
+        noteLine(line, (c.lenco && (c.lenco.live || c.lenco.test))
+          ? 'Lenco’s keys are in Netlify.' : 'Lenco’s keys are not in Netlify yet. SETUP.md has the steps.');
+        return;
+      }
+      [[ls.live.secret, 'Live API token'], [ls.live.public, 'Live public key'],
+       [ls.test.secret, 'Sandbox API token'], [ls.test.public, 'Sandbox public key'],
+       [ls.test.base, 'Sandbox API address'], [c.lencoDb === true, 'Database (supabase-lenco.sql)']]
+        .forEach(function (b) {
+          var s2 = document.createElement('span');
+          s2.className = b[0] ? 'ok' : 'no';
+          s2.textContent = (b[0] ? '✓ ' : '✕ ') + b[1];
+          line.appendChild(s2);
+        });
+      var db = c.lencoDb === true;
+      var live = db && ls.live.mobile, test = db && ls.test.mobile;
+      noteLine(line, !db
+        ? 'Not ready: run supabase-lenco.sql in the website’s Supabase (SQL Editor). Until then Lenco is not offered.'
+        : live && test ? 'Ready for Test and Live payments. The keys live in Netlify and are never shown here.'
+        : live ? 'Ready for Live payments. Test mode also needs the sandbox token and the sandbox API address.'
+        : test ? 'Ready for Test payments only. Live needs LENCO_SECRET_KEY_LIVE and LENCO_PUBLIC_KEY_LIVE in Netlify.'
+        : 'Not ready yet: add Lenco’s keys in Netlify > Site configuration > Environment variables, then ' +
+          'redeploy. SETUP.md has the steps.');
+      if ((ls.live.secret && !ls.live.public) || (ls.test.secret && !ls.test.public)) {
+        noteLine(line, 'Cards need the public key as well as the API token (LENCO_PUBLIC_KEY_LIVE, ' +
+                       'LENCO_PUBLIC_KEY_TEST). Mobile money works without it.', true);
+      }
+      noteLine(line, 'Webhook address to give Lenco: ' + location.origin + '/.netlify/functions/lenco-webhook');
+      if (c.lencoLastWebhookAt) noteLine(line, 'Lenco last reached the webhook ' + whenIs(c.lencoLastWebhookAt) + '.');
+      else if (ls.live.secret || ls.test.secret) {
+        noteLine(line, 'No notice from Lenco yet. After your first payment, the time it arrived shows here.');
+      }
+      if (c.lencoLastRefusedAt && (!c.lencoLastWebhookAt || c.lencoLastRefusedAt > c.lencoLastWebhookAt)) {
+        noteLine(line, 'A call reached the Lenco webhook ' + whenIs(c.lencoLastRefusedAt) + ' without a valid ' +
+          'signature, so it was ignored (' + (c.lencoRefused || 1) + ' so far). If that was Lenco, the API token ' +
+          'in Netlify must be the one your Lenco account signs with. Payments still go through: the site asks ' +
+          'Lenco itself every fifteen minutes.', true);
+      }
+      if (c.lencoLastError) {
+        noteLine(line, 'Lenco’s last error, ' + whenIs(c.lencoLastErrorAt) + ': ' + c.lencoLastError, true);
+      }
+      if (!(ls.live.secret || ls.test.secret)) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'lenco-ready-note';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-out btn-sm';
+      btn.textContent = 'Check the keys with Lenco';
+      var said = document.createElement('span');
+      said.className = 'lenco-key-said';
+      wrap.appendChild(btn);
+      wrap.appendChild(said);
+      line.appendChild(wrap);
+      var words = { accepted: 'accepted ✓', refused: 'refused ✕ — copy the API token again',
+                    missing: 'not installed', 'no-address': 'no sandbox address (LENCO_API_BASE_TEST)',
+                    unreachable: 'Lenco could not be reached just now', unclear: 'no clear answer' };
+      btn.addEventListener('click', function () {
+        btn.disabled = true;
+        said.textContent = ' Asking Lenco…';
+        adminToken().then(function (t) {
+          return fetch('/.netlify/functions/pay-status?check=1', {
+            method: 'POST', cache: 'no-store',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (t || '') },
+            body: JSON.stringify({ action: 'test-keys' })
+          });
+        }).then(function (res) {
+          return res.json().then(function (j) { j._code = res.status; return j; });
+        }).then(function (j) {
+          btn.disabled = false;
+          if (j._code !== 200) { said.textContent = ' ' + (j.error || 'Lenco could not be asked just now.'); return; }
+          said.textContent = ' Sandbox token: ' + (words[j.lencoTest] || j.lencoTest || '—') +
+                             ' · Live token: ' + (words[j.lencoLive] || j.lencoLive || '—');
+        }, function () {
+          btn.disabled = false;
+          said.textContent = ' Lenco could not be asked just now.';
+        });
+      });
+    });
+  }
+
+  /* PAYMENT ACTIVITY: the latest online payments (waiting, failed, needing
+     attention), Lenco's notices, the fifteen-minute check-up and the
+     gateways' errors, and every change to this page. Read with the
+     administrator's own sign-in: the database decides who may see it. */
+  var NET_NAME = { airtel: 'Airtel Money', mtn: 'MTN MoMo', zamtel: 'Zamtel Kwacha' };
+  function payWords(p) {
+    var d = p.detail || {};
+    if (p.status === 'paid') return 'Paid';
+    if (p.status === 'review') return d.duplicate ? 'Paid twice: refund one' : 'Needs attention';
+    if (p.status === 'failed') return 'Failed';
+    if (p.status === 'expired') return 'Not completed';
+    if (p.status === 'started') {
+      if (p.provider_status === 'pay-offline') return 'Waiting for approval on the phone';
+      if (p.provider_status === 'no-answer') return 'Waiting: Lenco did not answer at first';
+      return 'Waiting';
+    }
+    return p.status || '';
+  }
+  function payRow(p) {
+    var r = document.createElement('div');
+    r.className = 'pay-act-row';
+    var d = p.detail || {};
+    var way = (p.method === 'card' || p.channel === 'card') ? 'Card'
+      : 'Mobile Money' + (p.network && NET_NAME[p.network] ? ' · ' + NET_NAME[p.network] : '');
+    var gw = p.provider === 'lenco' ? 'Lenco' : 'Flutterwave';
+    var amt = (p.currency || '') + ' ' + Number(p.amount || 0).toFixed(2);
+    var ref = String(p.tx_ref || '').split('-').slice(0, 2).join('-');
+    var top = document.createElement('div');
+    top.className = 'pay-act-top';
+    top.textContent = whenIs(p.created_at) + ' · ' + ref + ' · ' + amt + ' · ' + way + ' · ' + gw +
+                      (p.mode === 'test' ? ' · TEST' : '');
+    var st = document.createElement('div');
+    st.className = 'pay-act-st pay-act-' + (p.status || 'x');
+    st.textContent = payWords(p) +
+      (p.failure_reason ? ' · ' + p.failure_reason : (d.why ? ' · ' + d.why : '')) +
+      (p.provider_ref || d.lenco_ref || d.flw_ref ? ' · ' + gw + ' ref ' + (p.provider_ref || d.lenco_ref || d.flw_ref) : '') +
+      (p.verified_at ? ' · last asked ' + whenIs(p.verified_at) : '');
+    r.appendChild(top);
+    r.appendChild(st);
+    return r;
+  }
+  function activity(host, c) {
+    findCard(host, 'Flutterwave', function (flw) {
+      if (host.querySelector('.pay-act')) return;
+      var card = document.createElement('div');
+      card.className = 'card pay-act';
+      var h = document.createElement('h3');
+      h.textContent = 'Payment activity';
+      var n = document.createElement('p');
+      n.className = 'grp-note';
+      n.textContent = 'The latest online payments, the notices Lenco sent, the fifteen-minute check-up, the ' +
+                      'gateways’ errors, and every change to this page. Administrators only.';
+      card.appendChild(h);
+      card.appendChild(n);
+      var tabs = document.createElement('div');
+      tabs.className = 'pay-act-tabs';
+      tabs.setAttribute('role', 'tablist');
+      var list = document.createElement('div');
+      list.className = 'pay-act-list';
+      card.appendChild(tabs);
+      card.appendChild(list);
+      flw.parentNode.insertBefore(card, flw.nextSibling);
+
+      var sb = A.sb;
+      var got = { pays: null, hooks: null, audit: null, payErr: '', hookErr: '', auditErr: '' };
+      var read = function (q) {
+        return Promise.resolve(q).then(function (r) {
+          if (r && r.error) throw r.error;
+          return (r && r.data) || [];
+        });
+      };
+      var notYet = 'Not recorded yet. It starts once supabase-lenco.sql has been run.';
+      var loads = !(sb && sb.from) ? Promise.resolve() : Promise.all([
+        read(sb.from('payments').select('*').order('created_at', { ascending: false }).limit(60))
+          .then(function (x) { got.pays = x; }, function (e) { got.payErr = 'Payments could not be read: ' + ((e && e.message) || 'not allowed'); }),
+        read(sb.from('payment_webhooks').select('*').order('at', { ascending: false }).limit(30))
+          .then(function (x) { got.hooks = x; }, function () { got.hookErr = notYet; }),
+        read(sb.from('payment_settings_audit').select('*').order('at', { ascending: false }).limit(20))
+          .then(function (x) { got.audit = x; }, function () { got.auditErr = notYet; })
+      ]);
+      var since3h = Date.now() - 3 * 3600000, since7d = Date.now() - 7 * 86400000;
+      var pick = function (fn) { return (got.pays || []).filter(fn); };
+      var TABS = [
+        { k: 'recent', t: 'Recent', draw: function () { return pays(got.pays); } },
+        { k: 'waiting', t: 'Waiting', draw: function () {
+          return pays(pick(function (p) { return p.status === 'started' && Date.parse(p.created_at) > since3h; }),
+                      'No payment is waiting.'); } },
+        { k: 'failed', t: 'Failed', draw: function () {
+          return pays(pick(function (p) { return (p.status === 'failed' || p.status === 'expired') && Date.parse(p.created_at) > since7d; }),
+                      'No failed payment in the last seven days.'); } },
+        { k: 'review', t: 'Needs attention', draw: function () {
+          return pays(pick(function (p) { return p.status === 'review'; }), 'Nothing needs attention.'); } },
+        { k: 'notices', t: 'Notices', draw: hooks },
+        { k: 'checkup', t: 'Check-up & errors', draw: checkup },
+        { k: 'changes', t: 'Changes', draw: changes }
+      ];
+      function pays(rows, empty) {
+        if (got.payErr) return [txt(got.payErr)];
+        if (!rows || !rows.length) return [txt(empty || 'No online payment yet.')];
+        return rows.slice(0, 25).map(payRow);
+      }
+      function txt(t) { var e = document.createElement('div'); e.className = 'pay-act-empty'; e.textContent = t; return e; }
+      function line(top, st, cls) {
+        var r = document.createElement('div');
+        r.className = 'pay-act-row';
+        var a = document.createElement('div'); a.className = 'pay-act-top'; a.textContent = top;
+        var b = document.createElement('div'); b.className = 'pay-act-st' + (cls ? ' ' + cls : ''); b.textContent = st;
+        r.appendChild(a); r.appendChild(b);
+        return r;
+      }
+      function hooks() {
+        if (got.hookErr) return [txt(got.hookErr)];
+        if (!got.hooks || !got.hooks.length) return [txt('No notice from Lenco yet.')];
+        return got.hooks.map(function (w) {
+          return line(whenIs(w.at) + ' · ' + (w.provider === 'lenco' ? 'Lenco' : w.provider) + ' · ' + w.event +
+                      (w.mode === 'test' ? ' · TEST' : ''),
+                      (w.reference ? String(w.reference).split('-').slice(0, 2).join('-') + ' · ' : '') +
+                      'the site asked Lenco: ' + (w.outcome || '—'),
+                      w.outcome === 'error' ? 'pay-act-failed' : '');
+        });
+      }
+      function checkup() {
+        var out = [];
+        if (!c || !('reconcileAt' in c)) return [txt('The check-up’s record is shown to administrators only.')];
+        var rc = c.reconcile || {};
+        out.push(c.reconcileAt
+          ? line('The fifteen-minute check-up last ran ' + whenIs(c.reconcileAt),
+                 'Asked about ' + (rc.checked || 0) + ', found paid ' + (rc.paid || 0) + ', failed ' + (rc.failed || 0) +
+                 ', needing attention ' + (rc.review || 0) + ', orders caught up ' + (rc.repaired || 0) + '.')
+          : txt('The fifteen-minute check-up has not recorded a run yet.'));
+        if (c.lencoLastError) out.push(line('Lenco’s last error, ' + whenIs(c.lencoLastErrorAt), c.lencoLastError, 'pay-act-failed'));
+        if (c.lencoLastRefusedAt) {
+          out.push(line('Unsigned calls to the Lenco webhook: ' + (c.lencoRefused || 0),
+                        'The last ' + whenIs(c.lencoLastRefusedAt) + '. Ignored, and nothing changed.', 'pay-act-failed'));
+        }
+        if (c.lastRefusedAt) {
+          out.push(line('Flutterwave webhook with the wrong hash', 'The last ' + whenIs(c.lastRefusedAt) + '. Ignored.', 'pay-act-failed'));
+        }
+        if (out.length === 1 && c.reconcileAt) out.push(txt('No gateway error recorded.'));
+        return out;
+      }
+      function changes() {
+        if (got.auditErr) return [txt(got.auditErr)];
+        if (!got.audit || !got.audit.length) return [txt('No change recorded yet.')];
+        return got.audit.map(function (a) {
+          var what = a.which === 'private'
+            ? 'Private details changed: ' + (Array.isArray(a.changed) ? a.changed.join(', ') : '')
+            : Object.keys(a.changed || {}).map(function (k) {
+                var v = a.changed[k] || [];
+                var f = function (x) { return x === null || x === undefined ? '—' : (typeof x === 'object' ? JSON.stringify(x) : String(x)); };
+                return k + ': ' + f(v[0]) + ' → ' + f(v[1]);
+              }).join(' · ');
+          return line(whenIs(a.at) + ' · ' + (a.by_email || 'the database'), what);
+        });
+      }
+      var on = 'recent';
+      function draw() {
+        tabs.innerHTML = '';
+        TABS.forEach(function (t) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'pay-act-tab' + (t.k === on ? ' on' : '');
+          b.setAttribute('role', 'tab');
+          b.setAttribute('aria-selected', t.k === on ? 'true' : 'false');
+          b.textContent = t.t;
+          b.addEventListener('click', function () { on = t.k; draw(); });
+          tabs.appendChild(b);
+        });
+        list.innerHTML = '';
+        var t = TABS.filter(function (x) { return x.k === on; })[0];
+        (t.draw() || []).forEach(function (e) { list.appendChild(e); });
+      }
+      list.appendChild(txt('Loading…'));
+      loads.then(draw, draw);
+    });
+  }
+
   /* More than nothing and no more than the whole price, to a hundredth of
      a percent: 12.5% is a deposit, 12.555% is a slip of the finger. */
   function depositOk(v) {
@@ -249,9 +566,9 @@
         groups: [
           {
             title: 'Online payment',
-            note: 'Card and mobile money, paid on Flutterwave\u2019s secure page. "Website checkout" ' +
-                  'appears beside "WhatsApp checkout" once Flutterwave\u2019s key is in Netlify; ' +
-                  'WhatsApp ordering stays exactly as it is.',
+            note: 'Customers choose how to pay: Mobile Money or Debit / Credit Card. "Website checkout" ' +
+                  'appears beside "WhatsApp checkout" once a gateway below is switched on and its keys ' +
+                  'are in Netlify; WhatsApp ordering stays exactly as it is.',
             fields: [
               { type: 'toggle', name: 'onlineEnabled', label: 'Take payments online',
                 hint: 'Off: the button disappears straight away, and the server refuses ' +
@@ -265,10 +582,11 @@
               { type: 'text', name: 'onlineLabel', label: 'Button wording', half: true,
                 maxLength: 50, placeholder: 'Website checkout',
                 showIf: function (v) { return !!v.onlineEnabled; } },
-              { type: 'toggle', name: 'onlineCard', label: 'Accept cards', half: true,
+              { type: 'toggle', name: 'onlineMobile', label: 'Offer Mobile Money', half: true,
+                hint: 'The networks offered are the ones ticked under Lenco.',
                 showIf: function (v) { return !!v.onlineEnabled; } },
-              { type: 'toggle', name: 'onlineMobile', label: 'Accept mobile money', half: true,
-                hint: 'MTN, Airtel and Zamtel, as Flutterwave supports them.',
+              { type: 'toggle', name: 'onlineCard', label: 'Offer Debit / Credit Card', half: true,
+                hint: 'Entered in the gateway\u2019s own secure window, never on this website.',
                 showIf: function (v) { return !!v.onlineEnabled; } },
               { type: 'toggle', name: 'onlineConfirmEmail',
                 label: 'Email the customer a confirmation automatically',
@@ -283,7 +601,53 @@
                 label: 'Live mode takes real money',
                 text: 'Make one small test purchase yourself after switching to Live, and ' +
                       'check it arrives in the Orders tab marked Paid.',
-                showIf: function (v) { return !!v.onlineEnabled && v.onlineMode === 'live'; } }
+                showIf: function (v) { return !!v.onlineEnabled && v.onlineMode === 'live'; } },
+              { type: 'note', name: 'onlineNoGateway', tone: 'warn',
+                label: 'No gateway is switched on',
+                text: 'Switch on Lenco below (or Flutterwave, once approved). Until then customers ' +
+                      'see WhatsApp checkout only.',
+                showIf: function (v) { return !!v.onlineEnabled && !v.lencoEnabled && !v.flwEnabled; } }
+            ]
+          },
+          {
+            title: 'Lenco',
+            note: 'The primary gateway for Zambia (Lenco by BroadPay). Mobile Money by a request ' +
+                  'to the customer\u2019s phone, approved there with their PIN; Debit / Credit Cards in ' +
+                  'Lenco\u2019s own secure window. Tick only what Lenco has activated on your merchant ' +
+                  'account: nothing else is offered to customers.',
+            fields: [
+              { type: 'toggle', name: 'lencoEnabled', label: 'Use Lenco',
+                hint: 'Off: nothing is sent to Lenco and its ways of paying are not offered. ' +
+                      'A payment already under way still completes.' },
+              { type: 'toggle', name: 'lencoAirtel', label: 'Airtel Money activated', half: true,
+                showIf: function (v) { return !!v.lencoEnabled; } },
+              { type: 'toggle', name: 'lencoMtn', label: 'MTN MoMo activated', half: true,
+                showIf: function (v) { return !!v.lencoEnabled; } },
+              { type: 'toggle', name: 'lencoZamtel', label: 'Zamtel Kwacha activated', half: true,
+                showIf: function (v) { return !!v.lencoEnabled; } },
+              { type: 'toggle', name: 'lencoCard', label: 'Cards activated', half: true,
+                showIf: function (v) { return !!v.lencoEnabled; } },
+              { type: 'note', name: 'lencoBankNote', tone: 'info',
+                label: 'Instant Bank Transfer',
+                text: 'Not offered: Lenco\u2019s API takes cards and mobile money only. Instant Bank ' +
+                      'Transfer appears at checkout once a gateway that offers it is connected.',
+                showIf: function (v) { return !!v.lencoEnabled; } },
+              { type: 'note', name: 'lencoRefundNote', tone: 'info',
+                label: 'Refunds',
+                text: 'Lenco\u2019s API has no refund. A payment made through Lenco is refunded from ' +
+                      'your Lenco account; the platform\u2019s Online Refund says so rather than sending one.',
+                showIf: function (v) { return !!v.lencoEnabled; } }
+            ]
+          },
+          {
+            title: 'Flutterwave',
+            note: 'Kept for when your Flutterwave merchant account is approved. While switched off, no ' +
+                  'payment is sent to Flutterwave. Payments already made through it are still checked, ' +
+                  'and can still be refunded.',
+            fields: [
+              { type: 'toggle', name: 'flwEnabled', label: 'Use Flutterwave',
+                hint: 'Switch on only once Flutterwave has approved your account. It then takes any ' +
+                      'way of paying Lenco does not.' }
             ]
           },
           {
@@ -374,6 +738,11 @@
             fail('onlineCard', 'Online payment is on but accepts nothing. Turn on cards, ' +
                                'mobile money, or both.');
           }
+          if (values.lencoEnabled && !values.lencoAirtel && !values.lencoMtn && !values.lencoZamtel &&
+              !values.lencoCard) {
+            fail('lencoAirtel', 'Lenco is on but nothing is ticked as activated. Tick what Lenco has ' +
+                                'activated on your account, or switch Lenco off.');
+          }
           if (values.mobileEnabled && (!values.mobileAccounts || !values.mobileAccounts.length)) {
             fail('mobileAccounts', 'Mobile money is on but there are no accounts. Add one, ' +
                                    'or turn the method off.');
@@ -389,7 +758,7 @@
           var cards = host.querySelectorAll('.card');
           for (var i = 0; i < cards.length; i++) {
             var h = cards[i].querySelector('h3');
-            if (h && h.textContent === 'Online payment') { box = cards[i]; break; }
+            if (h && h.textContent === 'Flutterwave') { box = cards[i]; break; }
           }
           if (!box) { if (tries2++ < 60) setTimeout(find, 50); return; }
           var line = document.createElement('div');
@@ -407,6 +776,8 @@
             })
             .then(function (r) { return r.json(); })
             .then(function (c) {
+              lencoReady(host, c);             // build 88: Lenco's section, from the same answer
+              activity(host, c);               // build 88: payment activity
               /* A key that is there but is the wrong one of Flutterwave's
                  three is not a tick. */
               var testOk = c.test && c.testKeyLooksRight !== false;
@@ -445,6 +816,8 @@
             .catch(function () {
               line.textContent = 'The payment setup could not be checked from here (the ' +
                                  'Netlify functions may not be deployed yet).';
+              lencoReady(host, null);
+              activity(host, null);
             });
         })();
       })();

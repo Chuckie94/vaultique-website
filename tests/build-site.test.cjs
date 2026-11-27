@@ -221,7 +221,11 @@ try {
   const headers = read(path.join(DIST, '_headers'));
   const policy = policyOf(headers);
   is(/^\/\*\n  Content-Security-Policy-Report-Only: /m.test(headers), 'dist/_headers sets it for every address, as report-only');
-  is(headers.split('\n').filter((l) => /^\s+\S+:/.test(l)).length === 1, 'and sets nothing else, so nothing doubles up with netlify.toml');
+  /* Build 88: beside it, the scripts part of the same policy, enforced
+     (tools/build-site.cjs, step 7), and nothing else. */
+  const set = headers.split('\n').filter((l) => /^\s+\S+:/.test(l)).map((l) => l.trim().split(':')[0]);
+  is(set.length === 2 && set[0] === 'Content-Security-Policy-Report-Only' && set[1] === 'Content-Security-Policy',
+     'and sets nothing else but the scripts part, enforced, so nothing doubles up with netlify.toml', set.join(', '));
   const want = inlineHashes(read(path.join(SITE, 'index.html'))).concat(inlineHashes(read(path.join(SITE, 'admin.html'))));
   const scripts = directive(policy, 'script-src') || [];
   is(want.length === 6 && want.every((h) => scripts.indexOf(h) > -1),
@@ -229,7 +233,11 @@ try {
   is(inlineHashes(read(path.join(SITE, 'admin.html'))).length === 0, 'admin.html has none left to allow');
   is(scripts.indexOf("'unsafe-inline'") < 0 && scripts.indexOf("'unsafe-eval'") < 0 && policy.indexOf('unsafe-eval') < 0,
      'no script may be written into a page, and no text run as code', scripts.join(' '));
-  is(scripts.filter((s) => /^https?:/.test(s)).length === 0, 'and no script comes from another site: the libraries are this site\'s own');
+  /* Build 88: the one other place a script may come from is Lenco's card
+     window, live and sandbox. The libraries are still this site's own. */
+  const away = scripts.filter((s) => /^https?:/.test(s));
+  is(away.length === 2 && away.indexOf('https://pay.lenco.co') > -1 && away.indexOf('https://pay.sandbox.lenco.co') > -1,
+     'and no script comes from another site but Lenco\'s card window: the libraries are this site\'s own', away.join(' '));
   const connect = directive(policy, 'connect-src') || [];
   is(connect.indexOf('https://abcdefghijklmnop.supabase.co') > -1 && connect.indexOf('wss://abcdefghijklmnop.supabase.co') > -1,
      'data goes only to this shop\'s own Supabase (taken from config.js), and its live updates', connect.join(' '));

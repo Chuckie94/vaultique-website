@@ -107,15 +107,23 @@ You will do five short steps. It takes about 10 minutes.
 > | `WEB_SUPABASE_URL`, `WEB_SUPABASE_ANON_KEY` | only if the build log says the functions cannot read `config.js` | This website's Supabase address and public key | every function (`_seo-data.js`); the build step |
 > | `SITE_SUPABASE_URL`, `SITE_SUPABASE_ANON_KEY` | no | Older names for the two above | every function |
 > | `POS_REWARDS_KEY` | for Vaultique Rewards | The platform's rewards door's own key (its `tools/vbp-rewards-door.sql`) | `rewards.js`, `rewards-check.js` |
-> | `FLW_SECRET_KEY_TEST` | for online payment in Test mode | Flutterwave's **test** secret key | the payment functions |
-> | `FLW_SECRET_KEY_LIVE` | for online payment in Live mode | Flutterwave's **live** secret key | the payment functions |
-> | `FLW_WEBHOOK_HASH` | for online payment | The phrase set as the webhook's secret hash in Flutterwave | `pay-webhook.js`, `pay-status.js` |
+> | `LENCO_SECRET_KEY_LIVE` | for Lenco in Live mode (build 88) | Lenco's **API token** (Lenco dashboard › Lenco Pay). Secret. Also signs Lenco's webhooks | the payment functions, `lenco-webhook.js` |
+> | `LENCO_PUBLIC_KEY_LIVE` | for cards through Lenco, Live | Lenco's **public** key, for its card window (public by design) | `pay-start.js` |
+> | `LENCO_SECRET_KEY_TEST` | for Lenco in Test mode | Lenco's **sandbox** API token | the payment functions, `lenco-webhook.js` |
+> | `LENCO_PUBLIC_KEY_TEST` | for cards through Lenco, Test | Lenco's **sandbox** public key | `pay-start.js` |
+> | `LENCO_API_BASE_TEST` | for Lenco in Test mode | The sandbox API address **as Lenco gives it** with the sandbox token. Lenco's reference names no sandbox API address, so none is guessed | `_lenco.js` |
+> | `LENCO_API_BASE` | **no**, unless Lenco tells you | Only to replace the live address in Lenco's reference, `https://api.lenco.co/access/v2` | `_lenco.js` |
+> | `CARD_BINS_ZM` | **no**, not until the DPO build | The BINs (first 4 to 8 digits) of Zambian banks' cards, comma-separated, from your acquirer. Never used to route a card (the customer's answer does that); only to tell, after a payment, from the BIN the gateway gives, whether the card was Zambian | `_cardroute.js` |
+> | `FLW_SECRET_KEY_TEST` | only once Flutterwave is approved and switched on | Flutterwave's **test** secret key | the payment functions |
+> | `FLW_SECRET_KEY_LIVE` | only once Flutterwave is approved and switched on | Flutterwave's **live** secret key | the payment functions |
+> | `FLW_WEBHOOK_HASH` | with Flutterwave | The phrase set as the webhook's secret hash in Flutterwave | `pay-webhook.js`, `pay-status.js` |
 > | `POS_SUPABASE_URL` | no (the platform's address is built in) | The business platform's Supabase address | `products.js`, `product-pulse.js`, the rewards |
 > | `POS_PUBLIC_KEY` | no (built in) | The platform's **publishable** key, public already | the same |
 > | `POS_STATE_ROW` | no (100) | The platform's row the products are in, for the old way only | `products.js`, `product-pulse.js` |
 > | `LOW_STOCK_AT` | no (3) | How few left counts as "only a few left" | `products.js` |
 > | `ANALYTICS_KEEP_DAYS` | no (400) | How many days of raw visit records the nightly clean-up keeps | `site-prune.js` |
 > | `CSP_REPORTS` | no | `off` stops the security policy's reports; the policy stays | the build step |
+> | `CSP_SCRIPTS` | **no**: only if the scripts policy ever blocks something it should not | `report` puts the scripts part of the policy back to report-only (build 88). The deploy log and the health check say so | the build step; `health.js` |
 > | `VBP_DEPLOY_GATE` | **no**: only for a day when a check is wrong, then deleted | `paused` publishes without running the checks first (build 84). The deploy log says so first and last, and the health check says so to anybody | the build step; `health.js` |
 > | `URL` | never: Netlify sets it | The site's main address | sign-up links, the page after paying |
 > | `FLW_API_BASE` | **never** | Where Flutterwave's API is; only the tests point it elsewhere | the payment functions |
@@ -524,6 +532,28 @@ build machine does not have: they run on GitHub with every upload. A
 critical one (payments, refunds, orders, sign-in, security) gets no second
 try, and a check that skips is reported as skipped, never as passed.
 
+### What is never published, and which scripts may run (build 88)
+
+Two more steps in the same build, each in `tools/build-site.cjs`:
+
+- **No secret key and no card field is ever published.** Before anything goes
+  out, every file is read. The value of any secret Netlify holds (the service
+  key, Lenco's and Flutterwave's secret keys, the platform's keys), anything
+  shaped like a Flutterwave secret key, a Supabase key whose role is
+  `service_role`, or a box for a card number, expiry or security code stops
+  the deploy, naming the file and the setting, never the key. The site that
+  was live stays live. If it ever happens: take it out of the file, **change
+  the key where it was made** (it has to be treated as seen), put the new one
+  in Netlify, and deploy again.
+- **Which scripts may run is enforced.** The whole security policy stays
+  report-only, and beside it the part that decides which scripts may run is
+  enforced: this site, its own small inline scripts (by their contents), and
+  Lenco's card window (`pay.lenco.co`, `pay.sandbox.lenco.co`). A script from
+  anywhere else, on the checkout or any page, is blocked by the browser. If
+  something you rely on is ever blocked: Netlify › Environment variables ›
+  `CSP_SCRIPTS` = `report`, then **Trigger deploy**; the deploy log and
+  `/api/health` (to an administrator) say so until it is deleted.
+
 ### The health check
 `https://YOUR-SITE/api/health` answers anybody with one word: `"working"`
 (this server answers, its service key is set, and the database answered just
@@ -843,7 +873,216 @@ confirmations and order messages.
 **Test it:** open `/admin.html`, type your email, press **Forgot your password?**,
 and follow the link in the email.
 
-### Online payment (card and mobile money)
+### Online payment with Lenco (build 88)
+
+**Lenco by BroadPay Zambia is the website's primary gateway.** It takes
+**Mobile Money** (Airtel Money, MTN MoMo, Zamtel Kwacha) and **Debit / Credit
+Cards**. Flutterwave is kept, exactly as it was, and switched off until its
+account is approved (the section after this one). Both are **off** until you
+switch them on. **WhatsApp checkout does not change.**
+
+**What the customer sees.** Their details, then **Website checkout**, then
+the quote: each piece, any VAT, the delivery fee if you charge it online, the
+total, and **How would you like to pay?**
+
+- **Mobile Money**: they choose the network (only those you ticked), check
+  the number (filled in from their details; a number for another network is
+  caught before anything is sent): *A payment approval request will be sent
+  to this number. Please check and verify the phone number is correct before
+  proceeding.* Under it: *Payments are processed securely by Lenco.* They
+  press **Pay K…**, and their phone shows a request from their network.
+  - **Payment Authorisation Required**: *A payment approval request has been
+    sent to 09\*\*\*\*\*\*28. Please check your phone and follow the instructions
+    to authorise the transaction...*, *Waiting for your approval*, and
+    **Check payment status**, **Choose another payment method**, **Cancel
+    payment**.
+  - After 90 seconds without an approval: *Didn't receive approval request?
+    Please try again or use another payment method.*, with **Try again** and
+    a small **Contact us** link that opens the website chat with the order
+    number ready to send (WhatsApp, in a new tab, when the chat is off).
+  - **Payment Successful**: *Your payment has been successfully processed.
+    Thank you for shopping with* (your business name), with **View order
+    details** (the order's page in their account when signed in; the order
+    on the screen otherwise) and **Continue shopping**.
+  - **Payment Unsuccessful**, with the reason (insufficient funds, a wrong
+    PIN, not authorised in time, declined, over the account's limit), and
+    **Try again** on the same order, **Choose another payment method**, or
+    **Complete your order via WhatsApp**.
+  - **Payment Cancelled** after **Cancel payment**: no money taken, and *if
+    the approval request is still showing on your phone, please do not
+    authorise it*. Try again waits until that request can no longer be
+    approved (see *Nobody pays twice*, below).
+  - A dropped connection is said plainly (*We were unable to connect to the
+    payment service...*), and pressing Pay again shows the payment already
+    made rather than sending a second one.
+- **Debit / Credit Card**: *Your card details are entered in a secure payment
+  window and are never kept by this website.* (Lenco is not named yet: one
+  day the card itself may decide the gateway, below.) Lenco's own secure
+  window opens over the page, and the page behind it now says *Payments are
+  processed securely by Lenco.* They type the card there (with their bank's
+  3-D Secure step if it asks); then **Payment Successful**, or **Payment Not
+  Completed** if they closed the window.
+- **Instant Bank Transfer** is not shown: Lenco's API and window take cards
+  and mobile money only. It appears by itself once a gateway that takes it
+  is connected.
+
+No button names a gateway.
+
+**Nobody pays twice for one order.** Lenco's API cannot withdraw a request
+once it is on a customer's phone. So no second request is sent for the same
+order for 90 seconds after the first (or until Lenco says the first failed),
+even after **Cancel payment**; the same for a card while the bank is still
+checking it. A press of Pay arriving twice, or pressed again after a dropped
+connection, is one payment. A request approved after Cancel payment is still
+the order's payment (the check-up keeps asking Lenco about it). And if two
+payments for one order were ever both taken, the second is never counted:
+you are emailed **Paid twice, refund one**.
+
+**Zambian or international cards (ready, for later).** No card detail is
+ever typed on the website, not even a card's first six digits: every card
+detail goes into the gateway's own window. When DPO is connected for
+international cards (a later build), the customer answers *Where was your
+card issued?* under Debit / Credit Card, with **Card issued in Zambia** or
+**International card**: Zambian cards go to Lenco, international cards to
+DPO. The website is ready for it (`netlify/functions/_cardroute.js`), and
+nothing changes today: every card goes to Lenco and nothing is asked. After a
+card payment, Lenco gives the card's BIN (first six digits) beside its last
+four, never the whole number; both are kept, and once `CARD_BINS_ZM` (the
+Zambian banks' BINs, from your acquirer, set in that later build) is in
+Netlify, Payment activity can show how many international cards you get and
+how often a customer's answer was wrong. Until then nothing is guessed.
+
+**Why it is safe.**
+- The price is worked out on the server, from your POS prices and price
+  settings. Lenco is asked for exactly that.
+- **Card numbers never reach the website**: they are typed into Lenco's own
+  window, served by Lenco (`pay.lenco.co`). The website has no card field, and
+  a deploy stops if one ever appears. Lenco's other card API, which would
+  put the card number on this server, needs PCI DSS certification and is not
+  used.
+- **Paid only on Lenco's word.** The server asks Lenco about the payment by
+  its reference, with the secret token, and only exactly the order's amount,
+  in the order's currency, under the order's reference, is paid. A browser
+  saying paid, or a webhook on its own, changes nothing.
+- **Webhooks are signed**: Lenco signs each notice with a key made from your
+  API token, and the website checks the signature before reading it; then it
+  still asks Lenco.
+- **An order is paid once**, and a press of Pay arriving twice is one
+  payment. If two tries at one order were ever both paid, the second is not
+  counted, and you are emailed **Paid twice, refund one**.
+- The secret token lives only in Netlify. A deploy stops if it, or any other
+  secret key, is found in what would be published.
+
+#### Setting it up (once)
+
+1. **Your Lenco merchant account.** With Lenco (BroadPay Zambia), ask for, or
+   find in the dashboard's **Lenco Pay** section:
+   - the **API token** (live) and the **public key** (live);
+   - the **sandbox** API token, sandbox public key, and the **sandbox API
+     address** (Lenco's documentation does not print it; ask Lenco support,
+     support@lenco.co, for it with the sandbox token);
+   - **which ways of paying are activated** on your account: Airtel Money,
+     MTN MoMo, Zamtel Kwacha, cards. Tick only those in step 5.
+   - In the dashboard, set **who bears the fee** to **merchant (you)**. The
+     website asks for "merchant" on every payment; a fee added to the
+     customer's amount would make Lenco's amount differ from the order's, and
+     such a payment is held for you to look at, never marked paid.
+2. **Run `supabase-lenco.sql`** in the website's Supabase SQL Editor (after
+   the files before it; it is safe to run again). Until it is run, Lenco is
+   not offered.
+3. **Add these in Netlify** › your site › Site configuration › Environment
+   variables, then **Deploys › Trigger deploy**:
+
+   | Key | Value |
+   |---|---|
+   | `LENCO_SECRET_KEY_TEST` | the sandbox API token |
+   | `LENCO_PUBLIC_KEY_TEST` | the sandbox public key |
+   | `LENCO_API_BASE_TEST` | the sandbox API address Lenco gives you, such as `https://…/access/v2` |
+   | `LENCO_SECRET_KEY_LIVE` | the live API token, when you go live |
+   | `LENCO_PUBLIC_KEY_LIVE` | the live public key, when you go live |
+
+   Nothing else: the webhook needs no setting of its own.
+4. **The webhook, in Lenco's dashboard** (Lenco Pay › webhook URL):
+   `https://vaultiqueboutique.com/.netlify/functions/lenco-webhook`
+   (Settings › Payments › Lenco shows the address to copy.) Lenco then tells
+   the website at once when a payment succeeds or fails. Without it payments
+   still complete: the page asks Lenco while the customer waits, and the
+   fifteen-minute check-up asks about the rest.
+5. **Settings › Payments**:
+   - **Lenco › Use Lenco**: on. Tick what Lenco has activated on your account
+     (Airtel Money, MTN MoMo, Zamtel Kwacha, Cards). Nothing unticked is
+     offered.
+   - **Online payment › Take payments online**: on, mode **Test**, **Offer
+     Mobile Money** and **Offer Debit / Credit Card** as you wish. Save.
+   - The Lenco section should show ✓ against the sandbox token, public key,
+     address and the database, and say **Ready for Test payments**. Press
+     **Check the keys with Lenco**: it charges nothing.
+6. **Try it** with your preview key (`https://YOUR-SITE/?preview=YOUR-KEY`;
+   in Test mode only you see Website checkout). Lenco's sandbox numbers and
+   cards (its documentation, *Test Cards and Accounts*):
+
+   | Mobile money | Network | Result |
+   |---|---|---|
+   | 0971111111 | Airtel Money | successful |
+   | 0961111111 | MTN MoMo | successful |
+   | 0972222222 | Airtel Money | fails: incorrect PIN |
+   | 0962222222 | MTN MoMo | fails: not enough funds |
+   | 0966666666 | MTN MoMo | fails: timed out |
+
+   | Card | Number | CVV | Expiry |
+   |---|---|---|---|
+   | Visa | 4622 9431 2701 3705 | 838 | any future date |
+   | Mastercard | 5555 5555 5555 4444 | any three figures | any future date |
+
+   Check: the order shows **Paid ✓** and **TEST · no money moved**; the
+   emails begin **[TEST]**; **Settings › Payments › Payment activity** lists
+   the payment, and **Notices** lists Lenco's webhook once step 4 is done.
+   (Zamtel has no sandbox number in Lenco's documentation: try it in Live
+   with a small amount.)
+7. **Live**: add the two live keys (step 3), redeploy, set the mode to
+   **Live**, save, and make one small real purchase yourself on each network
+   you ticked, and by card.
+
+**To stop taking payments through Lenco**, switch **Use Lenco** off. Its ways
+of paying go at once; a payment already under way still completes.
+
+#### Is it connected? (Settings › Payments › Lenco)
+
+Never a key, only whether each is there: the live and sandbox tokens and
+public keys, the sandbox address, and `supabase-lenco.sql`; when Lenco last
+reached the webhook; anything that reached it without a valid signature
+(counted, with the last time); Lenco's last error; and **Check the keys with
+Lenco**.
+
+#### Payment activity (Settings › Payments)
+
+Recent payments (both gateways), the ones **waiting** for a customer's
+approval, **failed** ones with Lenco's reason, those that **need attention**,
+Lenco's **notices** and what the website did with each, the **check-up**'s
+last run and the gateways' errors, and every **change** to Settings ›
+Payments (who, when, from what to what; private details by name only),
+written by the database itself.
+
+#### Refunds of Lenco payments
+
+Lenco's API has no refund. Refund a Lenco payment from your Lenco account (a
+transfer back to the customer's mobile money or card, as Lenco offers). The
+platform's **Online Refund** says so for a Lenco payment (`no_refund_api`)
+instead of sending anything, and the website never sends a Lenco payment to
+Flutterwave.
+
+### Online payment through Flutterwave (kept; off until approved)
+
+**Since build 88 Flutterwave takes payments only once you switch it on**:
+Settings › Payments › **Flutterwave › Use Flutterwave**. Do that only once
+Flutterwave has approved your merchant account. Switched on, it takes any way
+of paying Lenco does not (for example cards, if Lenco has not activated them
+for you), on Flutterwave's own page, exactly as before. Switched off, nothing
+is sent to Flutterwave; payments already made through it are still checked by
+the fifteen-minute check-up and can still be refunded. Everything below is as
+it was.
+
+#### Flutterwave, as before
 
 Customers can pay by card or mobile money through **Flutterwave**. It is **off**
 until you switch it on. **WhatsApp checkout does not change**. Every piece
@@ -892,7 +1131,8 @@ confirmation goes to the customer and to you automatically.
    **Secret hash** exactly the same phrase as `FLW_WEBHOOK_HASH`. Save.
 5. **Settings > Notifications**: make sure the email account is set up and the
    test email works, because that is what sends the confirmations.
-6. **Settings > Payments > Online payment**: switch it on, leave the mode on
+6. **Settings > Payments > Flutterwave**: switch **Use Flutterwave** on (build
+   88), then **Online payment**: switch it on, leave the mode on
    **Test**, and save. The line at the top should show ✓ against every item.
    **While the mode is Test, only you can pay online** (build 77): customers
    see no **Website checkout** at all and order on WhatsApp as usual. You see it by

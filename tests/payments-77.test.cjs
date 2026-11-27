@@ -38,7 +38,10 @@ function reset() {
   SETTINGS = {
     general: { businessName: 'Vaultique', currency: 'ZMW' },
     pricing: {},
-    payments: { onlineEnabled: true, onlineMode: 'test', onlineCard: true, onlineMobile: true },
+    payments: { onlineEnabled: true, onlineMode: 'test', onlineCard: true, onlineMobile: true,
+      /* build 88: Flutterwave takes payments only once switched on in its own
+         setting (flwEnabled), as the shop will once its account is approved */
+      flwEnabled: true },
     delivery: { payDelivery: false, standardFee: '', freeOver: '' },
     contact: { email: 'shop@example.com' },
     notifications: { emailEnabled: true, smtpHost: 'smtp.example.com', senderEmail: 'shop@example.com' },

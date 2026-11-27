@@ -1,31 +1,36 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 87
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 88
 ====================================================
 The whole site, cumulative: everything in build 83 (and so 82, 81 and
 80, with the other website line's builds 74 to 78 carried onto it),
 build 84 (a deploy never publishes a build whose own checks fail),
 build 85 (checkout: the website or WhatsApp), build 86 (the customer
-portal) and build 87 (customers' requests). Upload this and you are up
-to date. Builds 84 to 87 have not been uploaded before: this block is
-everything to do for all four. Upload 87 only: 87 holds 86, 85 and 84,
-and 84 and 85 as sent would now be stopped by Netlify's checks (a check
-with a date in it, mended in 86).
+portal), build 87 (customers' requests) and build 88 (Lenco, and one
+checkout for every way of paying). Upload this and you are up to date.
+Builds 84 to 88 have not been uploaded before: this block is everything
+to do for all five. Upload 88 only: it holds 87, 86, 85 and 84.
 
-NEW IN 84 TO 87 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
-THE CUSTOMER PORTAL, AND CUSTOMERS' REQUESTS.
-  TWO SQL FILES, each new, each run once: supabase-test-orders.sql
-  (build 85) and supabase-customer-requests.sql (build 87). About twenty
-  minutes. Do these in order. Each one says how you know it is done.
+NEW IN 84 TO 88 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
+THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, AND LENCO.
+  THREE SQL FILES, each new, each run once, in this order:
+  supabase-test-orders.sql (build 85), supabase-customer-requests.sql
+  (build 87) and supabase-lenco.sql (build 88). About thirty minutes,
+  then Lenco's own setup when its keys are in hand (step H). Do these in
+  order. Each one says how you know it is done.
 
-  A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete.
+  A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
+     browser it is four drags, grouped differently from before (the
+     assets and netlify folders are now over GitHub's 100 files together).
      Done when: Netlify > Deploys shows it as Published.
-     Its log (open the deploy) now has a line near the top:
-       Checks: node: 39 of 40 files passed, 1 skipped, 1105 checks, ...
-       before publishing.
-     (the one skipped needs a database; it runs on GitHub's database job.)
+     Its log (open the deploy) has, near the top:
+       Checks: node: 41 of 42 files passed, 1 skipped, ... before publishing.
+     (the one skipped needs a database; it runs on GitHub's database job)
+     and further down:
+       Scripts: enforced. Only this site, its own inline scripts and
+       Lenco's card window may run scripts.
+       Checked: no secret key and no card field in anything published.
      If it says BUILD STOPPED instead: nothing was published, the site
      that was live is still live. Send the lines above BUILD STOPPED in
-     the chat. SETUP.md, section 6, says how to pause the checks for a
-     day if an urgent fix must go out, and why never to leave them paused.
+     the chat. SETUP.md, section 6, says what each stop means.
 
   B. RUN supabase-test-orders.sql in the WEBSITE's Supabase (not the
      platform's): SQL Editor > New query > paste the whole file > Run.
@@ -38,36 +43,77 @@ THE CUSTOMER PORTAL, AND CUSTOMERS' REQUESTS.
      mode before this step.
 
   C. RUN supabase-customer-requests.sql the same way, in the WEBSITE's
-     Supabase. The SQL is also in the chat. It changes no order,
-     payment, setting or key, and is safe to run again.
+     Supabase. It changes no order, payment, setting or key, and is safe
+     to run again.
      Done when: its result line says
        OK · customers can ask, the shop decides | OK
-     Nothing changes for your customers yet: requests stay switched off
-     until step G.
 
-  D. OPEN https://vaultiqueboutique.com/api/health on your phone.
-     Done when: it says "status":"working" and "build":87.
+  D. RUN supabase-lenco.sql the same way, in the WEBSITE's Supabase.
+     The SQL is also in the chat. It changes no order, payment, refund,
+     setting or key, and is safe to run again.
+     Done when: its last box says
+       OK · Lenco payments can be recorded
+     and the box before it
+       OK · an order is paid once
+     (If that box says NOT ADDED instead, an order already has two paid
+     payments, which should never happen: send me the line.)
+     Until it is run, Lenco is not offered to customers.
 
-  E. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
+  E. OPEN https://vaultiqueboutique.com/api/health on your phone.
+     Done when: it says "status":"working" and "build":88.
+
+  F. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
      gold; the cart says Checkout, in gold. Press Buy, fill in the
-     details: at the bottom, WhatsApp checkout, green. Until Flutterwave
-     is set up that is the only one, whatever Settings > Payments says.
-     Once Flutterwave's key is in Netlify (SETUP.md, "Online payment"),
-     Website checkout appears beside it, in gold, first.
+     details: at the bottom, WhatsApp checkout, green. Until a payment
+     gateway is switched on and ready (step H) that is the only one.
      If Settings > Shopping > "Checkout button text" still says Buy on
      WhatsApp, the shop shows Buy anyway; type Buy there and Save if you
      want the box to match.
      Done when: you have seen the gold Buy and the green WhatsApp
      checkout.
 
-  F. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
+  G. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
      person at the top of the shop; not the admin): the navy top saying
      Welcome back, with your orders, wishlist and points, then My
-     shopping, My Vault and Security and privacy. Tap My orders,
-     then View order on one of them.
+     shopping, My Vault and Security and privacy. Tap My orders, then
+     View order on one of them.
      Done when: you have seen the dashboard and an order's own page.
 
-  G. CUSTOMERS' REQUESTS, WHEN YOU WANT THEM (you may leave this until
+  H. LENCO, WHEN YOUR LENCO KEYS ARE IN HAND (SETUP.md, "Online payment
+     with Lenco", has every step and Lenco's sandbox numbers and cards).
+     1. From Lenco (the dashboard's Lenco Pay section, or support):
+        the sandbox API token, sandbox public key and the SANDBOX API
+        ADDRESS; later the live API token and live public key; and
+        which ways of paying are activated on your account (Airtel
+        Money, MTN MoMo, Zamtel Kwacha, cards). In Lenco's dashboard,
+        set who bears the fee to merchant (you).
+     2. Netlify > your site > Site configuration > Environment
+        variables: LENCO_SECRET_KEY_TEST, LENCO_PUBLIC_KEY_TEST and
+        LENCO_API_BASE_TEST; then Deploys > Trigger deploy.
+     3. In Lenco's dashboard, the webhook URL:
+          https://vaultiqueboutique.com/.netlify/functions/lenco-webhook
+     4. Admin > Settings > Payments: Lenco > Use Lenco on, tick what
+        Lenco has activated; Online payment > Take payments online on,
+        mode Test; Save. Leave Flutterwave > Use Flutterwave off until
+        Flutterwave approves your account.
+        Done when: the Lenco section says "Ready for Test payments" with
+        a tick against the sandbox token, public key, address and the
+        database, and "Check the keys with Lenco" says accepted.
+     5. Try it: open the shop with your preview key
+        (https://vaultiqueboutique.com/?preview=YOUR-KEY), put a piece in
+        the cart, Website checkout: after the total, "How would you like
+        to pay?". Mobile Money with 0971111111 (Airtel) or 0961111111
+        (MTN) is paid ("Payment Successful"); 0962222222 says "Payment
+        Unsuccessful ... insufficient funds in your mobile money account"
+        and offers Try again; Debit / Credit Card opens Lenco's window
+        (Visa 4622 9431 2701 3705, CVV 838, any future date).
+        Done when: the order shows Paid and TEST · no money moved, and
+        Settings > Payments > Payment activity lists it.
+     6. Live: add LENCO_SECRET_KEY_LIVE and LENCO_PUBLIC_KEY_LIVE,
+        Trigger deploy, set the mode to Live, Save, and make one small
+        real purchase yourself on each network you ticked, and by card.
+
+  I. CUSTOMERS' REQUESTS, WHEN YOU WANT THEM (you may leave this until
      the platform has build 512). Admin > Settings > Customer Accounts:
      switch on "Let customers ask to cancel, return or exchange, or
      report a problem", check "Days after delivery to ask for a return
@@ -79,9 +125,61 @@ THE CUSTOMER PORTAL, AND CUSTOMERS' REQUESTS.
      Done when: signed in as a customer, one of your own orders that is
      not yet prepared shows Cancel this order (a minute after saving).
 
-  H. WATCH THE CHECKS ON GITHUB (Actions > Tests).
+  J. WATCH THE CHECKS ON GITHUB (Actions > Tests).
      Done when: the newest Tests run has a green tick. A minute later
-     GitHub > Code > Tags shows website-87 (Actions > Release tag).
+     GitHub > Code > Tags shows website-88 (Actions > Release tag).
+
+  WHAT CHANGED IN 88
+    * LENCO, THE PRIMARY GATEWAY FOR ZAMBIA: Mobile Money on Airtel
+      Money, MTN MoMo and Zamtel Kwacha, by a request to the customer's
+      phone, approved there with their PIN; Debit / Credit Cards in
+      Lenco's own secure window. No card number ever reaches the website.
+    * ONE CHECKOUT: after the total, "How would you like to pay?" with
+      Mobile Money and Debit / Credit Card (Instant Bank Transfer appears
+      once a gateway can take one: Lenco's API cannot). No button names a
+      gateway. Under Mobile Money: "A payment approval request will be
+      sent to this number..." and "Payments are processed securely by
+      Lenco."; under a card, only "Your card details are entered in a
+      secure payment window and are never kept by this website." (Lenco
+      is named once its window opens).
+    * THE PAYMENT SCREENS, IN YOUR WORDS: Payment Authorisation Required
+      (the number shown as 09******28) with Check payment status, Choose
+      another payment method and Cancel payment; after 90 seconds without
+      an approval, "Didn't receive approval request? Please try again or
+      use another payment method." with Try again and a Contact us link
+      to the website chat. Payment Successful with View order details and
+      Continue shopping. Payment Unsuccessful with the reason, Try again,
+      Choose another payment method and Complete your order via WhatsApp.
+      Payment Cancelled, Payment Not Completed, and a dropped line said
+      plainly, with the next press being the same payment.
+    * NOBODY IS ASKED OR CHARGED TWICE FOR ONE ORDER: no second request
+      while the first can still be approved, even after Cancel payment
+      (Lenco cannot withdraw a request already on a phone). One approved
+      after Cancel payment is still the order's payment, found by the
+      check-up.
+    * CARDS READY FOR ROUTING, ZAMBIAN OR INTERNATIONAL: no card detail is
+      ever typed on the website. Once DPO is connected (a later build) the
+      customer answers "Where was your card issued?" (Card issued in
+      Zambia / International card): Zambian cards to Lenco, international
+      cards to DPO. Today every card goes to Lenco and nothing is asked.
+      Nothing to set now.
+    * PAID ONLY ON LENCO'S WORD, asked directly: our reference, exactly
+      our amount, our currency. Webhooks signed by Lenco, and still
+      checked. An order is paid once; a second payment for it is held for
+      you to refund, with an email saying so.
+    * SETTINGS > PAYMENTS: a switch for each gateway (Lenco; Flutterwave,
+      kept and off until approved), what Lenco has activated, whether
+      Lenco is ready and why not, and Payment activity: recent, waiting,
+      failed, needing attention, Lenco's notices, the check-up and errors,
+      and every change to the page.
+    * REFUNDS: Lenco's API has none. A Lenco payment is refunded from your
+      Lenco account; the platform's Online Refund says so, and sends
+      nothing.
+    * SECURITY: which scripts may run is now enforced on every page; a
+      deploy stops if a secret key or a card field would be published.
+    * The plan's later builds move one number on: the customer portal's
+      88 and 89 are now 89 and 90, and the enterprise plan's 90 to 95 are
+      91 to 96 (the plan, updated, came with this build).
 
   WHAT CHANGED IN 87
     * CUSTOMERS ASK, FROM THEIR OWN ORDER: cancel it, before you have

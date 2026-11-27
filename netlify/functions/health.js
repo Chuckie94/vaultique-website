@@ -2,7 +2,7 @@
    Vaultique Boutique Point — /.netlify/functions/health   (build 84)
    ---------------------------------------------------------------------
    Is the website working? Asked after every deploy (tools/live-check.cjs)
-   and, from build 89, by an outside monitor every few minutes.
+   and, from build 94, by an outside monitor every few minutes.
 
    ANYBODY gets one word and the build, nothing else:
 
@@ -29,7 +29,7 @@
      payments     online payment on or off, Test or Live, and whether the
                   key that mode needs is in Netlify: "ready" means a
                   customer's payment can actually start
-     jobs         when each scheduled job last ran: recorded from build 89
+     jobs         when each scheduled job last ran: recorded from build 94
 
    It reads, and writes nothing. The public answer is kept for 30 seconds,
    so a flood of requests costs the database one read every 30 seconds.
@@ -117,6 +117,8 @@ const LATER = [
     probe: 'rpc/pos_test_payment?p_id=00000000-0000-0000-0000-000000000000' },
   { file: 'supabase-customer-requests.sql', build: 87, what: 'customers\' requests (cancel, return, exchange, a problem)',
     probe: 'order_requests?select=id&limit=0' },
+  { file: 'supabase-lenco.sql',            build: 88, what: 'Lenco payments: each try kept, an order paid once, the webhook log',
+    probe: 'payment_webhooks?select=id&limit=0' },
 ];
 async function probe(q) {
   try { await P.svc('GET', q); return true; } catch (e) {
@@ -148,10 +150,19 @@ function settingsList() {
     { name: 'FLW_SECRET_KEY_TEST', set: has('FLW_SECRET_KEY_TEST'), for: 'online payment in Test mode' },
     { name: 'FLW_SECRET_KEY_LIVE', set: has('FLW_SECRET_KEY_LIVE'), for: 'online payment in Live mode' },
     { name: 'FLW_WEBHOOK_HASH', set: has('FLW_WEBHOOK_HASH'), for: 'Flutterwave telling the site a payment went through' },
+    /* Build 88: Lenco, the primary gateway. The webhook needs nothing more:
+       Lenco signs with a hash of the API token itself. */
+    { name: 'LENCO_SECRET_KEY_LIVE', set: has('LENCO_SECRET_KEY_LIVE'), for: 'Lenco payments in Live mode (the API token)' },
+    { name: 'LENCO_PUBLIC_KEY_LIVE', set: has('LENCO_PUBLIC_KEY_LIVE'), for: 'Lenco\'s card window in Live mode' },
+    { name: 'LENCO_SECRET_KEY_TEST', set: has('LENCO_SECRET_KEY_TEST'), for: 'Lenco payments in Test mode (the sandbox API token)' },
+    { name: 'LENCO_PUBLIC_KEY_TEST', set: has('LENCO_PUBLIC_KEY_TEST'), for: 'Lenco\'s card window in Test mode' },
+    { name: 'LENCO_API_BASE_TEST', set: has('LENCO_API_BASE_TEST'), for: 'Lenco\'s sandbox API address, as Lenco gives it' },
     { name: 'POS_REWARDS_KEY', set: has('POS_REWARDS_KEY'), for: 'rewards points from the platform' },
     { name: 'POS_SUPABASE_URL', set: has('POS_SUPABASE_URL'), for: 'the platform\'s address (built in when not set)' },
     { name: 'POS_PUBLIC_KEY', set: has('POS_PUBLIC_KEY'), for: 'the platform\'s public key (built in when not set)' },
     { name: 'VBP_DEPLOY_GATE', set: has('VBP_DEPLOY_GATE'), for: 'set only to pause the checks before a deploy',
+      mustNot: true },
+    { name: 'CSP_SCRIPTS', set: has('CSP_SCRIPTS'), for: 'set to report only if the scripts policy ever blocks something it should not',
       mustNot: true },
   ];
   /* The platform's SECRET key: a deploy stops while it is there
@@ -167,9 +178,15 @@ async function payments() {
   const mode = s.pay.onlineMode === 'live' ? 'live' : 'test';
   const on = P.onlineOn(s);
   const key = !!P.flwKey(mode);
+  /* Build 88: what a customer can pay with right now, and through which
+     gateway. ready: at least one way of paying can actually start. */
+  const routes = P.serviceKey() ? P.routes(s, mode, await P.lencoDbReady()) : {};
+  const ways = P.METHODS.filter((k) => routes[k]).map((k) => ({ method: k, gateway: routes[k].provider }));
   return {
     known: true, online: on, mode, keyForMode: key, webhookHash: has('FLW_WEBHOOK_HASH'),
-    ready: on && key && !!P.serviceKey(),
+    ready: on && !!P.serviceKey() && ways.length > 0,
+    gateways: { lenco: s.pay.lencoEnabled === true ? 'on' : 'off', flutterwave: s.pay.flwEnabled === true ? 'on' : 'off' },
+    ways,
   };
 }
 
@@ -195,7 +212,10 @@ exports.handler = async function (event) {
     sql: await sqlFiles(db),
     settings: settingsList(),
     payments: await payments(),
-    jobs: 'recorded from build 89',
+    /* Build 88: which scripts may run is enforced, unless Netlify holds
+       CSP_SCRIPTS = report (tools/build-site.cjs, step 7). */
+    scripts: /^(report|report-only|off|no|false|0)$/i.test(String(process.env.CSP_SCRIPTS || '').trim()) ? 'report-only' : 'enforced',
+    jobs: 'recorded from build 94',      // the monitoring build (renumbered in build 88)
   });
 };
 

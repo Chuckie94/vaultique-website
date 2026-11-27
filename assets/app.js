@@ -2148,6 +2148,7 @@
       });
       keep.how = d.how;
       rememberBuyer(keep);
+      order.__lastTx = null;       // build 88: the details may have changed: a new order
       showPayQuote(order, d);
     });
     body.addEventListener('keydown', function (e) {
@@ -2173,6 +2174,7 @@
     var m = $('#orderModal');
     if (m) m.classList.remove('open');
     document.body.style.overflow = '';
+    document.documentElement.classList.remove('chat-over-pay');   // build 88: payment "Contact us"
   }
 
   /* ==================================================================
@@ -2227,7 +2229,15 @@
      yes or no for each key, never a key. Until it says the key for the mode
      chosen is there, Website checkout is not offered, and WhatsApp checkout
      stands alone, as before. */
-  var PAY_READY = null;
+  /* BUILD 88 · THE WAYS OF PAYING, AS THE SERVER OFFERS THEM. The same
+     question now also answers which ways of paying can be paid right now
+     (Mobile Money with its networks, Debit / Credit Card), worked out by the
+     server from the settings and the keys in Netlify. The customer chooses a
+     way of paying, never a gateway: Lenco takes mobile money by a request to
+     the customer's phone and cards in its own secure window; Flutterwave,
+     once switched on, keeps its own page. A server from before build 88
+     answers without the list, and is read the build 85 way. */
+  var PAY_READY = null, PAY_WAYS = null;
   function askPayReady() {
     if (PAY_READY !== null || !payOnline()) return;
     PAY_READY = false;                            // not offered while asking
@@ -2235,10 +2245,23 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
         var mode = PAY.onlineMode === 'live' ? 'live' : 'test';
-        PAY_READY = !!(j && j.service === true && j[mode] === true);
+        if (j && Array.isArray(j.methods)) {
+          PAY_WAYS = j.methods.filter(function (m) {
+            return m && /^(mobile|bank|card)$/.test(m.key) && /^(prompt|window|page)$/.test(m.via);
+          });
+          PAY_READY = !!(j.service === true && PAY_WAYS.length);
+        } else {
+          PAY_READY = !!(j && j.service === true && j[mode] === true);
+        }
       }, function () { PAY_READY = false; });
   }
   function payReady() { return PAY_READY === true; }
+  /* The chooser is shown once a way of paying is taken on this website
+     (Lenco). Flutterwave's page alone offers its own choice, as before. */
+  function payWays() { return PAY_WAYS || []; }
+  function chooserNeeded() {
+    return payWays().some(function (m) { return m.via !== 'page'; });
+  }
   function payFields(have) {
     var got = {};
     have.forEach(function (f) { got[f.key] = true; });
@@ -2290,24 +2313,27 @@
   /* The quote: what the server says this order costs, delivery and all,
      before anybody is sent anywhere to pay it. `note`, when given, is said
      under it once it is drawn: why the customer is looking at it again. */
-  function showPayQuote(order, d, note) {
+  function showPayQuote(order, d, note, retryOf) {
     var body = $('#orderBody');
     if (!body) return;
+    var choose = chooserNeeded();
     body.innerHTML =
       '<button class="qv-close" id="odClose" aria-label="Close">&times;</button>' +
       '<div class="c">Pay online</div>' +
       '<h3 class="serif">Your order</h3>' +
       '<p class="od-lead" id="pqLead">Working out your total…</p>' +
       '<div class="pq" id="pqBox"></div>' +
+      (choose ? '<div class="pm hide" id="pqWays"></div>' : '') +
       '<div class="rv-actions">' +
         '<button class="btn btn-gold" id="pqPay" disabled>Pay</button>' +
         '<button class="btn btn-outline" id="pqBack">Back</button>' +
         '<span class="rv-msg" id="pqMsg"></span>' +
       '</div>' +
-      '<p class="od-note">You will pay on Flutterwave’s secure page, by ' +
+      (choose ? '<p class="od-note" id="pqNote">' + esc(waysNote()) + '</p>'
+      : '<p class="od-note">You will pay on Flutterwave’s secure page, by ' +
       (PAY.onlineCard !== false && PAY.onlineMobile !== false ? 'card or mobile money'
         : PAY.onlineCard !== false ? 'card' : 'mobile money') +
-      '. Your card and PIN are never seen by this website.</p>';
+      '. Your card and PIN are never seen by this website.</p>');
     $('#odClose').addEventListener('click', closeOrderForm);
     $('#pqBack').addEventListener('click', function () { openOrderForm(order); });
 
@@ -2319,7 +2345,7 @@
         lead.textContent = (q.problems && q.problems.length) ? q.problems.join(' ')
           : (q.error || 'Your total could not be worked out just now.');
         lead.classList.add('err');
-        btn.textContent = 'Order on WhatsApp instead';
+        btn.textContent = 'Complete your order via WhatsApp';
         btn.disabled = false;
         btn.addEventListener('click', function () { openOrderForm(order); });
         return;
@@ -2341,7 +2367,19 @@
       box.innerHTML = rows.join('');
       btn.textContent = 'Pay ' + q.totalText;
       btn.disabled = false;
-      btn.addEventListener('click', function () { startPayment(order, d, btn, q.total); });
+      /* BUILD 88 · the ways of paying, chosen here; the gateway is the
+         server's business. Without them, Flutterwave's page as before. */
+      if (choose) {
+        var pick = drawWays($('#pqWays'), d);
+        btn.addEventListener('click', function () {
+          var c = pick();
+          if (!c) return;
+          if (c.via === 'page') { startPayment(order, d, btn, q.total, c.key); return; }
+          payHere(order, d, q, c, retryOf, { btn: btn, msg: $('#pqMsg') });
+        });
+      } else {
+        btn.addEventListener('click', function () { startPayment(order, d, btn, q.total); });
+      }
       if (note) {
         var said = $('#pqMsg');
         if (said) { said.textContent = note; said.className = 'rv-msg err'; }
@@ -2352,15 +2390,17 @@
   /* `expect` is the total on the quote the customer is looking at. The
      server charges its own figure, never this one; it only refuses to go
      ahead if the two differ, so nobody pays an amount they were not shown. */
-  function startPayment(order, d, btn, expect) {
+  function startPayment(order, d, btn, expect, method) {
     var msg = $('#pqMsg');
     btn.disabled = true;
     btn.textContent = 'Opening the payment page…';
-    payCall('pay-start', {
+    var ask = {
       items: payItems(order), fulfilment: d.how, town: d.town || '', preview: previewKey() || null,
       buyer: { name: d.name, phone: d.phone, email: d.email, address: d.address, notes: d.notes },
       expect: expect
-    }).then(function (r) {
+    };
+    if (method) ask.method = method;           // build 88: the way of paying chosen
+    payCall('pay-start', ask).then(function (r) {
       /* Flutterwave's own page, and nothing else: an address that is not
          https:// is not followed, whoever sent it (build 78). */
       if (r._code === 200 && /^https:\/\/[^\/\\\s]/i.test(String(r.link || ''))) {
@@ -2385,6 +2425,700 @@
       btn.textContent = 'Try again';
       if (msg) { msg.textContent = 'Check your connection and try again. Nothing has been charged.'; msg.className = 'rv-msg err'; }
     });
+  }
+
+  /* ==================================================================
+     BUILD 88 · PAYING ON THIS PAGE: the ways of paying, chosen here
+     ------------------------------------------------------------------
+     Mobile Money: the customer chooses the network and the number; the
+     server asks Lenco to send a request to that phone, and the customer
+     approves it there with their own PIN. Only the number is typed here.
+
+     Debit / Credit Card: Lenco's own secure window opens over this page
+     (Lenco's script, from pay.lenco.co and nowhere else). The card number
+     and security code are typed into Lenco's window, never into this page,
+     and never reach this website.
+
+     Either way, this page believes only the server, and the server believes
+     only Lenco's own answer about the payment: nothing here ever says paid
+     because a window closed or a callback ran.
+     ================================================================== */
+  var ZM_NETS = { airtel: ['097', '077'], mtn: ['096', '076'], zamtel: ['095', '075'] };
+  var ZM_NAME = { airtel: 'Airtel Money', mtn: 'MTN MoMo', zamtel: 'Zamtel Kwacha' };
+  var LENCO_SCRIPTS = ['https://pay.lenco.co/js/v1/inline.js', 'https://pay.sandbox.lenco.co/js/v1/inline.js'];
+  var TX_REF = /^VB-[A-Z0-9]{5}-[a-f0-9]{10}$/;
+  function zmNumber(v) {
+    var d = String(v || '').replace(/\D/g, '');
+    if (d.length === 12 && d.indexOf('260') === 0) d = '0' + d.slice(3);
+    else if (d.length === 9 && /^[79]/.test(d)) d = '0' + d;
+    return /^0[79]\d{8}$/.test(d) ? d : '';
+  }
+  function zmNetwork(v) {
+    var n = zmNumber(v);
+    if (!n) return '';
+    var pre = n.slice(0, 3);
+    for (var k in ZM_NETS) if (ZM_NETS[k].indexOf(pre) > -1) return k;
+    return '';
+  }
+  function attemptKey() {
+    try {
+      var a = new Uint8Array(12);
+      window.crypto.getRandomValues(a);
+      return Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+    } catch (e) {
+      return (Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)).slice(0, 24);
+    }
+  }
+  /* What is said under the ways of paying, for the way chosen. Mobile money
+     names the company that processes it. A card does not: it is tied to a
+     gateway only once its window opens, because with a second card gateway
+     (international cards, a later build) the customer's answer, a card
+     issued in Zambia or an international card, decides which one takes it
+     (netlify/functions/_cardroute.js). */
+  function wayNote(m) {
+    if (!m) return '';
+    if (m.key === 'card') {
+      return m.via === 'page'
+        ? 'Your card details are entered on a secure payment page and are never kept by this website.'
+        : 'Your card details are entered in a secure payment window and are never kept by this website.';
+    }
+    if (m.key === 'mobile' && m.via === 'page') return 'You will complete the payment on a secure payment page.';
+    return m.processor ? 'Payments are processed securely by ' + m.processor + '.' : 'Payments are processed securely.';
+  }
+  function waysNote() { return wayNote(payWays()[0]); }
+  function waySub(m) {
+    if (m.key === 'mobile') {
+      return m.via === 'prompt' && m.networks && m.networks.length
+        ? m.networks.map(function (n) { return n.label; }).join(' · ')
+        : 'Airtel, MTN and Zamtel';
+    }
+    if (m.key === 'card') return m.via === 'window' ? 'In a secure payment window' : 'On a secure payment page';
+    if (m.key === 'bank') return 'Straight from your bank account';
+    return '';
+  }
+  var WAY_ICON = {
+    mobile: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><line x1="10.5" y1="18" x2="13.5" y2="18"/></svg>',
+    bank: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9 12 4.5 20.5 9"/><line x1="4" y1="20" x2="20" y2="20"/><line x1="6.5" y1="11" x2="6.5" y2="17"/><line x1="10.2" y1="11" x2="10.2" y2="17"/><line x1="13.8" y1="11" x2="13.8" y2="17"/><line x1="17.5" y1="11" x2="17.5" y2="17"/></svg>',
+    card: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6" y1="14.5" x2="10" y2="14.5"/></svg>'
+  };
+
+  /* The chooser, drawn under the total. Answers a function that reads the
+     choice, or says what is missing and answers null. */
+  function drawWays(host, d) {
+    var ways = payWays();
+    var mobile = ways.filter(function (m) { return m.key === 'mobile'; })[0];
+    var cardWay = ways.filter(function (m) { return m.key === 'card'; })[0];
+    var nets = (mobile && mobile.via === 'prompt' && mobile.networks) || [];
+    var offered = function (k) { return nets.some(function (n) { return n.key === k; }); };
+    var guess = zmNetwork(d.phone);
+    var state = { key: ways[0] ? ways[0].key : '', network: offered(guess) ? guess : (nets.length === 1 ? nets[0].key : '') };
+    /* A card issued in Zambia, or an international card: asked only once a
+       second card gateway exists (issuerChoice), and never anything about
+       the card itself. Every card detail is typed in the gateway's own
+       window, never on this website. Not asked today. */
+    var askIssuer = !!(cardWay && cardWay.via === 'window' && cardWay.issuerChoice);
+    var ISSUERS = [{ key: 'local', label: 'Card issued in Zambia' }, { key: 'international', label: 'International card' }];
+    host.innerHTML =
+      '<p class="pm-head" id="pmHead">How would you like to pay?</p>' +
+      '<div class="pm-list" role="radiogroup" aria-labelledby="pmHead">' +
+      ways.map(function (m) {
+        return '<button type="button" class="pm-opt" role="radio" aria-checked="false" data-way="' + esc(m.key) + '">' +
+          '<span class="pm-ico">' + (WAY_ICON[m.key] || '') + '</span>' +
+          '<span class="pm-txt"><span class="pm-name">' + esc(m.label) + '</span>' +
+          '<span class="pm-sub">' + esc(waySub(m)) + '</span></span></button>';
+      }).join('') + '</div>' +
+      (nets.length
+        ? '<div class="pm-panel hide" data-for="mobile">' +
+            '<p class="pm-lbl" id="pmNetLbl">Mobile money network</p>' +
+            '<div class="pm-nets" role="radiogroup" aria-labelledby="pmNetLbl">' +
+              nets.map(function (n) {
+                return '<button type="button" class="pm-net" role="radio" aria-checked="false" data-net="' + esc(n.key) + '">' +
+                  esc(n.label) + '</button>';
+              }).join('') +
+            '</div>' +
+            '<label class="rv-lbl" for="pm_number">Mobile money number</label>' +
+            '<input type="tel" id="pm_number" inputmode="tel" autocomplete="tel" maxlength="16" placeholder="097 123 4567" value="' +
+              esc(zmNumber(d.phone)) + '">' +
+            '<p class="pm-hint" id="pmHint">A payment approval request will be sent to this number. Please check and verify ' +
+              'the phone number is correct before proceeding.</p>' +
+          '</div>'
+        : '') +
+      (askIssuer
+        ? '<div class="pm-panel hide" data-for="card">' +
+            '<p class="pm-lbl" id="pmIssLbl">Where was your card issued?</p>' +
+            '<div class="pm-nets" role="radiogroup" aria-labelledby="pmIssLbl">' +
+              ISSUERS.map(function (i) {
+                return '<button type="button" class="pm-net" role="radio" aria-checked="false" data-issuer="' + i.key + '">' +
+                  esc(i.label) + '</button>';
+              }).join('') +
+            '</div>' +
+          '</div>'
+        : '');
+    host.classList.remove('hide');
+    var num = $('#pm_number', host);
+    function clearMsg() {
+      var m = $('#pqMsg');
+      if (m && /err/.test(m.className)) { m.textContent = ''; m.className = 'rv-msg'; }
+    }
+    function paint() {
+      $all('.pm-opt', host).forEach(function (b) {
+        var on = b.getAttribute('data-way') === state.key;
+        b.classList[on ? 'add' : 'remove']('on');
+        b.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+      $all('.pm-panel', host).forEach(function (p) {
+        p.classList[p.getAttribute('data-for') === state.key ? 'remove' : 'add']('hide');
+      });
+      $all('.pm-net', host).forEach(function (b) {
+        var on = b.hasAttribute('data-issuer') ? b.getAttribute('data-issuer') === state.issuer
+                                               : b.getAttribute('data-net') === state.network;
+        b.classList[on ? 'add' : 'remove']('on');
+        b.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+      var note = $('#pqNote');
+      if (note) note.textContent = wayNote(ways.filter(function (m) { return m.key === state.key; })[0]);
+    }
+    $all('.pm-opt', host).forEach(function (b) {
+      b.addEventListener('click', function () { state.key = b.getAttribute('data-way'); clearMsg(); paint(); });
+    });
+    $all('.pm-net', host).forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (b.hasAttribute('data-issuer')) state.issuer = b.getAttribute('data-issuer');
+        else state.network = b.getAttribute('data-net');
+        clearMsg();
+        paint();
+      });
+    });
+    /* The network follows the number as it is typed, when it can tell. */
+    if (num) num.addEventListener('input', function () {
+      var g = zmNetwork(num.value);
+      if (g && offered(g) && g !== state.network) { state.network = g; paint(); }
+      clearMsg();
+    });
+    paint();
+    return function pick() {
+      var way = ways.filter(function (m) { return m.key === state.key; })[0];
+      var msg = $('#pqMsg');
+      var say = function (t, focus) {
+        if (msg) { msg.textContent = t; msg.className = 'rv-msg err'; }
+        if (focus) focus.focus();
+        return null;
+      };
+      if (!way) return say('Please choose how you would like to pay.');
+      if (way.key === 'mobile' && way.via === 'prompt') {
+        if (!state.network) return say('Please choose your mobile money network.');
+        var n = zmNumber(num && num.value);
+        if (!n) return say('Please enter your mobile money number: ten digits, starting with 09 or 07.', num);
+        var belongs = zmNetwork(n);
+        if (belongs && belongs !== state.network) {
+          return say(offered(belongs)
+            ? 'This is ' + (belongs === 'zamtel' ? 'a ' : 'an ') + ZM_NAME[belongs] + ' number. Please choose ' +
+              ZM_NAME[belongs] + ', or enter your ' + ZM_NAME[state.network] + ' number.'
+            : 'This is ' + (belongs === 'zamtel' ? 'a ' : 'an ') + ZM_NAME[belongs] + ' number, which cannot be ' +
+              'used here at the moment. Please enter your ' + ZM_NAME[state.network] + ' number, or choose another ' +
+              'payment method.', num);
+        }
+        return { key: 'mobile', via: 'prompt', network: state.network, momo: n, processor: way.processor || '' };
+      }
+      if (way.key === 'card' && askIssuer) {
+        if (!state.issuer) return say('Please choose where your card was issued.');
+        return { key: 'card', via: way.via, issuer: state.issuer };
+      }
+      return { key: way.key, via: way.via };
+    };
+  }
+
+  /* Pay, the chosen way, on this page. `retryOf`: the order's last try, so a
+     second press is the same order tried again, never a second order.
+
+     ONE PRESS, ONE PAYMENT. Each press carries a key the server keeps with
+     the payment it makes. When an answer is lost on the line, the next press
+     sends the same key again, whatever is chosen: if the first press reached
+     the server, the customer is shown that payment (a request already on
+     their phone) and nothing new is sent. */
+  function payHere(order, d, q, c, retryOf, ui) {
+    var btn = ui.btn, msg = ui.msg;
+    if (btn) { btn.disabled = true; btn.textContent = c.key === 'card' ? 'Opening the secure window…' : 'Sending the request…'; }
+    if (msg) { msg.textContent = ''; msg.className = 'rv-msg'; }
+    var key = order.__payKey || attemptKey();
+    order.__payKey = key;
+    var ask = {
+      items: payItems(order), fulfilment: d.how, town: d.town || '', preview: previewKey() || null,
+      buyer: { name: d.name, phone: d.phone, email: d.email, address: d.address, notes: d.notes },
+      expect: q.total, method: c.key, attempt: key
+    };
+    if (c.key === 'mobile') { ask.network = c.network; ask.momo = c.momo; }
+    if (c.key === 'card' && c.issuer) ask.cardIssuer = c.issuer;    // Zambian or international, never a card detail
+    var last = retryOf || order.__lastTx || null;
+    if (last && TX_REF.test(last)) ask.retry = { txRef: last };
+    var label = ui.label || ('Pay ' + q.totalText);
+    var again = function (t) {
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+      if (msg && t) { msg.textContent = t; msg.className = 'rv-msg err'; }
+    };
+    var lost = function () {
+      /* Nothing came back: the key is kept for the next press. */
+      again('We were unable to connect to the payment service. Please check your internet connection and try again.');
+    };
+    payCall('pay-start', ask).then(function (r) {
+      /* No answer of ours (a gateway timeout page, a dropped line): the
+         request may or may not have arrived, so it is treated as lost. */
+      if (r._code >= 500 && !r.error && !r.txRef) { lost(); return; }
+      order.__payKey = null;
+      if (r._code === 200 && TX_REF.test(String(r.txRef || ''))) {
+        order.__lastTx = r.txRef;
+        payMemo({ tx: r.txRef, cart: !order.single });
+        if (r.via === 'window' && r.widget && !r.status) { openLencoWindow(order, d, q, c, r, ui); return; }
+        watchHere(order, d, q, c, r, key);
+        return;
+      }
+      if (r._code === 409 && r.changed) {
+        order.__lastTx = null;
+        showPayQuote(order, d, (r.problems && r.problems[0]) ||
+          'The total has changed since you checked it. Please look at your order again before paying.');
+        return;
+      }
+      if (r.restart) order.__lastTx = null;
+      if (r._code === 409 && r.wait && btn) {
+        /* An earlier request for this order may still be approved: no new
+           one until it can no longer be (the server holds to the same). */
+        again(r.error);
+        holdButton(btn, label, Number(r.wait) || 30);
+        return;
+      }
+      again((r.problems && r.problems.join(' ')) || r.error ||
+            'We were unable to start your payment. Please try again or choose another payment method.');
+    }, lost);
+  }
+  /* A button that may not be pressed for `secs` seconds. `each(left)` is
+     told the seconds left, every second, and 0 when the wait is over. */
+  function holdButton(btn, label, secs, each) {
+    if (!btn) return;
+    var until = Date.now() + Math.min(300, Math.max(1, secs)) * 1000;
+    btn.disabled = true;
+    (function tick() {
+      if (!document.body.contains(btn)) return;
+      var left = Math.ceil((until - Date.now()) / 1000);
+      if (left <= 0) {
+        btn.disabled = false;
+        btn.textContent = label;
+        if (each) each(0);
+        return;
+      }
+      if (each) each(left);
+      setTimeout(tick, 1000);
+    }());
+  }
+
+  /* Lenco's own window, for cards. Its script comes from Lenco's two
+     addresses and nowhere else, whatever the server says. */
+  var LENCO_LOADING = {};
+  function loadLenco(src) {
+    if (LENCO_SCRIPTS.indexOf(src) < 0) return Promise.reject(new Error('not a Lenco script'));
+    if (LENCO_LOADING[src]) return LENCO_LOADING[src];
+    LENCO_LOADING[src] = new Promise(function (ok, no) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.async = true;
+      s.onload = function () {
+        if (window.LencoPay && typeof window.LencoPay.getPaid === 'function') ok(window.LencoPay);
+        else { delete LENCO_LOADING[src]; no(new Error('no LencoPay')); }
+      };
+      s.onerror = function () { delete LENCO_LOADING[src]; no(new Error('not loaded')); };
+      document.head.appendChild(s);
+    });
+    return LENCO_LOADING[src];
+  }
+  function openLencoWindow(order, d, q, c, r, ui) {
+    var w = r.widget || {};
+    loadLenco(w.script).then(function (LP) {
+      var done = false;
+      /* The processor is named now, where the card number is entered: the
+         card is going to this gateway. */
+      var lead = $('#pqLead'), note = $('#pqNote');
+      if (lead && document.body.contains(lead)) lead.textContent = 'Please enter your card details in the secure payment window.';
+      if (note && document.body.contains(note)) note.textContent = 'Payments are processed securely by ' + (r.processor || 'Lenco') + '.';
+      if (ui.btn) ui.btn.textContent = 'Paying in the secure window…';
+      var after = function (how) {
+        if (done) return;
+        done = true;
+        watchHere(order, d, q, c, Object.assign({}, r, { after: how }));
+      };
+      LP.getPaid({
+        key: w.key, reference: w.reference, email: w.email, amount: w.amount, currency: w.currency,
+        label: w.label, bearer: w.bearer, channels: ['card'], customer: w.customer,
+        onSuccess: function () { after('success'); },
+        onConfirmationPending: function () { after('pending'); },
+        onClose: function () { after('closed'); }
+      });
+    }, function () {
+      if (ui.btn) { ui.btn.disabled = false; ui.btn.textContent = 'Try again'; }
+      if (ui.msg) {
+        ui.msg.textContent = 'We were unable to open the secure payment window. Please check your internet connection ' +
+          'and try again. No money has been taken.';
+        ui.msg.className = 'rv-msg err';
+      }
+    });
+  }
+
+  /* "Contact us" from a payment screen: the website chat, with the order
+     number in the box, ready to send. The chat window is lifted above the
+     payment window for as long as that is open, so the customer comes back
+     to their payment, which is still being watched. With no chat to open,
+     WhatsApp, in a new tab (never in place of the payment screen). */
+  function payContact(a, ref) {
+    if (!a) return;
+    var text = 'Hello, I need help with the payment for my order ' + ref + '.';
+    var out = waGeneral(text);
+    var C = window.VBP_CHAT;
+    if (!out && !(C && C.enquire)) { a.classList.add('hide'); return; }
+    if (out) { a.href = out; a.target = '_blank'; a.rel = 'noopener'; } else a.href = '#';
+    var noChat = false;
+    a.addEventListener('click', function (e) {
+      var C2 = window.VBP_CHAT;
+      if (noChat || !(C2 && C2.enquire && !(C2.state && C2.state() === 'off'))) {
+        if (!out) e.preventDefault();
+        return;                                   // WhatsApp, in a new tab
+      }
+      e.preventDefault();
+      document.documentElement.classList.add('chat-over-pay');
+      C2.enquire(text).then(function (opened) {
+        if (opened) return;
+        /* No chat after all (switched off, outside chat hours): the link
+           becomes WhatsApp's, for the customer to press. */
+        document.documentElement.classList.remove('chat-over-pay');
+        noChat = true;
+        if (out) a.textContent = 'Contact us on WhatsApp';
+        else a.classList.add('hide');
+      });
+    });
+  }
+
+  /* With the customer until the server (asking Lenco) says paid, failed,
+     cancelled or needs attention. `key`: the key of the press of Pay that
+     made this payment, needed to cancel it. */
+  function watchHere(order, d, q, c, r, key) {
+    var body = $('#orderBody'), modal = $('#orderModal');
+    if (!body) return;
+    if (modal && !modal.classList.contains('open')) { modal.classList.add('open'); document.body.style.overflow = 'hidden'; }
+    var card = c.key === 'card';
+    var tx = r.txRef;
+    var ref = r.ref || '';
+    body.innerHTML =
+      '<button class="qv-close" id="odClose" aria-label="Close">&times;</button>' +
+      '<div class="c">' + esc(card ? 'Debit / Credit Card' : 'Mobile Money') + (r.test ? ' · Test mode' : '') + '</div>' +
+      '<h3 class="serif" id="pwHead"></h3>' +
+      '<p class="od-lead" id="pwLead"></p>' +
+      '<div class="pw-wait" id="pwWait" role="status" aria-live="polite"><span class="pw-spin" aria-hidden="true"></span>' +
+        '<span id="pwWaitTxt"></span></div>' +
+      '<p class="pw-help hide" id="pwHelp">Didn’t receive approval request? Please try again or use another payment ' +
+        'method. <a class="pw-contact" id="pwContact" href="#">Contact us</a></p>' +
+      '<div class="pw-detail hide" id="pwDetail"></div>' +
+      '<div class="rv-actions" id="pwActs"><span class="rv-msg" id="pwMsg"></span></div>' +
+      '<p class="od-note" id="pwNote"></p>';
+    var over = false, began = Date.now(), tries = 0, misses = 0, timer = null, helpTimer = null, helpShown = false;
+    var stopped = false;          // no more asking on its own; Check payment status still asks
+    var paused = false;           // while Cancel payment is being asked
+    /* This watch lasts as long as its own screen: anything drawn in its place
+       (another try, the choice of payment method, the order form) ends it. */
+    var headEl = $('#pwHead');
+    var alive = function () { return !over && document.body.contains(headEl); };
+    $('#odClose').addEventListener('click', function () { finish(); closeOrderForm(); });
+    payContact($('#pwContact'), ref);
+    function finish() {
+      over = true;
+      if (timer) clearTimeout(timer);
+      if (helpTimer) clearTimeout(helpTimer);
+    }
+    function say(head, lead, wait) {
+      var h = $('#pwHead'), l = $('#pwLead'), w = $('#pwWait'), t = $('#pwWaitTxt');
+      if (!h) return;
+      h.textContent = head;
+      l.textContent = lead;
+      if (wait) { t.textContent = wait; w.classList.remove('hide'); } else w.classList.add('hide');
+    }
+    function tell(t, bad) {
+      var m = $('#pwMsg');
+      if (m) { m.textContent = t || ''; m.className = 'rv-msg' + (bad ? ' err' : ''); }
+    }
+    function help(on) {
+      var h = $('#pwHelp');
+      if (h) h.classList[on ? 'remove' : 'add']('hide');
+    }
+    function buttons(list) {
+      var acts = $('#pwActs');
+      if (!acts) return;
+      acts.innerHTML = '';
+      list.forEach(function (b, i) {
+        var e = document.createElement('button');
+        e.type = 'button';
+        e.className = 'btn ' + (i === 0 ? 'btn-gold' : 'btn-outline');
+        e.id = b.id;
+        e.textContent = b.text;
+        e.addEventListener('click', function () { if (!e.disabled) b.go(e); });
+        acts.appendChild(e);
+      });
+      var m = document.createElement('span');
+      m.className = 'rv-msg';
+      m.id = 'pwMsg';
+      acts.appendChild(m);
+    }
+    function busy(on) {
+      $all('#pwActs .btn').forEach(function (b) { b.disabled = !!on; });
+    }
+    var note = $('#pwNote');
+    if (note) note.textContent = 'Order ' + ref + '.' +
+      (r.test ? ' Test mode: please use the sandbox test numbers and cards. No money will be taken.' : '');
+
+    function retryNow(e, with_) {
+      tell('');
+      payHere(order, d, q, with_ || c, tx, { btn: e, msg: $('#pwMsg'), label: e.textContent });
+    }
+    function another() { finish(); showPayQuote(order, d, '', tx); }
+    function whatsapp() { finish(); order.__lastTx = null; openOrderForm(order); }
+    var tryAgain = { id: 'pwAgain', text: 'Try again', go: function (e) { retryNow(e); } };
+    var otherWay = { id: 'pwOther', text: 'Choose another payment method', go: another };
+    var viaWa = { id: 'pwWa', text: 'Complete your order via WhatsApp', go: whatsapp };
+    var checkNow = { id: 'pwCheck', text: 'Check payment status', go: function (e) { checkStatus(e); } };
+    var cancelIt = { id: 'pwCancel', text: 'Cancel payment', go: function (e) { cancelPayment(e); } };
+
+    /* ---- the answers ------------------------------------------------- */
+    function done(how, s) {
+      s = s || {};
+      finish();
+      help(false);
+      tell('');
+      var memo = payMemo();
+      var clearCart = function () {
+        if (memo && memo.tx === tx) {
+          if (memo.cart) { cart = []; saveCart(); afterCartChange(); }
+          payMemo(null);
+        }
+      };
+      var oref = s.ref || ref;
+      if (how === 'paid') {
+        var test = !!(s.test || r.test);
+        say(test ? 'Test Payment Successful' : 'Payment Successful',
+            test ? 'Your test payment has been successfully processed. No money was taken.'
+                 : 'Your payment has been successfully processed. Thank you for shopping with ' + shopName() + '.', '');
+        if (note) note.textContent = 'Order ' + oref + (s.amountText ? ' · ' + s.amountText : '') + '. ' +
+          (test ? 'It is marked TEST in the Orders tab, and the emails say TEST.'
+                : 'A confirmation has been sent to your email.');
+        clearCart();
+        buttons([
+          { id: 'pwView', text: 'View order details', go: function () { orderDetails(oref, s); } },
+          { id: 'pwOk', text: 'Continue shopping', go: function () { closeOrderForm(); } }
+        ]);
+      } else if (how === 'review') {
+        if (s.duplicate) {
+          say('Payment Already Received', 'We have already received payment for order ' + oref + '. This second ' +
+              'payment will be refunded to you, and we will contact you shortly.', '');
+        } else {
+          say('Payment Under Review', 'We have received a payment for order ' + oref + ', but it does not match the ' +
+              'order total. Our team will review it and contact you shortly. Please do not pay again.', '');
+        }
+        clearCart();
+        buttons([{ id: 'pwOk', text: 'Continue shopping', go: function () { closeOrderForm(); } }]);
+      } else if (how === 'closed') {
+        say('Payment Not Completed', 'The secure payment window was closed before the payment was completed. ' +
+            'No money has been taken.', '');
+        buttons([tryAgain, otherWay, viaWa]);
+      } else if (how === 'cancelled') {
+        say('Payment Cancelled', 'Your payment has been cancelled and no money has been taken.' +
+            (s.onPhone ? ' If the approval request is still showing on your phone, please do not authorise it.' : ''), '');
+        buttons([tryAgain, otherWay, viaWa]);
+        var wait = Number(s.retryAfter) || 0;
+        if (wait > 0) {
+          /* The request may still be on the phone: no new one for a while,
+             so that the order is never paid twice (the server holds to the
+             same). */
+          var a1 = $('#pwAgain'), o1 = $('#pwOther');
+          holdButton(o1, o1.textContent, wait);
+          holdButton(a1, a1.textContent, wait, function (left) {
+            tell(left ? 'To prevent a double payment, a new payment can be started in ' + left +
+                        (left === 1 ? ' second.' : ' seconds.') : '');
+          });
+        }
+      } else if (how === 'failed') {
+        say('Payment Unsuccessful', s.reason || (card
+          ? 'We were unable to process your card payment. Please try again or choose another payment method.'
+          : 'We were unable to process your payment. Please try again or choose another payment method.'), '');
+        buttons([tryAgain, otherWay, viaWa]);
+      } else {
+        /* A card not confirmed in two minutes: the bank's check is still
+           under way. The confirmation email follows the payment. */
+        say('Payment Confirmation Pending', 'We have not yet received confirmation of your payment from your bank. If ' +
+            'your payment was approved, your order confirmation will be sent to your email as soon as it is ' +
+            'received. Please do not pay again for this order.', '');
+        buttons([checkNow, { id: 'pwOk', text: 'Close', go: function () { closeOrderForm(); } }]);
+      }
+    }
+
+    /* ---- VIEW ORDER DETAILS -------------------------------------------
+       Signed in: the order's own page in the account. Otherwise the order
+       is shown here, from what the customer has just paid for. */
+    function orderDetails(oref, s) {
+      if (ACCT && ACCT.enabled && ACCT.enabled() && ACCT.signedIn && ACCT.signedIn()) {
+        closeOrderForm();
+        go('account/orders/' + encodeURIComponent(oref));
+        return;
+      }
+      var box = $('#pwDetail');
+      if (!box) return;
+      var rows = (q.lines || []).map(function (l) {
+        return '<div class="pq-row"><span>' + esc(l.name) + ' × ' + l.qty + '</span><span>' + esc(l.totalText) + '</span></div>';
+      });
+      if (q.deliveryText) {
+        rows.push('<div class="pq-row"><span>' + esc(q.deliveryLabel || 'Delivery') + '</span><span>' + esc(q.deliveryText) + '</span></div>');
+      }
+      rows.push('<div class="pq-row pq-total"><span>Total paid</span><span>' + esc(s.amountText || q.totalText || '') + '</span></div>');
+      var how = card ? 'Debit / Credit Card' : ('Mobile Money' + (r.networkLabel ? ' (' + r.networkLabel + ')' : ''));
+      box.innerHTML =
+        '<dl class="pw-facts">' +
+          '<div><dt>Order number</dt><dd>' + esc(oref) + '</dd></div>' +
+          '<div><dt>Payment</dt><dd>' + esc(how) + '</dd></div>' +
+          '<div><dt>' + (d.how === 'collection' ? 'Collection' : 'Delivery to') + '</dt><dd>' +
+            esc(d.how === 'collection' ? 'From the shop' : (d.address || '')) + '</dd></div>' +
+          (d.email ? '<div><dt>Confirmation sent to</dt><dd>' + esc(d.email) + '</dd></div>' : '') +
+        '</dl>' +
+        '<div class="pq">' + rows.join('') + '</div>';
+      box.classList.remove('hide');
+      say('Order Details', 'Thank you for your order. Please keep your order number for reference.', '');
+      buttons([{ id: 'pwOk', text: 'Continue shopping', go: function () { closeOrderForm(); } }]);
+    }
+
+    /* ---- while waiting ------------------------------------------------ */
+    function waitingWords() {
+      if (card) {
+        if (r.after === 'closed') {
+          say('Checking Your Payment', 'The secure payment window was closed. We are checking whether a payment was made.', 'Checking…');
+        } else {
+          say('Confirming Your Payment', 'Please wait while we confirm your payment with your bank. Please keep this page open.',
+              'Waiting for confirmation…');
+        }
+        buttons([]);
+        return;
+      }
+      say('Payment Authorisation Required',
+          (r.uncertain ? 'A payment approval request is on its way to ' : 'A payment approval request has been sent to ') +
+          (r.number || 'your phone') + '. Please check your phone and follow the instructions to authorise the ' +
+          'transaction. Once approved, your payment will be processed and your order confirmation will follow.',
+          'Waiting for your approval…');
+      buttons(helpShown ? [tryAgain, checkNow, otherWay, cancelIt] : [checkNow, otherWay, cancelIt]);
+    }
+    /* "Didn't receive approval request?", once a new request can be sent:
+       the server says when (retryAfter), and holds to the same. */
+    function helpIn(secs) {
+      if (card || helpShown || !alive()) return;
+      if (helpTimer) clearTimeout(helpTimer);
+      helpTimer = setTimeout(function () {
+        if (!alive()) return;
+        helpShown = true;
+        help(true);
+        waitingWords();
+      }, Math.max(0, secs) * 1000);
+    }
+    /* How long the page keeps asking on its own: every 3 seconds at first,
+       then every 5, then every 10. A card for two minutes; mobile money for
+       ten (an approval can come late). After that, Check payment status. */
+    var LIMIT = card ? 120000 : 600000;
+    function later() {
+      if (!alive()) return;
+      var age = Date.now() - began;
+      if (card && r.after === 'closed' && tries >= 3) return done('closed');
+      if (age >= LIMIT) {
+        if (card) return done('pending');
+        stopped = true;
+        return;
+      }
+      timer = setTimeout(ask, tries < 10 ? 3000 : (age < 180000 ? 5000 : 10000));
+    }
+    function answer(s) {
+      if (s.status === 'paid' || s.status === 'review' || s.status === 'failed' || s.status === 'cancelled') {
+        done(s.status, s);
+        return true;
+      }
+      if (s.retryAfter != null && !helpShown) helpIn(Number(s.retryAfter) || 0);
+      return false;
+    }
+    function ask() {
+      if (!alive() || stopped || paused) return;
+      tries++;
+      fetch(PAY_FN + 'pay-status?tx_ref=' + encodeURIComponent(tx), { cache: 'no-store' })
+        .then(function (x) { return x.json(); })
+        .then(function (s) {
+          if (!alive() || paused) return;
+          if (misses >= 3) tell('');
+          misses = 0;
+          if (!answer(s)) later();
+        }, function () {
+          if (!alive() || paused) return;
+          /* The line dropped: said once it has happened a few times, and the
+             page keeps asking. The payment itself is not affected. */
+          misses++;
+          if (misses === 3) {
+            tell('We are having trouble connecting to check your payment. Please check your internet connection. ' +
+                 'You can check the payment status again at any time.', true);
+          }
+          later();
+        });
+    }
+
+    /* ---- the buttons -------------------------------------------------- */
+    function checkStatus(e) {
+      var label = e.textContent;
+      busy(true);
+      e.textContent = 'Checking…';
+      tell('');
+      fetch(PAY_FN + 'pay-status?tx_ref=' + encodeURIComponent(tx), { cache: 'no-store' })
+        .then(function (x) { return x.json(); })
+        .then(function (s) {
+          if (!alive() || !document.body.contains(e)) return;
+          busy(false);
+          e.textContent = label;
+          if (answer(s)) return;
+          tell(card ? 'Your payment has not been confirmed yet. Please wait a moment and check again.'
+                    : 'Your payment has not been authorised yet. Please check your phone and follow the instructions.');
+          if (stopped) { stopped = false; began = Date.now(); tries = 10; later(); }
+        }, function () {
+          if (!alive() || !document.body.contains(e)) return;
+          busy(false);
+          e.textContent = label;
+          tell('We were unable to check your payment status. Please check your internet connection and try again later.', true);
+        });
+    }
+    function cancelPayment(e) {
+      var label = e.textContent;
+      busy(true);
+      e.textContent = 'Cancelling…';
+      tell('');
+      paused = true;
+      if (timer) clearTimeout(timer);
+      var resume = function (t) {
+        paused = false;
+        if (!document.body.contains(e)) return;
+        busy(false);
+        e.textContent = label;
+        if (t) tell(t, true);
+        later();
+      };
+      payCall('pay-status', { action: 'cancel', txRef: tx, attempt: key || '' }).then(function (s) {
+        if (!alive()) return;
+        if (s._code === 200 && answer(s)) return;
+        if (s._code === 200) { resume(''); return; }
+        resume(s._code >= 500 && !s.error
+          ? 'We were unable to cancel the payment because of a connection problem. Please check your internet connection and try again.'
+          : (s.error || 'We were unable to cancel the payment. Please try again.'));
+      }, function () {
+        resume('We were unable to cancel the payment because of a connection problem. Please check your internet connection and try again.');
+      });
+    }
+
+    if (r.status === 'paid' || r.status === 'review' || r.status === 'failed' || r.status === 'cancelled') return done(r.status, r);
+    waitingWords();
+    if (!card && r.retryAfter != null) helpIn(Number(r.retryAfter) || 0);
+    else if (!card) helpIn(90);
+    timer = setTimeout(ask, card ? 1200 : 2500);
   }
 
   /* Back from Flutterwave. What the address says is only a hint: the

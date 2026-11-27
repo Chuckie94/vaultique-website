@@ -1678,15 +1678,27 @@
       }
       if (to === 'paid') {
         return 'Paid' + (n.amount != null ? ' · ' + fmtMoney(Number(n.amount)) : '') +
-               (n.flw_ref ? ' · Flutterwave ' + n.flw_ref : '');
+               (n.flw_ref ? ' · Flutterwave ' + n.flw_ref : '') +
+               (n.lenco_ref ? ' · Lenco ' + n.lenco_ref : '');           // build 88
       }
       if (to === 'failed') {
+        /* Build 88: Lenco's own reason, word for word, for the shop. */
+        if (n.provider === 'lenco') {
+          var why = n.why ? ' · ' + n.why : '';
+          if (n.reason === 'failed') return 'Lenco: the payment failed' + why;
+          if (n.reason === 'refused') return 'Lenco refused the request' + why;
+          if (n.reason === 'unsupported') return 'Lenco asked for a step this checkout does not take' + why;
+          if (n.reason === 'order moved on') return 'Not started: the order had moved on';
+          return 'Lenco: not completed' + why;
+        }
         if (n.reason === 'failed') return 'Flutterwave: the payment failed';
         if (n.reason === 'cancelled') return 'Flutterwave: the payment was cancelled';
         return 'Stopped before the payment page';
       }
       if (to === 'expired') return 'Not completed within three hours';
       if (to === 'review') {
+        if (n.duplicate) return 'Paid twice: this second payment is not counted, refund it' +
+                                (n.lenco_ref ? ' · Lenco ' + n.lenco_ref : '');   // build 88
         return 'Needs attention: received ' + payGot(n) +
                (n.expected != null ? ', the order is ' + fmtMoney(Number(n.expected)) : '');
       }
@@ -1727,16 +1739,17 @@
       var attn = document.createElement('div');
       attn.className = 'hint pay-attn';
       attn.textContent = 'A payment came in that does not match this order. Nothing has been ' +
-        'marked paid. Check it in your Flutterwave dashboard, then contact the customer.';
+        'marked paid. Check it in your payment gateway\u2019s dashboard, then contact the customer.';
       d.appendChild(attn);
-      Promise.resolve(sb.from('payments').select('amount,currency,channel,detail')
+      Promise.resolve(sb.from('payments').select('amount,currency,channel,detail,provider')
         .eq('order_id', o.id).eq('status', 'review').limit(1)).then(function (r) {
         var p = r && !r.error && r.data && r.data[0];
         if (!p || !p.detail) return;
         var how = p.channel === 'card' ? ' by card' : (p.channel ? ' by mobile money' : '');
+        var where = p.provider === 'lenco' ? 'Lenco account' : 'Flutterwave dashboard';    // build 88
         attn.textContent = 'A payment came in that does not match this order: received ' +
           payGot(p.detail) + how + ', the order is ' + fmtMoney(Number(p.amount)) +
-          '. Nothing has been marked paid. Check it in your Flutterwave dashboard, then contact the customer.';
+          '. Nothing has been marked paid. Check it in your ' + where + ', then contact the customer.';
       }, function () {});
     }
 

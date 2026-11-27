@@ -19,9 +19,19 @@
 // BUILD 81 · It also asks Flutterwave about every online refund still on
 // its way, or whose answer was lost on the line (_refund.js, sweep): the
 // back-up for the platform's own asking and Flutterwave's refund notice.
+//
+// BUILD 88 · Lenco's payments too, each asked of Lenco (settle() asks the
+// gateway the payment went to): Lenco's own advice is to ask again at
+// intervals until a payment is successful or failed, because a webhook can
+// always be missed. A Lenco payment Lenco has called failed is final, and is
+// not asked about again. One the customer cancelled at the checkout is not
+// Lenco's word: it is asked about until Lenco gives one, because a request
+// approved on the phone after all is still the order's payment. Each run's
+// result is kept for Settings > Payments.
 // =====================================================================
 const P = require('./_pay');
 const R = require('./_refund');
+const L = require('./_lenco');
 
 const LOOK_BACK_HOURS = 72;   // money that arrives late is still the customer's
 const QUIET_MINUTES = 3;      // somebody may still be on the payment page
@@ -35,7 +45,10 @@ const enc = encodeURIComponent;
 async function run() {
   if (!P.serviceKey()) return { skipped: 'no service key' };
   // Online payment not connected yet: there is nobody to ask, so nothing is read.
-  if (!P.flwKey('test') && !P.flwKey('live')) return { skipped: 'no Flutterwave key' };
+  // BUILD 88: a Lenco key counts as much as a Flutterwave one.
+  if (!P.flwKey('test') && !P.flwKey('live') && !L.secretKey('test') && !L.secretKey('live')) {
+    return { skipped: 'no gateway key' };
+  }
   const began = Date.now();
   const out = { checked: 0, paid: 0, failed: 0, repaired: 0, review: 0 };
 
@@ -56,8 +69,11 @@ async function run() {
   // (abandon: "could not open the payment page", "stopped before the
   // payment page"): nobody could have paid those.
   const failedOnes = await P.svc('GET', 'payments?select=*&status=eq.failed' + span + '&limit=' + MAX_PER_RUN);
-  const retry = (failedOnes || []).filter((p) =>
-    ['failed', 'cancelled'].indexOf(String((p && p.detail && p.detail.reason) || '')) > -1);
+  const why = (p) => String((p && p.detail && p.detail.reason) || '');
+  const retry = (failedOnes || []).filter((p) => p && (p.provider !== 'lenco'
+    ? ['failed', 'cancelled'].indexOf(why(p)) > -1
+    : why(p) === 'customer-cancelled' && p.provider_status !== 'failed' &&
+      Date.now() - Date.parse(p.created_at || 0) < 24 * 3600000));
 
   // Newest first across both, so a customer who paid a few minutes ago is
   // asked about before an attempt from two days ago.
@@ -74,7 +90,7 @@ async function run() {
         out.paid++;
         if (r.fresh && r.pay && r.pay.order_id) {
           s = s || await P.shopSettings();
-          await P.confirmByEmail(s, r.pay.order_id, r.pay.mode, r.late);
+          await P.confirmByEmail(s, r.pay.order_id, r.pay.mode, r.late, r.pay.provider);
         }
       } else if (r.status === 'failed') {
         out.failed++;
@@ -102,7 +118,7 @@ async function run() {
         if (r.fresh) {
           out.repaired++;
           s = s || await P.shopSettings();
-          await P.confirmByEmail(s, pay.order_id, pay.mode, r.late);
+          await P.confirmByEmail(s, pay.order_id, pay.mode, r.late, pay.provider);
         }
       } catch (e) { /* the next run tries again */ }
     }
@@ -114,6 +130,11 @@ async function run() {
   // 4) BUILD 81 · Refunds still on their way, or whose answer was lost.
   //    Before supabase-online-refund.sql is run there are none to read.
   try { out.refunds = await R.sweep(began + 26000); } catch (e) { out.refunds = { asked: 0, changed: 0 }; }
+
+  // 5) BUILD 88 · The run, for Settings > Payments ("the check-up last ran").
+  await P.noteHealth({ reconcileAt: new Date().toISOString(),
+    reconcile: { checked: out.checked, paid: out.paid, failed: out.failed, repaired: out.repaired, review: out.review } })
+    .catch(() => {});
   return out;
 }
 

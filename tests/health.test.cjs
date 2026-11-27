@@ -36,7 +36,10 @@ function reset() {
     cols: { pos_claim_id: true, auto_deliver_at: true },
     tables: { payment_events: true, refunds: true, chat_reply_push: false },
     rpc: { pos_test_payment: true },
-    payments: { onlineEnabled: true, onlineMode: 'live', onlineCard: true, onlineMobile: true },
+    payments: { onlineEnabled: true, onlineMode: 'live', onlineCard: true, onlineMobile: true,
+      /* build 88: Flutterwave takes payments only once switched on in its own
+         setting (flwEnabled), as the shop will once its account is approved */
+      flwEnabled: true },
   };
   ASKED = [];
 }
@@ -174,7 +177,7 @@ const server = http.createServer((req, res) => {
   r = await call('ADMIN-TOKEN');
   is(r.body.payments.online === false && r.body.payments.ready === false, 'switched off: not ready');
   is(clean(r.raw), 'no value of any setting in an administrator\'s answer either');
-  is(d.jobs === 'recorded from build 89', 'the scheduled jobs: said to come with build 89, not guessed');
+  is(d.jobs === 'recorded from build 94', 'the scheduled jobs: said to come with build 94 (the monitoring build), not guessed');
 
   console.log('\nThe platform\'s secret key, if it is ever put back');
   process.env.POS_SUPABASE_KEY = 'SENTINEL-POS-SECRET-222';

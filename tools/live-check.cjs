@@ -179,8 +179,15 @@ async function checkHeaders() {
     const reportOnly = h('content-security-policy-report-only');
     const policy = enforced || reportOnly;
     if (!policy) fail(p + ' sends no security policy: dist/_headers is missing, so the build step did not run (part 6)');
-    else if ((policy.match(/default-src/g) || []).length > 1) fail(p + ' sends the security policy twice, joined into one');
-    else if (enforced) ok(p + ' enforces the security policy');
+    else if ((reportOnly.match(/default-src/g) || []).length > 1 || (enforced.match(/default-src/g) || []).length > 1) {
+      fail(p + ' sends the security policy twice, joined into one');
+    }
+    else if (enforced && /default-src/.test(enforced)) ok(p + ' enforces the security policy');
+    /* Build 88: the scripts part enforced, the rest report-only (tools/build-site.cjs, step 7). */
+    else if (enforced && /script-src/.test(enforced)) {
+      ok(p + ' enforces which scripts may run; the rest of the policy is report-only for now' +
+         (/report-uri/.test(reportOnly) ? '' : ' (its reports are switched off)'));
+    }
     else ok(p + ' sends the security policy, report-only for now' + (/report-uri/.test(reportOnly) ? '' : ' (its reports are switched off)'));
     if (!/max-age=\d+/i.test(h('strict-transport-security'))) noHsts++;
   }

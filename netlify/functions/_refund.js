@@ -138,6 +138,14 @@ async function one(id) {
   const got = await P.svc('GET', 'refunds?id=eq.' + enc(id) + '&select=*');
   return (got && got[0]) || null;
 }
+// BUILD 88 · The gateway a refund's payment went through. A refund always
+// names its payment; one whose payment row is gone (never deleted in
+// practice) is taken to be Flutterwave's, the only gateway before build 88.
+async function providerOf(row) {
+  const by = row.payment_id ? 'id=eq.' + enc(row.payment_id) : 'tx_ref=eq.' + enc(row.tx_ref || '');
+  const got = await P.svc('GET', 'payments?select=provider&' + by + '&limit=1');
+  return String((got && got[0] && got[0].provider) || 'flutterwave');
+}
 // A refund moved on from where it was, by a write that only succeeds if it
 // is still there. Whoever lost the race reads where it is now.
 async function move(row, from, patch) {
@@ -177,6 +185,19 @@ async function send(id) {
   const took = await P.svc('PATCH', 'refunds?id=eq.' + enc(id) + '&state=eq.new', { state: 'sending', sent_at: nowIso() });
   if (!(took && took.length)) return { ok: true, again: true, refund: out(await one(id)) };
   row = took[0];
+
+  // BUILD 88 · Only a payment made through Flutterwave is refunded through
+  // Flutterwave. Lenco's API has no refund for a collection: the platform's
+  // door refuses those already (refund_state_of, supabase-lenco.sql); this is
+  // the second lock, and nothing is sent.
+  const via = await providerOf(row);
+  if (via !== 'flutterwave') {
+    const name = via === 'lenco' ? 'Lenco' : via;
+    row = await move(row, 'sending', { state: 'refused',
+      flw_message: 'Paid through ' + name + ', which has no refund this website can send: nothing was sent. ' +
+                   'Refund the customer from your ' + name + ' account.' });
+    return { ok: true, again: false, refund: out(row) };
+  }
 
   if (!P.flwKey(row.mode)) {
     row = await move(row, 'sending', { state: 'refused',

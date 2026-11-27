@@ -1185,7 +1185,7 @@
 
   /* The dashboard's three groups, as the owner's screenshots have them.
      Gift cards and My wallet are left out (decision D9): the platform has
-     both switched off. Product alerts come with website build 89. */
+     both switched off. Product alerts come with website build 90 (89 before build 88 was put first). */
   var SHOPPING = [
     { sec: 'orders', ic: 'box', t: 'My orders', s: 'Order history and tracking', on: historyOn },
     { sec: 'refunds', ic: 'turn', t: 'Returns & refunds', s: 'Manage order issues', on: historyOn },
