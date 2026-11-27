@@ -154,7 +154,9 @@ async function refunds(who) {
 const ORDER_KEYS = ['ref', 'created_at', 'status', 'fulfilment', 'name', 'phone', 'email', 'address', 'notes',
   'total', 'currency', 'goods_total', 'delivery_fee', 'tax_total', 'payment_method', 'payment_status', 'pay_channel',
   'paid_amount', 'paid_at', 'pos_receipt_no', 'pos_completed_at', 'ship_note', 'dispatched_at', 'ready_at',
-  'delivered_at', 'delivered_by', 'refund_state', 'refund_amount', 'refund_ref', 'refund_at'];
+  'delivered_at', 'delivered_by', 'refund_state', 'refund_amount', 'refund_ref', 'refund_at',
+  // build 89: delivery (supabase-delivery.sql), theirs to see
+  'delivery_instructions', 'ship_courier', 'ship_tracking', 'ship_tracking_url', 'ship_updates'];
 const ITEM_KEYS = ['sku', 'name', 'price', 'qty'];
 const PAYMENT_KEYS = ['tx_ref', 'mode', 'status', 'amount', 'currency', 'channel', 'created_at', 'updated_at'];
 const REQUEST_KEYS = ['ref', 'order_ref', 'kind', 'reason', 'detail', 'wants', 'items', 'status', 'answer',

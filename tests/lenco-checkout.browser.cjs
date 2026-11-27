@@ -578,21 +578,19 @@ window.LencoPay = { getPaid: function (o) {
     await toQuote(page, '0977000007');
     await page.click('.pm-opt[data-way="card"]');
     const iss = await page.evaluate(() => ({
-      label: ((document.getElementById('pmIssLbl') || {}).textContent || ''),
-      opts: Array.from(document.querySelectorAll('[data-issuer]')).map(b => b.textContent),
+      opts: Array.from(document.querySelectorAll('#pqWays .pm-cardbtn')).map(b => b.textContent),
+      payShown: !document.getElementById('pqPay').classList.contains('hide'),
       inputs: document.querySelectorAll('#pqWays .pm-panel[data-for="card"] input').length,
-      note: (document.getElementById('pqNote') || {}).textContent || '' }));
-    is(iss.label === 'Where was your card issued?' && J(iss.opts) === J(['Card issued in Zambia', 'International card']) && iss.inputs === 0,
-       'with a second card gateway: "Where was your card issued?", two buttons, and no box to type anything in', J(iss));
-    await page.click('#pqPay');
-    await waitText(page, '#pqMsg', /where your card was issued/, 5000);
-    is((await page.textContent('#pqMsg')) === 'Please choose where your card was issued.' && !(await page.$('#lencoStandIn')),
-       'Pay without an answer: asked for it, nothing opened');
-    await page.click('[data-issuer="international"]');
-    await shot(page, '12-later-card-issued-where');
+      asked: /where was your card issued/i.test(document.getElementById('orderBody').textContent) }));
+    is(J(iss.opts) === J(['Pay with Zambian card', 'Pay with international card']) && !iss.payShown && iss.inputs === 0 && !iss.asked,
+       'with a second card gateway: "Pay with Zambian card" and "Pay with international card" in place of Pay, nothing to type in', J(iss));
+    await shot(page, '12-later-pay-with-zambian-or-international-card');
+    await page.click('.pm-opt[data-way="mobile"]');
+    is(!(await page.$eval('#pqPay', b => b.classList.contains('hide'))), 'Mobile Money again: the Pay button is back');
+    await page.click('.pm-opt[data-way="card"]');
     const before = DB.payments.length;
     await page.evaluate(() => { window.__lencoAct = 'close'; });
-    await page.click('#pqPay');
+    await page.click('.pm-cardbtn[data-issuer="international"]');
     await waitText(page, '#pwHead', /Payment Not Completed/);
     const routed = (DB.payments.slice(before).find(x => x.method === 'card') || {}).detail || {};
     is(J(routed.card_route) === J({ choice: 'international', gateway: 'lenco', why: 'no international card gateway yet' }),

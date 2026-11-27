@@ -70,6 +70,7 @@
     requireEmail: false,
     requireAddress: false,
     orderNotes: true,
+    deliveryInstructions: true,
     checkoutLabel: 'Buy',
     consentText: 'I confirm that the information provided is accurate and consent to Vaultique Boutique processing my personal information for the purposes of fulfilling and managing my order, including processing or storage by authorised service providers outside Zambia, in accordance with the Privacy Policy.'
   };
@@ -189,8 +190,12 @@
                 showIf: function (v) { return !!v.whatsappCheckout; } },
               { type: 'toggle', name: 'orderNotes', label: 'Offer a notes box',
                 showIf: function (v) { return !!v.whatsappCheckout; },
-                hint: 'An optional line for anything else: a landmark, a gift message, ' +
-                      'a preferred delivery day.' },
+                hint: 'An optional line for anything else: a gift message, a preferred delivery day.' },
+              { type: 'toggle', name: 'deliveryInstructions', label: 'Ask for delivery instructions',
+                hint: 'An optional box for the courier, shown only when the order is to be delivered: a ' +
+                      'landmark, the gate, the best time to come. It goes with the order, both ways, and the ' +
+                      'customer can change it on their order until it is on its way (you are emailed when they ' +
+                      'do). Needs supabase-delivery.sql to be kept on the order.' },
               { type: 'textarea', name: 'consentText', label: 'What customers agree to before ordering',
                 maxLength: 600, required: true,
                 hint: 'Always asked: no order goes on WhatsApp, from the cart or paid online until the ' +

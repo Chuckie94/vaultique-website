@@ -1253,6 +1253,28 @@ async function recordOrder(order, items, preview, customer, client) {
   }
 }
 
+// BUILD 89 · the customer's delivery instructions, given at checkout (either
+// way), written onto the order the moment it is recorded (supabase-
+// delivery.sql). One line, at most 300 letters. Never a reason to lose the
+// order: before that file is run, or if the write fails, the instructions are
+// still in the WhatsApp message or the payment's order details are not. The
+// shop is told of them with the order, so they count as told.
+function cleanInstructions(v) {
+  return String(v == null ? '' : v).replace(/[\s\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 300);
+}
+async function saveInstructions(orderId, text) {
+  const t = cleanInstructions(text);
+  if (!orderId || !t) return false;
+  const now = new Date().toISOString();
+  try {
+    await svc('PATCH', 'orders?id=eq.' + encodeURIComponent(orderId),
+      { delivery_instructions: t, instructions_at: now, instructions_told_at: now }, 'return=minimal');
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function siteOrigin(event) {
   const env = process.env.URL || '';
   if (env) return env.replace(/\/+$/, '');
@@ -1266,7 +1288,7 @@ module.exports = {
   json, formats, shopSettings, onlineOn, priceOrder, cleanItems,
   deliveryCharge, svc, serviceKey, flw, flwKey, flwBase, paymentOptions, hashMatches, newTxRef,
   settle, failPayment, confirmByEmail, siteOrigin,
-  previewOk, closedFor, priceWhatsApp, customerFrom, clientAddr, recordOrder,
+  previewOk, closedFor, priceWhatsApp, customerFrom, clientAddr, recordOrder, cleanInstructions, saveInstructions,
   testAllowed, ownerFrom, TEST_ONLY,
   signatureMatches, noteWebhook, payHealth, callerIsAdmin, changedSince,
   orderPaid, abandon, heldPieces, askedJustNow, needsAttention, attentionEmail,

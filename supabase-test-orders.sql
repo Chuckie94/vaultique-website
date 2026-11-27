@@ -107,11 +107,15 @@ declare
   v_cust  text;
   v_hold  jsonb;
   v_since timestamptz;
+  v_row   jsonb;
 begin
   select * into o from public.orders where id = p_id;
   if not found then
     return null;
   end if;
+  -- BUILD 89 · the order as JSON, so the delivery details below are read by
+  -- name and the door answers the same before supabase-delivery.sql is run.
+  v_row := to_jsonb(o);
 
   select coalesce(jsonb_agg(jsonb_build_object(
            'sku', i.sku, 'name', i.name, 'price', i.price, 'qty', coalesce(i.qty, 1))
@@ -163,7 +167,17 @@ begin
         'completedAt', o.pos_completed_at),
     'pieces', v_count,
     'summary', left(v_names, 160),
-    'items', case when p_items then v_items else null end
+    'items', case when p_items then v_items else null end,
+    -- BUILD 89 · delivery (supabase-delivery.sql): the customer's instructions
+    -- for the courier, and the courier, tracking number and link, and the
+    -- shop's short updates, once recorded.
+    'delivery', jsonb_build_object(
+        'instructions', v_row ->> 'delivery_instructions',
+        'instructionsAt', v_row ->> 'instructions_at',
+        'courier', v_row ->> 'ship_courier',
+        'tracking', v_row ->> 'ship_tracking',
+        'trackingUrl', v_row ->> 'ship_tracking_url',
+        'updates', case when jsonb_typeof(v_row -> 'ship_updates') = 'array' then v_row -> 'ship_updates' else '[]'::jsonb end)
   );
 end
 $out$;

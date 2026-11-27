@@ -65,7 +65,7 @@
     enquiries: true, wishlist: true, sharing: true, customerReviews: true,
     whatsappCheckout: true,
     requireName: true, requirePhone: true, requireEmail: false, requireAddress: false,
-    orderNotes: true, checkoutLabel: 'Buy',
+    orderNotes: true, deliveryInstructions: true, checkoutLabel: 'Buy',
     consentText: 'I confirm that the information provided is accurate and consent to Vaultique Boutique processing my personal information for the purposes of fulfilling and managing my order, including processing or storage by authorised service providers outside Zambia, in accordance with the Privacy Policy.'
   };
   // Settings > Pricing & Tax. Defaults match the admin's, and match the way
@@ -1658,8 +1658,12 @@
     /* Paying online needs a name, a phone and an email to hand to the
        payment page, so with it switched on the details step always opens.
        Switched off, this is exactly what it always was. */
-    return buyerFields().length > 0 || !!SHOP.orderNotes || payOnline() || consentOn();
+    return buyerFields().length > 0 || !!SHOP.orderNotes || instructionsOn() || payOnline() || consentOn();
   }
+  /* BUILD 89 · delivery instructions: the customer's own words for the
+     courier, asked for at checkout when the order is to be delivered
+     (Settings > Shopping, on unless switched off). */
+  function instructionsOn() { return SHOP.deliveryInstructions !== false && deliversAnywhere(); }
 
   /* CONSENT BEFORE ANY ORDER (Settings > Shopping > Checkout). One box the
      customer must tick before an order goes anywhere -- WhatsApp, the
@@ -1776,8 +1780,8 @@
        the order; otherwise the message is exactly what it always was. */
     if (details && details.ref) lines.unshift('Order ' + details.ref, '');
     var labels = { name: 'Name', phone: 'Phone', email: 'Email',
-                   address: 'Delivery address', notes: 'Notes' };
-    ['name', 'phone', 'email', 'address', 'notes'].forEach(function (k) {
+                   address: 'Delivery address', instructions: 'Delivery instructions', notes: 'Notes' };
+    ['name', 'phone', 'email', 'address', 'instructions', 'notes'].forEach(function (k) {
       var v = details && details[k];
       if (v) lines.push(labels[k] + ': ' + v);
     });
@@ -1850,6 +1854,7 @@
         email: (ACCT && ACCT.signedIn() && ACCT.state.user.email) || saved.email || '',
         address: chosen ? [chosen.address, chosen.city].filter(Boolean).join(', ')
                         : (saved.address || ''),
+        instructions: saved.instructions || '',      // build 89
         how: saved.how
       };
     }
@@ -1898,9 +1903,16 @@
             ? '<textarea id="od_' + f.key + '" rows="2" maxlength="200" autocomplete="' + f.ac + '">' + v + '</textarea>'
             : '<input type="' + f.type + '" id="od_' + f.key + '" maxlength="120" autocomplete="' + f.ac + '" value="' + v + '">');
       }).join('') +
+      (instructionsOn()
+        ? '<label class="rv-lbl" for="od_instructions">Delivery instructions <span class="od-opt">optional</span></label>' +
+          '<textarea id="od_instructions" rows="2" maxlength="300" placeholder="For the courier: a landmark, the gate, ' +
+            'the best time to deliver">' + esc(saved.instructions || '') + '</textarea>'
+        : '') +
       (SHOP.orderNotes
         ? '<label class="rv-lbl" for="od_notes">Anything else <span class="od-opt">optional</span></label>' +
-          '<textarea id="od_notes" rows="2" maxlength="300" placeholder="A landmark, a gift message, a preferred day"></textarea>'
+          '<textarea id="od_notes" rows="2" maxlength="300" placeholder="' +
+            (instructionsOn() ? 'A gift message, or anything else we should know' : 'A landmark, a gift message, a preferred day') +
+            '"></textarea>'
         : '') +
       '<div id="odPoints"></div>' +
       consentHtml() +
@@ -1957,6 +1969,7 @@
        under it follows too, so the customer reads the right thing. */
     var howInputs = $all('input[name="odHow"]', body);
     var addrWrap = null, addrLabel = null;
+    var insBox = $('#od_instructions', body), insLabel = body.querySelector('label[for="od_instructions"]');
     if (howInputs.length) {
       var addrBox = $('#od_address', body);
       if (addrBox) {
@@ -1972,6 +1985,11 @@
         if (addrWrap) {
           addrWrap.classList[collecting ? 'add' : 'remove']('hide');
           if (addrLabel) addrLabel.classList[collecting ? 'add' : 'remove']('hide');
+        }
+        /* BUILD 89 · instructions for the courier, only when it is delivered. */
+        if (insBox) {
+          insBox.classList[collecting ? 'add' : 'remove']('hide');
+          if (insLabel) insLabel.classList[collecting ? 'add' : 'remove']('hide');
         }
         /* Short, here. A customer at the point of sending is deciding, not
            reading a tariff: where to come if they are collecting, and what
@@ -2006,6 +2024,9 @@
       });
       var n = $('#od_notes');
       if (n) out.notes = n.value.trim();
+      /* BUILD 89 · not sent for an order being collected. */
+      var ins = $('#od_instructions');
+      out.instructions = ins && how !== 'collection' ? ins.value.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
       out.how = how;
       return out;
     }
@@ -2047,7 +2068,10 @@
         keep[f.key] = d[f.key];
       });
       keep.how = d.how;
-      rememberBuyer(keep);                 // notes are for this order only
+      /* BUILD 89 · instructions belong with the address they are for, and are
+         kept with it on this device; notes are for this order only. */
+      if (d.how !== 'collection' && $('#od_instructions')) keep.instructions = d.instructions;
+      rememberBuyer(keep);
 
       /* BUILD 76 · THE ORDER NUMBER IN THE MESSAGE. The owner: "I want to
          link its order numbers with the platform. The order numbers should
@@ -2073,7 +2097,7 @@
       var recorded = !ACCT ? Promise.resolve(null) : withTimeout(Promise.resolve().then(function () {
         return ACCT.recordOrder({
           name: d.name, phone: d.phone, email: d.email,
-          address: d.address, notes: d.notes,
+          address: d.address, notes: d.notes, instructions: d.instructions,
           fulfilment: d.how,
           /* Which pieces and how many. The prices and the total are the
              server's to work out (build 76), from the same catalogue. */
@@ -2370,7 +2394,9 @@
       /* BUILD 88 · the ways of paying, chosen here; the gateway is the
          server's business. Without them, Flutterwave's page as before. */
       if (choose) {
-        var pick = drawWays($('#pqWays'), d);
+        var pick = drawWays($('#pqWays'), d, function (c, b, others) {
+          payHere(order, d, q, c, retryOf, { btn: b, msg: $('#pqMsg'), label: b.textContent, also: others });
+        });
         btn.addEventListener('click', function () {
           var c = pick();
           if (!c) return;
@@ -2396,7 +2422,7 @@
     btn.textContent = 'Opening the payment page…';
     var ask = {
       items: payItems(order), fulfilment: d.how, town: d.town || '', preview: previewKey() || null,
-      buyer: { name: d.name, phone: d.phone, email: d.email, address: d.address, notes: d.notes },
+      buyer: { name: d.name, phone: d.phone, email: d.email, address: d.address, notes: d.notes, instructions: d.instructions },
       expect: expect
     };
     if (method) ask.method = method;           // build 88: the way of paying chosen
@@ -2503,8 +2529,10 @@
   };
 
   /* The chooser, drawn under the total. Answers a function that reads the
-     choice, or says what is missing and answers null. */
-  function drawWays(host, d) {
+     choice, or says what is missing and answers null. onPay(choice, button,
+     others): pay straight away, from a button of the chooser's own (the two
+     card buttons, below). */
+  function drawWays(host, d, onPay) {
     var ways = payWays();
     var mobile = ways.filter(function (m) { return m.key === 'mobile'; })[0];
     var cardWay = ways.filter(function (m) { return m.key === 'card'; })[0];
@@ -2512,12 +2540,15 @@
     var offered = function (k) { return nets.some(function (n) { return n.key === k; }); };
     var guess = zmNetwork(d.phone);
     var state = { key: ways[0] ? ways[0].key : '', network: offered(guess) ? guess : (nets.length === 1 ? nets[0].key : '') };
-    /* A card issued in Zambia, or an international card: asked only once a
-       second card gateway exists (issuerChoice), and never anything about
-       the card itself. Every card detail is typed in the gateway's own
-       window, never on this website. Not asked today. */
+    /* A Zambian card or an international card: once a second card gateway
+       exists (issuerChoice), choosing Debit / Credit Card shows two buttons
+       in place of Pay, "Pay with Zambian card" and "Pay with international
+       card" (the owner's words, build 89), each of which pays at once.
+       Nothing about the card itself is ever asked: every card detail is
+       typed in the gateway's own window, never on this website. Not shown
+       today: every card goes to Lenco. */
     var askIssuer = !!(cardWay && cardWay.via === 'window' && cardWay.issuerChoice);
-    var ISSUERS = [{ key: 'local', label: 'Card issued in Zambia' }, { key: 'international', label: 'International card' }];
+    var ISSUERS = [{ key: 'local', label: 'Pay with Zambian card' }, { key: 'international', label: 'Pay with international card' }];
     host.innerHTML =
       '<p class="pm-head" id="pmHead">How would you like to pay?</p>' +
       '<div class="pm-list" role="radiogroup" aria-labelledby="pmHead">' +
@@ -2545,11 +2576,10 @@
         : '') +
       (askIssuer
         ? '<div class="pm-panel hide" data-for="card">' +
-            '<p class="pm-lbl" id="pmIssLbl">Where was your card issued?</p>' +
-            '<div class="pm-nets" role="radiogroup" aria-labelledby="pmIssLbl">' +
-              ISSUERS.map(function (i) {
-                return '<button type="button" class="pm-net" role="radio" aria-checked="false" data-issuer="' + i.key + '">' +
-                  esc(i.label) + '</button>';
+            '<div class="pm-cardpay">' +
+              ISSUERS.map(function (i, n) {
+                return '<button type="button" class="btn ' + (n ? 'btn-outline' : 'btn-gold') + ' pm-cardbtn" data-issuer="' +
+                  i.key + '">' + esc(i.label) + '</button>';
               }).join('') +
             '</div>' +
           '</div>'
@@ -2570,11 +2600,13 @@
         p.classList[p.getAttribute('data-for') === state.key ? 'remove' : 'add']('hide');
       });
       $all('.pm-net', host).forEach(function (b) {
-        var on = b.hasAttribute('data-issuer') ? b.getAttribute('data-issuer') === state.issuer
-                                               : b.getAttribute('data-net') === state.network;
+        var on = b.getAttribute('data-net') === state.network;
         b.classList[on ? 'add' : 'remove']('on');
         b.setAttribute('aria-checked', on ? 'true' : 'false');
       });
+      /* The two card buttons stand in for Pay while a card is chosen. */
+      var main = $('#pqPay');
+      if (main) main.classList[askIssuer && state.key === 'card' ? 'add' : 'remove']('hide');
       var note = $('#pqNote');
       if (note) note.textContent = wayNote(ways.filter(function (m) { return m.key === state.key; })[0]);
     }
@@ -2582,11 +2614,14 @@
       b.addEventListener('click', function () { state.key = b.getAttribute('data-way'); clearMsg(); paint(); });
     });
     $all('.pm-net', host).forEach(function (b) {
+      b.addEventListener('click', function () { state.network = b.getAttribute('data-net'); clearMsg(); paint(); });
+    });
+    $all('.pm-cardbtn', host).forEach(function (b) {
       b.addEventListener('click', function () {
-        if (b.hasAttribute('data-issuer')) state.issuer = b.getAttribute('data-issuer');
-        else state.network = b.getAttribute('data-net');
+        if (b.disabled || !onPay) return;
         clearMsg();
-        paint();
+        var others = $all('.pm-cardbtn', host).filter(function (x) { return x !== b; });
+        onPay({ key: 'card', via: cardWay.via, issuer: b.getAttribute('data-issuer') }, b, others);
       });
     });
     /* The network follows the number as it is typed, when it can tell. */
@@ -2620,10 +2655,7 @@
         }
         return { key: 'mobile', via: 'prompt', network: state.network, momo: n, processor: way.processor || '' };
       }
-      if (way.key === 'card' && askIssuer) {
-        if (!state.issuer) return say('Please choose where your card was issued.');
-        return { key: 'card', via: way.via, issuer: state.issuer };
-      }
+      if (way.key === 'card' && askIssuer) return say('Please choose Pay with Zambian card or Pay with international card.');
       return { key: way.key, via: way.via };
     };
   }
@@ -2637,14 +2669,15 @@
      the server, the customer is shown that payment (a request already on
      their phone) and nothing new is sent. */
   function payHere(order, d, q, c, retryOf, ui) {
-    var btn = ui.btn, msg = ui.msg;
+    var btn = ui.btn, msg = ui.msg, also = ui.also || [];
+    also.forEach(function (b) { b.disabled = true; });
     if (btn) { btn.disabled = true; btn.textContent = c.key === 'card' ? 'Opening the secure window…' : 'Sending the request…'; }
     if (msg) { msg.textContent = ''; msg.className = 'rv-msg'; }
     var key = order.__payKey || attemptKey();
     order.__payKey = key;
     var ask = {
       items: payItems(order), fulfilment: d.how, town: d.town || '', preview: previewKey() || null,
-      buyer: { name: d.name, phone: d.phone, email: d.email, address: d.address, notes: d.notes },
+      buyer: { name: d.name, phone: d.phone, email: d.email, address: d.address, notes: d.notes, instructions: d.instructions },
       expect: q.total, method: c.key, attempt: key
     };
     if (c.key === 'mobile') { ask.network = c.network; ask.momo = c.momo; }
@@ -2654,6 +2687,7 @@
     var label = ui.label || ('Pay ' + q.totalText);
     var again = function (t) {
       if (btn) { btn.disabled = false; btn.textContent = label; }
+      also.forEach(function (b) { b.disabled = false; });
       if (msg && t) { msg.textContent = t; msg.className = 'rv-msg err'; }
     };
     var lost = function () {

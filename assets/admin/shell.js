@@ -1813,6 +1813,7 @@
     }
     if (o.status === 'dispatched' && o.dispatched_at) {
       return 'On its way since ' + shortAt(o.dispatched_at) + (o.ship_note ? ' (' + o.ship_note + ')' : '') +
+        (o.ship_courier || o.ship_tracking ? ' \u00b7 ' + [o.ship_courier, o.ship_tracking].filter(Boolean).join(', tracking ') : '') +
         (o.auto_deliver_at ? ' \u00b7 marked delivered automatically on ' + shortAt(o.auto_deliver_at) +
                              ' unless the customer confirms first' : '') +
         (Number(o.extend_used) ? ' \u00b7 more time asked ' + o.extend_used + ' of ' +
@@ -1829,6 +1830,142 @@
     return (o.refund_state === 'part' ? 'Part refunded ' : 'Refunded ') + fmtMoney(o.refund_amount) +
       (o.refund_at ? ' on ' + shortAt(o.refund_at) : '') + (o.refund_ref ? ' \u00b7 ' + o.refund_ref : '') +
       (o.refund_note ? ' \u00b7 ' + o.refund_note : '');
+  }
+
+  /* BUILD 89 · THE COURIER AND THE TRACKING NUMBER (supabase-delivery.sql).
+     The business platform records them when it sends an order (platform
+     512, through its door); until then, and whenever it suits, an
+     administrator with the orders permission records them here, with the
+     courier's own tracking page and short updates for the customer. The
+     customer sees them on their order and the private link, and is emailed
+     them once the order is on its way. Only on an order for delivery the
+     shop has confirmed, is sending or has delivered. Before the SQL nothing
+     shows. */
+  function shipFor(o) {
+    if (!('ship_courier' in o) || o.fulfilment === 'collection' ||
+        ['confirmed', 'dispatched', 'delivered'].indexOf(o.status || '') < 0) return null;
+    var box = document.createElement('div');
+    box.className = 'ord-ship';
+    box.style.marginTop = '8px';
+    function paint() {
+      box.innerHTML = '';
+      var line = document.createElement('div');
+      line.className = 'hint ord-ship-line';
+      var bits = [o.ship_courier, o.ship_tracking ? 'tracking ' + o.ship_tracking : ''].filter(Boolean);
+      line.innerHTML = '<b>Courier and tracking:</b> ' + escapeHtml(bits.join(', ') || 'not recorded yet') +
+        (o.ship_tracking_url ? ' \u00b7 <a href="' + escapeHtml(o.ship_tracking_url) + '" target="_blank" rel="noopener noreferrer">tracking page</a>' : '');
+      box.appendChild(line);
+      var ups = Array.isArray(o.ship_updates) ? o.ship_updates.slice(-3).reverse() : [];
+      ups.forEach(function (u) {
+        var e = document.createElement('div');
+        e.className = 'hint ord-ship-up';
+        e.textContent = (u && u.at ? shortAt(u.at) + ' \u00b7 ' : '') + (u && u.text ? u.text : '');
+        box.appendChild(e);
+      });
+      var row = document.createElement('div');
+      row.className = 'row';
+      row.style.marginTop = '6px';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-out btn-sm ord-ship-edit';
+      btn.textContent = bits.length ? 'Change courier and tracking' : 'Add courier and tracking';
+      var stat = document.createElement('span');
+      stat.className = 'stat';
+      btn.addEventListener('click', function () { form(stat); });
+      row.appendChild(btn);
+      row.appendChild(stat);
+      box.appendChild(row);
+    }
+    function form(stat) {
+      var f = document.createElement('div');
+      f.className = 'ord-ship-form';
+      var fields = [['courier', 'Courier', o.ship_courier, 60, 'Yango, Zampost, the shop\'s own driver'],
+                    ['tracking', 'Tracking number', o.ship_tracking, 60, 'As the courier gives it'],
+                    ['url', 'Tracking page (optional)', o.ship_tracking_url, 300, 'https://…'],
+                    ['update', 'Add an update for the customer (optional)', '', 200, 'Left Lusaka this morning']];
+      var inputs = {};
+      fields.forEach(function (x) {
+        var l = document.createElement('label');
+        l.className = 'hint';
+        l.style.display = 'block';
+        l.style.marginTop = '6px';
+        l.textContent = x[1];
+        var i = document.createElement('input');
+        i.type = 'text';
+        if (x[0] === 'url') { i.inputMode = 'url'; i.autocapitalize = 'off'; i.spellcheck = false; }
+        i.maxLength = x[3];
+        i.value = x[2] || '';
+        i.placeholder = x[4];
+        i.className = 'ord-ship-' + x[0];
+        i.style.width = '100%';
+        l.appendChild(i);
+        f.appendChild(l);
+        inputs[x[0]] = i;
+      });
+      var row = document.createElement('div');
+      row.className = 'row';
+      row.style.marginTop = '8px';
+      var save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'btn btn-gold btn-sm ord-ship-save';
+      save.textContent = 'Save';
+      var cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn btn-out btn-sm';
+      cancel.textContent = 'Cancel';
+      row.appendChild(save); row.appendChild(cancel);
+      f.appendChild(row);
+      box.appendChild(f);
+      inputs.courier.focus();
+      cancel.addEventListener('click', function () { paint(); });
+      save.addEventListener('click', function () {
+        var url = inputs.url.value.trim();
+        if (url && !/^https:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?(\/[^\s<>"'`\\]*)?$/.test(url)) {
+          tell('The tracking page must be the courier\'s own web address, starting https://', { title: 'Not saved' });
+          return;
+        }
+        save.disabled = true;
+        stat.textContent = 'Saving…'; stat.className = 'stat busy';
+        Promise.resolve(sb.rpc('order_shipping_admin', {
+          p_id: o.id, p_courier: inputs.courier.value, p_tracking: inputs.tracking.value,
+          p_url: url, p_update: inputs.update.value.trim() || null
+        })).then(function (r) {
+          var dd = r && !r.error ? r.data : null;
+          if (!dd || !dd.ok) {
+            save.disabled = false;
+            stat.textContent = 'Not saved'; stat.className = 'stat err';
+            var why = dd && dd.why;
+            tell(why === 'not_allowed' ? 'Your role may not record deliveries: it needs the Orders permission.'
+               : why === 'bad_link' ? 'The tracking page must be the courier\'s own web address, starting https://'
+               : why === 'bad_tracking' ? 'The tracking number can have letters, numbers, spaces and - / . # only.'
+               : why === 'too_long' ? 'One of the boxes is too long.'
+               : why === 'not_confirmed' ? 'Confirm the order first.'
+               : why === 'cancelled' ? 'This order has been cancelled.'
+               : (r && r.error && r.error.message) || 'That could not be saved just now.', { title: 'Not saved' });
+            return;
+          }
+          var was = [o.ship_courier, o.ship_tracking].filter(Boolean).join(' ') || 'none';
+          var dv = dd.delivery || {};
+          o.ship_courier = dv.courier || null;
+          o.ship_tracking = dv.tracking || null;
+          o.ship_tracking_url = dv.trackingUrl || null;
+          o.ship_updates = Array.isArray(dv.updates) ? dv.updates : o.ship_updates;
+          var a = AUDIT();
+          if (a) a.record({ action: 'changed', module: 'Orders', record: o.ref || 'an order',
+                            changes: [{ field: 'courier and tracking', from: was,
+                                        to: [o.ship_courier, o.ship_tracking].filter(Boolean).join(' ') || 'none' }] });
+          paint();
+          var st = box.querySelector('.stat');
+          if (st) { st.textContent = 'Saved ✓'; st.className = 'stat ok'; }
+        }, function (e) {
+          save.disabled = false;
+          stat.textContent = 'Not saved'; stat.className = 'stat err';
+          tell((e && e.message) || 'That could not be saved just now.', { title: 'Not saved' });
+        });
+      });
+    }
+    paint();
+    return box;
   }
 
   /* BUILD 76 · what the till has done with an order, in a sentence. */
@@ -2050,6 +2187,9 @@
       line.textContent = pair[1];
       d.appendChild(line);
     });
+    /* BUILD 89 · the courier and the tracking number (supabase-delivery.sql). */
+    var shipBox = shipFor(o);
+    if (shipBox) d.appendChild(shipBox);
     /* BUILD 87 · the customer's requests on it, filled in by requestsFor. */
     var reqHost = document.createElement('div');
     reqHost.className = 'ord-requests';
@@ -2080,7 +2220,8 @@
     }).join('<br>') || 'No items recorded.';
     d.appendChild(items);
 
-    [['Email', o.email], ['Address', o.address], ['Notes', o.notes]].forEach(function (pair) {
+    [['Email', o.email], ['Address', o.address], ['Delivery instructions', o.delivery_instructions],
+     ['Notes', o.notes]].forEach(function (pair) {
       if (!pair[1]) return;
       var e = document.createElement('div');
       e.className = 'hint';

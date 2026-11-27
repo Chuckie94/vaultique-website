@@ -49,8 +49,25 @@ You will do five short steps. It takes about 10 minutes.
 >  and one more (build 87):
 > 35 supabase-customer-requests.sql  customers' requests: cancel, return,
 >                                  exchange, a problem
+>  and one more (build 88):
+> 36 supabase-lenco.sql            Lenco payments, an order paid once
+>  and one more (build 89):
+> 37 supabase-delivery.sql         delivery instructions, the courier and
+>                                  tracking number
 >                                  then supabase-hardening.sql once more
 > ```
+>
+> **Build 89, on a shop already running:** upload, then run
+> `supabase-delivery.sql` once (37 in the list above). The hardening is not
+> run again for it: the file opens its own door to the platform. Whenever the
+> hardening is run from now on, this build's copy (or a later one) keeps it
+> open. ("Delivery: instructions, the courier and tracking number, the
+> invoice", below.)
+>
+> **Build 88, on a shop already running:** upload, then run
+> `supabase-lenco.sql` once (36 in the list above). The hardening is not run
+> again for it. Until it is run, Lenco is not offered ("Online payment with
+> Lenco", below).
 >
 > **Build 87, on a shop already running:** upload, then run
 > `supabase-customer-requests.sql` once (35 in the list above). The hardening
@@ -733,6 +750,10 @@ What customers see on a product and what they can do with it.
   somebody whose phone asks for less motion.
 - **What customers can do.** Product enquiries on a sold-out piece, the
   wishlist, a share button, and whether new reviews can be written.
+- **Ask for delivery instructions** (build 89). On unless you switch it off:
+  the checkout asks for instructions for the courier when the customer
+  chooses delivery ("Delivery: instructions, the courier and tracking number,
+  the invoice", below).
 
 Two of these look like duplicates and are not. **Show reviews** decides whether
 the reviews you already have appear; **Customer reviews** decides whether new
@@ -1800,6 +1821,70 @@ Where you offer only one, nothing is asked: one option is not a choice.
 
 **Delivery & collection** is also a section in the Homepage list, so you can
 place the band wherever you like. It hides itself when you offer neither.
+
+### Delivery: instructions, the courier and tracking number, the invoice (build 89)
+
+Needs `supabase-delivery.sql` (37 in the list at the top). Until it is run,
+the checkout still asks for instructions and puts them in the WhatsApp
+message, but nothing below is kept or shown.
+
+**Delivery instructions.** With **Settings > Shopping > Ask for delivery
+instructions** on (it is, unless you switch it off), the checkout shows
+*Delivery instructions (optional)* under the address when the customer
+chooses delivery: a landmark, the gate, the best time to deliver. Up to 300
+characters, kept on one line. They come in the WhatsApp message, are kept on
+the order whichever way the customer checks out, and show under the order in
+**Admin > Orders**. A signed-in customer can change or remove them on their
+order until it is on its way (at most 20 changes an hour); you are emailed
+each change, once, at the address in Settings > Contact (or the reply-to
+address in Settings > Notifications). Once the order is on its way they are
+shown to the customer and can no longer be changed.
+
+**The courier and tracking number.** In **Admin > Orders**, an order for
+delivery that is Confirmed, On its way or Delivered shows **Add courier and
+tracking** (**Change courier and tracking** once there is one):
+
+- **Courier**: Yango, Zampost, your own driver (up to 60 characters).
+- **Tracking number**, as the courier gives it (letters, numbers, spaces and
+  `. / # _ -`, up to 60).
+- **Tracking page** (optional): the courier's own page for this parcel. Only
+  an address beginning `https://` is taken.
+- **An update for the customer** (optional): "Left Lusaka this morning". Each
+  is kept with its time, the newest twenty.
+
+The boxes open with what is already recorded: change what needs changing, or
+clear a box to remove it, and Save. They cannot be set on an order for
+collection, one cancelled or completed, or one not yet confirmed. Each save
+is in the Activity log.
+
+The customer sees them on their order (Courier, Tracking number, **Track your
+delivery**, which opens the courier's page in a new tab, and *Delivery
+updates*, newest first) and on the private progress link in their emails.
+The *on its way* email carries them. Given or changed after that email went,
+the customer gets one more, *Delivery details for your order VB-...*, once
+for each change (the 15-minute check; within two days of the change). An
+update on its own sends no email.
+
+**From platform build 512**, the platform records them when it sends an order,
+through the door `vbp_pos_order_shipping(p_key, p_ref, p_courier, p_tracking,
+p_url, p_update)`, behind the till's own key, for an order the till has rung
+up. It answers `{ok: true, delivery: {...}, order: {...}}`, or `{ok: false,
+why}` with *why* one of `refused` (not the till's key), `unreadable` (not an
+order number), `busy`, `not_found`, `not_rung_up`, `not_delivery`,
+`cancelled`, `handed_over` (completed), `not_confirmed`, `too_long`,
+`bad_tracking` or `bad_link` (not https). The instructions, the courier, the
+tracking number and the updates also reach the till with every order, under
+`delivery`.
+
+**The invoice.** Once the till has rung an online order up and given it an
+invoice number, the customer's order (in My orders and on its own page)
+shows **Download invoice** beside **Download receipt**: an A4 PDF made on
+their device from the till's own record, nothing typed by anyone. The shop,
+its address and TPIN; INVOICE with its number, the date, the receipt number
+and the online order; who it is for; each piece with its quantity, unit price
+and amount; the subtotal before VAT, VAT, delivery, the total, points, what
+was paid and any balance; how it was paid. A long order runs onto more pages,
+each numbered. It is named `Invoice-<number>.pdf`.
 
 ### Settings > Pricing & Tax
 

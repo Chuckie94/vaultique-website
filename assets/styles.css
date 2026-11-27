@@ -1243,6 +1243,24 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .acd-refunds{display:grid;gap:10px}
 /* BUILD 87 · requests: cancel, return, exchange, a problem. */
 .acd-requests{display:grid;gap:10px}
+/* BUILD 89 · delivery: the customer's instructions, the courier's page, the updates */
+.acd-ins{margin-top:4px}
+.acd-ins-txt{font-size:14px;color:var(--ink);line-height:1.6;margin:0 0 10px;overflow-wrap:anywhere}
+.acd-ins-txt.ac-quiet{color:var(--muted)}
+.acd-ins-form textarea{width:100%;box-sizing:border-box;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius-md);
+  background:var(--surface);font-family:var(--font-body);font-size:14px;color:var(--ink);resize:vertical;min-height:70px}
+.acd-ins-form .ac-actions{margin-top:10px}
+.acd-ins-msg{font-size:13px;color:var(--muted);margin:8px 0 0;min-height:1em}
+.acd-ins-msg.ok{color:#1f7a4d}
+.acd-ins-msg.err{color:#b3261e}
+.acd-track{margin:12px 0 0}
+.acd-updates,.pg-updates{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.acd-updates li,.pg-updates li{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 12px;font-size:13.5px;color:var(--ink)}
+.acd-up-at,.pg-up-at{color:var(--muted);white-space:nowrap}
+.acd-up-txt,.pg-up-txt{overflow-wrap:anywhere}
+.pg-ship{margin:12px 0 4px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface)}
+.pg-ship-line{font-size:14px;color:var(--ink);margin:0 0 4px}
+.pg-ship .pg-track{margin:6px 0 10px}
 .acd-requests:empty{display:none}
 .rq-list{display:grid;gap:10px;margin-bottom:14px}
 .rq-row .ac-actions{margin-top:10px;gap:12px}
@@ -1351,6 +1369,10 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 #orderModal #pwActs .btn{flex:1 1 100%;justify-content:center}
 #orderModal #pwActs .btn:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}
 #orderModal #pwActs .btn{letter-spacing:.14em;padding-left:14px;padding-right:14px}
+/* BUILD 89 · the two card buttons, once international cards have a gateway of their own */
+.pm-cardpay{display:grid;gap:10px}
+.pm-cardpay .btn{width:100%;justify-content:center;letter-spacing:.14em;padding-left:14px;padding-right:14px}
+.pm-cardpay .btn:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}
 .pw-detail{margin-top:14px}
 /* "Didn't receive approval request?", with a quiet way to the chat */
 .pw-help{font-size:13px;line-height:1.6;color:var(--ink);margin:0 0 16px;padding:11px 14px;border-radius:var(--radius-md);

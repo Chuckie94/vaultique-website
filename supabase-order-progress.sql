@@ -178,12 +178,15 @@ security definer
 set search_path = ''
 as $po$
 declare
-  o public.orders;
+  o     public.orders;
+  v_row jsonb;
 begin
   select * into o from public.orders where id = p_id;
   if not found then
     return null;
   end if;
+  -- BUILD 89 · read by name (supabase-delivery.sql may not be run yet).
+  v_row := to_jsonb(o);
   return jsonb_build_object(
     'ref', o.ref,
     'status', coalesce(o.status, 'pending'),
@@ -202,7 +205,20 @@ begin
     'extend', public.order_extend_window(o),
     'refund', case when o.refund_state is null then null else jsonb_build_object(
         'state', o.refund_state, 'amount', o.refund_amount, 'ref', o.refund_ref,
-        'note', o.refund_note, 'at', o.refund_at) end
+        'note', o.refund_note, 'at', o.refund_at) end,
+    -- BUILD 89 · the courier, the tracking number and its link, and the
+    -- shop's short updates (supabase-delivery.sql). Never the customer's
+    -- delivery instructions: the private link shows no address either.
+    'ship', case when coalesce(v_row ->> 'ship_courier', v_row ->> 'ship_tracking', v_row ->> 'ship_tracking_url') is null
+                  and coalesce(jsonb_array_length(case when jsonb_typeof(v_row -> 'ship_updates') = 'array'
+                                                       then v_row -> 'ship_updates' end), 0) = 0
+             then null
+             else jsonb_build_object(
+               'courier', v_row ->> 'ship_courier',
+               'tracking', v_row ->> 'ship_tracking',
+               'url', v_row ->> 'ship_tracking_url',
+               'updates', case when jsonb_typeof(v_row -> 'ship_updates') = 'array'
+                               then v_row -> 'ship_updates' else '[]'::jsonb end) end
   );
 end
 $po$;

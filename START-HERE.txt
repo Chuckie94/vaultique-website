@@ -1,28 +1,33 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 88
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 89
 ====================================================
 The whole site, cumulative: everything in build 83 (and so 82, 81 and
 80, with the other website line's builds 74 to 78 carried onto it),
 build 84 (a deploy never publishes a build whose own checks fail),
 build 85 (checkout: the website or WhatsApp), build 86 (the customer
-portal), build 87 (customers' requests) and build 88 (Lenco, and one
-checkout for every way of paying). Upload this and you are up to date.
-Builds 84 to 88 have not been uploaded before: this block is everything
-to do for all five. Upload 88 only: it holds 87, 86, 85 and 84.
+portal), build 87 (customers' requests), build 88 (Lenco, and one
+checkout for every way of paying) and build 89 (delivery: instructions,
+the courier and tracking number, the invoice). Upload this and you are
+up to date. Upload 89 only: it holds 88, 87, 86, 85 and 84.
 
-NEW IN 84 TO 88 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
-THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, AND LENCO.
-  THREE SQL FILES, each new, each run once, in this order:
+IF BUILD 88 IS ALREADY LIVE (https://vaultiqueboutique.com/api/health
+says "build":88) and you ran its three SQL files, steps B, C and D are
+done: do A, then E to L.
+
+NEW IN 84 TO 89 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
+THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, AND DELIVERY.
+  FOUR SQL FILES, each new, each run once, in this order:
   supabase-test-orders.sql (build 85), supabase-customer-requests.sql
-  (build 87) and supabase-lenco.sql (build 88). About thirty minutes,
-  then Lenco's own setup when its keys are in hand (step H). Do these in
-  order. Each one says how you know it is done.
+  (build 87), supabase-lenco.sql (build 88) and supabase-delivery.sql
+  (build 89). About forty minutes, then Lenco's own setup when its keys
+  are in hand (step I). Do these in order. Each one says how you know it
+  is done.
 
   A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
      browser it is four drags, grouped differently from before (the
      assets and netlify folders are now over GitHub's 100 files together).
      Done when: Netlify > Deploys shows it as Published.
      Its log (open the deploy) has, near the top:
-       Checks: node: 41 of 42 files passed, 1 skipped, ... before publishing.
+       Checks: node: 42 of 43 files passed, 1 skipped, ... before publishing.
      (the one skipped needs a database; it runs on GitHub's database job)
      and further down:
        Scripts: enforced. Only this site, its own inline scripts and
@@ -59,27 +64,38 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, AND LENCO.
      payments, which should never happen: send me the line.)
      Until it is run, Lenco is not offered to customers.
 
-  E. OPEN https://vaultiqueboutique.com/api/health on your phone.
-     Done when: it says "status":"working" and "build":88.
+  E. RUN supabase-delivery.sql the same way, in the WEBSITE's Supabase.
+     The SQL is also in the chat. It changes no order, payment, setting
+     or key, and is safe to run again.
+     Done when: its result line says
+       OK · delivery details can be recorded | OK
+     Until it is run, delivery instructions still reach you in the
+     WhatsApp message, but they are not kept on the order, and a courier
+     and tracking number cannot be recorded.
 
-  F. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
+  F. OPEN https://vaultiqueboutique.com/api/health on your phone.
+     Done when: it says "status":"working" and "build":89.
+
+  G. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
      gold; the cart says Checkout, in gold. Press Buy, fill in the
      details: at the bottom, WhatsApp checkout, green. Until a payment
-     gateway is switched on and ready (step H) that is the only one.
+     gateway is switched on and ready (step I) that is the only one.
      If Settings > Shopping > "Checkout button text" still says Buy on
      WhatsApp, the shop shows Buy anyway; type Buy there and Save if you
      want the box to match.
-     Done when: you have seen the gold Buy and the green WhatsApp
-     checkout.
+     Choose Delivery: under the address, "Delivery instructions
+     (optional)".
+     Done when: you have seen the gold Buy, the green WhatsApp checkout
+     and the delivery instructions box.
 
-  G. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
+  H. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
      person at the top of the shop; not the admin): the navy top saying
      Welcome back, with your orders, wishlist and points, then My
      shopping, My Vault and Security and privacy. Tap My orders, then
      View order on one of them.
      Done when: you have seen the dashboard and an order's own page.
 
-  H. LENCO, WHEN YOUR LENCO KEYS ARE IN HAND (SETUP.md, "Online payment
+  I. LENCO, WHEN YOUR LENCO KEYS ARE IN HAND (SETUP.md, "Online payment
      with Lenco", has every step and Lenco's sandbox numbers and cards).
      1. From Lenco (the dashboard's Lenco Pay section, or support):
         the sandbox API token, sandbox public key and the SANDBOX API
@@ -113,7 +129,7 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, AND LENCO.
         Trigger deploy, set the mode to Live, Save, and make one small
         real purchase yourself on each network you ticked, and by card.
 
-  I. CUSTOMERS' REQUESTS, WHEN YOU WANT THEM (you may leave this until
+  J. CUSTOMERS' REQUESTS, WHEN YOU WANT THEM (you may leave this until
      the platform has build 512). Admin > Settings > Customer Accounts:
      switch on "Let customers ask to cancel, return or exchange, or
      report a problem", check "Days after delivery to ask for a return
@@ -125,9 +141,57 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, AND LENCO.
      Done when: signed in as a customer, one of your own orders that is
      not yet prepared shows Cancel this order (a minute after saving).
 
-  J. WATCH THE CHECKS ON GITHUB (Actions > Tests).
+  K. DELIVERY, ONCE STEP E IS DONE.
+     1. Admin > Orders: an order for delivery that you have confirmed
+        shows "Add courier and tracking". Fill in the courier, the
+        tracking number, the courier's tracking page if it has one (an
+        address beginning https://) and, if you like, an update for the
+        customer ("Left Lusaka this morning"). Save.
+        The customer sees them on their order and on the progress link,
+        and is emailed them: with the "on its way" email, or in an email
+        of their own if you add or change them after it went. Later, the
+        platform (build 512) records them when it sends the order.
+     2. Delivery instructions: the customer can change them on their
+        order until it is on its way. You are emailed each change, at
+        the email address in Settings > Contact. They show under the
+        order in Admin > Orders. To stop asking for them: Settings >
+        Shopping > "Ask for delivery instructions" off, Save.
+     3. The invoice: once the till has rung an online order up and
+        given it an invoice number, the customer's order shows
+        Download invoice, beside Download receipt.
+     Done when: an order you gave a courier and tracking number shows
+     them on the customer's order page.
+
+  L. WATCH THE CHECKS ON GITHUB (Actions > Tests).
      Done when: the newest Tests run has a green tick. A minute later
-     GitHub > Code > Tags shows website-88 (Actions > Release tag).
+     GitHub > Code > Tags shows website-89 (Actions > Release tag).
+
+  WHAT CHANGED IN 89
+    * DELIVERY INSTRUCTIONS AT CHECKOUT: "Delivery instructions
+      (optional)" under the address, for the courier: a landmark, the
+      gate, the best time to deliver. Up to 300 characters, kept on one
+      line. They come in the WhatsApp message and are kept on the order,
+      on both ways of checking out. The order notes box now asks for a
+      gift message or anything else.
+    * THE CUSTOMER CAN CHANGE THEM on their order until it is on its way;
+      you are emailed each change. After that they are shown, and fixed.
+    * THE COURIER AND TRACKING NUMBER: recorded in Admin > Orders (and by
+      the platform from build 512), shown on the customer's order and
+      progress link with Track your delivery and the updates you add,
+      and emailed to the customer.
+    * DOWNLOAD INVOICE: an A4 invoice, as a PDF, on the customer's order
+      once the till has given it an invoice number: the shop and its
+      TPIN, each piece, VAT, delivery, the total, what was paid and how.
+    * CARDS: when DPO is connected (a later build), choosing Debit /
+      Credit Card shows two buttons, "Pay with Zambian card" and "Pay
+      with international card", in place of the question "Where was
+      your card issued?". Until then a card has one Pay button and goes
+      to Lenco. Nothing to set now.
+    * MENDED: since build 86, an order with no refund showed an empty
+      "Refunded K0" line on its page. It now shows nothing until there
+      is a refund.
+    * The till receives the instructions, courier and tracking number
+      with each order, ready for platform 512 to show them.
 
   WHAT CHANGED IN 88
     * LENCO, THE PRIMARY GATEWAY FOR ZAMBIA: Mobile Money on Airtel

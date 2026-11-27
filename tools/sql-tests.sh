@@ -89,6 +89,11 @@ run requests         $POS supabase-payment-history.sql tests/order-progress-fixt
 # Build 88: Lenco payments (supabase-lenco.sql), run twice over the till's
 # door, the payment history, an order's progress and the online refunds.
 run lenco            $POS supabase-payment-history.sql tests/order-progress-fixture.sql supabase-order-progress.sql supabase-online-refund.sql supabase-lenco.sql supabase-lenco.sql tests/lenco.sql
+# Build 89: delivery (supabase-delivery.sql), run twice over the till's door
+# and an order's progress; then the older files that hand out an order, run
+# again after it, keep its details.
+run delivery         $POS supabase-payment-history.sql tests/order-progress-fixture.sql supabase-order-progress.sql supabase-delivery.sql supabase-delivery.sql tests/delivery.sql
+run delivery-kept    $POS supabase-payment-history.sql tests/order-progress-fixture.sql supabase-order-progress.sql supabase-delivery.sql supabase-test-orders.sql supabase-order-progress.sql tests/delivery-kept.sql
 as "dropdb --if-exists $DB" >/dev/null 2>&1
 
 # Build 80 · an order's progress (supabase-order-progress.sql). Its own

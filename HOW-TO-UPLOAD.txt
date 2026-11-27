@@ -35,17 +35,17 @@ B. THE BROWSER  (four drags, because GitHub takes 100 files at a time)
            assets   images   tools                          (75 files)
   Drag 2 — at the top of your repository: the netlify FOLDER, the
            .github FOLDER if you can see it, and every loose file at
-           the top level (the 49 files beside the folders)    (92 files)
-  Drag 3 and 4 — the tests folder, in two parts (133 files in all):
+           the top level (the 50 files beside the folders)    (93 files)
+  Drag 3 and 4 — the tests folder, in two parts (137 files in all):
            First open your repository on GitHub and click the tests
            folder, so the page shows tests at the top. Then:
      Drag 3 — Add file > Upload files, and drag in, from inside your
            unzipped tests folder, every file whose name ends in
-           .browser.cjs (48 files). Typing browser.cjs into the
+           .browser.cjs (49 files). Typing browser.cjs into the
            folder's search box shows just those. Commit changes.
      Drag 4 — still inside tests on GitHub: Add file > Upload files,
            and drag in everything else inside your tests folder, the
-           supabase-standin folder among it (85 files). Commit changes.
+           supabase-standin folder among it (88 files). Commit changes.
 
   (Until build 79 the tests folder went in one drag. Build 80 brought
   twenty more checks and it went over GitHub's 100 at a time. Drags 3
@@ -102,6 +102,13 @@ Netlify rebuilds on its own, usually within a minute or two. Then follow
 the steps at the top of START-HERE.txt: uploading runs no SQL, and it never
 deletes a file. When a build takes a file away, START-HERE names it, and it
 has to be deleted from your repository by hand.
+
+BUILD 89: UPLOAD FIRST, SQL SECOND. Wait until Netlify > Deploys shows
+this upload as Published, then run the SQL files START-HERE.txt names, in
+its order (supabase-delivery.sql is this build's own, step E). The
+hardening is not run again. The other way round nothing breaks: the
+checkout simply keeps delivery instructions in the WhatsApp message until
+both are in.
 
 BUILD 83: UPLOAD FIRST, SQL SECOND. Wait until Netlify > Deploys shows
 this upload as Published, then run supabase-chat-reply-push.sql, once

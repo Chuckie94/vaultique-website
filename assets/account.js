@@ -518,6 +518,7 @@
         name: order.name || null, phone: order.phone || null,
         email: order.email || null, address: order.address || null,
         notes: order.notes || null,
+        instructions: order.fulfilment === 'collection' ? null : (order.instructions || null),   // build 89
         fulfilment: order.fulfilment === 'collection' ? 'collection' : 'delivery'
       },
       /* The name rides along only for a piece the catalogue no longer
@@ -564,6 +565,12 @@
      paid, and what it came to (supabase-payments.sql, website 77). Asked
      for the same way: a database without them still lists every order. */
   var DETAIL_COLS = ', address, payment_method, payment_status, pay_channel, goods_total, delivery_fee, paid_amount, updated_at';
+  /* BUILD 89 · delivery (supabase-delivery.sql): the customer's own
+     instructions, the courier, the tracking number and its link, the shop's
+     updates; and the till's invoice number, for the invoice. Asked for the
+     same way: a database without them still lists every order. */
+  var DELIVERY_COLS = ', delivery_instructions, instructions_at, ship_courier, ship_tracking, ship_tracking_url, ' +
+    'ship_updates, pos_invoice_no';
 
   function myOrders() {
     if (!sb || !signedIn() || !historyOn()) return Promise.resolve([]);
@@ -600,10 +607,16 @@
         return receipts();
       }, receipts);
     }
-    return ask(ORDER_COLS + RECEIPT_COLS + PROGRESS_COLS + DETAIL_COLS).then(function (r) {
+    function detail() {
+      return ask(ORDER_COLS + RECEIPT_COLS + PROGRESS_COLS + DETAIL_COLS).then(function (r) {
+        if (r && !r.error) return r.data || [];
+        return progress();
+      }, progress);
+    }
+    return ask(ORDER_COLS + RECEIPT_COLS + PROGRESS_COLS + DETAIL_COLS + DELIVERY_COLS).then(function (r) {
       if (r && !r.error) return r.data || [];
-      return progress();
-    }, progress);
+      return detail();
+    }, detail);
   }
 
   /* BUILD 78 · the customer's two buttons, on their own order. The answer is
@@ -793,6 +806,248 @@
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url; a.download = receiptFileName(o); a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
+  }
+
+  /* ---- BUILD 89 · the invoice, as a PDF ---------------------------------
+     The portal plan: "the invoice to download: the platform's invoice, as
+     the receipt is today (the platform gives the invoice number already)".
+
+     Made from the same record of the sale as the receipt (what the till
+     wrote: orders.pos_receipt), never from this page, and only for an order
+     the till gave an invoice number. An A4 page in Helvetica, the shop's
+     details at the top left and INVOICE at the right; who it is for; the
+     pieces in columns; the totals, VAT and what was paid. Written by hand
+     like the receipt: two of the fonts every PDF reader carries, nothing
+     embedded, a few kilobytes. Long orders run onto more pages. */
+  var A4_W = 595.28, A4_H = 841.89, INV_L = 48, INV_R = A4_W - 48, INV_BOTTOM = 64;
+  /* Helvetica and Helvetica-Bold, the width of each letter from space to ~
+     in thousandths of the type size (Adobe's metrics for the two fonts every
+     reader carries). Any other letter is taken as 556. */
+  var HELV = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,
+    556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,
+    611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,
+    556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+  var HELV_B = [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,
+    556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,
+    611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,
+    611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];
+  function textWidth(t, bold, size) {
+    var s = winText(t), w = 0, table = bold ? HELV_B : HELV;
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      w += (c >= 32 && c <= 126) ? table[c - 32] : 556;
+    }
+    return w * size / 1000;
+  }
+  /* Words to lines no wider than w points. A word wider than a line is cut. */
+  function wrapTo(text, w, bold, size) {
+    var words = winText(text).split(' '), lines = [], cur = '';
+    words.forEach(function (word) {
+      while (word && textWidth(word, bold, size) > w) {
+        var cut = word.length;
+        while (cut > 1 && textWidth(word.slice(0, cut), bold, size) > w) cut--;
+        if (cur) { lines.push(cur); cur = ''; }
+        lines.push(word.slice(0, cut));
+        word = word.slice(cut);
+      }
+      if (!word) return;
+      var next = cur ? cur + ' ' + word : word;
+      if (textWidth(next, bold, size) <= w) cur = next;
+      else { if (cur) lines.push(cur); cur = word; }
+    });
+    if (cur) lines.push(cur);
+    return lines.length ? lines : [''];
+  }
+  function invoiceNo(o) {
+    var r = (o && o.pos_receipt) || {};
+    return String(o && o.pos_invoice_no || r.invoiceNo || '').trim();
+  }
+  function invoiceFileName(o) {
+    return 'Invoice-' + (invoiceNo(o) || o.ref || 'invoice').replace(/[^0-9A-Za-z-]+/g, '-') + '.pdf';
+  }
+
+  /* The pages, each a list of drawing steps: text at a place, or a rule. */
+  function invoicePages(o) {
+    var r = o.pos_receipt || {}, shop = r.shop || {};
+    var pages = [], ops = null, y = 0;
+    function page() { ops = []; pages.push(ops); y = A4_H - 56; }
+    function text(x, t, size, bold, align, colour) {
+      ops.push({ x: x, y: y, t: winText(t), size: size, bold: !!bold, align: align || 'left', colour: colour || null });
+    }
+    function rule(yy, x1, x2, wgt) { ops.push({ rule: true, y: yy, x1: x1, x2: x2, w: wgt || 0.6 }); }
+    page();
+
+    /* The shop, on the left; INVOICE and its numbers, on the right. */
+    var top = y, ly = y, ry = y;
+    y = ly; text(INV_L, shop.name || '', 15, true); ly -= 19;
+    [shop.slogan, shop.address, shop.contact, shop.taxId ? 'TPIN: ' + shop.taxId : '', shop.regNo ? 'Reg. No: ' + shop.regNo : '']
+      .filter(Boolean).forEach(function (l) {
+        wrapTo(l, 270, false, 9).forEach(function (w) { y = ly; text(INV_L, w, 9); ly -= 12; });
+      });
+    y = ry; text(INV_R, 'INVOICE', 20, true, 'right', 'navy'); ry -= 26;
+    var when = r.date ? new Date(r.date) : (o.pos_completed_at ? new Date(o.pos_completed_at) : null);
+    var whenText = when && !isNaN(when.getTime())
+      ? (renderHooks.date ? renderHooks.date(when.toISOString()) : when.toLocaleDateString()) : '';
+    [['Invoice No.', invoiceNo(o)], ['Date', whenText], ['Receipt No.', r.receiptNo || o.pos_receipt_no || ''],
+     ['Online order', o.ref || '']].forEach(function (p) {
+      if (!p[1]) return;
+      y = ry; text(INV_R - 110, p[0], 9.5, false, 'right'); text(INV_R, p[1], 9.5, true, 'right'); ry -= 13;
+    });
+    y = Math.min(ly, ry) - 14;
+    rule(y + 6, INV_L, INV_R, 0.8);
+    y -= 12;
+
+    /* Who it is for, and how it reached them. */
+    text(INV_L, 'Bill to', 10, true);
+    /* How it reaches the customer, not whether it has: the till rings an
+       order for delivery up before it arrives. */
+    text(INV_R, o.fulfilment === 'collection' ? 'Collected from the shop' : 'For delivery', 9.5, false, 'right');
+    y -= 14;
+    var who = [r.customer || o.name, o.fulfilment === 'collection' ? '' : o.address, o.phone, o.email].filter(Boolean);
+    who.forEach(function (l) {
+      wrapTo(l, 300, false, 9.5).forEach(function (w) { text(INV_L, w, 9.5); y -= 12.5; });
+    });
+    y -= 12;
+
+    /* The pieces. */
+    var C_QTY = 372, C_UNIT = 462;
+    function header() {
+      rule(y + 11, INV_L, INV_R, 0.8);
+      text(INV_L, 'Description', 9.5, true);
+      text(C_QTY, 'Qty', 9.5, true, 'right');
+      text(C_UNIT, 'Unit price', 9.5, true, 'right');
+      text(INV_R, 'Amount', 9.5, true, 'right');
+      rule(y - 5, INV_L, INV_R, 0.6);
+      y -= 19;
+    }
+    header();
+    (r.lines || []).forEach(function (l) {
+      var name = [l.sku, l.name].filter(Boolean).join(' \u00b7 ');
+      var qty = l.qty == null ? '' : String(l.qty);
+      var unit = l.unit != null ? l.unit : (l.total != null && Number(l.qty) ? Number(l.total) / Number(l.qty) : null);
+      var lines = wrapTo(name, C_QTY - 40 - INV_L, false, 9.5);
+      if (y - lines.length * 12.5 < INV_BOTTOM + 20) { page(); header(); }
+      lines.forEach(function (w, i) {
+        text(INV_L, w, 9.5);
+        if (i === 0) {
+          text(C_QTY, qty, 9.5, false, 'right');
+          text(C_UNIT, unit == null ? '' : receiptMoney(unit), 9.5, false, 'right');
+          text(INV_R, l.total == null ? '' : receiptMoney(l.total), 9.5, false, 'right');
+        }
+        y -= 12.5;
+      });
+      y -= 3;
+    });
+    rule(y + 8, INV_L, INV_R, 0.6);
+    y -= 8;
+
+    /* The totals, on the right. */
+    var sums = [];
+    var vatOn = r.vat != null && Number(r.vatRate);
+    if (r.subtotalNet != null && vatOn) sums.push(['Subtotal (excl. VAT)', receiptMoney(r.subtotalNet)]);
+    if (Number(r.discount) > 0) sums.push(['Discount', '- ' + receiptMoney(r.discount)]);
+    if (vatOn) sums.push(['VAT (' + r.vatRate + '%)', receiptMoney(r.vat)]);
+    sums.push([o.fulfilment === 'collection' ? 'Collection' : 'Delivery', receiptMoney(r.delivery || 0)]);
+    var total = r.total != null ? Number(r.total) : Number(o.total) || 0;
+    sums.push(['Total', receiptMoney(total), true]);
+    var pts = r.points || null, ptsValue = pts && Number(pts.value) > 0.004 ? Number(pts.value) : 0;
+    if (ptsValue) sums.push(['Points redeemed (' + (pts.points || 0) + ')', '- ' + receiptMoney(ptsValue)]);
+    var paid = r.amountPaid != null ? Number(r.amountPaid)
+      : (r.payments || []).reduce(function (a, p) { return a + (Number(p.amount) || 0); }, 0);
+    if (r.amountPaid != null || (r.payments || []).length) {
+      sums.push(['Amount paid', receiptMoney(paid)]);
+      sums.push(['Balance due', receiptMoney(Math.max(0, Math.round((total - ptsValue - paid) * 100) / 100)), true]);
+    }
+    if (y - sums.length * 15 - 40 < INV_BOTTOM) { page(); }
+    sums.forEach(function (s) {
+      text(C_UNIT, s[0], s[2] ? 10.5 : 9.5, !!s[2], 'right');
+      text(INV_R, s[1], s[2] ? 10.5 : 9.5, !!s[2], 'right');
+      y -= s[2] ? 16 : 13.5;
+    });
+
+    /* How it was paid. */
+    if ((r.payments || []).length) {
+      y -= 8;
+      text(INV_L, 'Paid by', 10, true); y -= 14;
+      r.payments.forEach(function (p) {
+        if (y < INV_BOTTOM + 14) page();
+        text(INV_L, [p.method || '', p.ref ? '(Ref ' + p.ref + ')' : ''].filter(Boolean).join(' '), 9.5);
+        text(INV_R, receiptMoney(p.amount), 9.5, false, 'right');
+        y -= 12.5;
+      });
+    }
+
+    /* The shop's own closing words, at the foot of the last page. */
+    var foot = wrapTo(r.footer || 'Thank you for shopping with us.', INV_R - INV_L, false, 9);
+    y = INV_BOTTOM - 6 + (foot.length - 1) * 11.5;
+    rule(y + 14, INV_L, INV_R, 0.6);
+    foot.forEach(function (l) { text(A4_W / 2, l, 9, false, 'center'); y -= 11.5; });
+    return pages;
+  }
+
+  function invoicePdf(o) {
+    var pages = invoicePages(o);
+    var n = pages.length;
+    /* 1 catalogue, 2 pages, 3 and 4 the fonts, then each page and its
+       contents, then the title. */
+    var objs = [
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      null,
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'
+    ];
+    var kids = [];
+    pages.forEach(function (ops, i) {
+      var body = '', inText = false;
+      ops.forEach(function (op) {
+        if (op.rule) {
+          body += '0.72 G ' + op.w + ' w ' + op.x1.toFixed(2) + ' ' + op.y.toFixed(2) + ' m ' +
+                  op.x2.toFixed(2) + ' ' + op.y.toFixed(2) + ' l S\n';
+          return;
+        }
+        if (!op.t) return;
+        var w = textWidth(op.t, op.bold, op.size);
+        var x = op.align === 'right' ? op.x - w : op.align === 'center' ? op.x - w / 2 : op.x;
+        body += (op.colour === 'navy' ? '0.043 0.122 0.227 rg ' : '0 0 0 rg ') +
+                'BT /' + (op.bold ? 'F2' : 'F1') + ' ' + op.size + ' Tf 1 0 0 1 ' + x.toFixed(2) + ' ' + op.y.toFixed(2) +
+                ' Tm (' + pdfEsc(op.t) + ') Tj ET\n';
+      });
+      if (n > 1) {
+        body += '0 0 0 rg BT /F1 8 Tf 1 0 0 1 ' + (INV_R - textWidth('Page ' + (i + 1) + ' of ' + n, false, 8)).toFixed(2) +
+                ' 30 Tm (' + pdfEsc('Page ' + (i + 1) + ' of ' + n) + ') Tj ET\n';
+      }
+      var pageNo = objs.length + 1;
+      objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + A4_W + ' ' + A4_H + '] ' +
+                '/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' + (pageNo + 1) + ' 0 R >>');
+      objs.push('<< /Length ' + body.length + ' >>\nstream\n' + body + 'endstream');
+      kids.push(pageNo + ' 0 R');
+    });
+    objs[1] = '<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + n + ' >>';
+    var title = winText('Invoice ' + invoiceNo(o) + ' ' + (o.ref || ''));
+    objs.push('<< /Title (' + pdfEsc(title) + ') /Producer (Vaultique Boutique Point) >>');
+    var info = objs.length;
+    var out = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n', offs = [];
+    objs.forEach(function (ob, i) {
+      offs.push(out.length);
+      out += (i + 1) + ' 0 obj\n' + ob + '\nendobj\n';
+    });
+    var xref = out.length;
+    out += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n';
+    offs.forEach(function (off) { out += ('000000000' + off).slice(-10) + ' 00000 n \n'; });
+    out += 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R /Info ' + info + ' 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
+    var bytes = new Uint8Array(out.length);
+    for (var i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 0xFF;
+    return bytes;
+  }
+
+  function downloadInvoice(o) {
+    var blob = new Blob([invoicePdf(o)], { type: 'application/pdf' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = invoiceFileName(o); a.rel = 'noopener';
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
@@ -1584,6 +1839,13 @@
           dl.addEventListener('click', function () { downloadReceipt(o); });
           acts.appendChild(dl);
         }
+        /* BUILD 89 · the invoice, when the till gave the sale an invoice number. */
+        if (o.pos_receipt && invoiceNo(o)) {
+          var di = el('button', 'btn btn-outline btn-sm ac-invoice', 'Download invoice');
+          di.type = 'button';
+          di.addEventListener('click', function () { downloadInvoice(o); });
+          acts.appendChild(di);
+        }
         /* BUILD 86 · everything about it, on a page of its own. */
         if (o.ref) {
           var open = pageLink('btn btn-gold btn-sm ac-view', 'orders', o.ref);
@@ -1635,7 +1897,7 @@
            below, which has every refund. */
         var pg = PG && ('dispatched_at' in o) ? PG.fromRow(o) : null;
         if (pg && pg.rungUp && ['confirmed', 'dispatched', 'ready'].indexOf(o.status) > -1) {
-          PG.draw(c, Object.assign({}, pg, { refund: null }), {
+          PG.draw(c, Object.assign({}, pg, { refund: null, ship: null }), {
             money: renderHooks.money,
             message: said || '',
             onConfirm: function () { return confirmDelivery(o.id); },
@@ -1681,12 +1943,20 @@
         pair(o.fulfilment === 'collection' ? 'Collection' : 'Delivery to',
              o.fulfilment === 'collection' ? 'At the shop' : (o.address || ''));
         if (o.ship_note) pair('From the shop', o.ship_note);
+        /* BUILD 89 · the courier and the tracking number, as the shop
+           recorded them, with the courier's own page when it has one. */
+        if (o.ship_courier) pair('Courier', o.ship_courier);
+        if (o.ship_tracking) pair('Tracking number', o.ship_tracking);
         if (o.delivered_at) {
           pair(o.fulfilment === 'collection' ? 'Collected' : 'Delivered',
                day(o.delivered_at) + (BY_WHOM[o.delivered_by] ? ', ' + BY_WHOM[o.delivered_by] : ''));
         }
         if (o.pos_receipt_no) pair('Receipt', o.pos_receipt_no);
+        if (invoiceNo(o)) pair('Invoice', invoiceNo(o));
         c.appendChild(kv);
+        shipExtras(c, o);
+        instructionsBlock(c, o, insSaid, function (words) { insSaid = words || ''; draw(''); });
+        insSaid = '';
 
         /* Refunds on this order: the platform's, as Flutterwave or the till
            recorded them, and any still on its way. */
@@ -1701,6 +1971,12 @@
           dl.addEventListener('click', function () { downloadReceipt(o); });
           acts.appendChild(dl);
         }
+        if (o.pos_receipt && invoiceNo(o)) {
+          var di = el('button', 'btn btn-outline btn-sm ac-invoice', 'Download invoice');
+          di.type = 'button';
+          di.addEventListener('click', function () { downloadInvoice(o); });
+          acts.appendChild(di);
+        }
         var ask = askLink('Hello, I have a question about my order ' + o.ref + '.', 'Ask about this order');
         if (ask) acts.appendChild(ask);
         c.appendChild(acts);
@@ -1710,8 +1986,103 @@
         reqSaid = '';
       });
     }
-    var reqSaid = '';
+    var reqSaid = '', insSaid = '';
     draw('');
+  }
+
+  /* BUILD 89 · the courier's own tracking page and the shop's updates, under
+     the order's details. A link only to an https page (the database lets in
+     nothing else either). */
+  function safeTrackLink(u) {
+    return /^https:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?(\/[^\s<>"'`\\]*)?$/.test(String(u || '')) ? String(u) : '';
+  }
+  function shipExtras(host, o) {
+    var link = safeTrackLink(o.ship_tracking_url);
+    if (link) {
+      var a = el('a', 'btn btn-outline btn-sm ac-track', 'Track your delivery');
+      a.href = link; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      var p = el('p', 'acd-track');
+      p.appendChild(a);
+      host.appendChild(p);
+    }
+    var ups = Array.isArray(o.ship_updates) ? o.ship_updates.slice().reverse() : [];
+    if (!ups.length) return;
+    host.appendChild(el('h3', 'acd-h', 'Delivery updates'));
+    var list = el('ul', 'acd-updates');
+    ups.forEach(function (u) {
+      var li = el('li');
+      li.appendChild(el('span', 'acd-up-at', u && u.at ? day(u.at) : ''));
+      li.appendChild(el('span', 'acd-up-txt', u && u.text ? String(u.text) : ''));
+      list.appendChild(li);
+    });
+    host.appendChild(list);
+  }
+
+  /* BUILD 89 · delivery instructions: the customer's words for the courier,
+     given at checkout, changed here until the order is on its way (the
+     database decides: order_set_instructions). The shop is told by email. */
+  var INS_WHY = {
+    on_its_way: 'Your order is already on its way, so the instructions can no longer be changed here. Please contact us.',
+    cancelled: 'This order has been cancelled.',
+    collection: 'This order is being collected, so it needs no delivery instructions.',
+    too_long: 'Please keep the instructions to 300 characters.',
+    busy: 'The instructions have been changed several times just now. Please try again in a while.',
+    signin: 'Please sign in again.',
+    not_found: 'This order is not on your account.',
+    offline: 'That did not reach us. Please check your connection and try again.'
+  };
+  function instructionsBlock(host, o, said, after) {
+    if (o.fulfilment === 'collection' || !('delivery_instructions' in o)) return;
+    var open = ['pending', 'confirmed'].indexOf(o.status || 'pending') > -1 && !o.dispatched_at;
+    if (!o.delivery_instructions && !open) return;
+    var box = el('div', 'acd-ins');
+    box.appendChild(el('h3', 'acd-h', 'Delivery instructions'));
+    var shown = el('p', 'acd-ins-txt' + (o.delivery_instructions ? '' : ' ac-quiet'),
+                   o.delivery_instructions || 'None given. Add a landmark, the gate, or the best time to deliver.');
+    box.appendChild(shown);
+    var msg = el('p', 'acd-ins-msg', said || '');
+    if (said) msg.className += ' ok';
+    if (open && sb && signedIn()) {
+      var edit = el('button', 'btn btn-outline btn-sm acd-ins-edit', o.delivery_instructions ? 'Change instructions' : 'Add instructions');
+      edit.type = 'button';
+      edit.addEventListener('click', function () {
+        edit.classList.add('hide');
+        var form = el('div', 'acd-ins-form');
+        var ta = el('textarea');
+        ta.id = 'acd_instructions';
+        ta.rows = 3; ta.maxLength = 300;
+        ta.value = o.delivery_instructions || '';
+        ta.setAttribute('aria-label', 'Delivery instructions');
+        ta.placeholder = 'For the courier: a landmark, the gate, the best time to deliver';
+        var save = el('button', 'btn btn-gold btn-sm acd-ins-save', 'Save');
+        save.type = 'button';
+        var cancel = el('button', 'btn btn-outline btn-sm acd-ins-cancel', 'Cancel');
+        cancel.type = 'button';
+        var row = el('div', 'ac-actions');
+        row.appendChild(save); row.appendChild(cancel);
+        form.appendChild(ta); form.appendChild(row);
+        box.insertBefore(form, msg);
+        ta.focus();
+        cancel.addEventListener('click', function () { form.remove(); edit.classList.remove('hide'); msg.textContent = ''; });
+        save.addEventListener('click', function () {
+          save.disabled = true; cancel.disabled = true;
+          msg.textContent = 'Saving…'; msg.className = 'acd-ins-msg';
+          Promise.resolve(sb.rpc('order_set_instructions', { p_id: o.id, p_text: ta.value }))
+            .then(function (r) { return r && !r.error && r.data && typeof r.data === 'object' ? r.data : { ok: false, why: 'offline' }; },
+                  function () { return { ok: false, why: 'offline' }; })
+            .then(function (r) {
+              if (r.ok) { after(r.instructions ? 'Saved ✓ We have let the shop know.' : 'Removed ✓ We have let the shop know.'); return; }
+              save.disabled = false; cancel.disabled = false;
+              msg.textContent = INS_WHY[r.why] || INS_WHY.offline;
+              msg.className = 'acd-ins-msg err';
+              if (r.why === 'on_its_way' || r.why === 'cancelled') after('');
+            });
+        });
+      });
+      box.appendChild(edit);
+    }
+    box.appendChild(msg);
+    host.appendChild(box);
   }
 
   var BY_WHOM = { customer: 'confirmed by you', shop: 'marked by the shop', auto: 'marked when the days ran out' };
@@ -1773,10 +2144,12 @@
   function refundLines(o, host) {
     refundsOnTheWay().then(function (list) {
       var mine = (list || []).filter(function (r) { return r.order_ref === o.ref; });
-      if (!mine.length && o.refund_state) mine = null;
-      if (!mine && !o.refund_state) return;
+      /* Build 89: nothing at all when neither Flutterwave's list nor the order
+         itself has a refund. Before, every order without one showed a
+         "Refunds" heading over an empty "Refunded K0" line. */
+      if (!mine.length && !o.refund_state) return;
       host.appendChild(el('h3', 'acd-h', 'Refunds'));
-      if (mine && mine.length) mine.forEach(function (r) { host.appendChild(refundRow(r)); });
+      if (mine.length) mine.forEach(function (r) { host.appendChild(refundRow(r)); });
       else host.appendChild(orderRefundRow(o));
       if (o.refund_ref) host.appendChild(el('p', 'ac-quiet', 'Reference ' + o.refund_ref));
     });
@@ -2721,6 +3094,10 @@
     receiptPdf: receiptPdf,
     receiptLines: receiptLines,
     receiptFileName: receiptFileName,
+    invoicePdf: invoicePdf,           // build 89
+    invoicePages: invoicePages,
+    invoiceFileName: invoiceFileName,
+    textWidth: textWidth,
 
     deleteAccount: deleteAccount,
     confirmDelivery: confirmDelivery,

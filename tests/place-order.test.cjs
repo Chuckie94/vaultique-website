@@ -23,13 +23,15 @@ const POS = [
   { sku: 'HID', name: 'Hidden Piece', category: 'Bags', price: 700, stock: 2, active: true },
   { sku: 'GONE', name: 'Sold Piece', category: 'Bags', price: 800, stock: 0, active: true },
 ];
-let SETTINGS, META, CALLS, OLD_DB, TOO_MANY;
+let SETTINGS, META, CALLS, OLD_DB, TOO_MANY, PATCHES, NO_DELIVERY;
 function reset() {
   SETTINGS = { general: { businessName: 'Vaultique', currency: 'ZMW' }, pricing: {} };
   META = [{ sku: 'ASK', on_request: true }, { sku: 'HID', hidden: true }];
   CALLS = [];
   OLD_DB = false;
   TOO_MANY = false;
+  PATCHES = [];
+  NO_DELIVERY = false;
 }
 reset();
 
@@ -53,6 +55,13 @@ const server = http.createServer(async (req, res) => {
   if (p === '/web/auth/v1/user') {
     return (req.headers.authorization || '') === 'Bearer customer-jwt'
       ? send(200, { id: 'cust-1' }) : send(401, { msg: 'invalid JWT' });
+  }
+  // BUILD 89 · the delivery instructions, written onto the order just made.
+  if (p === '/web/rest/v1/orders' && req.method === 'PATCH') {
+    if (!service) return send(401, {});
+    if (NO_DELIVERY) return send(400, { code: 'PGRST204', message: 'Could not find the delivery_instructions column of orders' });
+    PATCHES.push({ q: u.search, body: JSON.parse(body) });
+    return send(204);
   }
   if (p === '/web/rest/v1/rpc/place_order') {
     const b = JSON.parse(body);
@@ -134,6 +143,23 @@ const server = http.createServer(async (req, res) => {
     is(r.code === 200 && !('p_customer' in c) && c.p_order.total === 300,
        'the old place_order is used instead, still at the server\'s prices: no order is lost to the upload order');
     OLD_DB = false;
+
+    console.log('\nBuild 89 · delivery instructions');
+    PATCHES = [];
+    r = await post({ order: Object.assign({}, BUYER, { instructions: '  Blue gate,\n  call on arrival  ' }), items: [{ sku: 'SC-1', qty: 1 }] });
+    const w = PATCHES[0];
+    is(r.code === 200 && PATCHES.length === 1 && w.q === '?id=eq.' + r.body.id && w.body.delivery_instructions === 'Blue gate, call on arrival',
+       'kept on the order just made, on one line', JSON.stringify(PATCHES));
+    is(w && w.body.instructions_at && w.body.instructions_told_at === w.body.instructions_at,
+       'and counted as told: the shop has them with the order');
+    PATCHES = [];
+    await post({ order: Object.assign({}, BUYER, { fulfilment: 'collection', instructions: 'Blue gate' }), items: [{ sku: 'SC-1', qty: 1 }] });
+    await post({ order: BUYER, items: [{ sku: 'SC-1', qty: 1 }] });
+    is(PATCHES.length === 0, 'none for an order being collected, and none when none were given');
+    NO_DELIVERY = true;
+    r = await post({ order: Object.assign({}, BUYER, { instructions: 'Blue gate' }), items: [{ sku: 'SC-1', qty: 1 }] });
+    is(r.code === 200 && /^VB-/.test(r.body.ref), 'before supabase-delivery.sql: the order is still recorded (the instructions are in the WhatsApp message)');
+    NO_DELIVERY = false;
 
     console.log('\nWhat it refuses');
     r = await place({ httpMethod: 'GET', headers: {} });

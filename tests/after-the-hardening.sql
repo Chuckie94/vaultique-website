@@ -358,6 +358,25 @@ delete from public.chat_conversations where id = 'cccccccc-8383-0000-0000-000000
 select achk((select count(*) from public.chat_reply_push where conversation_id = 'cccccccc-8383-0000-0000-000000000001') = 0,
   'reply notifications: a deleted conversation leaves nothing on the list');
 
+-- ================================================ build 89: delivery
+-- The platform's door for the courier and tracking number stays open to its
+-- own key after the hardening runs again; the customer's instructions and
+-- the admin's courier need somebody signed in; the part that writes the
+-- courier is closed to everybody. Only when supabase-delivery.sql is there.
+reset role;
+select achk(to_regprocedure('public.vbp_pos_order_shipping(text, text, text, text, text, text)') is null
+            or has_function_privilege('anon', 'public.vbp_pos_order_shipping(text, text, text, text, text, text)', 'execute'),
+  'delivery: the platform''s door is open to its public key');
+select achk(to_regprocedure('public.order_set_instructions(uuid, text)') is null
+            or (not has_function_privilege('anon', 'public.order_set_instructions(uuid, text)', 'execute')
+                and not has_function_privilege('anon', 'public.order_shipping_admin(uuid, text, text, text, text)', 'execute')
+                and has_function_privilege('authenticated', 'public.order_set_instructions(uuid, text)', 'execute')),
+  'delivery: the customer''s instructions and the admin''s courier need somebody signed in');
+select achk(to_regprocedure('public.order_ship_set(uuid, text, text, text, text)') is null
+            or (not has_function_privilege('anon', 'public.order_ship_set(uuid, text, text, text, text)', 'execute')
+                and not has_function_privilege('authenticated', 'public.order_ship_set(uuid, text, text, text, text)', 'execute')),
+  'delivery: the part that writes the courier is closed to everybody');
+
 -- ================================================ build 87: customers' requests
 -- The platform's two doors open to its own key; the customer's for a
 -- signed-in customer on their own order; an administrator with the orders

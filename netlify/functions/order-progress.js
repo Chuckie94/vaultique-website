@@ -40,6 +40,10 @@ const enc = encodeURIComponent;
 const COLS = 'id,ref,name,email,fulfilment,status,total,ship_note,dispatched_at,delivered_at,delivered_by,' +
   'auto_deliver_at,extend_days,extend_max,extend_used,remind_days,reminded_at,progress_token,' +
   'dispatch_mailed_at,delivered_mailed_at,refund_state,refund_amount,refund_ref,refund_note,refund_at,refund_mailed_at';
+/* BUILD 89 · the courier and the tracking number (supabase-delivery.sql),
+   asked for with the rest when that file has been run, and left out when it
+   has not, so the emails before it go on exactly as they did. */
+const SHIP_COLS = ',ship_courier,ship_tracking,ship_tracking_url,ship_set_at,ship_mailed_at';
 
 const iso = (ms) => new Date(ms).toISOString();
 const first = (name) => (String(name || '').trim().split(/\s+/)[0]) || 'there';
@@ -62,12 +66,30 @@ function link(o) {
   return o.progress_token && base ? base + '/order/' + enc(o.ref) + '?t=' + enc(o.progress_token) : '';
 }
 
+/* BUILD 89 · the courier, the tracking number and the courier's own page,
+   as the shop recorded them; nothing when it has not. */
+function shipLines(o) {
+  const out = [];
+  if (o.ship_courier) out.push('Courier: ' + o.ship_courier);
+  if (o.ship_tracking) out.push('Tracking number: ' + o.ship_tracking);
+  if (o.ship_tracking_url && /^https:\/\/[^\s<>"'`]+$/.test(o.ship_tracking_url)) out.push('Track it: ' + o.ship_tracking_url);
+  return out.length ? [out.join('\n')] : [];
+}
 function onItsWay(o) {
   const l = link(o);
-  return ['Your order ' + o.ref + ' is on its way to you.' + (o.ship_note ? '\n' + o.ship_note : ''),
-          'Once it has arrived, please press Confirm delivery on your order. If it has not arrived by ' +
+  return ['Your order ' + o.ref + ' is on its way to you.' + (o.ship_note ? '\n' + o.ship_note : '')]
+    .concat(shipLines(o))
+    .concat(['Once it has arrived, please press Confirm delivery on your order. If it has not arrived by ' +
           when(o.auto_deliver_at) + ', press Ask for more time; otherwise it will be marked delivered then.',
-          l ? 'Your order: ' + l : 'You can see your order on your account page.'];
+          l ? 'Your order: ' + l : 'You can see your order on your account page.']);
+}
+/* BUILD 89 · the courier or tracking number, given after the "on its way"
+   email went: told once more, with them. */
+function tracking(o) {
+  const l = link(o);
+  return ['Here are the delivery details for your order ' + o.ref + ', which is on its way to you.']
+    .concat(shipLines(o))
+    .concat([l ? 'Your order: ' + l : 'You can see your order on your account page.']);
 }
 function reminder(o) {
   const l = link(o);
@@ -103,23 +125,50 @@ async function run() {
   const out = { onway: 0, reminded: 0, delivered: 0, toldDelivered: 0, refunds: 0 };
 
   // Before the SQL the columns are not there, and this first read says so.
-  let onway;
+  // BUILD 89: with the courier's columns when supabase-delivery.sql is there.
+  let onway, ship = true;
   try {
-    onway = await P.svc('GET', 'orders?select=' + COLS + '&status=eq.dispatched&order=auto_deliver_at.asc&limit=200');
+    onway = await P.svc('GET', 'orders?select=' + COLS + SHIP_COLS + '&status=eq.dispatched&order=auto_deliver_at.asc&limit=200');
   } catch (e) {
-    return { skipped: 'the order progress is not set up (supabase-order-progress.sql)' };
+    ship = false;
+    try {
+      onway = await P.svc('GET', 'orders?select=' + COLS + '&status=eq.dispatched&order=auto_deliver_at.asc&limit=200');
+    } catch (e2) {
+      return { skipped: 'the order progress is not set up (supabase-order-progress.sql)' };
+    }
   }
   onway = onway || [];
   const toldNow = {};
 
-  // 1) On its way, once.
+  // 1) On its way, once; with the courier and the tracking number when the
+  //    shop has recorded them (build 89), which then count as told.
   for (const o of onway.filter((x) => x.dispatched_at && !x.dispatch_mailed_at && x.email
                                     && x.dispatched_at > fresh).slice(0, MAX_PER_STEP)) {
     if (late()) break;
     if (await M.shopMail(o.email, 'Your order ' + o.ref + ' is on its way', ['Hello ' + first(o.name) + ','].concat(onItsWay(o)))) {
       await mark(o.id, 'dispatch_mailed_at');
+      if (ship && o.ship_set_at) {
+        await P.svc('PATCH', 'orders?id=eq.' + enc(o.id), { ship_mailed_at: iso(Date.now()) }, 'return=minimal').catch(() => {});
+      }
       toldNow[o.id] = true;
       out.onway++;
+    }
+  }
+
+  // 1b) BUILD 89 · the courier or the tracking number given, or changed,
+  //     after that email went: the customer is told once more, once.
+  out.tracking = 0;
+  if (ship) {
+    for (const o of onway.filter((x) => !toldNow[x.id] && x.email && x.dispatch_mailed_at && x.ship_set_at
+                                      && x.ship_set_at > fresh
+                                      && (x.ship_courier || x.ship_tracking || x.ship_tracking_url)
+                                      && (!x.ship_mailed_at || x.ship_mailed_at < x.ship_set_at)).slice(0, MAX_PER_STEP)) {
+      if (late()) break;
+      if (await M.shopMail(o.email, 'Delivery details for your order ' + o.ref, ['Hello ' + first(o.name) + ','].concat(tracking(o)))) {
+        await P.svc('PATCH', 'orders?id=eq.' + enc(o.id), { ship_mailed_at: iso(Date.now()) }, 'return=minimal').catch(() => {});
+        toldNow[o.id] = true;
+        out.tracking++;
+      }
     }
   }
 
@@ -182,7 +231,51 @@ async function run() {
     out.requestsShop = told.shop;
     out.requestsCustomer = told.customer;
   }
+
+  // 7) BUILD 89 · delivery instructions a customer changed on their order:
+  //    the shop is told, once for each change.
+  if (!late()) out.instructions = await instructionEmails(late, fresh);
   return out;
+}
+
+/* ---- BUILD 89 · delivery instructions changed (supabase-delivery.sql) ----
+   Given at checkout they come with the order (and count as told). Changed
+   later, on the customer's own order page, the shop is emailed, so that an
+   order already being prepared goes out with the right ones. */
+async function instructionEmails(late, fresh) {
+  let rows;
+  try {
+    rows = await P.svc('GET', 'orders?select=id,ref,name,phone,status,fulfilment,address,delivery_instructions,' +
+                       'instructions_at,instructions_told_at&instructions_at=gt.' + enc(fresh) +
+                       '&status=neq.cancelled&order=instructions_at.asc&limit=200');
+  } catch (e) {
+    return 0;     // supabase-delivery.sql not run yet
+  }
+  const due = (rows || []).filter((o) => o.instructions_at &&
+    (!o.instructions_told_at || o.instructions_told_at < o.instructions_at)).slice(0, MAX_PER_STEP);
+  if (!due.length) return 0;
+  let shopTo = '';
+  try {
+    const [s, a] = await Promise.all([P.shopSettings(), M.mailAccount()]);
+    shopTo = String((s.contact && s.contact.email) || a.pub.replyTo || a.pub.senderEmail || '').trim();
+  } catch (e) { shopTo = ''; }
+  if (!shopTo) return 0;
+  let n = 0;
+  for (const o of due) {
+    if (late()) break;
+    const lines = [o.delivery_instructions
+        ? 'The customer has changed the delivery instructions for order ' + o.ref + '. They now read:\n' + o.delivery_instructions
+        : 'The customer has removed the delivery instructions for order ' + o.ref + '.',
+      [o.name, o.phone].filter(Boolean).join(', ') + (o.address ? '\nDelivery to: ' + o.address : ''),
+      'Please make sure whoever takes the order out has them. They are on the order in Admin > Orders, and are sent ' +
+      'to the platform with the order.'];
+    if (await M.shopMail(shopTo, 'Delivery instructions changed: order ' + o.ref, lines)) {
+      await P.svc('PATCH', 'orders?id=eq.' + enc(o.id) + '&instructions_at=eq.' + enc(o.instructions_at),
+                  { instructions_told_at: iso(Date.now()) }, 'return=minimal').catch(() => {});
+      n++;
+    }
+  }
+  return n;
 }
 
 /* ---- BUILD 87 · customers' requests (supabase-customer-requests.sql) ----
@@ -376,4 +469,5 @@ async function tellRefunds(ids, budget) {
   return n;
 }
 
-exports._internals = { run, when, link, tellRefunds, requestEmails, forTheShop, forTheCustomer, FRESH_HOURS, MAX_PER_STEP };
+exports._internals = { run, when, link, tellRefunds, requestEmails, forTheShop, forTheCustomer, FRESH_HOURS, MAX_PER_STEP,
+                       shipLines, onItsWay, tracking, instructionEmails };

@@ -61,7 +61,9 @@ function reset() {
       { id: 'o1', customer_id: 'u-chanda', ref: 'VB-CHA1', status: 'delivered', fulfilment: 'delivery', name: 'Chanda', phone: '+260 970 000 001',
         email: 'chanda_b@mail.test', address: 'Plot 1, Stand-in Road', total: 500, currency: 'ZMW', payment_method: 'online', payment_status: 'paid',
         paid_at: '2026-11-02T10:00:00Z', progress_token: 'private-link-token', pay_ref: 'VBP-x', created_at: '2026-11-02T09:00:00Z',
-        refund_state: 'part', refund_amount: 100, refund_ref: 'FLW-R1', refund_at: '2026-11-05T10:00:00Z', dispatch_mailed_at: '2026-11-03T10:00:00Z' },
+        refund_state: 'part', refund_amount: 100, refund_ref: 'FLW-R1', refund_at: '2026-11-05T10:00:00Z', dispatch_mailed_at: '2026-11-03T10:00:00Z',
+        delivery_instructions: 'Blue gate', instructions_told_at: '2026-11-02T09:00:00Z', ship_courier: 'Yango', ship_tracking: 'YG-1',
+        ship_tracking_url: 'https://yango.example/t/YG-1', ship_mailed_at: '2026-11-03T10:00:00Z' },
       { id: 'o2', customer_id: 'u-chanda', ref: 'VB-CHA2', status: 'pending', fulfilment: 'collection', total: 120, currency: 'ZMW',
         created_at: '2026-11-10T09:00:00Z' },
       { id: 'o3', customer_id: 'u-mwila', ref: 'VB-MWI1', status: 'confirmed', fulfilment: 'delivery', total: 900, currency: 'ZMW',
@@ -300,6 +302,10 @@ const server = http.createServer(async (req, res) => {
     is(d.orders.length === 2 && d.orders.map((o) => o.ref).sort().join() === 'VB-CHA1,VB-CHA2' &&
        d.orders.find((o) => o.ref === 'VB-CHA1').items[0].name === 'Stand-in dress',
        'both of their orders, with what was in them', J(d.orders));
+    const o1 = d.orders.find((o) => o.ref === 'VB-CHA1') || {};
+    is(o1.delivery_instructions === 'Blue gate' && o1.ship_courier === 'Yango' && o1.ship_tracking === 'YG-1' &&
+       o1.ship_tracking_url === 'https://yango.example/t/YG-1' && !('instructions_told_at' in o1) && !('ship_mailed_at' in o1),
+       'build 89: their delivery instructions, the courier and the tracking number; never when the shop was told or emailed', J(o1));
     is(d.payments.length === 1 && d.payments[0].order_ref === 'VB-CHA1' && d.payments[0].channel === 'card' && !('detail' in d.payments[0]),
        'their payment, said as how and how much, never the card\'s digits', J(d.payments));
     is(d.refunds.length === 2 && d.newsletter && d.newsletter.email === 'chanda_b@mail.test' && d.newsletter.left_at === null,

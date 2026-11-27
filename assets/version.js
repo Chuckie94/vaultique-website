@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.58.0',
-  build: 88,
-  builtAt: '2026-11-26T04:33:57Z',
-  notes: 'Lenco, the primary payment gateway for Zambia, and one checkout for every way of paying. After the total the customer chooses Mobile Money (Airtel Money, MTN MoMo, Zamtel Kwacha: a request to their phone, approved with their PIN) or Debit / Credit Card (in Lenco\'s own secure window); never a gateway. The payment screens in the owner\'s words (Payment Authorisation Required, Payment Successful, Payment Unsuccessful), with Cancel payment, Didn\'t receive approval request? and a Contact us link to the chat; nobody is asked or charged twice for one order; cards ready to be routed by the customer\'s answer, Zambian or international, once DPO is connected (never a card detail typed on the website). Paid only on Lenco\'s own word, asked directly; webhooks signed and still checked; a failed try can be tried again on the same order, and an order is paid once. Settings > Payments: a switch for each gateway (Lenco; Flutterwave kept, off until approved), what Lenco has activated, its readiness, and payment activity. Which scripts may run is now enforced, and a deploy stops if a secret key or a card field would be published. One SQL file: supabase-lenco.sql. Holds builds 87 to 84.'
+  version: '1.59.0',
+  build: 89,
+  builtAt: '2026-11-26T09:11:00Z',
+  notes: 'Delivery. At checkout, delivery instructions for the courier (a landmark, the gate, the best time), sent with the order and in the WhatsApp message; changed by the customer on their order until it is on its way, and the shop emailed each change. The courier, the tracking number, the courier\'s tracking page and updates for the customer, recorded in Admin > Orders or by the platform when it sends the order (its door is ready for platform 512); shown on the customer\'s order and private progress link, and emailed. Download invoice: an A4 PDF of the till\'s invoice, on the order. Cards: Pay with Zambian card and Pay with international card in place of the question, once DPO is connected. Mended: an order with no refund no longer shows an empty Refunded line. One SQL file: supabase-delivery.sql. Holds builds 88 to 84.'
 };

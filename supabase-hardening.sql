@@ -1369,7 +1369,10 @@ as $$
     'chat_reply_push_key', 'chat_reply_push_save', 'chat_reply_push_has', 'chat_reply_push_drop',
     -- build 87: customers' requests, answered by the platform through the
     -- till's door and key (supabase-customer-requests.sql)
-    'vbp_pos_requests', 'vbp_pos_request_decide']::text[];
+    'vbp_pos_requests', 'vbp_pos_request_decide',
+    -- build 89: the courier and tracking number, recorded by the platform
+    -- through the same door and key (supabase-delivery.sql)
+    'vbp_pos_order_shipping']::text[];
 $$;
 
 do $$

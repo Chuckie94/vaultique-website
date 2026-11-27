@@ -341,12 +341,14 @@ const until = async (page, fn, arg) => page.waitForFunction(fn, arg, { timeout: 
         text: document.querySelector('.acd').innerText.replace(/\s+/g, ' '),
         back: (document.querySelector('.pt-back') || {}).textContent,
         ask: !!document.querySelector('.acd .ac-ask'),
+        refunds: [...document.querySelectorAll('.acd .acd-h')].some(h => h.textContent.trim() === 'Refunds'),
       }));
     }
     let x = await detail('VB-OPEN1');
     is(x.title === 'Order VB-OPEN1' && x.rail === 'requested+ confirmed- paid- fulfilled- completed-' &&
        /You sent this order\. We confirm it with you on WhatsApp before anything is paid\./.test(x.text) && /On WhatsApp/.test(x.text),
        'requested: the first step only, and what happens next', J(x));
+    is(!x.refunds && !/Refunded/i.test(x.text), 'no refund, so no Refunds part (build 89: it showed an empty "Refunded K0" line)', J(x));
     x = await detail('VB-WEBP1');
     is(x.rail === 'requested+ confirmed+ paid+ fulfilled- completed-' && /On the website, paying online \(mobile money\)/.test(x.text) &&
        /Pieces K\s?1,400/.test(x.text) && /Delivery K\s?130/.test(x.text) && /Paid online K\s?1,530/.test(x.text) && /Plot 4, Stand-in Road/.test(x.text),

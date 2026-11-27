@@ -2,7 +2,7 @@
 // order (through the same place_order the WhatsApp checkout uses), and
 // starts the payment with the gateway that takes the way of paying chosen.
 //
-// POST { items, buyer: { name, phone, email, address, notes }, fulfilment, town, preview,
+// POST { items, buyer: { name, phone, email, address, notes, instructions }, fulfilment, town, preview,
 //        expect,        the total on the quote the customer pressed Pay on
 //        method,        BUILD 88: 'mobile' | 'card' (never 'bank': no gateway takes it yet)
 //        network,       BUILD 88: mobile money through Lenco: airtel | mtn | zamtel
@@ -404,6 +404,8 @@ exports.handler = async function (event) {
        supabase-hardening.sql has been run the column is not there, and
        that is no reason to stop a payment. */
     await P.svc('PATCH', 'orders?id=eq.' + placed.id, { pay_mode: mode }, 'return=minimal').catch(() => {});
+    // BUILD 89 · the delivery instructions, onto the order (supabase-delivery.sql).
+    if (fulfilment === 'delivery' && b.instructions) await P.saveInstructions(placed.id, b.instructions);
 
     if (viaLenco) {
       const started = await lencoStart({

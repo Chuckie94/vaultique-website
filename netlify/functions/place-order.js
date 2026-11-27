@@ -3,7 +3,8 @@
    ---------------------------------------------------------------------
    Records a WhatsApp order in the Orders tab (build 76, decision Q2).
 
-   POST { order: { name, phone, email, address, notes, fulfilment },
+   POST { order: { name, phone, email, address, notes, fulfilment,
+                   instructions },     build 89: for the courier, when delivered
           items: [{ sku, qty, name }], preview }
    Authorization: the signed-in customer's own token, when there is one.
    -> 200 { id, ref, total }   or an error with a sentence in it
@@ -58,6 +59,8 @@ exports.handler = async function (event) {
     const placed = await P.recordOrder(
       Object.assign({}, order, { total: q.total, currency: q.currency }),
       q.lines, body.preview, await P.customerFrom(event), P.clientAddr(event));
+    // BUILD 89 · the delivery instructions, onto the order (supabase-delivery.sql).
+    if (order.fulfilment === 'delivery' && o.instructions) await P.saveInstructions(placed.id, o.instructions);
     return P.json(200, { id: placed.id, ref: placed.ref, total: q.total });
   } catch (e) {
     const m = String(e && e.message || '');

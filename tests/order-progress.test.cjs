@@ -22,6 +22,13 @@
         first time and with a refusal; a cancel paid online told how the
         money comes back; no email set up, no address: nothing sent,
         nothing marked.
+     9. BUILD 89 · delivery (supabase-delivery.sql): before that SQL, the
+        emails go on as before; "on its way" with the courier, the tracking
+        number and the courier's own page; the courier given later, told
+        once more, once, and again only if it changes; a link that is not a
+        plain https page never written into an email; the shop told, once,
+        when a customer changes or removes their delivery instructions, and
+        not of those given at checkout or on a cancelled order.
    =========================================================================== */
 const http = require('http');
 const path = require('path');
@@ -37,7 +44,7 @@ const ago = ms => new Date(Date.now() - ms).toISOString();
 const ahead = ms => new Date(Date.now() + ms).toISOString();
 const TOKEN = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
 
-let SETTINGS, PRIV, DB, MAIL, NO_COLUMNS, RACE;
+let SETTINGS, PRIV, DB, MAIL, NO_COLUMNS, NO_SHIP, RACE;
 function reset() {
   SETTINGS = {
     general: { businessName: 'Vaultique', currency: 'ZMW' },
@@ -48,6 +55,7 @@ function reset() {
   DB = { orders: [] };
   MAIL = [];
   NO_COLUMNS = false;
+  NO_SHIP = false;
   RACE = null;
 }
 reset();
@@ -102,6 +110,7 @@ const server = http.createServer(async (req, res) => {
   if (p === '/web/rest/v1/orders') {
     if (!service) return send(401, {});
     if (NO_COLUMNS && /dispatched_at|ship_note/.test(u.search)) return send(400, { message: 'column orders.ship_note does not exist' });
+    if (NO_SHIP && /ship_courier|delivery_instructions/.test(u.search)) return send(400, { code: '42703', message: 'column orders.ship_courier does not exist' });
     const fs = filters(u.search.slice(1));
     if (req.method === 'GET') {
       const rows = DB.orders.filter(r => matches(r, fs)).map(r => Object.assign({}, r));
@@ -372,6 +381,68 @@ const server = http.createServer(async (req, res) => {
     is(MAIL.length === 0 && DB.order_requests[0].shop_told_at == null && DB.order_requests[1].customer_told == null,
        'email not set up: nothing sent, and nothing marked as told', J(DB.order_requests));
     delete DB.order_requests;
+
+    console.log('\n9. Build 89 · delivery');
+    reset();
+    NO_SHIP = true;
+    DB.orders.push(base({ id: 'd1', ref: 'VB-SHP01', ship_note: 'Going out today' }));
+    r = await run();
+    is(r.onway === 1 && mails('buyer@example.com').length === 1 && !/Courier:/.test(mails('buyer@example.com')[0].text),
+       'before supabase-delivery.sql: "on its way" goes as before, without a courier', J(r));
+
+    reset();
+    DB.orders.push(base({ id: 'd1', ref: 'VB-SHP01', ship_courier: 'Yango', ship_tracking: 'YG-55091',
+                          ship_tracking_url: 'https://yango.example/t/YG-55091', ship_set_at: ago(5 * 60000), ship_mailed_at: null }));
+    r = await run();
+    let m = mails('buyer@example.com');
+    is(m.length === 1 && /Courier: Yango\nTracking number: YG-55091\nTrack it: https:\/\/yango\.example\/t\/YG-55091/.test(m[0].text),
+       '"on its way" with the courier, the tracking number and the courier\'s own page', m[0] && m[0].text);
+    is(order('VB-SHP01').ship_mailed_at && r.tracking === 0, 'and they count as told: no second email for them');
+    r = await run();
+    is(mails('buyer@example.com').length === 1, 'run again: nothing more');
+
+    reset();
+    DB.orders.push(base({ id: 'd2', ref: 'VB-SHP02', dispatch_mailed_at: ago(H), ship_courier: 'Zampost', ship_tracking: 'ZP 778/19',
+                          ship_tracking_url: 'javascript:alert(1)', ship_set_at: ago(60000), ship_mailed_at: null }));
+    DB.orders.push(base({ id: 'd3', ref: 'VB-SHP03', dispatch_mailed_at: ago(H), ship_courier: 'Yango', ship_tracking: 'YG-1',
+                          ship_set_at: ago(2 * H), ship_mailed_at: ago(H) }));
+    r = await run();
+    m = mails('buyer@example.com');
+    is(r.tracking === 1 && m.length === 1 && m[0].subject === 'Delivery details for your order VB-SHP02' &&
+       /Courier: Zampost\nTracking number: ZP 778\/19/.test(m[0].text) && !/javascript|Track it/.test(m[0].text),
+       'the courier given after "on its way" went: told once more; a link that is not a plain https page left out', m[0] && m[0].text);
+    is(order('VB-SHP02').ship_mailed_at && !mails('buyer@example.com').some(x => /VB-SHP03/.test(x.subject)),
+       'and an order already told of its courier is not told again');
+    order('VB-SHP03').ship_tracking = 'YG-2';
+    order('VB-SHP03').ship_set_at = new Date().toISOString();
+    r = await run();
+    is(r.tracking === 1 && mails('buyer@example.com').some(x => x.subject === 'Delivery details for your order VB-SHP03' && /YG-2/.test(x.text)),
+       'changed by the shop afterwards: told again, with the new number', J(r));
+
+    reset();
+    SETTINGS.contact = { email: 'desk@example.com' };
+    const nowIso = new Date().toISOString();
+    DB.orders.push(base({ id: 'i1', ref: 'VB-INS01', status: 'confirmed', phone: '0977000001', address: 'Plot 9, Lusaka',
+                          delivery_instructions: 'Green gate, ask for Mary', instructions_at: ago(60000), instructions_told_at: ago(H),
+                          dispatched_at: null }));
+    DB.orders.push(base({ id: 'i2', ref: 'VB-INS02', status: 'pending', delivery_instructions: 'Blue gate',
+                          instructions_at: nowIso, instructions_told_at: nowIso, dispatched_at: null }));
+    DB.orders.push(base({ id: 'i3', ref: 'VB-INS03', status: 'cancelled', delivery_instructions: 'Back door',
+                          instructions_at: ago(60000), instructions_told_at: ago(H), dispatched_at: null }));
+    DB.orders.push(base({ id: 'i4', ref: 'VB-INS04', status: 'pending', delivery_instructions: null,
+                          instructions_at: ago(60000), instructions_told_at: ago(H), dispatched_at: null }));
+    r = await run();
+    const shopMails = mails('desk@example.com');
+    is(r.instructions === 2 && shopMails.length === 2 &&
+       shopMails.some(x => x.subject === 'Delivery instructions changed: order VB-INS01' && /They now read:\nGreen gate, ask for Mary/.test(x.text) &&
+                      /Plot 9, Lusaka/.test(x.text)),
+       'the shop is told, once, when a customer changes their instructions, with the new words and where it goes', J(shopMails.map(x => x.subject)));
+    is(shopMails.some(x => /VB-INS04/.test(x.subject) && /removed the delivery instructions/.test(x.text)),
+       'and when they remove them');
+    is(!shopMails.some(x => /VB-INS02|VB-INS03/.test(x.subject)),
+       'not for those given at checkout (told with the order), nor on a cancelled order');
+    r = await run();
+    is(r.instructions === 0 && mails('desk@example.com').length === 2, 'run again: nothing more');
   } catch (e) {
     fail('the test ran to its end', e && e.stack);
   }

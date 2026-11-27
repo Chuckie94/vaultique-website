@@ -405,6 +405,20 @@ const server = http.createServer(async (req, res) => {
        'the customer and the shop are told once, as TEST, naming Lenco\'s sandbox', J(MAIL.map(m => [m.subject, m.text.slice(0, 60)])));
 
     /* ------------------------------------------------------------------ */
+    console.log('\nBuild 89 · the delivery instructions go with an order paid online');
+    r = await post(start, { items: [{ sku: 'SC-1', qty: 1 }], fulfilment: 'delivery', method: 'mobile', network: 'airtel',
+                            buyer: Object.assign(B('0971234567'), { instructions: '  Blue gate,\n call on arrival ' }),
+                            momo: airtelNo(), attempt: keyOf() });
+    let oi = orderOf(r.body.txRef);
+    is(r.code === 200 && oi && oi.delivery_instructions === 'Blue gate, call on arrival' &&
+       oi.instructions_at && oi.instructions_told_at === oi.instructions_at,
+       'kept on the order, on one line, and counted as told (the shop has them with the order)', J(oi && [oi.delivery_instructions, oi.instructions_at]));
+    r = await post(start, { items: [{ sku: 'SC-1', qty: 1 }], fulfilment: 'collection', method: 'mobile', network: 'airtel',
+                            buyer: Object.assign(B('0971234567'), { instructions: 'Blue gate' }), momo: airtelNo(), attempt: keyOf() });
+    oi = orderOf(r.body.txRef);
+    is(r.code === 200 && oi && !oi.delivery_instructions, 'none for an order being collected', J(oi && oi.delivery_instructions));
+
+    /* ------------------------------------------------------------------ */
     console.log('\n7. Failed');
     r = await momo('0962222222', 'mtn');
     tx = r.body.txRef;

@@ -58,8 +58,47 @@
         can: status === 'dispatched' && !!o.auto_deliver_at && !o.delivered_at && used < max && days > 0
       },
       refund: o.refund_state ? { state: o.refund_state, amount: o.refund_amount, ref: o.refund_ref,
-                                 note: o.refund_note, at: o.refund_at } : null
+                                 note: o.refund_note, at: o.refund_at } : null,
+      // BUILD 89 · the courier and the tracking number (supabase-delivery.sql)
+      ship: (o.ship_courier || o.ship_tracking || o.ship_tracking_url ||
+             (Array.isArray(o.ship_updates) && o.ship_updates.length))
+        ? { courier: o.ship_courier || null, tracking: o.ship_tracking || null, url: o.ship_tracking_url || null,
+            updates: Array.isArray(o.ship_updates) ? o.ship_updates : [] }
+        : null
     };
+  }
+
+  /* BUILD 89 · the courier's own tracking page: a plain https address only,
+     as the database allows. */
+  function trackLink(u) {
+    return /^https:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?(\/[^\s<>"'`\\]*)?$/.test(String(u || '')) ? String(u) : '';
+  }
+  /* The courier, the tracking number, the link and the shop's updates (the
+     newest first, at most five), once the order is on its way. */
+  function shipBlock(p) {
+    var sh = p.ship;
+    if (!sh || p.fulfilment === 'collection' || (p.status !== 'dispatched' && p.status !== 'delivered')) return null;
+    var box = el('div', 'pg-ship');
+    if (sh.courier) box.appendChild(el('p', 'pg-ship-line', 'Courier: ' + sh.courier));
+    if (sh.tracking) box.appendChild(el('p', 'pg-ship-line', 'Tracking number: ' + sh.tracking));
+    var link = trackLink(sh.url);
+    if (link) {
+      var a = el('a', 'btn btn-outline btn-sm pg-track', 'Track your delivery');
+      a.href = link; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      box.appendChild(a);
+    }
+    var ups = (Array.isArray(sh.updates) ? sh.updates : []).slice(-5).reverse();
+    if (ups.length) {
+      var list = el('ul', 'pg-updates');
+      ups.forEach(function (u) {
+        var li = el('li');
+        li.appendChild(el('span', 'pg-up-at', u && u.at ? when(u.at) : ''));
+        li.appendChild(el('span', 'pg-up-txt', u && u.text ? String(u.text) : ''));
+        list.appendChild(li);
+      });
+      box.appendChild(list);
+    }
+    return box.childNodes.length ? box : null;
   }
 
   /* "23 Nov 2026, 10:30", in the customer's own time. */
@@ -138,6 +177,8 @@
       list.appendChild(li);
     });
     box.appendChild(list);
+    var shipped = shipBlock(p);
+    if (shipped) box.appendChild(shipped);
 
     if (p.status === 'dispatched' && p.autoAt) {
       box.appendChild(el('p', 'pg-auto', 'It will be marked delivered on ' + when(p.autoAt) +
@@ -207,5 +248,5 @@
   }
 
   window.VBP_PROGRESS = { LABELS: LABELS, fromRow: fromRow, steps: steps, headline: headline,
-                          badgeClass: badgeClass, when: when, draw: draw, sorry: sorry };
+                          badgeClass: badgeClass, when: when, draw: draw, sorry: sorry, trackLink: trackLink };
 })();

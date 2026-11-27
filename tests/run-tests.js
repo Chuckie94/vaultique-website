@@ -65,9 +65,11 @@ const CRITICAL = [
   'online-refund', 'order-progress', 'password-reset', 'pay-readiness', 'payment-return',
   'payments', 'payments-74', 'payments-77', 'place-order', 'portal', 'pos-orders', 'product-door',
   'rewards-door', 'runner', 'safe-links', 'sql-hidden', 'test-orders-sync',
-  'lenco', 'lenco-checkout', 'lenco-admin', 'secure-publish'
+  'lenco', 'lenco-checkout', 'lenco-admin', 'secure-publish',
+  'delivery', 'invoice-pdf'
 ];   // build 86: account-portal and portal, a customer's own records; build 87: customer-requests, which can cancel an order;
-     // build 88: Lenco, the checkout and its settings, and what may never be published
+     // build 88: Lenco, the checkout and its settings, and what may never be published;
+     // build 89: delivery (a customer's instructions, the courier and tracking number, the platform's door) and the invoice
 const critical = (f) => CRITICAL.indexOf(base(f)) > -1;
 const started = Date.now();
 let failed = 0, checks = 0;

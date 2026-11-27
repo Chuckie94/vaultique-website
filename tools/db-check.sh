@@ -73,16 +73,23 @@ echo "$out" | grep -q "A test payment is never rung up.*NOT RUN YET" \
 echo "$out" | grep -q "Customer requests.*NOT RUN YET (optional)" \
   || { echo "   the report does not say customers' requests are not run yet"; fail=1; }
 
-echo "3. The files made after the hardening (builds 80, 81, 83, 85, 87 and 88), twice each, then the hardening once more"
+echo "3. The files made after the hardening (builds 80, 81, 83, 85, 87, 88 and 89), twice each, then the hardening once more"
 AFTER="supabase-pos-orders.sql supabase-payment-history.sql supabase-order-progress.sql supabase-online-refund.sql
-supabase-chat-reply-push.sql supabase-test-orders.sql supabase-customer-requests.sql supabase-lenco.sql"
+supabase-chat-reply-push.sql supabase-test-orders.sql supabase-customer-requests.sql supabase-lenco.sql supabase-delivery.sql"
 for f in $AFTER; do
   for n in 1 2; do
     out=$(run "$here/$f") || { echo "   FAILED  $f (run $n)"; echo "$out" | grep -E 'ERROR|LINE' | head -3 | sed 's/^/           /'; fail=1; }
   done
 done
 out=$(run "$here/supabase-hardening.sql") || { echo "   FAILED: the hardening after them"; echo "$out" | grep -E 'ERROR|LINE|CONTEXT' | head -4 | sed 's/^/           /'; fail=1; }
-[ $fail -eq 0 ] && echo "   all 8 ran, twice, and the hardening ran after them"
+[ $fail -eq 0 ] && echo "   all 9 ran, twice, and the hardening ran after them"
+# The hardening, run after supabase-delivery.sql, leaves the platform's new
+# door open to its key (build 89: it is on the hardening's own list).
+echo "select case when has_function_privilege('anon', 'public.vbp_pos_order_shipping(text, text, text, text, text, text)', 'execute')
+              then 'open' else 'CLOSED' end;" \
+  | as "psql -X -q -t -d $DB -f -" | grep -q open \
+  && echo "   the hardening, run after it, leaves the platform's delivery door open to its key" \
+  || { echo "   the hardening, run after supabase-delivery.sql, closed the platform's delivery door"; fail=1; }
 # supabase-test-orders.sql's own check row (build 85) says OK.
 out85=$(run "$here/supabase-test-orders.sql") || fail=1
 echo "$out85" | grep -q "OK · a test payment is never rung up" \
@@ -120,6 +127,21 @@ echo "select case when pg_get_functiondef('public.refund_state_of(uuid)'::regpro
   | as "psql -X -q -t -d $DB -f -" | grep -q kept \
   && echo "   supabase-online-refund.sql run again keeps the build 88 refund rule" \
   || { echo "   supabase-online-refund.sql run again lost the build 88 refund rule"; fail=1; }
+
+# supabase-delivery.sql's own check row (build 89) says OK; and the two files
+# that hand an order out, run again after it, keep its delivery details.
+out89=$(run "$here/supabase-delivery.sql") || fail=1
+echo "$out89" | grep -q "OK · delivery details can be recorded" \
+  && echo "   supabase-delivery.sql says: OK · delivery details can be recorded" \
+  || { echo "   supabase-delivery.sql does not say OK"; echo "$out89" | tail -4 | sed 's/^/           /'; fail=1; }
+run "$here/supabase-order-progress.sql" >/dev/null || fail=1
+run "$here/supabase-test-orders.sql" >/dev/null || fail=1
+echo "select case when pg_get_functiondef('public.pos_order_out(uuid,boolean)'::regprocedure) like '%ship_tracking_url%'
+              and pg_get_functiondef('public.order_progress_out(uuid)'::regprocedure) like '%ship_tracking_url%'
+              then 'kept' else 'LOST' end;" \
+  | as "psql -X -q -t -d $DB -f -" | grep -q kept \
+  && echo "   supabase-order-progress.sql and supabase-test-orders.sql run again keep the build 89 delivery details" \
+  || { echo "   an older file run again lost the build 89 delivery details"; fail=1; }
 
 echo "4. Each older file again: each must refuse"
 refused=0

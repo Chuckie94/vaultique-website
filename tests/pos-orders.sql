@@ -172,9 +172,15 @@ do $$ declare r jsonb; o jsonb; refs text; begin
   perform chk(not (o->>'beforeLink')::boolean, 'an order placed since does not');
   perform chk(o->'items' = 'null'::jsonb and (o->>'pieces')::int = 3 and o->>'summary' = 'Leather bag, Belt',
               'the list gives the number of pieces and their names, not the lines: ' || coalesce(o->>'summary', '?'));
+  -- Build 89 adds one part, delivery (the customer's instructions, the
+  -- courier and the tracking number), read by name so it is there, empty,
+  -- before supabase-delivery.sql is run.
   perform chk(o ?& array['ref', 'createdAt', 'status', 'name', 'phone', 'email', 'address', 'notes', 'fulfilment',
-                         'total', 'currency', 'payment', 'account', 'points', 'till', 'pieces', 'summary', 'items', 'beforeLink']
-              and (select count(*) from jsonb_object_keys(o)) = 19,
+                         'total', 'currency', 'payment', 'account', 'points', 'till', 'pieces', 'summary', 'items', 'beforeLink',
+                         'delivery']
+              and (select count(*) from jsonb_object_keys(o)) = 20
+              and o->'delivery' ?& array['instructions', 'instructionsAt', 'courier', 'tracking', 'trackingUrl', 'updates']
+              and (select count(*) from jsonb_object_keys(o->'delivery')) = 6,
               'each order hands out the closed list of parts and nothing else');
   perform chk(not (o::text ~ '22222222-2222') , 'never the account''s id');
 

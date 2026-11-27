@@ -8,6 +8,76 @@ and GitHub tags every build that passes its checks (`website-84`, …).
 Builds before 84 are described in their own notes and in the `notes` line of
 `assets/version.js` as each was released.
 
+## Build 89 · 1.59.0 · delivery: instructions, the courier and tracking number, the invoice
+
+- **Delivery instructions at checkout** (`assets/app.js`): under the address,
+  *Delivery instructions (optional)*, "For the courier: a landmark, the gate,
+  the best time to deliver". Shown only for delivery, up to 300 characters,
+  kept on one line. They go in the WhatsApp message (*Delivery instructions:
+  …*) and are saved on the order, on both ways of checking out
+  (`place-order.js`, `pay-start.js`), and remembered on the device with the
+  address. **Settings › Shopping › Ask for delivery instructions** (on unless
+  switched off). The order notes box now asks only for a gift message or
+  anything else.
+- **On the customer's order page** (`assets/account.js`): the instructions,
+  with **Change instructions** (or **Add instructions**) until the order is
+  on its way; saved by the database for the signed-in customer's own order
+  only (`order_set_instructions`), at most 20 changes an hour; then *Saved ✓
+  We have let the shop know.* Once it is on its way they are shown and can
+  no longer be changed. The shop is emailed each change (*Delivery
+  instructions changed: order VB-…*), once, by the fifteen-minute job.
+- **The courier and tracking number**: the courier, the tracking number, the
+  courier's tracking page (an https address only) and short updates for the
+  customer (the newest twenty kept). Recorded in **Admin › Orders**, under a
+  delivery order once it is confirmed (**Add courier and tracking**), or by
+  the platform when it sends the order (platform 512, through a new door
+  behind the till's own key, `vbp_pos_order_shipping`). Never on an order
+  for collection, one cancelled or completed, or one not yet confirmed.
+- **The customer sees them** on their order (Courier, Tracking number,
+  **Track your delivery**, opening the courier's page in a new tab, and
+  *Delivery updates*, newest first) and on the private progress link sent
+  by email. The *on its way* email carries them; given or changed after
+  that email went, the customer gets one more (*Delivery details for your
+  order VB-…*), once for each change.
+- **The till** receives the instructions, the courier, the tracking number
+  and the updates with each order (`pos_order_out`), ready for platform 512
+  to show them.
+- **Download invoice** (`assets/account.js`): on the order list and the
+  order's page, once the till has rung the order up and given it an invoice
+  number. An A4 PDF made on the customer's device from the till's own record
+  (`orders.pos_receipt`), nothing typed: the shop, its address and TPIN;
+  INVOICE with its number, the date, the receipt number and the online
+  order; who it is for; each piece with its quantity, unit price and amount;
+  the subtotal before VAT, VAT, delivery, the total, points, what was paid,
+  any balance; how it was paid. A long order runs onto more pages, each
+  numbered. Named `Invoice-<number>.pdf`.
+- **Cards, Zambian or international** (`assets/app.js`): the question *Where
+  was your card issued?* is replaced, in the owner's words, by two buttons,
+  **Pay with Zambian card** and **Pay with international card**, each paying
+  at once. As before, they appear only once a second card gateway (DPO) is
+  connected; today a card has one Pay button and goes to Lenco. No card
+  detail is ever typed on the website.
+- **Mended: a "Refunded K0" line on orders with no refund.** Since build 86
+  an order's page showed a *Refunds* heading over an empty *Refunded* line
+  whenever the order had no refund. It now shows nothing until there is one.
+- One SQL file: `supabase-delivery.sql` (the instructions, when they were
+  given and when the shop was told; the courier, tracking number, tracking
+  page, updates and when they were set and emailed; the limits each is
+  held to; the customer's function, the administrator's, the platform's
+  door). The hardening's list keeps the new door open to the till's key when
+  it is run again. `supabase-pos-orders.sql`, `supabase-test-orders.sql` and
+  `supabase-order-progress.sql` carry the same changes, so running any of
+  them again keeps the delivery details.
+- Tests: `tests/delivery.sql` (34), `tests/delivery-kept.sql` (3),
+  `tests/delivery.browser.cjs` (20) and `tests/invoice-pdf.test.cjs` (23),
+  both critical; new checks in `order-progress.test.cjs` (56),
+  `place-order.test.cjs` (22), `lenco.test.cjs` (112),
+  `account-portal.test.cjs` (38) and `portal.browser.cjs` (51, the refund
+  line). Changed, each said why: `lenco-checkout.browser.cjs`, the two card
+  buttons in place of the question; `tests/pos-orders.sql`, the till's list
+  of an order's parts now has *delivery*; the hardening's lists and
+  `tools/db-check.sh`, the new door and the ninth file.
+
 ## Build 88 · 1.58.0 · Lenco, and one checkout for every way of paying
 
 - **Lenco by BroadPay Zambia, the primary gateway** (`netlify/functions/_lenco.js`,
