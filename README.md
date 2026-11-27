@@ -62,6 +62,7 @@ secret. The files starting `_` are shared by the others.
 | `pay-reconcile` | Every fifteen minutes (build 80): asks Flutterwave about any payment the site has not heard back about |
 | `order-progress` | Every fifteen minutes (build 80): an order's emails (on its way, the reminder, delivered, refunded), and marking delivered when the days run out |
 | `account-delete` | Closing a customer's account, the login included; never a login on the admin list (build 80) |
+| `account-portal` | The customer portal's records that only the shop may read, for the signed-in customer alone: the newsletter yes or no, refunds on their way, "Download my personal data" (build 86) |
 | `pay-refund` | The platform's online refunds (build 81): sends a refund the platform's door wrote down to Flutterwave, once, and records the answer; only with the door's key |
 | `account-signup` | Creating a customer account; the confirm link goes through the shop's own email |
 | `send-email` | The admin's "Send a test email" and "Send welcome" |
@@ -262,6 +263,19 @@ node tests/enquire-chat.browser.cjs      every Enquire button opens the live cha
 node tests/chat-notify.browser.cjs       a customer told the shop has replied: Notify me, the offer on closing,
                                          the note by the chat button, the count in the tab (build 83)
 node tests/chat-settings.browser.cjs     Settings > Live Chat: the Enquire messages and the reply notification (build 83)
+node tests/deploy-gate.test.cjs          the deploy step runs the website's own checks first; one failure
+                                         publishes nothing (build 84)
+node tests/runner.test.cjs               no second try for a critical check; a skip is never a pass (build 84)
+node tests/health.test.cjs               /api/health: working or not; the details only for an administrator (84)
+node tests/release-tag.test.cjs          a tag on GitHub for every build whose checks pass (build 84)
+node tests/live-check-health.test.cjs    tools/live-check.cjs reads the health check (build 84)
+node tests/checkout-choice.browser.cjs   Buy in gold; Website checkout (gold) and WhatsApp checkout (green) (85)
+node tests/test-orders-sync.test.cjs     the two SQL files keep a test payment away from the till alike (85)
+node tests/account-portal.test.cjs       the customer portal's own records: each customer's own and never
+                                         another's; nothing that proves ownership, nothing the team wrote
+                                         for itself (build 86)
+node tests/portal.browser.cjs            the customer portal on a phone: the navy dashboard, every page, an
+                                         order's five steps, refunds, the password, signing out (build 86)
 bash tools/db-check.sh                   supabase-hardening.sql on a stand-in Supabase: the 28 files, the
                                          hardening twice, the files made after it (build 80) twice each and the
                                          hardening again, the older files refusing, then tests/hardening.sql,

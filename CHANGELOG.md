@@ -8,6 +8,38 @@ and GitHub tags every build that passes its checks (`website-84`, …).
 Builds before 84 are described in their own notes and in the `notes` line of
 `assets/version.js` as each was released.
 
+## Build 86 · 1.56.0 · the customer portal
+
+- **A signed-in customer's account is a portal** (`assets/account.js`), as in
+  the owner's screenshots, with Vaultique navy for the top: Welcome back and
+  three figures (orders, wishlist, points, the points asked of the platform),
+  then My shopping, My Vault and Security and privacy, each a page of its
+  own at `/account/<page>`.
+- **An order opened in full** (`/account/orders/<number>`), and its words:
+  Requested, Awaiting payment, Payment not completed, Paid, Confirmed,
+  Preparing, On its way, Ready for collection, Delivered or Collected,
+  Completed, Cancelled; its five steps: Requested, Confirmed, Paid,
+  Delivered, Completed.
+- **Returns & refunds**: every refund, the one Flutterwave is still sending
+  included. **Recently viewed**, **Customer support**, **Notifications**.
+- **The password**: the one in use asked first. **Signing out**: this device
+  only (it was every device), the other devices, or everywhere.
+- **The newsletter**, yes or no, and **Download my personal data**
+  (`netlify/functions/account-portal.js`, new: for the signed-in customer
+  alone).
+- **The account page is no longer drawn again under the customer's hands**
+  (by a new sign-in token every hour, or a save): what they type stays, and
+  "Saved" can be read.
+- **A test with a date in it** (`tests/order-progress.test.cjs`): its order
+  was due on 23 November 2026, and from 21 November the check failed, so the
+  deploy step of builds 84 and 85 would have stopped. The date is now six
+  days from whenever it runs.
+- **A database check that read the wrong day** (`tests/payments.sql`): from
+  midnight to 02:00 in Lusaka it asked for UTC's date with Lusaka's sums, and
+  failed, so GitHub's checks went red at night. It now asks for Lusaka's own
+  date. The dashboard itself was right.
+- No SQL, no new setting.
+
 ## Build 85 · 1.55.0 · checkout, the website or WhatsApp
 
 - **Buy, in gold**, on every piece (the cards, the quick view, the product

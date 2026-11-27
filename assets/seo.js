@@ -157,9 +157,11 @@
     /* A wishlist and an account belong to one person. Naming them in a
        sitemap or letting them be indexed helps nobody and puts a page
        with somebody's name on it into search results. */
-    if (r === 'wishlist' || r === 'account') {
+    /* Build 86: every page of the account, /account/orders and the rest. */
+    var acct = /^account(\/|$)/.test(r);
+    if (r === 'wishlist' || acct) {
       out.robots = 'noindex, follow';
-      out.title = (r === 'account' ? 'Your account' : 'Your wishlist') + ' · ' + siteTitle(ctx);
+      out.title = (acct ? 'Your account' : 'Your wishlist') + ' · ' + siteTitle(ctx);
     }
     return out;
   }

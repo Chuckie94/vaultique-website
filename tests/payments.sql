@@ -135,8 +135,12 @@ reset role;
 
 insert into auth.whoami values ('11111111-1111-1111-1111-111111111111');
 set role authenticated;
-do $$ declare j json; begin
-  j := public.pay_sales_split(current_date - 1, current_date, 'Africa/Lusaka');
+do $$ declare j json; today date := (now() at time zone 'Africa/Lusaka')::date; begin
+  /* Website 86: Lusaka's own date. The server's (current_date) is UTC's,
+     and from midnight to 02:00 in Lusaka the two differ: the orders just
+     placed were on Lusaka's new day, outside a range that ended on UTC's,
+     and every count read 0. The sales split itself was right. */
+  j := public.pay_sales_split(today - 1, today, 'Africa/Lusaka');
   -- VB-X1 (K1, placed as a customer at the top) and VB-WA1 (K200); VB-WA2 is cancelled.
   perform chk((j->>'whatsapp_orders')::int = 2 and (j->>'whatsapp_sales')::numeric = 201,
               'WhatsApp: two orders standing, the cancelled one left out: ' || j::text);

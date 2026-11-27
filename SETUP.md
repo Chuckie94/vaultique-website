@@ -1382,8 +1382,9 @@ told the rule before they submit rather than after.
 - **Order history.** An order is written when a customer presses Continue, so it
   records what they *asked for*, not what you agreed. Every one arrives as
   **pending** in the new **Orders** tab, where you confirm, complete or cancel
-  it — and the customer sees that status on their account page. It is only worth
-  showing them for as long as somebody keeps it honest.
+  it — and the customer sees that status on their account page (from build 86,
+  pending reads *Requested*). It is only worth showing them for as long as
+  somebody keeps it honest.
 - **Saved addresses.** Without an account the checkout already remembers one
   address on one device. An account makes it several, on any device, and the
   checkout fills itself in from the one marked default.
@@ -1391,6 +1392,48 @@ told the rule before they submit rather than after.
   phone and their laptop, and whatever they saved before signing in is merged in
   rather than overwritten. The wishlist *itself* stays a Products & Shopping
   setting — this only decides whether one travels.
+
+#### The customer portal (build 86)
+
+A signed-in customer's account is a dashboard: a navy top with **Welcome
+back** and three figures (their orders, their wishlist, their points), then
+**My shopping** (My orders, Returns & refunds, My wishlist, Recently viewed),
+**My Vault** (Personal details, Address book, Rewards & membership,
+Customer support, Notifications) and **Security and privacy** (Password and
+authentication, Active devices and sessions, Privacy and marketing
+preferences, Download my personal data, Close my account). Each is a page of
+its own (`/account/orders`, `/account/password`, …), so a phone's back button
+goes back to the dashboard.
+
+- **What is whose.** The orders and refunds are read from what the platform's
+  till, Online Orders and Online Refund wrote; the points are asked of the
+  platform every time. Nothing on these pages keeps a figure of its own.
+- **An order's words**, the same everywhere: *Requested* (sent, not yet
+  confirmed), *Awaiting payment*, *Payment not completed*, *Paid*,
+  *Confirmed*, *Preparing*, *On its way*, *Ready for collection*,
+  *Delivered* or *Collected*, *Completed*, *Cancelled*. Each order opens in
+  full (*View order*) with five steps: Requested, Confirmed, Paid, Delivered
+  (or Collected), Completed.
+- **Signing out** is this device only. *Sign out of my other devices* and
+  *Sign out everywhere* are on Active devices and sessions. (Before build 86
+  the account's Sign out signed the customer out of every device.)
+- **The password**: the one in use is asked for first.
+- **The newsletter**: yes or no, for the account's own address. An address
+  that left the list is sent a link and is back on it only once the link is
+  followed, as with the newsletter form.
+- **Download my personal data**: one file (JSON) of everything the website
+  holds about the customer, and their points as the platform has them then.
+  Never card numbers: the website has none.
+- The settings in this section still decide what shows: with order history off
+  there is no My orders or Returns & refunds, without saved addresses no
+  Address book, without closing no Close my account; Rewards & membership
+  shows when Vaultique Rewards is on in Settings > Shopping.
+- **Not yet:** gift cards and a wallet (switched off in the platform; decision
+  D9 of the portal plan), product alerts (build 89), asking to return,
+  exchange or cancel (build 87), the courier and tracking number (build 88).
+- The records only the shop may read (the newsletter list, refunds on their
+  way, the payments) are asked of the website's own function,
+  `account-portal`, for the signed-in customer only. No setting, no SQL.
 
 #### Closing an account
 

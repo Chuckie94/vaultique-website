@@ -176,3 +176,8 @@ exports.handler = async function (event) {
     return P.json(502, { error: 'That did not go through. Please try again shortly.' });
   }
 };
+
+/* Build 86: the customer portal joins the account's own address the same
+   way, with the same rule for an address that left the list
+   (netlify/functions/account-portal.js). */
+module.exports._join = join;

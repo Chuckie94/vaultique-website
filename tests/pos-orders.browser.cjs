@@ -333,7 +333,7 @@ async function order(page, opts) {
     /* ------------------------------------------------------------------ 2 */
     console.log('\n2. The customer\'s account, on a phone');
     await shopP.setViewportSize({ width: 390, height: 844 });
-    await shopP.goto(base + '/account', { waitUntil: 'networkidle' });
+    await shopP.goto(base + '/account/orders', { waitUntil: 'networkidle' });   // website 86: the orders' own page
     await shopP.waitForSelector('.ac-order', { timeout: 15000 });
     const card = await shopP.evaluate(() => [...document.querySelectorAll('.ac-order')].map(r => ({
       text: r.innerText.replace(/\s+/g, ' '), button: !!r.querySelector('.ac-receipt'),
@@ -363,7 +363,7 @@ async function order(page, opts) {
 
     console.log('\n   A website whose SQL has not been run yet');
     COLUMNS_THERE = false;
-    await shopP.goto(base + '/account', { waitUntil: 'networkidle' });
+    await shopP.goto(base + '/account/orders', { waitUntil: 'networkidle' });   // website 86: the orders' own page
     await shopP.waitForSelector('.ac-order', { timeout: 15000 });
     const old = await shopP.evaluate(() => [...document.querySelectorAll('.ac-order')].map(r => r.innerText.replace(/\s+/g, ' ')));
     is(old.length === 2 && !(await shopP.$('.ac-receipt')), 'the orders are still listed, without the receipt part', J(old));

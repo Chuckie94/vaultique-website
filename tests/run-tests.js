@@ -60,12 +60,12 @@ const ON_GITHUB = !!process.env.GITHUB_ACTIONS;
 /* BUILD 84 · never a second try, and never allowed to skip. Named by the
    file's base name, so a name covers both its node and its browser file. */
 const CRITICAL = [
-  'account-delete', 'account-signup', 'admin-escaping', 'admin-session', 'admin-two-factor',
+  'account-delete', 'account-portal', 'account-signup', 'admin-escaping', 'admin-session', 'admin-two-factor',
   'build-site', 'cart-stock', 'checkout-choice', 'csp', 'csp-report', 'deploy-gate', 'health', 'one-key',
   'online-refund', 'order-progress', 'password-reset', 'pay-readiness', 'payment-return',
-  'payments', 'payments-74', 'payments-77', 'place-order', 'pos-orders', 'product-door',
+  'payments', 'payments-74', 'payments-77', 'place-order', 'portal', 'pos-orders', 'product-door',
   'rewards-door', 'runner', 'safe-links', 'sql-hidden', 'test-orders-sync'
-];
+];   // build 86: account-portal and portal, a customer's own records
 const critical = (f) => CRITICAL.indexOf(base(f)) > -1;
 const started = Date.now();
 let failed = 0, checks = 0;

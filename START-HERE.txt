@@ -1,20 +1,24 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 85
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 86
 ====================================================
 The whole site, cumulative: everything in build 83 (and so 82, 81 and
 80, with the other website line's builds 74 to 78 carried onto it),
-build 84 (a deploy never publishes a build whose own checks fail) and
-build 85 (checkout: the website or WhatsApp). Upload this and you are up
-to date. Builds 84 and 85 have not been uploaded before: this block is
-everything to do for both.
+build 84 (a deploy never publishes a build whose own checks fail),
+build 85 (checkout: the website or WhatsApp) and build 86 (the customer
+portal). Upload this and you are up to date. Builds 84, 85 and 86 have
+not been uploaded before: this block is everything to do for all three.
+Upload 86, not 85: builds 84 and 85 as sent would now be stopped by
+Netlify's checks (a check with a date in it, mended in 86).
 
-NEW IN 84 AND 85 — SAFE RELEASES, AND CHECKOUT ON THE WEBSITE OR WHATSAPP.
-  ONE SQL FILE: supabase-test-orders.sql, new, run once. About ten
-  minutes. Do these in order. Each one says how you know it is done.
+NEW IN 84, 85 AND 86 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
+AND THE CUSTOMER PORTAL.
+  ONE SQL FILE: supabase-test-orders.sql (build 85), new, run once.
+  Build 86 adds none. About fifteen minutes. Do these in order. Each one
+  says how you know it is done.
 
   A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete.
      Done when: Netlify > Deploys shows it as Published.
      Its log (open the deploy) now has a line near the top:
-       Checks: node: 38 of 39 files passed, 1 skipped, 1052 checks, ...
+       Checks: node: 39 of 40 files passed, 1 skipped, 1088 checks, ...
        before publishing.
      (the one skipped needs a database; it runs on GitHub's database job.)
      If it says BUILD STOPPED instead: nothing was published, the site
@@ -33,7 +37,7 @@ NEW IN 84 AND 85 — SAFE RELEASES, AND CHECKOUT ON THE WEBSITE OR WHATSAPP.
      mode before this step.
 
   C. OPEN https://vaultiqueboutique.com/api/health on your phone.
-     Done when: it says "status":"working" and "build":85.
+     Done when: it says "status":"working" and "build":86.
 
   D. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
      gold; the cart says Checkout, in gold. Press Buy, fill in the
@@ -47,9 +51,40 @@ NEW IN 84 AND 85 — SAFE RELEASES, AND CHECKOUT ON THE WEBSITE OR WHATSAPP.
      Done when: you have seen the gold Buy and the green WhatsApp
      checkout.
 
-  E. WATCH THE CHECKS ON GITHUB (Actions > Tests).
+  E. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
+     person at the top of the shop; not the admin): the navy top saying
+     Welcome back, with your orders, wishlist and points, then My
+     shopping, My Vault and Security and privacy. Tap My orders,
+     then View order on one of them.
+     Done when: you have seen the dashboard and an order's own page.
+
+  F. WATCH THE CHECKS ON GITHUB (Actions > Tests).
      Done when: the newest Tests run has a green tick. A minute later
-     GitHub > Code > Tags shows website-85 (Actions > Release tag).
+     GitHub > Code > Tags shows website-86 (Actions > Release tag).
+
+  WHAT CHANGED IN 86
+    * THE CUSTOMER'S ACCOUNT IS A PORTAL, as in your screenshots, with
+      Vaultique navy for the top: Welcome back, the customer's orders,
+      wishlist and points (the points asked of the platform every time),
+      then My shopping, My Vault and Security and privacy, each a
+      page of its own. Gift cards, My wallet and Product alerts are left
+      out until they work (decision D9; build 89).
+    * AN ORDER OPENED IN FULL, and told apart: Requested, Awaiting
+      payment, Payment not completed, Paid, Confirmed, Preparing, On its
+      way, Ready for collection, Delivered or Collected, Completed,
+      Cancelled; five steps on its own page.
+    * RETURNS & REFUNDS: every refund, the one Flutterwave is still
+      sending included. To return or exchange: Message us (forms come
+      with build 87).
+    * THE PASSWORD IN USE IS ASKED FIRST. SIGN OUT IS THIS DEVICE ONLY:
+      until now it signed the customer out of every device. Sign out of
+      my other devices, and Sign out everywhere, are on their own page.
+    * THE NEWSLETTER, YES OR NO, AND DOWNLOAD MY PERSONAL DATA, through a
+      new server job (account-portal) that reads only the signed-in
+      customer's own records.
+    * A CHECK WITH A DATE IN IT, MENDED. It expected an order due on 23
+      November 2026, and from 21 November it failed: Netlify would have
+      refused builds 84 and 85.
 
   WHAT CHANGED IN 85
     * BUY IS GOLD, on every piece, and Checkout is gold in the cart. The

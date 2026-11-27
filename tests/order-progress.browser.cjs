@@ -15,7 +15,8 @@
         is, step by step (Paid, Preparing, On its way or Ready for collection,
         Delivered or Collected), with the shop's note, the day it will be
         marked delivered, more time, a refund. Ask for more time, then
-        Confirm delivery. Orders the till never rang up read as before. A
+        Confirm delivery. An order the till never rang up reads Requested
+        (website 86: the orders are on their own page, /account/orders). A
         website whose SQL has not been run yet lists every order, with no
         button. On a phone.
      2. The private link from the email, signed out: the order alone, the
@@ -283,7 +284,8 @@ async function cards(page) {
 async function signIn(page, email) {
   await page.goto(base + '/__shop.html', { waitUntil: 'load' });
   await page.evaluate((e) => window.SHOP.auth.signInWithPassword({ email: e, password: 'the-right-password-1' }), email);
-  await page.goto(base + '/account', { waitUntil: 'networkidle' });
+  /* Website 86: the orders have a page of their own in the customer portal. */
+  await page.goto(base + '/account/orders', { waitUntil: 'networkidle' });
   await page.waitForSelector('.ac-order', { timeout: 15000 });
 }
 
@@ -334,7 +336,9 @@ async function signIn(page, email) {
        && /Refunded: K\s?1,200(\.00)? on \d+ \w{3} \d{4}, \d\d:\d\d \(reference FLW-RF-77\)\./.test(rf.text),
        'delivered by the days running out, and a refund, with its reference', rf.text);
     const open = card('VB-OPEN1');
-    is(/^Pending$/i.test(open.badge.trim()) && open.steps.length === 0, 'an order the till never rang up reads as it always did', J(open));
+    /* Website 86: "Pending" became "Requested", the first of the five words the
+       owner asked to tell apart (requested, confirmed, paid, fulfilled, completed). */
+    is(/^Requested$/i.test(open.badge.trim()) && open.steps.length === 0, 'an order the till never rang up reads Requested (website 86), with no steps', J(open));
 
     console.log('\n   Ask for more time, then Confirm delivery');
     CALLS = [];
@@ -356,7 +360,7 @@ async function signIn(page, email) {
     console.log('\n   On a phone');
     seed();
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(base + '/account', { waitUntil: 'networkidle' });
+    await page.goto(base + '/account/orders', { waitUntil: 'networkidle' });
     await page.waitForSelector('.ac-order[data-ref="VB-ONWY1"] .pg-acts', { timeout: 15000 });
     const fit = await page.evaluate(() => {
       const W = document.documentElement.clientWidth;
@@ -372,7 +376,7 @@ async function signIn(page, email) {
 
     console.log('\n   A website whose SQL has not been run yet');
     PROGRESS_THERE = false;
-    await page.goto(base + '/account', { waitUntil: 'networkidle' });
+    await page.goto(base + '/account/orders', { waitUntil: 'networkidle' });
     /* The list, or its "Nothing yet": either says what the page did. */
     await page.waitForFunction(() => document.querySelector('.ac-order')
       || /Nothing yet/.test((document.querySelector('.ac-list') || {}).textContent || ''), null, { timeout: 15000 }).catch(() => {});
@@ -486,6 +490,8 @@ async function signIn(page, email) {
     /* ------------------------------------------------------------------ 5 */
     console.log('\n5. Closing an account (website 80)');
     async function pressClose(page) {
+      /* Website 86: Close my account is a page of its own in the customer portal. */
+      await page.goto(base + '/account/close', { waitUntil: 'networkidle' });
       await page.waitForSelector('.ac-danger', { timeout: 15000 });
       await page.click('.ac-danger');                      // the first press asks again
       await page.waitForFunction(() => /permanently/.test((document.querySelector('.ac-danger') || {}).textContent || ''), null, { timeout: 5000 });

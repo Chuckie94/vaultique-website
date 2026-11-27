@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.55.0',
-  build: 85,
-  builtAt: '2026-11-21T06:36:54Z',
-  notes: 'Checkout: the website or WhatsApp. Buy is gold on every piece and Checkout gold in the cart; after the details, Website checkout (gold) first and WhatsApp checkout (green) beside it, each the way it always went. Website checkout appears only when Flutterwave\'s key for the mode chosen is in Netlify, so a switch turned on before Flutterwave is set up shows WhatsApp checkout alone. Green is only ever WhatsApp. A payment made in Test mode is never rung up at the platform\'s till (supabase-test-orders.sql, run once). Holds build 84 (safe releases).'
+  version: '1.56.0',
+  build: 86,
+  builtAt: '2026-11-21T21:56:46Z',
+  notes: 'The customer portal. A signed-in customer\'s account is the dashboard of the owner\'s screenshots, with Vaultique navy for the top: Welcome back, their orders, wishlist and points (the points asked of the platform every time), then My shopping, My Vault and Security and privacy, each a page of its own. Orders told apart (Requested, Awaiting payment, Paid, Confirmed, Preparing, On its way, Delivered, Completed, Cancelled) and opened in full with five steps; every refund, the one still on its way included; recently viewed; the password in use asked first; Sign out this device only, or the others, or everywhere; the newsletter yes or no; download my personal data (account-portal, a new server job). A check with a date in it mended (builds 84 and 85 would now be stopped by Netlify). No SQL. Holds builds 85 and 84.'
 };

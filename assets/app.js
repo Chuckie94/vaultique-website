@@ -1132,6 +1132,19 @@
        lets the owner place one anyway while they are testing. */
     ACCT.hooks.previewKey = previewKey;
     ACCT.hooks.privacyHref = privacyHref;
+    /* BUILD 86 · the customer portal (assets/account.js). Its pages move
+       through this router, its ask-us buttons are the shop's own (the live
+       chat, or WhatsApp when it is closed), and it reads the wishlist and
+       the pieces looked at on this device from here. */
+    ACCT.hooks.go = go;
+    ACCT.hooks.enquire = function (a, text, label) { return enquireLink(a, { text: text }, label); };
+    ACCT.hooks.wishlist = function () { return wishlist; };
+    ACCT.hooks.wishlistOn = function () { return !!SHOP.wishlist; };
+    ACCT.hooks.recentSkus = function () { return recent; };
+    ACCT.hooks.recentCards = function () {
+      return recent.map(bySku).filter(Boolean).map(function (p, i) { return productCard(p, i, false); });
+    };
+    ACCT.hooks.shopName = function () { return (SETTINGS && SETTINGS.businessName) || 'Vaultique Boutique Point'; };
     /* Told what the shop has decided straight away, so the router knows
        whether #/account is a page here before the client has downloaded. */
     ACCT.configure(ACCOUNTS);
@@ -1145,7 +1158,7 @@
       /* A session found after the page had already drawn: the account
          view needs redrawing, or it would sit there offering a sign-in to
          somebody already signed in. */
-      if (currentRoute() === 'account') renderAccount();
+      if (accountRoute()) renderAccount(true);
       /* Whatever was wished for on this device before signing in is
          merged with whatever the account already held, so nothing is
          lost by signing in on a second phone. */
@@ -1165,7 +1178,9 @@
       paintAccount();
       paintRewards();
       if (window.VBP_REWARDS) window.VBP_REWARDS.forget();   // another person's points are not this one's
-      if (currentRoute() === 'account') renderAccount();
+      /* Build 86: drawn again only if who is signed in changed, not for a
+         new sign-in token or a saved address (assets/account.js, render). */
+      if (accountRoute()) renderAccount(true);
     });
     }
   }
@@ -1212,8 +1227,21 @@
     btn.classList[ACCT.signedIn() ? 'add' : 'remove']('is-in');
   }
 
-  function renderAccount() {
-    if (ACCT) ACCT.render($('#accountBody'));
+  /* BUILD 86 · /account is the customer's dashboard, and /account/<page>
+     (or /account/orders/<order number>) one of its pages: the customer
+     portal, in assets/account.js. Soft: drawn again only if who is signed
+     in, or the page, changed. */
+  function accountRoute() {
+    var m = /^account(?:\/([a-z-]+)(?:\/([^/?#]+))?)?\/?$/.exec(currentRoute());
+    if (!m) return null;
+    var arg = m[2] || '';
+    try { arg = decodeURIComponent(arg); } catch (e) {}
+    return { sec: m[1] || '', arg: arg };
+  }
+  function renderAccount(soft) {
+    if (!ACCT) return;
+    var r = accountRoute() || { sec: '', arg: '' };
+    ACCT.render($('#accountBody'), r.sec, r.arg, !!soft);
   }
 
   /* ---- the help panels and the FAQ -----------------------------------
@@ -5121,7 +5149,7 @@
     var olm = h.match(/^order\/(VB-[0-9A-Za-z]{3,10})$/i);
     if (olm) { showView('home'); showOrderLink(olm[1].toUpperCase()); return; }
 
-    if (h === 'account') {
+    if (accountRoute()) {
       /* Asking for the account page on a shop that has none is not an
          error, it is a shop without accounts: show the home page. */
       if (ACCT && ACCT.enabled()) {
@@ -5378,11 +5406,12 @@
         b.addEventListener('click', function (e) {
           if (!rewardsLive()) return;
           e.preventDefault();
-          go('account');
+          /* Build 86: straight to Rewards & membership, once signed in. */
+          go(ACCT.signedIn() ? 'account/rewards' : 'account');
         });
       }
       b.removeAttribute('target');
-      b.href = pathFor('account');
+      b.href = pathFor(ACCT.signedIn() ? 'account/rewards' : 'account');
       b.textContent = (ACCT.signedIn() ? 'See my rewards' : 'Sign in to see your rewards');
     } else if (b.getAttribute('data-wa') != null) {
       b.href = waGeneral(b.getAttribute('data-wa') || '');

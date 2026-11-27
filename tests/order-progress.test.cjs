@@ -136,15 +136,24 @@ const server = http.createServer(async (req, res) => {
 
     console.log('\n2. On its way');
     reset();
-    DB.orders.push(base({ id: 'o1', ref: 'VB-DLV01', ship_note: 'With Courier X', auto_deliver_at: '2026-11-23T08:30:00.000Z' }));
+    /* Website 86: the day it will be marked delivered is six days from
+       whenever the test runs, at 10:30 in Lusaka. Until website 86 it was
+       the fixed 23 November 2026, and from 21 November that day fell inside
+       the two days before it when a reminder goes, so the second run below
+       rightly sent the reminder and the check failed (the deploy step of
+       builds 84 and 85 would have stopped on it). */
+    const due = new Date(Date.now() + 6 * D); due.setUTCHours(8, 30, 0, 0);
+    const dueWords = new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lusaka', weekday: 'long', day: 'numeric', month: 'long' })
+      .format(due) + ', 10:30';
+    DB.orders.push(base({ id: 'o1', ref: 'VB-DLV01', ship_note: 'With Courier X', auto_deliver_at: due.toISOString() }));
     r = await run();
     const m1 = mails('buyer@example.com');
     is(r.onway === 1 && m1.length === 1 && m1[0].subject === 'Your order VB-DLV01 is on its way',
        'the customer is emailed once that it is on its way', J({ r, subjects: MAIL.map(m => m.subject) }));
     is(/Hello Test,/.test(m1[0].text) && /With Courier X/.test(m1[0].text),
        'with their first name and the shop\'s note', m1[0].text);
-    is(/Monday 23 November, 10:30/.test(m1[0].text),
-       'with the day it will be marked delivered, in Lusaka\'s time', m1[0].text);
+    is(m1[0].text.indexOf(dueWords) > -1,
+       'with the day it will be marked delivered, in Lusaka\'s time (' + dueWords + ')', m1[0].text);
     is(m1[0].text.indexOf('https://vaultiqueboutique.com/order/VB-DLV01?t=' + TOKEN) > -1 && /Confirm delivery/.test(m1[0].text)
        && /Ask for more time/.test(m1[0].text), 'with the private link, and what the two buttons do', m1[0].text);
     is(order('VB-DLV01').dispatch_mailed_at != null, 'marked as told');

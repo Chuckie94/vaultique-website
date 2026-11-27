@@ -289,12 +289,23 @@
     });
   }
 
-  function signOut() {
-    if (!sb) return Promise.resolve();
-    return sb.auth.signOut().then(function () {
-      api.user = null; api.profile = null; api.addresses = [];
-      tell();
-    }, function () {});
+  /* BUILD 86 · Signing out is this device only, unless asked otherwise.
+     Until build 86 it was every device: the Supabase library's own default
+     is 'global', so signing out on a laptop also signed the customer out on
+     their phone. 'others' keeps this device signed in; 'global' is every
+     one, this included. Resolves { ok }: whether Supabase heard it. This
+     device is signed out either way (the library forgets the session even
+     when the server cannot be reached), except for 'others'. */
+  function signOut(scope) {
+    if (!sb) return Promise.resolve({ ok: true });
+    var how = (scope === 'global' || scope === 'others') ? scope : 'local';
+    return Promise.resolve(sb.auth.signOut({ scope: how })).then(function (r) {
+      if (how !== 'others') {
+        api.user = null; api.profile = null; api.addresses = []; api.token = null;
+        tell();
+      }
+      return { ok: !(r && r.error) };
+    }, function () { return { ok: false }; });
   }
 
   function resetPassword(email) {
@@ -549,6 +560,10 @@
      so nothing is lost and no button shows. */
   var PROGRESS_COLS = ', pos_sale_id, ship_note, dispatched_at, ready_at, delivered_at, delivered_by, auto_deliver_at, ' +
     'extend_days, extend_max, extend_used, remind_days, refund_state, refund_amount, refund_ref, refund_note, refund_at, paid_at';
+  /* BUILD 86 · what an order's own page shows: where it goes, how it was
+     paid, and what it came to (supabase-payments.sql, website 77). Asked
+     for the same way: a database without them still lists every order. */
+  var DETAIL_COLS = ', address, payment_method, payment_status, pay_channel, goods_total, delivery_fee, paid_amount, updated_at';
 
   function myOrders() {
     if (!sb || !signedIn() || !historyOn()) return Promise.resolve([]);
@@ -579,10 +594,16 @@
         return plain();
       }, plain);
     }
-    return ask(ORDER_COLS + RECEIPT_COLS + PROGRESS_COLS).then(function (r) {
+    function progress() {
+      return ask(ORDER_COLS + RECEIPT_COLS + PROGRESS_COLS).then(function (r) {
+        if (r && !r.error) return r.data || [];
+        return receipts();
+      }, receipts);
+    }
+    return ask(ORDER_COLS + RECEIPT_COLS + PROGRESS_COLS + DETAIL_COLS).then(function (r) {
       if (r && !r.error) return r.data || [];
-      return receipts();
-    }, receipts);
+      return progress();
+    }, progress);
   }
 
   /* BUILD 78 · the customer's two buttons, on their own order. The answer is
@@ -796,15 +817,34 @@
 
   var renderHooks = {};    // set by the storefront: money, and the wishlist
 
-  function render(host) {
+  /* BUILD 86 · render(host, page, detail, soft). The page is the account
+     page asked for (/account/<page>/<detail>, the customer portal below).
+     Soft is the shop saying "something about the account changed": the
+     page is drawn again only if who is signed in, or the page, did. Until
+     build 86 every change drew it again, a new sign-in token every hour
+     included, which emptied whatever the customer was typing and swallowed
+     "Saved" before it could be seen. */
+  function render(host, sec, arg, soft) {
     if (!host) return;
+    if (arguments.length > 1) view = { sec: String(sec || ''), arg: String(arg || '') };
+    var key = [enabled() ? 1 : 0, api.user ? api.user.id : '-', api.user && api.user.emailConfirmed ? 1 : 0,
+               api.recovering ? 1 : 0, view.sec, view.arg].join('|');
+    if (soft && key === drawn && host.firstChild) return;
+    drawn = key;
     host.innerHTML = '';
     if (!enabled()) {
       host.appendChild(el('p', 'ac-none', 'Accounts are not available at the moment.'));
       return;
     }
-    if (!signedIn()) { drawSignedOut(host); return; }
+    if (!signedIn()) { showNotice(host); drawSignedOut(host); return; }
     drawSignedIn(host);
+  }
+  /* A word that outlives the next few drawings of the page (a sign-in, a
+     change of address), then goes. */
+  var notice = { text: '', until: 0 };
+  function noteFor(text) { notice = { text: text, until: Date.now() + 8000 }; }
+  function showNotice(host) {
+    if (notice.text && Date.now() < notice.until) host.appendChild(el('p', 'ac-msg ok pt-flash', notice.text));
   }
 
   function say(node, msg, kind) {
@@ -1062,32 +1102,1016 @@
     return (e && e.message) || 'Something went wrong. Please try again.';
   }
 
+  /* ---- BUILD 86 · the customer portal ----------------------------------
+     The owner, 21 November 2026: "I would make Vaultique's customer account
+     a complete customer relationship portal rather than simply a place to
+     view orders", "Customer dashboard should be as shown in the
+     screenshots, just use Vaultique Boutique Point navy blue for the top
+     color", and "every new customer-account feature must connect to the
+     Business Platform where appropriate".
+
+     Signed in, /account is the dashboard: a navy top with the customer's
+     own figures (orders, wishlist, points), then three groups, each item a
+     page of its own at /account/<page>, so the phone's back button goes
+     back to the dashboard. Everything the account page had before is on
+     one of them, with the classes it had, so nothing a customer could do
+     is gone.
+
+     What is whose. The orders, refunds and points are the business
+     platform's: the orders and refunds are read from what the platform's
+     till, Online Orders and Online Refund wrote here, and the points are
+     asked of the platform each time (assets/rewards.js). Nothing on these
+     pages keeps a figure of its own. The few records that only the shop may
+     read (the newsletter list, refunds on their way, the data file) are
+     asked of the website's own function, netlify/functions/
+     account-portal.js, which reads them for the signed-in customer only. */
+
+  var view = { sec: '', arg: '' };   // the page, from the address: /account/<sec>/<arg>
+  var drawn = '';                    // who and which page the account view shows now
+
+  var BASE_PATH = function () { return (window.VBP_BASE || '/'); };
+  function pagePath(sec, arg) {
+    return 'account' + (sec ? '/' + sec : '') + (arg ? '/' + encodeURIComponent(arg) : '');
+  }
+  /* To another page of the account. Through the shop's own router when it
+     is there, so the page is not loaded again; otherwise the address. */
+  function nav(sec, arg) {
+    var to = pagePath(sec, arg);
+    if (typeof renderHooks.go === 'function') { renderHooks.go(to); return; }
+    location.href = BASE_PATH() + to;
+  }
+  /* A link to an account page: a real address (it can be opened in a new
+     tab), which the shop's router answers without loading the page again. */
+  function pageLink(cls, sec, arg) {
+    var a = el('a', cls);
+    a.href = BASE_PATH() + pagePath(sec, arg);
+    a.addEventListener('click', function (e) {
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
+      if (typeof renderHooks.go !== 'function') return;
+      e.preventDefault();
+      renderHooks.go(pagePath(sec, arg));
+    });
+    return a;
+  }
+
+  /* The icons: drawn with lines, in the colour of the text around them. */
+  var ICONS = {
+    box: '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+    turn: '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 21v-5h-5"/>',
+    heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z"/>',
+    eye: '<path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+    pin: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>',
+    award: '<circle cx="12" cy="9" r="6"/><path d="M8.5 14.2L7 22l5-3 5 3-1.5-7.8"/>',
+    chat: '<path d="M21 11.5a8.5 8.5 0 0 1-12.5 7.5L3 20.5l1.6-4.9A8.5 8.5 0 1 1 21 11.5z"/>',
+    bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+    back: '<path d="M15 5l-7 7 7 7"/>'
+  };
+  function icon(name, cls) {
+    var s = el('span', cls || 'pt-ic');
+    s.setAttribute('aria-hidden', 'true');
+    s.innerHTML = '<svg viewBox="0 0 24 24" focusable="false">' + (ICONS[name] || '') + '</svg>';
+    return s;
+  }
+
+  /* ---- what is on, as the shop has set it ------------------------------ */
+  function always() { return true; }
+  function wishlistOn() { return typeof renderHooks.wishlistOn === 'function' ? !!renderHooks.wishlistOn() : true; }
+  function rewardsOn() { return !!(window.VBP_REWARDS && window.VBP_REWARDS.enabled); }
+  function addressesAllowed() { return !api.settings || api.settings.savedAddresses !== false; }
+  function passwordOn() { return !api.settings || api.settings.passwordReset !== false; }
+  function closingOn() { return !api.settings || api.settings.accountDeletion !== false; }
+  function newsletterOn() { var n = renderHooks.newsletter || {}; return n.enabled !== false; }
+
+  /* The dashboard's three groups, as the owner's screenshots have them.
+     Gift cards and My wallet are left out (decision D9): the platform has
+     both switched off. Product alerts come with website build 89. */
+  var SHOPPING = [
+    { sec: 'orders', ic: 'box', t: 'My orders', s: 'Order history and tracking', on: historyOn },
+    { sec: 'refunds', ic: 'turn', t: 'Returns & refunds', s: 'Manage order issues', on: historyOn },
+    { shop: 'wishlist', ic: 'heart', t: 'My wishlist', s: 'Saved products', on: wishlistOn },
+    { sec: 'recent', ic: 'eye', t: 'Recently viewed', s: 'Continue shopping', on: always }
+  ];
+  var MINE = [
+    { sec: 'details', ic: 'user', t: 'Personal details', on: always },
+    { sec: 'addresses', ic: 'pin', t: 'Address book', on: addressesAllowed },
+    { sec: 'rewards', ic: 'award', t: 'Rewards & membership', on: rewardsOn },
+    { sec: 'support', ic: 'chat', t: 'Customer support', on: always },
+    { sec: 'notifications', ic: 'bell', t: 'Notifications', on: always }
+  ];
+  var SAFE = [
+    { sec: 'password', t: 'Password and authentication', on: passwordOn },
+    { sec: 'sessions', t: 'Active devices and sessions', on: always },
+    { sec: 'privacy', t: 'Privacy and marketing preferences', on: always },
+    { sec: 'data', t: 'Download my personal data', on: always },
+    { sec: 'close', t: 'Close my account', on: closingOn }
+  ];
+
   function drawSignedIn(host) {
-    var head = el('div', 'ac-head');
-    var h = el('h1', 'serif', (api.profile && api.profile.name) ? 'Hello, ' + api.profile.name : 'Your account');
-    head.appendChild(h);
-    var out = el('button', 'btn btn-outline btn-sm', 'Sign out');
-    out.type = 'button';
-    out.addEventListener('click', function () { signOut().then(function () { render(host); }); });
-    head.appendChild(out);
-    host.appendChild(head);
+    if (api.recovering) {
+      var head = el('div', 'ac-head');
+      head.appendChild(el('h1', 'serif', 'Your account'));
+      host.appendChild(head);
+      host.appendChild(recoveryCard(host));
+      return;
+    }
+    var page = PAGES[view.sec];
+    if (!view.sec || !page || !page.on()) { drawDashboard(host); return; }
+    drawPage(host, page);
+  }
 
-    if (api.recovering) { host.appendChild(recoveryCard(host)); return; }
+  /* ---- the dashboard --------------------------------------------------- */
+  function brandWord() {
+    var n = typeof renderHooks.shopName === 'function' ? String(renderHooks.shopName() || '') : '';
+    return (n.trim().split(/\s+/)[0] || 'Vaultique').toUpperCase();
+  }
+  function two(n) { n = Math.max(0, Math.round(Number(n) || 0)); return n < 10 ? '0' + n : String(n); }
 
+  function drawDashboard(host) {
+    var box = el('div', 'pt');
+    var hero = el('div', 'pt-hero');
+    var top = el('div', 'pt-top');
+    top.appendChild(el('span', 'pt-brand', brandWord()));
+    top.appendChild(el('span', 'pt-badge', 'Customer portal'));
+    hero.appendChild(top);
+    hero.appendChild(el('h1', 'pt-welcome', 'Welcome back'));
+    hero.appendChild(el('p', 'pt-sub', 'Your shopping, rewards and account at a glance.'));
+
+    /* The three figures, each the customer's own and each from where it
+       lives: the orders from the shop's records, the wishlist from this
+       account, the points from the business platform. */
+    var tiles = el('div', 'pt-tiles');
+    function tile(cls, sec, shop, label) {
+      var a = shop ? el('a', 'pt-tile ' + cls) : pageLink('pt-tile ' + cls, sec);
+      if (shop) {
+        a.href = BASE_PATH() + shop;
+        a.addEventListener('click', function (e) {
+          if (typeof renderHooks.go !== 'function' || e.ctrlKey || e.metaKey) return;
+          e.preventDefault(); renderHooks.go(shop);
+        });
+      }
+      var n = el('b', 'pt-n', '··');
+      a.appendChild(n);
+      a.appendChild(el('span', 'pt-l', label));
+      tiles.appendChild(a);
+      return { n: n, a: a };
+    }
+    if (historyOn()) {
+      var tOrders = tile('pt-t-orders', 'orders', '', 'Orders');
+      myOrders().then(function (rows) { tOrders.n.textContent = two(rows.length); },
+                      function () { tOrders.n.textContent = '–'; });
+    }
+    if (wishlistOn()) {
+      var tWish = tile('pt-t-wish', '', 'wishlist', 'Wishlist');
+      tWish.n.textContent = two(wishlistNow().length);
+    }
+    if (rewardsOn()) {
+      var tPts = tile('pt-t-points', 'rewards', '', 'Points');
+      window.VBP_REWARDS.status(false).then(function (s) {
+        if (s && s.linked && !s.unavailable && !s.missing) {
+          tPts.n.textContent = window.VBP_REWARDS.points(s.points);
+        } else if (s && !s.linked) {
+          tPts.n.textContent = 'Join';
+          tPts.a.querySelector('.pt-l').textContent = 'Rewards';
+        } else {
+          tPts.n.textContent = '–';
+        }
+      }, function () { tPts.n.textContent = '–'; });
+    }
+    tiles.className = 'pt-tiles pt-tiles-' + tiles.children.length;
+    if (tiles.children.length) hero.appendChild(tiles);
+    box.appendChild(hero);
+
+    var body = el('div', 'pt-body');
+    showNotice(body);
     if (needsVerifiedEmail() && !api.user.emailConfirmed) {
-      var warn = el('div', 'ac-warn');
-      warn.textContent = 'Your email address is not confirmed yet, so you cannot check out. ' +
-                         'Check your inbox for the link we sent to ' + api.user.email + '.';
-      host.appendChild(warn);
+      body.appendChild(el('div', 'ac-warn',
+        'Your email address is not confirmed yet, so you cannot check out. ' +
+        'Check your inbox for the link we sent to ' + api.user.email + '.'));
     }
 
-    host.appendChild(detailsCard(host));
-    /* Vaultique Rewards: the points live on the business platform and are
-       asked for as this customer, never kept here (assets/rewards.js). */
-    if (window.VBP_REWARDS && window.VBP_REWARDS.enabled) host.appendChild(window.VBP_REWARDS.card());
-    if (api.settings.savedAddresses !== false) host.appendChild(addressCard());
-    if (historyOn()) host.appendChild(ordersCard());
-    if (api.settings.accountDeletion !== false) host.appendChild(dangerCard(host));
+    var groups = 0;
+    function group(title) {
+      if (groups++) body.appendChild(el('hr', 'pt-rule'));
+      body.appendChild(el('h2', 'pt-h', title));
+    }
+
+    var shopping = SHOPPING.filter(function (x) { return x.on(); });
+    if (shopping.length) {
+      group('My shopping');
+      var grid = el('div', 'pt-grid');
+      shopping.forEach(function (x) {
+        var a = x.shop ? el('a', 'pt-card') : pageLink('pt-card', x.sec);
+        if (x.shop) {
+          a.href = BASE_PATH() + x.shop;
+          a.addEventListener('click', function (e) {
+            if (typeof renderHooks.go !== 'function' || e.ctrlKey || e.metaKey) return;
+            e.preventDefault(); renderHooks.go(x.shop);
+          });
+        }
+        a.setAttribute('data-page', x.sec || x.shop);
+        a.appendChild(icon(x.ic));
+        a.appendChild(el('span', 'pt-t', x.t));
+        a.appendChild(el('span', 'pt-s', x.s));
+        grid.appendChild(a);
+      });
+      body.appendChild(grid);
+    }
+
+    var mine = MINE.filter(function (x) { return x.on(); });
+    /* The owner, 21 November: "Where it's written My Vaultique, write My Vault". */
+    group('My Vault');
+    var rows = el('div', 'pt-rows');
+    mine.forEach(function (x) {
+      var a = pageLink('pt-row', x.sec);
+      a.setAttribute('data-page', x.sec);
+      a.appendChild(icon(x.ic));
+      a.appendChild(el('span', 'pt-t', x.t));
+      rows.appendChild(a);
+    });
+    body.appendChild(rows);
+
+    group('Security and privacy');
+    var ul = el('ul', 'pt-list');
+    SAFE.filter(function (x) { return x.on(); }).forEach(function (x) {
+      var li = el('li');
+      var a = pageLink('pt-li', x.sec);
+      a.setAttribute('data-page', x.sec);
+      a.textContent = x.t;
+      li.appendChild(a);
+      ul.appendChild(li);
+    });
+    body.appendChild(ul);
+
+    var foot = el('div', 'pt-foot');
+    foot.appendChild(el('span', 'pt-who', 'Signed in as ' + api.user.email));
+    var out = el('button', 'btn btn-outline btn-sm pt-out', 'Sign out');
+    out.type = 'button';
+    out.addEventListener('click', function () {
+      out.disabled = true;
+      signOut('local').then(function () { nav(''); render(host); });
+    });
+    foot.appendChild(out);
+    body.appendChild(foot);
+
+    box.appendChild(body);
+    host.appendChild(box);
+  }
+  /* The wishlist as it is once this device's and the account's are put
+     together (mergeWishlist): drawn before the shop has merged them, the
+     dashboard would count only this device's. */
+  function wishlistNow() {
+    var local = typeof renderHooks.wishlist === 'function' ? (renderHooks.wishlist() || []) : [];
+    var out = Array.isArray(local) ? local.slice() : [];
+    var mine = (wishlistFollows() && api.profile && Array.isArray(api.profile.wishlist)) ? api.profile.wishlist : [];
+    mine.forEach(function (sku) { if (out.indexOf(sku) < 0) out.push(sku); });
+    return out;
+  }
+  function brandName() {
+    var n = typeof renderHooks.shopName === 'function' ? String(renderHooks.shopName() || '') : '';
+    return n.trim().split(/\s+/)[0] || 'Vaultique';
+  }
+
+  /* ---- a page of the account -------------------------------------------- */
+  var PAGES = {
+    orders: { title: 'My orders', on: historyOn, draw: drawOrdersPage },
+    refunds: { title: 'Returns & refunds', on: historyOn, draw: drawRefunds },
+    recent: { title: 'Recently viewed', on: always, draw: drawRecent },
+    details: { title: 'Personal details', on: always, draw: function (host) { host.appendChild(detailsCard(host)); } },
+    addresses: { title: 'Address book', on: addressesAllowed, draw: function (host) { host.appendChild(addressCard()); } },
+    rewards: { title: 'Rewards & membership', on: rewardsOn, draw: drawRewards },
+    support: { title: 'Customer support', on: always, draw: drawSupport },
+    notifications: { title: 'Notifications', on: always, draw: drawNotifications },
+    password: { title: 'Password and authentication', on: passwordOn, draw: drawPassword },
+    sessions: { title: 'Active devices and sessions', on: always, draw: drawSessions },
+    privacy: { title: 'Privacy and marketing preferences', on: always, draw: drawPrivacy },
+    data: { title: 'Download my personal data', on: always, draw: drawData },
+    close: { title: 'Close my account', on: closingOn, draw: function (host) { host.appendChild(dangerCard(host)); } }
+  };
+
+  function drawPage(host, page) {
+    var bar = el('div', 'pt-bar');
+    var detail = view.sec === 'orders' && view.arg;
+    var back = pageLink('pt-back', detail ? 'orders' : '');
+    back.appendChild(icon('back', 'pt-back-ic'));
+    back.appendChild(document.createTextNode(detail ? 'My orders' : 'My account'));
+    bar.appendChild(back);
+    host.appendChild(bar);
+    host.appendChild(el('h1', 'pt-title serif', detail ? 'Order ' + view.arg : page.title));
+    page.draw(host);
+  }
+
+  /* The website's own function for the records only the shop may read,
+     asked as the signed-in customer (netlify/functions/account-portal.js). */
+  var PORTAL_FN = '/.netlify/functions/account-portal';
+  function portalAsk(action, data) {
+    if (!sb || !api.user) return Promise.reject(new Error('Please sign in first.'));
+    return Promise.resolve(sb.auth.getSession()).then(function (r) {
+      var s = r && r.data && r.data.session;
+      var token = (s && s.access_token) || api.token;
+      if (!token) throw new Error('Please sign in again.');
+      return fetch(PORTAL_FN, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify(Object.assign({ action: action }, data || {}))
+      });
+    }).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (b) {
+        if (!b || typeof b !== 'object') throw new Error('That could not be read just now. Please try again shortly.');
+        if (!res.ok) throw new Error(b.error || 'That could not be done just now. Please try again shortly.');
+        return b;
+      });
+    }, function (e) {
+      if (e && e.message && !/fetch|network|load failed/i.test(e.message)) throw e;
+      throw new Error('Check your connection and try again.');
+    });
+  }
+
+  function money(v) { return renderHooks.money ? renderHooks.money(Number(v) || 0) : 'K' + (Number(v) || 0).toFixed(2); }
+  function day(iso) { return iso ? (renderHooks.date ? renderHooks.date(iso) : new Date(iso).toLocaleDateString()) : ''; }
+
+  /* ---- an order's state, in the owner's words ---------------------------
+     "The account should distinguish between requested, confirmed, paid,
+     fulfilled and completed orders." One word for the badge, from what the
+     shop's records say, and the same words everywhere an order is shown. */
+  function rungUp(o) { return !!(o.pos_completed_at || o.pos_receipt_no || o.pos_sale_id); }
+  function paidOnline(o) { return o.payment_method === 'online' && o.payment_status === 'paid'; }
+  function stage(o) {
+    var s = o.status || 'pending', collect = o.fulfilment === 'collection';
+    if (s === 'cancelled') return { key: 'cancelled', word: 'Cancelled' };
+    if (s === 'completed') return { key: 'completed', word: 'Completed' };
+    if (s === 'delivered') return { key: 'delivered', word: collect ? 'Collected' : 'Delivered' };
+    if (s === 'dispatched') return { key: 'dispatched', word: 'On its way' };
+    if (s === 'ready') return { key: 'ready', word: 'Ready for collection' };
+    if (s === 'confirmed' && rungUp(o)) return { key: 'preparing', word: 'Preparing' };
+    if (paidOnline(o)) return { key: 'paid', word: 'Paid' };
+    if (s === 'confirmed') return { key: 'confirmed', word: 'Confirmed' };
+    if (o.payment_method === 'online' && (o.payment_status === 'failed' || o.payment_status === 'expired')) {
+      return { key: 'unpaid', word: 'Payment not completed' };
+    }
+    if (o.payment_method === 'online') return { key: 'awaiting', word: 'Awaiting payment' };
+    return { key: 'requested', word: 'Requested' };
+  }
+  /* What the word means, in a line. */
+  function stageNote(o, st) {
+    var collect = o.fulfilment === 'collection';
+    switch (st.key) {
+      case 'requested': return 'You sent this order. We confirm it with you on WhatsApp before anything is paid.';
+      case 'awaiting': return 'The payment was started but has not been confirmed yet.';
+      case 'unpaid': return 'The payment was not completed, so nothing was charged. You can order again at any time.';
+      case 'paid': return 'Paid online. We are getting it ready.';
+      case 'confirmed': return 'We have confirmed your order.';
+      case 'preparing': return 'Paid, and we are getting it ready' + (collect ? ' for you to collect.' : ' to send.');
+      case 'dispatched': return 'On its way to you.';
+      case 'ready': return 'Ready for you to collect at the shop.';
+      case 'delivered': return collect ? 'You have collected it.' : 'Delivered.';
+      case 'completed': return 'Completed at the shop.';
+      case 'cancelled': return 'This order was cancelled.';
+    }
+    return '';
+  }
+  /* The five steps, each done or not, with its date. */
+  function journey(o) {
+    var s = o.status || 'pending', collect = o.fulfilment === 'collection';
+    var rung = rungUp(o), cancelled = s === 'cancelled';
+    var paid = !cancelled && (paidOnline(o) || rung || !!o.paid_at);
+    var confirmed = !cancelled && (s !== 'pending' || rung || paidOnline(o));
+    var fulfilled = s === 'delivered' || s === 'completed';
+    var done = fulfilled;
+    var steps = [
+      { key: 'requested', label: 'Requested', at: o.created_at, done: true },
+      { key: 'confirmed', label: 'Confirmed', at: o.pos_completed_at || (paidOnline(o) ? o.paid_at : null), done: confirmed },
+      { key: 'paid', label: 'Paid', at: o.paid_at || o.pos_completed_at, done: paid },
+      { key: 'fulfilled', label: collect ? 'Collected' : 'Delivered', at: o.delivered_at || (s === 'completed' ? o.pos_completed_at : null), done: fulfilled },
+      { key: 'completed', label: 'Completed', at: o.delivered_at || (s === 'completed' ? o.pos_completed_at : null), done: done }
+    ];
+    if (cancelled) steps = [steps[0], { key: 'cancelled', label: 'Cancelled', at: o.updated_at || null, done: true, stop: true }];
+    var last = -1;
+    steps.forEach(function (x, i) { if (x.done) last = i; });
+    if (last > -1) steps[last].now = true;
+    return steps;
+  }
+  function journeyRail(o) {
+    var steps = journey(o);
+    var ol = el('ol', 'oj oj-' + steps.length);
+    ol.setAttribute('aria-label', 'Where your order is');
+    steps.forEach(function (x) {
+      var li = el('li', 'oj-step' + (x.done ? ' done' : '') + (x.now ? ' now' : '') + (x.stop ? ' stop' : ''));
+      li.setAttribute('data-step', x.key);
+      li.appendChild(el('b', null, x.label));
+      if (x.done && x.at) li.appendChild(el('span', 'oj-at', day(x.at)));
+      ol.appendChild(li);
+    });
+    return ol;
+  }
+
+  /* ---- My orders --------------------------------------------------------- */
+  function drawOrdersPage(host) {
+    if (view.arg) { orderDetail(host, view.arg); return; }
+    host.appendChild(ordersCard());
+  }
+
+  function ordersCard() {
+    var c = card('Your orders');
+    var list = el('div', 'ac-list');
+    list.appendChild(el('p', 'ac-quiet', 'Loading…'));
+    c.appendChild(list);
+    /* What the words on an order mean, so the five are told apart. */
+    var key = el('p', 'ac-quiet ac-key');
+    key.textContent = 'Requested: you sent it, and we have not confirmed it yet (an order sent on WhatsApp is ' +
+      'confirmed with you there). Confirmed: we have it in hand. Paid: paid online or at the shop. ' +
+      'Delivered or Collected: it is with you. Completed: nothing is left to do.';
+    c.appendChild(key);
+
+    var PG = window.VBP_PROGRESS || null;
+    function fill(said) {
+    myOrders().then(function (rows) {
+      list.innerHTML = '';
+      if (!rows.length) {
+        list.appendChild(el('p', 'ac-quiet', 'Nothing yet. Orders you place will appear here.'));
+        return;
+      }
+      rows.forEach(function (o) {
+        var row = el('div', 'ac-order');
+        row.setAttribute('data-ref', o.ref || '');
+        var top = el('div', 'ac-order-top');
+        top.appendChild(el('span', 'ac-ref', o.ref || ''));
+        /* BUILD 86 · one word for where it is, the same as on its own page. */
+        var stg = stage(o);
+        top.appendChild(el('span', 'ac-status is-' + stg.key, stg.word));
+        row.appendChild(top);
+
+        var when = el('div', 'ac-quiet');
+        when.textContent = day(o.created_at) +
+          (o.fulfilment === 'collection' ? ' · for collection' : ' · for delivery');
+        row.appendChild(when);
+
+        /* BUILD 78 · rung up at the shop, with goods still to go: the steps
+           and, while it is on its way, the customer's two buttons. */
+        var pg = PG && ('dispatched_at' in o) ? PG.fromRow(o) : null;
+        if (pg && pg.rungUp && o.status !== 'completed' && o.status !== 'cancelled') {
+          PG.draw(row, pg, {
+            money: renderHooks.money,
+            message: said && said.ref === o.ref ? said.words : '',
+            onConfirm: function () { return confirmDelivery(o.id); },
+            onExtend: function () { return askMoreTime(o.id); },
+            after: function (r, words) { fill({ ref: o.ref, words: words }); }
+          });
+        }
+
+        (o.order_items || []).forEach(function (it) {
+          var line = el('div', 'ac-item');
+          line.textContent = (it.qty > 1 ? it.qty + ' × ' : '') + (it.name || it.sku || '');
+          if (it.price != null && renderHooks.money) {
+            line.textContent += ' — ' + renderHooks.money(it.price);
+          }
+          row.appendChild(line);
+        });
+        if (o.total != null && renderHooks.money) {
+          row.appendChild(el('div', 'ac-total', 'Total ' + renderHooks.money(o.total)));
+        }
+        /* BUILD 76 · rung up at the shop: the receipt, to keep. BUILD 78 ·
+           "Completed at the shop" only when it was: goods still to go are not. */
+        if (o.pos_receipt_no || o.pos_receipt) {
+          row.appendChild(el('div', 'ac-quiet ac-receipt-no',
+            (o.status === 'completed' ? 'Completed at the shop' : 'Rung up at the shop') +
+            (o.pos_receipt_no ? ' · Receipt ' + o.pos_receipt_no : '')));
+        }
+        var acts = el('div', 'ac-order-acts');
+        if (o.pos_receipt) {
+          var dl = el('button', 'btn btn-outline btn-sm ac-receipt', 'Download receipt');
+          dl.type = 'button';
+          dl.addEventListener('click', function () { downloadReceipt(o); });
+          acts.appendChild(dl);
+        }
+        /* BUILD 86 · everything about it, on a page of its own. */
+        if (o.ref) {
+          var open = pageLink('btn btn-gold btn-sm ac-view', 'orders', o.ref);
+          open.textContent = 'View order';
+          acts.appendChild(open);
+        }
+        row.appendChild(acts);
+        list.appendChild(row);
+      });
+    });
+    }
+    fill(null);
+    return c;
+  }
+
+  /* ---- one order, in full ------------------------------------------------- */
+  function orderDetail(host, ref) {
+    var c = el('div', 'ac-card acd');
+    c.appendChild(el('p', 'ac-quiet', 'Loading…'));
+    host.appendChild(c);
+    var PG = window.VBP_PROGRESS || null;
+
+    function draw(said) {
+      myOrders().then(function (rows) {
+        var o = null;
+        for (var i = 0; i < rows.length; i++) {
+          if (String(rows[i].ref || '').toUpperCase() === String(ref).toUpperCase()) { o = rows[i]; break; }
+        }
+        c.innerHTML = '';
+        if (!o) {
+          c.appendChild(el('p', 'ac-lead', 'This order is not on your account.'));
+          var back = pageLink('btn btn-outline btn-sm', 'orders');
+          back.textContent = 'See my orders';
+          c.appendChild(back);
+          return;
+        }
+        c.setAttribute('data-ref', o.ref || '');
+        var st = stage(o);
+        var top = el('div', 'ac-order-top');
+        top.appendChild(el('span', 'ac-ref', o.ref || ''));
+        top.appendChild(el('span', 'ac-status is-' + st.key, st.word));
+        c.appendChild(top);
+        c.appendChild(el('p', 'ac-lead acd-note', stageNote(o, st)));
+        c.appendChild(journeyRail(o));
+
+        /* Rung up, the goods still to go: the same steps and buttons as the
+           list and the private link (assets/progress.js), while there is
+           something still to happen. Its refund line is left to Refunds,
+           below, which has every refund. */
+        var pg = PG && ('dispatched_at' in o) ? PG.fromRow(o) : null;
+        if (pg && pg.rungUp && ['confirmed', 'dispatched', 'ready'].indexOf(o.status) > -1) {
+          PG.draw(c, Object.assign({}, pg, { refund: null }), {
+            money: renderHooks.money,
+            message: said || '',
+            onConfirm: function () { return confirmDelivery(o.id); },
+            onExtend: function () { return askMoreTime(o.id); },
+            after: function (r, words) { draw(words); }
+          });
+        }
+
+        /* What was ordered, and what it came to. */
+        c.appendChild(el('h3', 'acd-h', 'What you ordered'));
+        var items = el('div', 'acd-items');
+        (o.order_items || []).forEach(function (it) {
+          var line = el('div', 'acd-line');
+          line.appendChild(el('span', 'acd-what', (it.qty > 1 ? it.qty + ' × ' : '') + (it.name || it.sku || '')));
+          line.appendChild(el('span', 'acd-amt', it.price != null ? money(Number(it.price) * (Number(it.qty) || 1)) : ''));
+          items.appendChild(line);
+        });
+        c.appendChild(items);
+        var sums = el('div', 'acd-sums');
+        function sum(label, v, strong) {
+          if (v == null || v === '') return;
+          var line = el('div', 'acd-line' + (strong ? ' acd-total' : ''));
+          line.appendChild(el('span', 'acd-what', label));
+          line.appendChild(el('span', 'acd-amt', money(v)));
+          sums.appendChild(line);
+        }
+        if (o.goods_total != null && o.delivery_fee != null) {
+          sum('Pieces', o.goods_total);
+          sum(o.fulfilment === 'collection' ? 'Collection' : 'Delivery', o.delivery_fee);
+        }
+        sum('Total', o.total, true);
+        if (paidOnline(o) && o.paid_amount != null) sum('Paid online', o.paid_amount);
+        c.appendChild(sums);
+
+        /* How it was ordered, and where it goes. */
+        c.appendChild(el('h3', 'acd-h', 'Ordering and delivery'));
+        var kv = el('dl', 'acd-kv');
+        function pair(k, v) { if (!v) return; kv.appendChild(el('dt', null, k)); kv.appendChild(el('dd', null, v)); }
+        pair('Placed', day(o.created_at));
+        pair('How', o.payment_method === 'online'
+          ? 'On the website, paying online' + (o.pay_channel ? ' (' + channelWord(o.pay_channel) + ')' : '')
+          : 'On WhatsApp, paying at the shop or as agreed with us');
+        pair(o.fulfilment === 'collection' ? 'Collection' : 'Delivery to',
+             o.fulfilment === 'collection' ? 'At the shop' : (o.address || ''));
+        if (o.ship_note) pair('From the shop', o.ship_note);
+        if (o.delivered_at) {
+          pair(o.fulfilment === 'collection' ? 'Collected' : 'Delivered',
+               day(o.delivered_at) + (BY_WHOM[o.delivered_by] ? ', ' + BY_WHOM[o.delivered_by] : ''));
+        }
+        if (o.pos_receipt_no) pair('Receipt', o.pos_receipt_no);
+        c.appendChild(kv);
+
+        /* Refunds on this order: the platform's, as Flutterwave or the till
+           recorded them, and any still on its way. */
+        var rf = el('div', 'acd-refunds');
+        c.appendChild(rf);
+        refundLines(o, rf);
+
+        var acts = el('div', 'ac-actions');
+        if (o.pos_receipt) {
+          var dl = el('button', 'btn btn-outline btn-sm ac-receipt', 'Download receipt');
+          dl.type = 'button';
+          dl.addEventListener('click', function () { downloadReceipt(o); });
+          acts.appendChild(dl);
+        }
+        var ask = askLink('Hello, I have a question about my order ' + o.ref + '.', 'Ask about this order');
+        if (ask) acts.appendChild(ask);
+        c.appendChild(acts);
+      });
+    }
+    draw('');
+  }
+
+  var BY_WHOM = { customer: 'confirmed by you', shop: 'marked by the shop', auto: 'marked when the days ran out' };
+  function channelWord(ch) {
+    ch = String(ch || '').toLowerCase();
+    if (/mobile|mpesa|airtel|mtn|zamtel/.test(ch)) return 'mobile money';
+    if (/card/.test(ch)) return 'card';
+    if (/bank|account|transfer/.test(ch)) return 'bank';
+    return ch;
+  }
+
+  /* The ask-us button the rest of the shop uses: the live chat when it is
+     open, WhatsApp when it is not (assets/app.js, enquireLink). */
+  function askLink(text, label) {
+    var a = el('a', 'btn btn-outline btn-sm ac-ask');
+    if (typeof renderHooks.enquire === 'function') {
+      try { renderHooks.enquire(a, text, label); } catch (e) { return null; }
+      return a;
+    }
+    return null;
+  }
+
+  /* ---- Returns & refunds -------------------------------------------------- */
+  var REFUND_WORDS = {
+    'new': 'Being sent', sending: 'Being sent', unknown: 'Being sent',
+    pending: 'On its way to you',
+    completed: 'Refunded',
+    failed: 'Not sent: we will contact you', refused: 'Not sent: we will contact you'
+  };
+  function refundRow(r) {
+    var row = el('div', 'ac-refund');
+    row.setAttribute('data-state', r.state || '');
+    var top = el('div', 'ac-order-top');
+    top.appendChild(el('span', 'ac-ref', r.order_ref || ''));
+    top.appendChild(el('span', 'ac-status is-' + (r.state === 'completed' ? 'delivered' : (r.state === 'failed' || r.state === 'refused') ? 'unpaid' : 'awaiting'),
+      REFUND_WORDS[r.state] || 'Being sent'));
+    row.appendChild(top);
+    row.appendChild(el('div', 'ac-item', (r.whole ? 'The whole order: ' : 'Part of the order: ') + money(r.amount)));
+    var when = r.completed_at ? 'Refunded on ' + day(r.completed_at)
+      : r.accepted_at ? 'Accepted by the payment service on ' + day(r.accepted_at) + '. Banks and mobile money can take a few days.'
+      : r.requested_at ? 'Asked for on ' + day(r.requested_at) : '';
+    if (when) row.appendChild(el('div', 'ac-quiet', when));
+    return row;
+  }
+  /* A refund the platform recorded on the order itself (website 78, 81). */
+  function orderRefundRow(o) {
+    return refundRow({ order_ref: o.ref, state: 'completed', amount: o.refund_amount,
+                       whole: o.refund_state === 'full', completed_at: o.refund_at });
+  }
+  var refundsAsked = null;
+  function refundsOnTheWay() {
+    if (!refundsAsked) {
+      refundsAsked = portalAsk('refunds').then(function (b) { return Array.isArray(b.refunds) ? b.refunds : null; },
+                                               function () { return null; });
+      setTimeout(function () { refundsAsked = null; }, 30000);
+    }
+    return refundsAsked;
+  }
+  function refundLines(o, host) {
+    refundsOnTheWay().then(function (list) {
+      var mine = (list || []).filter(function (r) { return r.order_ref === o.ref; });
+      if (!mine.length && o.refund_state) mine = null;
+      if (!mine && !o.refund_state) return;
+      host.appendChild(el('h3', 'acd-h', 'Refunds'));
+      if (mine && mine.length) mine.forEach(function (r) { host.appendChild(refundRow(r)); });
+      else host.appendChild(orderRefundRow(o));
+      if (o.refund_ref) host.appendChild(el('p', 'ac-quiet', 'Reference ' + o.refund_ref));
+    });
+  }
+
+  function drawRefunds(host) {
+    var c = card('Refunds');
+    var list = el('div', 'ac-list');
+    list.appendChild(el('p', 'ac-quiet', 'Loading…'));
+    c.appendChild(list);
+    host.appendChild(c);
+    Promise.all([myOrders(), refundsOnTheWay()]).then(function (got) {
+      var orders = got[0] || [], sent = got[1];
+      list.innerHTML = '';
+      var shown = {};
+      (sent || []).forEach(function (r) { shown[r.order_ref] = true; list.appendChild(refundRow(r)); });
+      orders.forEach(function (o) { if (o.refund_state && !shown[o.ref]) list.appendChild(orderRefundRow(o)); });
+      if (!list.children.length) {
+        list.appendChild(el('p', 'ac-quiet', 'No refunds. When we refund an order, it shows here, and we email you.'));
+      }
+      if (sent === null) {
+        list.appendChild(el('p', 'ac-quiet', 'Refunds still on their way could not be read just now.'));
+      }
+    });
+
+    var r = card('Returns and exchanges');
+    r.appendChild(el('p', 'ac-lead', 'Would you like to return or exchange a piece, or is something wrong with an order? ' +
+      'Message us with your order number and we will arrange it with you.'));
+    var acts = el('div', 'ac-actions');
+    var ask = askLink('Hello, I would like to return or exchange a piece from my order ', 'Message us');
+    if (ask) acts.appendChild(ask);
+    r.appendChild(acts);
+    host.appendChild(r);
+  }
+
+  /* ---- Recently viewed ---------------------------------------------------- */
+  function drawRecent(host) {
+    var cards = typeof renderHooks.recentCards === 'function' ? renderHooks.recentCards() : [];
+    if (!cards || !cards.length) {
+      var c = card('Nothing yet');
+      c.appendChild(el('p', 'ac-quiet', 'Pieces you look at on this device show here, so you can find them again.'));
+      var shop = el('a', 'btn btn-gold btn-sm');
+      shop.textContent = 'Go to the shop';
+      shop.href = BASE_PATH() + 'shop';
+      shop.addEventListener('click', function (e) {
+        if (typeof renderHooks.go !== 'function') return;
+        e.preventDefault(); renderHooks.go('shop');
+      });
+      c.appendChild(shop);
+      host.appendChild(c);
+      return;
+    }
+    host.appendChild(el('p', 'ac-quiet pt-lead', 'Pieces you looked at on this device, the latest first.'));
+    var grid = el('div', 'grid pt-recent');
+    cards.forEach(function (n) { grid.appendChild(n); });
+    host.appendChild(grid);
+  }
+
+  /* ---- Rewards & membership: the platform's, asked each time ------------- */
+  function drawRewards(host) {
+    host.appendChild(window.VBP_REWARDS.card());
+  }
+
+  /* ---- Customer support --------------------------------------------------- */
+  function drawSupport(host) {
+    var c = card('Message us');
+    c.appendChild(el('p', 'ac-lead', 'Our team answers in the live chat, or on WhatsApp when the chat is closed.'));
+    var acts = el('div', 'ac-actions');
+    var ask = askLink('Hello, ', 'Message us');
+    if (ask) acts.appendChild(ask);
+    c.appendChild(acts);
+    host.appendChild(c);
+
+    if (!historyOn()) return;
+    var o = card('About an order');
+    var list = el('div', 'ac-list');
+    o.appendChild(list);
+    host.appendChild(o);
+    myOrders().then(function (rows) {
+      if (!rows.length) { list.appendChild(el('p', 'ac-quiet', 'Orders you place will be listed here, to ask about.')); return; }
+      rows.slice(0, 5).forEach(function (x) {
+        var row = el('div', 'ac-addr');
+        var b = el('div');
+        b.appendChild(el('div', 'ac-addr-l', x.ref || ''));
+        b.appendChild(el('div', null, day(x.created_at) + ' · ' + stage(x).word));
+        row.appendChild(b);
+        var a = askLink('Hello, I have a question about my order ' + x.ref + '.', 'Ask about it');
+        if (a) row.appendChild(a);
+        list.appendChild(row);
+      });
+    });
+  }
+
+  /* ---- Notifications ------------------------------------------------------ */
+  function drawNotifications(host) {
+    var e = card('Emails about your orders');
+    e.appendChild(el('p', 'ac-lead', 'We email the address given with each order: when you pay online, when it is on its ' +
+      'way, before it is marked delivered, once it is delivered or collected, and when a refund is made.'));
+    host.appendChild(e);
+
+    var ch = card('Chat replies');
+    ch.appendChild(el('p', 'ac-lead', 'In the chat window, the bell lets this device tell you when we reply.'));
+    var acts = el('div', 'ac-actions');
+    var open = askLink('', 'Open the chat');
+    if (open) acts.appendChild(open);
+    ch.appendChild(acts);
+    host.appendChild(ch);
+
+    if (newsletterOn()) {
+      var n = card('Emails from ' + brandName());
+      var line = el('p', 'ac-lead', 'Reading…');
+      n.appendChild(line);
+      var change = pageLink('ac-link', 'privacy');
+      change.textContent = 'Change this';
+      n.appendChild(change);
+      host.appendChild(n);
+      portalAsk('newsletter').then(function (b) {
+        line.textContent = b.state === 'on'
+          ? 'You receive our emails about new arrivals and offers, at ' + (b.email || api.user.email) + '.'
+          : 'You do not receive our emails about new arrivals and offers.';
+      }, function (er) { line.textContent = er.message; });
+    }
+  }
+
+  /* ---- Password and authentication --------------------------------------- */
+  function changePasswordChecked(current, next) {
+    if (!sb || !api.user) return Promise.reject(new Error('Please sign in first.'));
+    if (!current) return Promise.reject(new Error('Type the password you use now first.'));
+    var bad = passwordProblem(next);
+    if (bad) return Promise.reject(new Error(bad));
+    if (current === next) return Promise.reject(new Error('Choose a password different from the one you use now.'));
+    /* The password they use now is checked by signing in with it again,
+       so a phone left signed in cannot have its password changed by
+       whoever picks it up. */
+    return Promise.resolve(sb.auth.signInWithPassword({ email: api.user.email, password: current })).then(function (r) {
+      if (r && r.error) {
+        if (/invalid login/i.test(String(r.error.message || ''))) throw new Error('That is not the password you use now.');
+        throw r.error;
+      }
+      return sb.auth.updateUser({ password: next });
+    }).then(function (r) {
+      if (r && r.error) throw r.error;
+      return true;
+    });
+  }
+
+  function drawPassword(host) {
+    var c = card('Change your password');
+    c.appendChild(el('p', 'ac-quiet', 'Signed in as ' + api.user.email));
+    var now = field(c, 'ac_curpw', 'The password you use now', 'password', '', 'current-password');
+    var pw1 = field(c, 'ac_newpw', 'New password', 'password', '', 'new-password');
+    var pw2 = field(c, 'ac_newpw2', 'Type the new one again', 'password', '', 'new-password');
+    var rule = el('p', 'ac-rule', passwordRule());
+    c.appendChild(rule);
+    var msg = el('p', 'ac-msg');
+    var go = el('button', 'btn btn-gold btn-sm', 'Change password');
+    go.type = 'button';
+    var row = el('div', 'ac-actions'); row.appendChild(go);
+    c.appendChild(row); c.appendChild(msg);
+    pw1.addEventListener('input', function () {
+      var bad = pw1.value ? passwordProblem(pw1.value) : '';
+      rule.textContent = bad || (pw1.value ? 'That will do.' : passwordRule());
+      rule.className = 'ac-rule' + (pw1.value ? (bad ? ' bad' : ' ok') : '');
+    });
+    go.addEventListener('click', function () {
+      if (pw1.value !== pw2.value) { say(msg, 'The two new passwords are not the same.', 'err'); pw2.focus(); return; }
+      say(msg, 'Changing…', 'busy'); go.disabled = true;
+      changePasswordChecked(now.value, pw1.value).then(function () {
+        now.value = pw1.value = pw2.value = '';
+        go.disabled = false;
+        say(msg, 'Your password is changed ✓', 'ok');
+      }, function (e) { go.disabled = false; say(msg, friendly(e), 'err'); });
+    });
+    c.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go.click(); } });
+    host.appendChild(c);
+
+    var f = card('Forgotten the password you use now?');
+    f.appendChild(el('p', 'ac-quiet', 'We email a link to ' + api.user.email + ' to choose a new one.'));
+    var fm = el('p', 'ac-msg');
+    var send = el('button', 'btn btn-outline btn-sm', 'Email me a link');
+    send.type = 'button';
+    send.addEventListener('click', function () {
+      say(fm, 'Sending…', 'busy'); send.disabled = true;
+      resetPassword(api.user.email).then(function () {
+        say(fm, 'Sent. Check your inbox, and the spam folder.', 'ok');
+      }, function (e) { send.disabled = false; say(fm, friendly(e), 'err'); });
+    });
+    var fr = el('div', 'ac-actions'); fr.appendChild(send);
+    f.appendChild(fr); f.appendChild(fm);
+    host.appendChild(f);
+  }
+
+  /* ---- Active devices and sessions --------------------------------------- */
+  function drawSessions(host) {
+    var c = card('This device');
+    c.appendChild(el('p', 'ac-lead', 'You are signed in here as ' + api.user.email + '.'));
+    var m1 = el('p', 'ac-msg');
+    var here = el('button', 'btn btn-outline btn-sm pt-out-here', 'Sign out of this device');
+    here.type = 'button';
+    here.addEventListener('click', function () {
+      here.disabled = true;
+      signOut('local').then(function () { nav(''); render(host); });
+    });
+    var r1 = el('div', 'ac-actions'); r1.appendChild(here);
+    c.appendChild(r1); c.appendChild(m1);
+    host.appendChild(c);
+
+    var o = card('Your other devices');
+    o.appendChild(el('p', 'ac-lead', 'Signed in on a phone or computer that is not yours, or one you no longer have? ' +
+      'Sign it out from here. Each device asks for your password again.'));
+    o.appendChild(el('p', 'ac-quiet', 'A device that is open on the shop right now can stay signed in for up to an hour.'));
+    var m2 = el('p', 'ac-msg');
+    var others = el('button', 'btn btn-gold btn-sm pt-out-others', 'Sign out of my other devices');
+    others.type = 'button';
+    others.addEventListener('click', function () {
+      others.disabled = true; say(m2, 'Signing them out…', 'busy');
+      signOut('others').then(function (r) {
+        others.disabled = false;
+        say(m2, r && r.ok ? 'Done. Every other device is signed out; you are still signed in here.'
+                          : 'That did not go through. Check your connection and try again.', r && r.ok ? 'ok' : 'err');
+      });
+    });
+    var all = el('button', 'btn btn-outline btn-sm pt-out-all', 'Sign out everywhere');
+    all.type = 'button';
+    all.addEventListener('click', function () {
+      all.disabled = true; say(m2, 'Signing out everywhere…', 'busy');
+      signOut('global').then(function (r) {
+        noteFor(r && r.ok ? 'You are signed out of every device.'
+          : 'You are signed out here. Your other devices could not be reached just now: sign in, then try again.');
+        nav(''); render(host);
+      });
+    });
+    var r2 = el('div', 'ac-actions'); r2.appendChild(others); r2.appendChild(all);
+    o.appendChild(r2); o.appendChild(m2);
+    host.appendChild(o);
+  }
+
+  /* ---- Privacy and marketing preferences --------------------------------- */
+  function drawPrivacy(host) {
+    if (newsletterOn()) {
+      var c = card('Emails about new arrivals and offers');
+      var line = el('p', 'ac-lead', 'Reading…');
+      c.appendChild(line);
+      var msg = el('p', 'ac-msg');
+      var acts = el('div', 'ac-actions');
+      c.appendChild(acts); c.appendChild(msg);
+      host.appendChild(c);
+      var paint = function (b) {
+        acts.innerHTML = '';
+        var on = b.state === 'on';
+        line.textContent = on ? 'You receive them, at ' + (b.email || api.user.email) + '.'
+                              : 'You do not receive them.';
+        var btn = el('button', 'btn btn-sm ' + (on ? 'btn-outline pt-nl-off' : 'btn-gold pt-nl-on'),
+                     on ? 'Stop sending me these' : 'Send me these');
+        btn.type = 'button';
+        btn.addEventListener('click', function () {
+          btn.disabled = true; say(msg, 'One moment…', 'busy');
+          portalAsk('newsletter-set', { on: !on }).then(function (r) {
+            if (r.state === 'confirm') {
+              say(msg, 'You left this list before, so we have emailed you a link to confirm. Open it to start receiving them again.', 'ok');
+              btn.disabled = false;
+              return;
+            }
+            say(msg, r.state === 'on' ? 'Done: you will receive them.' : 'Done: we will not send them any more.', 'ok');
+            paint(r);
+          }, function (e) { btn.disabled = false; say(msg, e.message, 'err'); });
+        });
+        acts.appendChild(btn);
+      };
+      portalAsk('newsletter').then(paint, function (e) { line.textContent = e.message; });
+    }
+
+    var p = card('Your information');
+    p.appendChild(el('p', 'ac-lead', 'How we look after what you give us, and why we keep it, is in our Privacy Policy. ' +
+      'You can download everything we hold about you, or close your account, at any time.'));
+    var row = el('div', 'ac-actions');
+    var pol = el('a', 'btn btn-outline btn-sm');
+    pol.textContent = 'Read the Privacy Policy';
+    pol.href = typeof renderHooks.privacyHref === 'function' ? renderHooks.privacyHref() : '/policies/privacy-policy';
+    pol.target = '_blank'; pol.rel = 'noopener';
+    row.appendChild(pol);
+    var dl = pageLink('btn btn-outline btn-sm', 'data');
+    dl.textContent = 'Download my data';
+    row.appendChild(dl);
+    p.appendChild(row);
+    host.appendChild(p);
+  }
+
+  /* ---- Download my personal data ----------------------------------------- */
+  function drawData(host) {
+    var c = card('A copy of everything we hold about you');
+    c.appendChild(el('p', 'ac-lead', 'One file with your account, details, addresses, orders, payments, refunds, ' +
+      'newsletter choice, chats with us and your rewards link, and your points as our business platform has them now.'));
+    c.appendChild(el('p', 'ac-quiet', 'The file is in JSON, a plain text format any computer can open. Card numbers are ' +
+      'never in it: they are never kept by us, only by the payment service.'));
+    var msg = el('p', 'ac-msg');
+    var go = el('button', 'btn btn-gold btn-sm pt-data', 'Download my data');
+    go.type = 'button';
+    go.addEventListener('click', function () {
+      go.disabled = true; say(msg, 'Gathering it…', 'busy');
+      myData().then(function (d) {
+        saveFile(JSON.stringify(d, null, 2), 'application/json',
+                 brandName() + '-my-data-' + new Date().toISOString().slice(0, 10) + '.json');
+        go.disabled = false;
+        say(msg, 'Downloaded ✓', 'ok');
+      }, function (e) { go.disabled = false; say(msg, e.message, 'err'); });
+    });
+    var row = el('div', 'ac-actions'); row.appendChild(go);
+    c.appendChild(row); c.appendChild(msg);
+    host.appendChild(c);
+  }
+  /* The website's records, from the function; the points, from the
+     platform, as the account page shows them; and what this device keeps
+     for itself (the wishlist and the pieces looked at). */
+  function myData() {
+    return portalAsk('data').then(function (d) {
+      var R = window.VBP_REWARDS;
+      var pts = rewardsOn() ? R.status(true).then(function (s) { return s; }, function () { return null; }) : Promise.resolve(null);
+      return pts.then(function (s) {
+        if (s && s.linked && !s.unavailable && !s.missing) {
+          d.rewards = d.rewards || {};
+          d.rewards.points = { points: s.points, worth: s.worth, asOf: new Date().toISOString(),
+                               from: 'the business platform, which keeps the points' };
+        }
+        d.thisDevice = {
+          wishlist: typeof renderHooks.wishlist === 'function' ? (renderHooks.wishlist() || []).slice() : [],
+          recentlyViewed: typeof renderHooks.recentSkus === 'function' ? (renderHooks.recentSkus() || []).slice() : []
+        };
+        return d;
+      });
+    });
+  }
+  function saveFile(text, type, name) {
+    var blob = new Blob([text], { type: type });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name.replace(/[^0-9A-Za-z._-]+/g, '-'); a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 4000);
   }
 
   /* The one thing to do after following a reset link. */
@@ -1110,9 +2134,9 @@
       changePassword(pw1.value).then(function () {
         api.recovering = false;
         try { history.replaceState(null, '', location.pathname); } catch (e) {}
+        /* BUILD 86 · said on the dashboard, which is drawn next. */
+        noteFor('Your new password is saved ✓');
         render(host);
-        var done = host.querySelector('.ac-card .ac-msg');
-        if (done) say(done, 'Your new password is saved ✓', 'ok');
       }, function (e) { go.disabled = false; say(msg, friendly(e), 'err'); });
     });
     c.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go.click(); } });
@@ -1142,28 +2166,15 @@
               function (e) { say(msg, friendly(e), 'err'); });
     });
 
-    var pwBtn = el('button', 'ac-link', 'Change password');
-    pwBtn.type = 'button';
-    pwBtn.addEventListener('click', function () {
-      var wrap = el('div', 'ac-inline');
-      var pw = field(wrap, 'ac_newpw', 'New password', 'password', '', 'new-password');
-      var go = el('button', 'btn btn-outline btn-sm', 'Set password');
-      go.type = 'button';
-      go.addEventListener('click', function () {
-        say(msg, 'Saving…', 'busy');
-        changePassword(pw.value).then(function () {
-          say(msg, 'Password changed ✓', 'ok'); wrap.remove(); pwBtn.style.display = '';
-        }, function (e) { say(msg, friendly(e), 'err'); });
-      });
-      wrap.appendChild(go);
-      pwBtn.style.display = 'none';
-      c.insertBefore(wrap, msg);
-      pw.focus();
-    });
-
     var row = el('div', 'ac-actions');
     row.appendChild(save);
-    if (!api.settings || api.settings.passwordReset !== false) row.appendChild(pwBtn);
+    /* BUILD 86 · the password has a page of its own, which asks for the one
+       in use first. */
+    if (passwordOn()) {
+      var pwBtn = pageLink('ac-link', 'password');
+      pwBtn.textContent = 'Change password';
+      row.appendChild(pwBtn);
+    }
     c.appendChild(row); c.appendChild(msg);
     return c;
   }
@@ -1249,84 +2260,6 @@
     return c;
   }
 
-  function ordersCard() {
-    var c = card('Your orders');
-    var list = el('div', 'ac-list');
-    list.appendChild(el('p', 'ac-quiet', 'Loading…'));
-    c.appendChild(list);
-    c.appendChild(el('p', 'ac-quiet',
-      'An order here is what you asked for on WhatsApp. We confirm each one with you, ' +
-      'so the status follows the conversation rather than replacing it.'));
-
-    var PG = window.VBP_PROGRESS || null;
-    function fill(said) {
-    myOrders().then(function (rows) {
-      list.innerHTML = '';
-      if (!rows.length) {
-        list.appendChild(el('p', 'ac-quiet', 'Nothing yet. Orders you place will appear here.'));
-        return;
-      }
-      rows.forEach(function (o) {
-        var row = el('div', 'ac-order');
-        row.setAttribute('data-ref', o.ref || '');
-        var top = el('div', 'ac-order-top');
-        top.appendChild(el('span', 'ac-ref', o.ref || ''));
-        /* BUILD 78 · rung up at the shop: where it is now, in the words the
-           progress below uses. Any other order keeps the words it had. */
-        var pg = PG && ('dispatched_at' in o) ? PG.fromRow(o) : null;
-        var st = el('span', 'ac-status ' + (pg ? PG.badgeClass(pg) : 'is-' + (o.status || 'pending')));
-        st.textContent = pg ? PG.headline(pg)
-          : (o.status || 'pending').charAt(0).toUpperCase() + (o.status || 'pending').slice(1);
-        top.appendChild(st);
-        row.appendChild(top);
-
-        var when = el('div', 'ac-quiet');
-        when.textContent = (renderHooks.date ? renderHooks.date(o.created_at) : '') +
-          (o.fulfilment === 'collection' ? ' · for collection' : ' · for delivery');
-        row.appendChild(when);
-
-        if (pg && pg.rungUp && o.status !== 'completed' && o.status !== 'cancelled') {
-          PG.draw(row, pg, {
-            money: renderHooks.money,
-            message: said && said.ref === o.ref ? said.words : '',
-            onConfirm: function () { return confirmDelivery(o.id); },
-            onExtend: function () { return askMoreTime(o.id); },
-            after: function (r, words) { fill({ ref: o.ref, words: words }); }
-          });
-        }
-
-        (o.order_items || []).forEach(function (it) {
-          var line = el('div', 'ac-item');
-          line.textContent = (it.qty > 1 ? it.qty + ' × ' : '') + (it.name || it.sku || '');
-          if (it.price != null && renderHooks.money) {
-            line.textContent += ' — ' + renderHooks.money(it.price);
-          }
-          row.appendChild(line);
-        });
-        if (o.total != null && renderHooks.money) {
-          row.appendChild(el('div', 'ac-total', 'Total ' + renderHooks.money(o.total)));
-        }
-        /* BUILD 76 · rung up at the shop: the receipt, to keep. BUILD 78 ·
-           "Completed at the shop" only when it was: goods still to go are not. */
-        if (o.pos_receipt_no || o.pos_receipt) {
-          row.appendChild(el('div', 'ac-quiet ac-receipt-no',
-            (o.status === 'completed' ? 'Completed at the shop' : 'Rung up at the shop') +
-            (o.pos_receipt_no ? ' · Receipt ' + o.pos_receipt_no : '')));
-          if (o.pos_receipt) {
-            var dl = el('button', 'btn btn-outline btn-sm ac-receipt', 'Download receipt');
-            dl.type = 'button';
-            dl.addEventListener('click', function () { downloadReceipt(o); });
-            row.appendChild(dl);
-          }
-        }
-        list.appendChild(row);
-      });
-    });
-    }
-    fill(null);
-    return c;
-  }
-
   function dangerCard(host) {
     var c = card('Close your account');
     var msg = el('p', 'ac-msg');
@@ -1343,7 +2276,7 @@
         return;
       }
       say(msg, 'Closing…', 'busy');
-      deleteAccount().then(function () { render(host); },
+      deleteAccount().then(function () { nav(''); render(host); },
                           function (e) { say(msg, friendly(e), 'err'); });
     });
     c.appendChild(go); c.appendChild(msg);
@@ -1400,6 +2333,11 @@
 
     deleteAccount: deleteAccount,
     confirmDelivery: confirmDelivery,
-    askMoreTime: askMoreTime
+    askMoreTime: askMoreTime,
+
+    /* BUILD 86 · the customer portal */
+    stage: stage,
+    journey: journey,
+    pages: function () { return Object.keys(PAGES); }
   };
 })();
