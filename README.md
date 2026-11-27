@@ -68,6 +68,7 @@ secret. The files starting `_` are shared by the others.
 | `_risk.js` | The fraud check (build 91): scores a payment before it starts and when it is paid, a WhatsApp order and a refund, from records the site already keeps; watches first (D5), and acting holds High and refuses Critical |
 | `risk-watch` | Every fifteen minutes (build 91): the team's own activity scored from the sealed record, held payments approved in Admin > Fraud & Risk released on the gateway's word, escalations emailed to the owner, the record anchored |
 | `risk-release` | A held payment just approved, released at once: its gateway asked again, and paid only on its word (build 91) |
+| `after-restore` | After a restore from a backup (build 92): refunds held until you finish; payments waiting in the copy confirmed on the gateway's word; payments and refunds made after the copy found on Lenco's and Flutterwave's own lists (the owner only) |
 | `order-progress` | Every fifteen minutes (build 80): an order's emails (on its way, the reminder, delivered, refunded), and marking delivered when the days run out; from build 87, customers' requests: the shop told of each new one, the customer of each answer; from build 89, the courier and tracking number in the on-its-way email (or one of their own when given later), and the shop told when a customer changes their delivery instructions |
 | `account-delete` | Closing a customer's account, the login included; never a login on the admin list (build 80) |
 | `account-portal` | The customer portal's records that only the shop may read, for the signed-in customer alone: the newsletter yes or no, refunds on their way, "Download my personal data" (build 86; their requests in it from 87) |
@@ -327,6 +328,10 @@ node tests/risk.test.cjs                 the fraud check: watching, acting, held
                                          word, refunds held, WhatsApp orders never refused, never a sale
                                          stopped by its own failure, the fifteen-minute watch (build 91)
 node tests/risk.browser.cjs              Admin > Fraud & Risk and Settings > Fraud & Risk (build 91)
+node tests/backups.test.cjs              the backup without a database: the seal, the storage account's
+                                         signatures, which copies are let go, the pictures, the workflow's
+                                         switches, the check after a restore, RECOVERY.md's settings (build 92)
+node tests/backups-admin.browser.cjs     Admin > Settings > Backups and the key made in the browser (build 92)
 bash tools/db-check.sh                   supabase-hardening.sql on a stand-in Supabase: the 28 files, the
                                          hardening twice, the files made after it (build 80) twice each and the
                                          hardening again, the older files refusing, then tests/hardening.sql,
@@ -336,8 +341,10 @@ bash tools/db-check.sh                   supabase-hardening.sql on a stand-in Su
                                          the online refunds (builds 76 to 81), telling a customer the
                                          shop has replied (build 83), customers' requests (build 87) and
                                          the platform's delivery door (build 89), and the fraud check with
-                                         the hardening (build 91; one-time setup in
-                                         tests/supabase-standin/README.txt)
+                                         the hardening (build 91); then the backup on that whole database:
+                                         a copy checked by restoring it, sealed, kept, the first drill, and a
+                                         real restore into a new project (tests/backup-cycle.js, build 92;
+                                         one-time setup in tests/supabase-standin/README.txt)
 bash tools/sql-tests.sh                  every psql chain above, each on a fresh database (build 79), and the
                                          till's door, the payment history and an order's progress
                                          (tests/order-progress-db.sh) (build 80), the online refunds
@@ -345,8 +352,9 @@ bash tools/sql-tests.sh                  every psql chain above, each on a fresh
                                          till (build 85), customers' requests (tests/customer-requests.sql,
                                          build 87), Lenco payments (tests/lenco.sql, build 88), delivery
                                          (tests/delivery.sql, tests/delivery-kept.sql, build 89),
-                                         shopping (tests/shopping.sql, build 90) and the fraud check and
-                                         the sealed record (tests/risk.sql, build 91)
+                                         shopping (tests/shopping.sql, build 90), the fraud check and
+                                         the sealed record (tests/risk.sql, build 91) and the backups'
+                                         records (tests/backup.sql, build 92)
 ```
 
 The browser ones need Playwright (`npm ci` in `tests/`), the SQL ones any

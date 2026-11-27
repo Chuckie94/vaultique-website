@@ -102,6 +102,8 @@ run shopping         $POS supabase-payment-history.sql tests/order-progress-fixt
 # twice over the till's files, Online Refund and Lenco; with its drills (an
 # entry changed, taken out, cut off the end, or added by hand, each caught).
 run risk             $POS supabase-payment-history.sql tests/order-progress-fixture.sql supabase-order-progress.sql supabase-online-refund.sql supabase-lenco.sql supabase-risk.sql supabase-risk.sql tests/risk.sql
+# Build 92: the backups' records (supabase-backup.sql), run twice.
+run backup           $POS supabase-backup.sql supabase-backup.sql tests/backup.sql
 as "dropdb --if-exists $DB" >/dev/null 2>&1
 
 # Build 80 · an order's progress (supabase-order-progress.sql). Its own

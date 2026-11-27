@@ -73,17 +73,17 @@ echo "$out" | grep -q "A test payment is never rung up.*NOT RUN YET" \
 echo "$out" | grep -q "Customer requests.*NOT RUN YET (optional)" \
   || { echo "   the report does not say customers' requests are not run yet"; fail=1; }
 
-echo "3. The files made after the hardening (builds 80, 81, 83, 85, 87, 88, 89, 90 and 91), twice each, then the hardening once more"
+echo "3. The files made after the hardening (builds 80, 81, 83, 85, 87, 88, 89, 90, 91 and 92), twice each, then the hardening once more"
 AFTER="supabase-pos-orders.sql supabase-payment-history.sql supabase-order-progress.sql supabase-online-refund.sql
 supabase-chat-reply-push.sql supabase-test-orders.sql supabase-customer-requests.sql supabase-lenco.sql supabase-delivery.sql
-supabase-shopping.sql supabase-risk.sql"
+supabase-shopping.sql supabase-risk.sql supabase-backup.sql"
 for f in $AFTER; do
   for n in 1 2; do
     out=$(run "$here/$f") || { echo "   FAILED  $f (run $n)"; echo "$out" | grep -E 'ERROR|LINE' | head -3 | sed 's/^/           /'; fail=1; }
   done
 done
 out=$(run "$here/supabase-hardening.sql") || { echo "   FAILED: the hardening after them"; echo "$out" | grep -E 'ERROR|LINE|CONTEXT' | head -4 | sed 's/^/           /'; fail=1; }
-[ $fail -eq 0 ] && echo "   all 11 ran, twice, and the hardening ran after them"
+[ $fail -eq 0 ] && echo "   all 12 ran, twice, and the hardening ran after them"
 # The hardening, run after supabase-delivery.sql, leaves the platform's new
 # door open to its key (build 89: it is on the hardening's own list).
 echo "select case when has_function_privilege('anon', 'public.vbp_pos_order_shipping(text, text, text, text, text, text)', 'execute')
@@ -177,6 +177,12 @@ echo "select case when pg_get_functiondef('public.two_factor_required()'::regpro
   && echo "   the hardening, run after it, keeps Fraud & Risk needing two-factor, the record's triggers, and the check closed to visitors" \
   || { echo "   the hardening, run after supabase-risk.sql, lost part of the fraud check"; fail=1; }
 
+# supabase-backup.sql's own check row (build 92) says OK.
+out92=$(run "$here/supabase-backup.sql") || fail=1
+echo "$out92" | grep -q "OK · backups can be recorded" \
+  && echo "   supabase-backup.sql says: OK · backups can be recorded" \
+  || { echo "   supabase-backup.sql does not say OK"; echo "$out92" | tail -4 | sed 's/^/           /'; fail=1; }
+
 echo "4. Each older file again: each must refuse"
 refused=0
 for f in $FILES; do
@@ -199,6 +205,20 @@ out=$(as "psql -X -d $DB -f -" < "$here/tests/after-the-hardening.sql" 2>&1)
 echo "$out" | grep -E '✗|ERROR' | sed 's/^/   /'
 summary=$(echo "$out" | grep -E 'checks passed|checks FAILED' | tail -1)
 echo "   ${summary:-no summary: the test file did not finish}"
+echo "$summary" | grep -q 'checks passed' || fail=1
+
+# BUILD 92 · The backup, on this whole database: a copy made, checked by
+# restoring it, sealed, kept, read back; the first drill; a real restore into
+# a new (stand-in) project. Needs Node; connects as postgres over TCP, so the
+# check sets a password for this scratch server first.
+echo "7. The backup: a copy of this database, checked by restoring it, and the first drill (tests/backup-cycle.js)"
+echo "alter user postgres password 'backup-cycle-local';" | as "psql -X -q -d $DB -f -" >/dev/null 2>&1
+out=$(BACKUP_TEST_DB="postgresql://postgres:backup-cycle-local@127.0.0.1:5432/$DB" \
+      BACKUP_TEST_SCRATCH="postgresql://postgres:backup-cycle-local@127.0.0.1:5432/postgres" \
+      node "$here/tests/backup-cycle.js" 2>&1)
+echo "$out" | grep -E '✗' | sed 's/^/   /'
+summary=$(echo "$out" | grep -E 'checks passed|checks FAILED|skipped' | tail -1)
+echo "   ${summary:-no summary: the backup cycle did not finish}"
 echo "$summary" | grep -q 'checks passed' || fail=1
 
 [ $fail -eq 0 ] && echo "ALL GOOD" || echo "SOMETHING FAILED (above)"

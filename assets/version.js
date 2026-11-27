@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.61.0',
-  build: 91,
-  builtAt: '2026-11-27T01:00:00Z',
-  notes: 'Payments and fraud. The fraud check scores every payment (before it starts and when it is paid, Lenco and Flutterwave), every WhatsApp order and every refund from records the site already keeps; no single signal decides. It starts by watching (D5): nothing held or refused, each case saying what acting would have done. Acting: High held for review, Critical refused before the payment starts. Admin > Fraud & Risk: the totals, the spread of scores, the trend, the review queue (Approve, Reject, Escalate; an approved payment is marked paid only on the gateway\'s word), and the sealed record of every decision and change, which shows if it is touched. One SQL file: supabase-risk.sql. Holds builds 90 to 84.'
+  version: '1.62.0',
+  build: 92,
+  builtAt: '2026-11-27T05:33:00Z',
+  notes: 'Backups and recovery, on free services (D8). GitHub copies the website\'s database (the shop, the logins, the pictures\' records) and its pictures every two hours, or every hour; checks each copy by restoring it into an empty database; seals it with your public key so only your private key opens it; and keeps it in your own storage account: every copy for two days, one a day for thirty. Off until switched on. RECOVERY.md for the ten cases; the drill every three months; after a restore, the gateways asked and refunds held until you finish. Admin > Settings > Backups. One SQL file: supabase-backup.sql. Holds builds 91 to 84.'
 };

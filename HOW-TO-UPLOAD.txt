@@ -25,36 +25,35 @@ A. GITHUB DESKTOP  (easiest, one commit)
   is left behind anyway, make its one file by hand as in B, last step.
 
 
-B. THE BROWSER  (four drags, because GitHub takes 100 files at a time)
+B. THE BROWSER  (five drags, because GitHub takes 100 files at a time)
 -----------------------------------------------------------------------
-  Add file > Upload files, drag, then Commit changes. Four times.
-  (Build 88 groups them differently: assets and netlify together are
-  now 103 files, over GitHub's 100 at a time.)
+  Add file > Upload files, drag, then Commit changes. Five times.
+  (Build 92 groups them differently: the netlify folder and the loose
+  files at the top had grown to 103 together, over GitHub's 100.)
 
   Drag 1 — at the top of your repository, three FOLDERS together:
-           assets   images   tools                          (80 files)
-  Drag 2 — at the top of your repository: the netlify FOLDER, the
-           .github FOLDER if you can see it, and every loose file at
-           the top level (the 52 files beside the folders)    (99 files)
-           (99: one under GitHub's 100. Build 91 adds four here; the
-           next build that adds one regroups the drags, and says so.)
-  Drag 3 and 4 — the tests folder, in two parts (146 files in all):
+           assets   images   tools                          (87 files)
+  Drag 2 — at the top of your repository: the netlify FOLDER and the
+           .github FOLDER if you can see it                  (49 files)
+  Drag 3 — at the top of your repository: every loose file at the top
+           level, the 54 files beside the folders            (54 files)
+  Drag 4 and 5 — the tests folder, in two parts (151 files in all):
            First open your repository on GitHub and click the tests
            folder, so the page shows tests at the top. Then:
-     Drag 3 — Add file > Upload files, and drag in, from inside your
+     Drag 4 — Add file > Upload files, and drag in, from inside your
            unzipped tests folder, every file whose name ends in
-           .browser.cjs (53 files). Typing browser.cjs into the
+           .browser.cjs (54 files). Typing browser.cjs into the
            folder's search box shows just those. Commit changes.
-     Drag 4 — still inside tests on GitHub: Add file > Upload files,
+     Drag 5 — still inside tests on GitHub: Add file > Upload files,
            and drag in everything else inside your tests folder, the
-           supabase-standin folder among it (93 files). Commit changes.
+           supabase-standin folder among it (97 files). Commit changes.
 
   (Until build 79 the tests folder went in one drag. Build 80 brought
-  twenty more checks and it went over GitHub's 100 at a time. Drags 3
-  and 4 land in the right place because the page is inside tests when
+  twenty more checks and it went over GitHub's 100 at a time. Drags 4
+  and 5 land in the right place because the page is inside tests when
   you drop them.)
 
-  DRAG FOLDERS, NOT WHAT IS INSIDE THEM, except in drags 3 and 4 above,
+  DRAG FOLDERS, NOT WHAT IS INSIDE THEM, except in drags 4 and 5 above,
   which are dropped while GitHub's page is inside tests. GitHub keeps a
   folder's structure when you drag the folder itself; open it first and
   the files land in the wrong place.
@@ -104,6 +103,17 @@ Netlify rebuilds on its own, usually within a minute or two. Then follow
 the steps at the top of START-HERE.txt: uploading runs no SQL, and it never
 deletes a file. When a build takes a file away, START-HERE names it, and it
 has to be deleted from your repository by hand.
+
+BUILD 92: UPLOAD FIRST, SQL SECOND, as for the others. Then run
+supabase-backup.sql (START-HERE.txt, step H), pasted from the chat: the
+file of the same name in this folder is the same, kept for the website's
+own checks. The backups themselves are set up on GitHub and your storage
+account (START-HERE.txt, step Q; SETUP.md, "Backups"); nothing about them
+is uploaded to Netlify, and nothing in the shop depends on them. The new
+.github/workflows/backup.yml does nothing until you set BACKUP_ON to yes.
+It travels in the .github folder: if GitHub > Actions has no Backup after
+the upload, make it by hand as in B, last step, with the name
+.github/workflows/backup.yml and this folder's copy pasted in.
 
 BUILD 91: UPLOAD FIRST, SQL SECOND, as for the others. Wait until
 Netlify > Deploys shows this upload as Published, then run the SQL files

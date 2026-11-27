@@ -146,6 +146,15 @@ async function providerOf(row) {
   const got = await P.svc('GET', 'payments?select=provider&' + by + '&limit=1');
   return String((got && got[0] && got[0].provider) || 'flutterwave');
 }
+// BUILD 92 · Whether refunds are held after a restore (site_settings_private,
+// 'restore_hold', written by after-restore.js). Unreadable: not held.
+async function restoreHold() {
+  try {
+    const r = await P.svc('GET', 'site_settings_private?key=eq.restore_hold&select=data');
+    const d = r && r[0] && r[0].data;
+    return d && d.active === true ? d : null;
+  } catch (e) { return null; }
+}
 // A refund moved on from where it was, by a write that only succeeds if it
 // is still there. Whoever lost the race reads where it is now.
 async function move(row, from, patch) {
@@ -203,6 +212,18 @@ async function send(id) {
     row = await move(row, 'sending', { state: 'refused',
       flw_message: 'The website has no Flutterwave ' + row.mode + ' key (Netlify), so nothing was sent.' });
     return { ok: true, again: false, refund: out(row) };
+  }
+
+  // BUILD 92 · After a restore from a backup, refunds wait until the check
+  // after the restore is finished (after-restore.js): one made after the
+  // copy, and asked for again, is never sent twice.
+  const held = await restoreHold();
+  if (held) {
+    row = await move(row, 'sending', { state: 'refused',
+      flw_message: 'The website was restored from a copy of ' + String(held.since || '').replace('T', ' ').slice(0, 16) +
+                   ' UTC, and refunds wait until the check after the restore is finished (the website\u2019s Admin > Settings > Backups). ' +
+                   'Nothing was sent; ask again then.' });
+    return { ok: true, again: false, refund: out(row), restoreHold: true };
   }
 
   // BUILD 91 · The fraud check, before anything is sent (_risk.js). Acting,

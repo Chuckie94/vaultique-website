@@ -8,6 +8,61 @@ and GitHub tags every build that passes its checks (`website-84`, …).
 Builds before 84 are described in their own notes and in the `notes` line of
 `assets/version.js` as each was released.
 
+## Build 92 · 1.62.0 · backups and recovery, on free services (decision D8: before the rest)
+
+- **A copy of the website off Supabase** (`.github/workflows/backup.yml`,
+  `tools/backup/`), made by GitHub every two hours, or every hour
+  (`BACKUP_EVERY_HOURS`, D2): the shop's tables with their rules, the
+  customers' and the team's logins (without sign-in sessions), and the
+  pictures' records, read with PostgreSQL 17's own `pg_dump` through
+  Supabase's session pooler; and every picture in the website's Storage,
+  new or changed ones only.
+- **Every copy checked by restoring it** before it is kept: into an empty
+  PostgreSQL on GitHub's machine; every table must come back, with exactly
+  the rows the copy holds, and the newest order. A copy that does not is
+  kept all the same, marked, and the run fails, so GitHub tells you.
+- **Sealed so only you can open it**: each file with its own key, locked
+  with the public half of your backup key (RSA-OAEP 4096, AES-256-GCM).
+  The key pair is made in your browser (Admin > Settings > Backups); the
+  private half is saved on your computer and goes nowhere else. GitHub
+  holds the public half only. Names, tables and paths are inside the seal.
+- **Kept in your own storage account**, any S3-compatible service (SETUP.md
+  walks through Backblaze B2, 10 GB free): every file read back and its
+  fingerprint compared. Every copy for two days, then one a day for thirty
+  days; the newest good copy is never let go.
+- **Off until you switch it on** (`BACKUP_ON`), so it never fails for lack
+  of a secret.
+- **The drill**, every three months: GitHub opens the newest copy with your
+  private key (added for the drill, then deleted) and restores it. **The
+  first drill was run here**, on the stand-in: a whole copy of the
+  hardened database made, checked, sealed, kept, opened and restored into a
+  new (stand-in) Supabase project, logins, rules and the sealed record of
+  build 91 included, every count agreeing.
+- **RECOVERY.md**: the ten cases of your brief, each with what you see,
+  what to do and when it is done; restoring step by step
+  (`tools/backup/restore.cjs`, which refuses to restore over a working
+  shop); the drill; and every Netlify and GitHub setting by name (never a
+  value), checked against the code by the tests.
+- **After a restore** (Admin > Settings > Backups, `after-restore.js`, the
+  owner only): refunds are held until you finish (`_refund.js`); payments
+  waiting in the copy are confirmed on the gateway's word; payments Lenco
+  and Flutterwave took after the copy, and refunds Flutterwave made after
+  it, are found on their own lists and emailed to you. Nothing is paid or
+  refunded twice.
+- **Admin > Settings > Backups**: how the copies are doing (the last one,
+  whether it checked out, what it holds, the copies kept, the GitHub
+  minutes it uses, the last drill), the key maker, and the check after a
+  restore.
+- One SQL file: `supabase-backup.sql` (backup_runs, restore_findings).
+- Tests: `tests/backups.test.cjs` (47) and `tests/backups-admin.browser.cjs`
+  (23), both critical; `tests/backup-cycle.js` (26, run by
+  `tools/db-check.sh` on the whole hardened database, with the first drill
+  and four fault drills); `tests/backup.sql` (9); 4 more in
+  `tests/after-the-hardening.sql`; 20 drills, each caught. Changed, each said
+  why: `build-site.test.cjs` (66 addresses fingerprinted, was 65: the new
+  admin script); `tools/db-check.sh` (the twelfth file, and step 7, the
+  backup cycle). Upload: five drags now (HOW-TO-UPLOAD.txt).
+
 ## Build 91 · 1.61.0 · payments and fraud: the fraud check, the review queue, the sealed record
 
 - **The fraud check** (`netlify/functions/_risk.js`), on the server only, asked

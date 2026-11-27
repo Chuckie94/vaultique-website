@@ -515,6 +515,23 @@ select achk((r ->> 'ordersClient')::int = 3 and (r ->> 'refusedClient')::int = 1
 reset role;
 select set_config('request.jwt.claims', '', false);
 
+-- ================================================ 12. the backups' records (build 92)
+reset role;
+insert into public.backup_runs (kind, ok, checked, copy_id, tables, rows) values ('copy', true, true, '2026-11-27T0117Z', 53, 357);
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f6', 'aal2');
+select achk((select count(*) from public.backup_runs) >= 1, 'backups: an Administrator (Settings) reads how the copies are doing');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f6', 'aal1');
+select achk((select count(*) from public.backup_runs) = 0, 'backups: the same Administrator with the password alone reads nothing');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000b2', 'aal1');
+select achk((select count(*) from public.backup_runs) = 0 and (select count(*) from public.restore_findings) = 0,
+  'backups: the chats-only agent reads nothing');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a1', 'aal2');
+select achk(pg_temp.err($q$insert into public.backup_runs (kind) values ('copy')$q$) <> '',
+  'backups: even the owner cannot write a line: only the backup itself, with the service key');
+reset role;
+select set_config('request.jwt.claims', '', false);
+
 reset role;
 select case when ok then '  ✓ ' else '  ✗ ' end || what from after_checks order by n;
 select case when count(*) filter (where not ok) = 0

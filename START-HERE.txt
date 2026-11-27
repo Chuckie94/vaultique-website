@@ -1,39 +1,45 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 91
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 92
 ====================================================
 The whole site, cumulative: everything in build 83 (and so 82, 81 and
 80, with the other website line's builds 74 to 78 carried onto it),
 build 84 (a deploy never publishes a build whose own checks fail),
 build 85 (checkout: the website or WhatsApp), build 86 (the customer
 portal), build 87 (customers' requests), build 88 (Lenco, and one
-checkout for every way of paying), build 89 (delivery: instructions,
-the courier and tracking number, the invoice), build 90 (shopping,
-and the policies entered in a window) and build 91 (payments and
-fraud: the fraud check, its review queue, and the sealed record).
-Upload this and you are up to date. Upload 91 only: it holds 90, 89,
-88, 87, 86, 85 and 84.
+checkout for every way of paying), build 89 (delivery), build 90
+(shopping, and the policies entered in a window), build 91 (payments
+and fraud) and build 92 (backups and recovery). Upload this and you are
+up to date. Upload 92 only: it holds 91, 90, 89, 88, 87, 86, 85 and 84.
 
-IF BUILD 90 IS ALREADY LIVE (https://vaultiqueboutique.com/api/health
-says "build":90) and you ran its five SQL files, steps B to F are done:
-do A, then G to P. If build 89 is live and you ran its four, B to E
-are done: do A, then F to P.
+IF BUILD 91 IS ALREADY LIVE (https://vaultiqueboutique.com/api/health
+says "build":91) and you ran its six SQL files, steps B to G are done:
+do A, then H to R. If build 90 is live and you ran its five, B to F are
+done: do A, then G to R.
 
-NEW IN 84 TO 91 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
+THE SQL: PASTE EACH FILE FROM THE CHAT. All seven are in the chat, in
+order, in the messages that came with build 92, ready to copy (from
+build 92, SQL comes only that way). The files of the same names in this
+folder are exactly the same; they are here for the website's own
+checks, and you never need to open them.
+
+NEW IN 84 TO 92 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
 THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, DELIVERY, SHOPPING,
-AND THE FRAUD CHECK.
-  SIX SQL FILES, each new, each run once, in this order:
+THE FRAUD CHECK, AND BACKUPS.
+  SEVEN SQL FILES, each new, each run once, in this order:
   supabase-test-orders.sql (build 85), supabase-customer-requests.sql
   (build 87), supabase-lenco.sql (build 88), supabase-delivery.sql
-  (build 89), supabase-shopping.sql (build 90) and supabase-risk.sql
-  (build 91). About an hour, then Lenco's own setup when its keys are in
-  hand (step K). Do these in order. Each one says how you know it is
+  (build 89), supabase-shopping.sql (build 90), supabase-risk.sql
+  (build 91) and supabase-backup.sql (build 92). About an hour, then
+  Lenco's own setup when its keys are in hand (step L), and the backups'
+  setup (step Q). Do these in order. Each one says how you know it is
   done.
 
   A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
-     browser it is four drags, grouped differently from before (the
-     assets and netlify folders are now over GitHub's 100 files together).
+     browser it is five drags now, grouped differently from before (build
+     92: the netlify folder and the loose files are over GitHub's 100
+     files together).
      Done when: Netlify > Deploys shows it as Published.
      Its log (open the deploy) has, near the top:
-       Checks: node: 45 of 46 files passed, 1 skipped, ... before publishing.
+       Checks: node: 46 of 47 files passed, 1 skipped, ... before publishing.
      (the one skipped needs a database; it runs on GitHub's database job)
      and further down:
        Scripts: enforced. Only this site, its own inline scripts and
@@ -45,7 +51,7 @@ AND THE FRAUD CHECK.
 
   B. RUN supabase-test-orders.sql in the WEBSITE's Supabase (not the
      platform's): SQL Editor > New query > paste the whole file > Run.
-     The SQL is also in the chat. It changes no order, payment, setting
+     Paste it from the chat. It changes no order, payment, setting
      or key, and is safe to run again.
      Done when: its result line says
        OK · a test payment is never rung up | OK
@@ -60,7 +66,7 @@ AND THE FRAUD CHECK.
        OK · customers can ask, the shop decides | OK
 
   D. RUN supabase-lenco.sql the same way, in the WEBSITE's Supabase.
-     The SQL is also in the chat. It changes no order, payment, refund,
+     Paste it from the chat. It changes no order, payment, refund,
      setting or key, and is safe to run again.
      Done when: its last box says
        OK · Lenco payments can be recorded
@@ -71,7 +77,7 @@ AND THE FRAUD CHECK.
      Until it is run, Lenco is not offered to customers.
 
   E. RUN supabase-delivery.sql the same way, in the WEBSITE's Supabase.
-     The SQL is also in the chat. It changes no order, payment, setting
+     Paste it from the chat. It changes no order, payment, setting
      or key, and is safe to run again.
      Done when: its result line says
        OK · delivery details can be recorded | OK
@@ -80,7 +86,7 @@ AND THE FRAUD CHECK.
      and tracking number cannot be recorded.
 
   F. RUN supabase-shopping.sql the same way, in the WEBSITE's Supabase.
-     The SQL is also in the chat. It changes no order, payment, review,
+     Paste it from the chat. It changes no order, payment, review,
      policy, setting or key, and is safe to run again.
      Done when: its result line says
        OK · shopping can be recorded | OK
@@ -89,20 +95,26 @@ AND THE FRAUD CHECK.
      policies' new numbers are saved one row at a time.
 
   G. RUN supabase-risk.sql the same way, in the WEBSITE's Supabase.
-     The SQL is also in the chat. It changes no order, payment, refund,
+     Paste it from the chat. It changes no order, payment, refund,
      setting or key, and is safe to run again.
      Done when: its result line says
        OK · the fraud check can record | OK · the record is sealed
      Until it is run, nothing is scored and Admin > Fraud & Risk says to
      run it; orders and payments go on exactly as before.
 
-  H. OPEN https://vaultiqueboutique.com/api/health on your phone.
-     Done when: it says "status":"working" and "build":91.
+  H. RUN supabase-backup.sql the same way, in the WEBSITE's Supabase.
+     Paste it from the chat. It changes no order, payment, refund,
+     setting or key, and is safe to run again.
+     Done when: its result line says
+       OK · backups can be recorded
 
-  I. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
+  I. OPEN https://vaultiqueboutique.com/api/health on your phone.
+     Done when: it says "status":"working" and "build":92.
+
+  J. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
      gold; the cart says Checkout, in gold. Press Buy, fill in the
      details: at the bottom, WhatsApp checkout, green. Until a payment
-     gateway is switched on and ready (step K) that is the only one.
+     gateway is switched on and ready (step L) that is the only one.
      If Settings > Shopping > "Checkout button text" still says Buy on
      WhatsApp, the shop shows Buy anyway; type Buy there and Save if you
      want the box to match.
@@ -111,14 +123,14 @@ AND THE FRAUD CHECK.
      Done when: you have seen the gold Buy, the green WhatsApp checkout
      and the delivery instructions box.
 
-  J. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
+  K. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
      person at the top of the shop; not the admin): the navy top saying
      Welcome back, with your orders, wishlist and points, then My
      shopping, My Vault and Security and privacy. Tap My orders, then
      View order on one of them.
      Done when: you have seen the dashboard and an order's own page.
 
-  K. LENCO, WHEN YOUR LENCO KEYS ARE IN HAND (SETUP.md, "Online payment
+  L. LENCO, WHEN YOUR LENCO KEYS ARE IN HAND (SETUP.md, "Online payment
      with Lenco", has every step and Lenco's sandbox numbers and cards).
      1. From Lenco (the dashboard's Lenco Pay section, or support):
         the sandbox API token, sandbox public key and the SANDBOX API
@@ -152,7 +164,7 @@ AND THE FRAUD CHECK.
         Trigger deploy, set the mode to Live, Save, and make one small
         real purchase yourself on each network you ticked, and by card.
 
-  L. CUSTOMERS' REQUESTS, WHEN YOU WANT THEM (you may leave this until
+  M. CUSTOMERS' REQUESTS, WHEN YOU WANT THEM (you may leave this until
      the platform has build 512). Admin > Settings > Customer Accounts:
      switch on "Let customers ask to cancel, return or exchange, or
      report a problem", check "Days after delivery to ask for a return
@@ -164,7 +176,7 @@ AND THE FRAUD CHECK.
      Done when: signed in as a customer, one of your own orders that is
      not yet prepared shows Cancel this order (a minute after saving).
 
-  M. DELIVERY, ONCE STEP E IS DONE.
+  N. DELIVERY, ONCE STEP E IS DONE.
      1. Admin > Orders: an order for delivery that you have confirmed
         shows "Add courier and tracking". Fill in the courier, the
         tracking number, the courier's tracking page if it has one (an
@@ -185,7 +197,7 @@ AND THE FRAUD CHECK.
      Done when: an order you gave a courier and tracking number shows
      them on the customer's order page.
 
-  N. SHOPPING AND THE POLICIES, ONCE STEP F IS DONE.
+  O. SHOPPING AND THE POLICIES, ONCE STEP F IS DONE.
      1. Admin > Policies: each policy has its number, 1, 2, 3 ..., in the
         order customers see them. Press Add policy: a window opens where
         you are. Type the title, the section and the text, and the number
@@ -207,7 +219,7 @@ AND THE FRAUD CHECK.
      5. The alert emails go from your email (Settings > Notifications)
         within half an hour of a piece coming back or its price dropping.
 
-  O. THE FRAUD CHECK, ONCE STEP G IS DONE. It starts by WATCHING, as
+  P. THE FRAUD CHECK, ONCE STEP G IS DONE. It starts by WATCHING, as
      you decided (D5): every payment, WhatsApp order and refund is scored
      and recorded, and nothing is held or refused.
      1. Admin > Fraud & Risk: what the check is doing (watching, day 1 of
@@ -231,9 +243,51 @@ AND THE FRAUD CHECK.
      Done when: Admin > Fraud & Risk shows "The check is watching", and
      the record says Intact.
 
-  P. WATCH THE CHECKS ON GITHUB (Actions > Tests).
+  Q. THE BACKUPS, ON A LAPTOP (about twenty minutes; SETUP.md, "Backups",
+     has every click). Until this is done there is no copy of the shop
+     outside Supabase.
+     1. Admin > Settings > Backups > Make my backup key. The private half
+        is saved to your Downloads: put it in two safe places now. Copy
+        the public half.
+     2. A free storage account (Backblaze B2): a private bucket, and a key
+        for that bucket only.
+     3. GitHub > your repository > Settings > Secrets and variables >
+        Actions: the secrets and variables SETUP.md lists, then BACKUP_ON
+        set to yes.
+     4. GitHub > Actions > Backup > Run workflow. In a few minutes it is
+        green, and Admin > Settings > Backups says the last copy checked
+        out by restoring it. (No Backup in the Actions list? The .github
+        folder did not come along with the upload: make the file
+        .github/workflows/backup.yml by hand from this folder's copy, as
+        HOW-TO-UPLOAD.txt, B, last step, does for tests.yml.)
+     5. Within three months, the first drill (RECOVERY.md, "The drill").
+     Done when: Admin > Settings > Backups shows a copy that checked out,
+     and the next one two hours later.
+
+  R. WATCH THE CHECKS ON GITHUB (Actions > Tests).
      Done when: the newest Tests run has a green tick. A minute later
-     GitHub > Code > Tags shows website-91 (Actions > Release tag).
+     GitHub > Code > Tags shows website-92 (Actions > Release tag).
+
+  WHAT CHANGED IN 92
+    * BACKUPS, OFF SUPABASE: GitHub copies the website's database (the
+      shop, the customers' and the team's logins, the pictures' records)
+      and its pictures every two hours, or every hour if you choose.
+    * EVERY COPY CHECKED BY RESTORING IT into an empty database before it
+      is kept: every table back, every row. One that does not check out is
+      marked, and GitHub emails you.
+    * ONLY YOU CAN OPEN THEM: each copy is sealed with your backup key,
+      made in your own browser. GitHub holds only the public half.
+    * KEPT IN YOUR OWN STORAGE ACCOUNT (Backblaze B2, free up to 10 GB):
+      every copy for two days, then one a day for thirty days.
+    * OFF UNTIL YOU SWITCH IT ON, after the setup in step Q.
+    * RECOVERY.md: what to do in each of the ten cases of your brief, how
+      a copy is restored (never over a working shop), and the drill every
+      three months.
+    * AFTER A RESTORE: Admin > Settings > Backups asks Lenco and
+      Flutterwave what happened after the copy, and holds refunds until
+      you finish, so nothing is paid or refunded twice.
+    * EACH SQL FILE FROM THE CHAT: the steps now say so (the folder's
+      copies are the same files).
 
   WHAT CHANGED IN 91
     * THE FRAUD CHECK: every payment (before it starts and when it is

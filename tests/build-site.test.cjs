@@ -210,8 +210,9 @@ try {
   // assets/admin/policies.js and assets/admin/questions.js.
   // 65 since build 91: the admin loads assets/admin/risk.js (Fraud & Risk) and
   // assets/admin/settings/risk.js (its settings).
-  is(stamps === 65 && wrong.length === 0, 'all 65 in the two pages, each matching its file', stamps + ' / ' + wrong.slice(0, 3).join(', '));
-  is(/65 script and stylesheet addresses fingerprinted/.test(r.out), 'and the deploy log says how many');
+  // 66 since build 92: the admin loads assets/admin/settings/backups.js.
+  is(stamps === 66 && wrong.length === 0, 'all 66 in the two pages, each matching its file', stamps + ' / ' + wrong.slice(0, 3).join(', '));
+  is(/66 script and stylesheet addresses fingerprinted/.test(r.out), 'and the deploy log says how many');
   const unstamp = (s) => s.replace(/\?v=[0-9a-f]{10}"/g, '"');
   is(unstamp(read(path.join(DIST, 'index.html'))) === read(path.join(SITE, 'index.html')),
      'index.html: nothing else in the page is changed');

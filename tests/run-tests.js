@@ -68,12 +68,14 @@ const CRITICAL = [
   'lenco', 'lenco-checkout', 'lenco-admin', 'secure-publish',
   'delivery', 'invoice-pdf',
   'shopping', 'product-alerts',
-  'risk'
+  'risk',
+  'backups', 'backups-admin'
 ];   // build 86: account-portal and portal, a customer's own records; build 87: customer-requests, which can cancel an order;
      // build 88: Lenco, the checkout and its settings, and what may never be published;
      // build 89: delivery (a customer's instructions, the courier and tracking number, the platform's door) and the invoice;
      // build 90: shopping (the cart, a customer's gift list and alerts) and the alert emails;
-     // build 91: the fraud check, which can hold a payment or a refund
+     // build 91: the fraud check, which can hold a payment or a refund;
+     // build 92: the backup and the check after a restore (it holds refunds)
 const critical = (f) => CRITICAL.indexOf(base(f)) > -1;
 const started = Date.now();
 let failed = 0, checks = 0;

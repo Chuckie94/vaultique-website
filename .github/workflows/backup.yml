@@ -1,0 +1,96 @@
+# =====================================================================
+# Vaultique Boutique Point — the website's backup (build 92)
+# ---------------------------------------------------------------------
+# A copy of the website's database (the shop's tables, the logins, the
+# pictures' records) and its pictures, made on GitHub's computer, CHECKED BY
+# RESTORING IT into an empty database, sealed with your public key so only
+# your private key opens it, and kept in your own storage account. Every
+# two hours, or every hour (decision D2). tools/backup/backup.cjs does the
+# work; SETUP.md, "Backups", says what to set up, and RECOVERY.md how a copy
+# is used.
+#
+# OFF UNTIL YOU SWITCH IT ON: nothing runs on the schedule until the
+# repository variable BACKUP_ON is "yes" (GitHub > Settings > Secrets and
+# variables > Actions > Variables). So it never fails for lack of a secret.
+#
+# Every hour or every two: BACKUP_EVERY_HOURS, 1 or 2 (2 if not set).
+# A private repository on GitHub Free has 2,000 minutes a month for this and
+# the tests together; a copy takes about two of them (GitHub counts each run
+# as whole minutes), so every two hours (about 720 a month) leaves room for
+# the tests. A public repository's minutes are not counted: choose 1.
+#
+# THE DRILL: Actions > Backup > Run workflow, "drill" ticked. It opens the
+# newest copy with your PRIVATE key (the secret BACKUP_PRIVATE_KEY, which
+# you add for the drill and delete afterwards: RECOVERY.md, "The drill") and
+# restores it. Every three months.
+#
+# Nothing here changes the shop. It reads the database and writes one line
+# about each run (backup_runs, supabase-backup.sql).
+# =====================================================================
+name: Backup
+
+on:
+  schedule:
+    - cron: '17 */2 * * *'        # every two hours, at 17 past
+    - cron: '17 1-23/2 * * *'     # and the hours between, when BACKUP_EVERY_HOURS is 1
+  workflow_dispatch:
+    inputs:
+      drill:
+        description: 'The drill: open the newest copy with your private key, and restore it'
+        type: boolean
+        default: false
+
+# One at a time: a copy still being made is never cut short by the next.
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    # On the schedule only once switched on; the hours between only when hourly.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (vars.BACKUP_ON == 'yes' &&
+       (github.event.schedule == '17 */2 * * *' || vars.BACKUP_EVERY_HOURS == '1'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      # The empty database each copy is restored into, to check it; and the
+      # PostgreSQL 17 tools, never older than Supabase's own database.
+      scratch:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      BACKUP_DB_URL: ${{ secrets.BACKUP_DB_URL }}
+      BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+      BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
+      BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+      BACKUP_S3_KEY_ID: ${{ secrets.BACKUP_S3_KEY_ID }}
+      BACKUP_S3_SECRET: ${{ secrets.BACKUP_S3_SECRET }}
+      BACKUP_PUBLIC_KEY: ${{ vars.BACKUP_PUBLIC_KEY }}
+      WEB_SUPABASE_URL: ${{ vars.WEB_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      BACKUP_PG: docker exec -i ${{ job.services.scratch.id }}
+      BACKUP_SCRATCH_URL: postgresql://postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: A copy, checked by restoring it, sealed and kept
+        if: ${{ !inputs.drill }}
+        run: node tools/backup/backup.cjs copy
+      - name: The drill, with your private key
+        if: ${{ inputs.drill }}
+        env:
+          BACKUP_PRIVATE_KEY: ${{ secrets.BACKUP_PRIVATE_KEY }}
+        run: node tools/backup/backup.cjs drill

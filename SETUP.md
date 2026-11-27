@@ -60,8 +60,15 @@ You will do five short steps. It takes about 10 minutes.
 >  and one more (build 91):
 > 39 supabase-risk.sql             the fraud check's cases and the sealed
 >                                  record
+>  and one more (build 92):
+> 40 supabase-backup.sql           the backups' and the restore check's records
 >                                  then supabase-hardening.sql once more
 > ```
+>
+> **Build 92, on a shop already running:** upload, then run
+> `supabase-backup.sql` once (40 in the list above), pasted from the chat.
+> Then set up the copies themselves ("Backups", below): until then there is
+> no copy of the shop outside Supabase.
 >
 > **Build 91, on a shop already running:** upload, then run
 > `supabase-risk.sql` once (39 in the list above). The hardening is not run
@@ -2044,6 +2051,87 @@ exactly as before.
   stop: whoever holds the database's own password (the Supabase owner) could
   rewrite the record and its copies together. Build 95's copies kept off
   Supabase close that.
+
+### Backups (build 92)
+
+With no Supabase Pro (decision D1), these copies are the shop's only backup.
+GitHub makes them (`.github/workflows/backup.yml`); they are kept in a free
+storage account of your own; only your backup key opens them. RECOVERY.md
+says how they are used. About twenty minutes, once, on a laptop.
+
+**1. Your backup key.** Admin › Settings › Backups › *Make my backup key*.
+The private half is saved to this computer's Downloads as
+`vaultique-backup-private-key-<key>.pem`: copy it at once to two safe
+places (a USB stick kept in a drawer, and a password manager). It is never
+needed on GitHub except during a drill. Without it, no copy can be opened.
+Press *Copy the public half*: you need it in step 3.
+
+**2. A free storage account: Backblaze B2** (10 GB free; any S3-compatible
+service works the same way).
+1. backblaze.com › Sign up for **B2 Cloud Storage**, and verify your email.
+   (Backblaze's sign-up page says no card is needed; if it asks for one, the
+   first 10 GB stay free.)
+2. B2 Cloud Storage › Buckets › *Create a Bucket*: a name of your own (for
+   example `vaultique-backups-7f3k`), **Files in Bucket: Private**, Default
+   Encryption: Enable, Object Lock: Disable. Create.
+3. On the bucket: *Lifecycle Settings* › **Keep only the last version of the
+   file**. (Otherwise B2 keeps every copy the backup lets go, and they count
+   against the 10 GB.)
+4. Note the bucket's **Endpoint**, shown with it, such as
+   `s3.eu-central-003.backblazeb2.com`; the **region** is its middle part
+   (`eu-central-003`).
+5. Application Keys › *Add a New Application Key*: name `vaultique-backup`,
+   **Allow access to Bucket(s): this bucket only**, Type of Access: **Read and
+   Write**. Create. Copy the **keyID** and the **applicationKey** now: B2
+   shows the second only once.
+
+**3. GitHub** (your website's repository › Settings › Secrets and variables
+› Actions).
+On the **Secrets** tab, *New repository secret*, one by one:
+
+| Name | Its value |
+|---|---|
+| `BACKUP_DB_URL` | Supabase › the website's project › *Connect* › **Session pooler**: the address beginning `postgresql://postgres.`, with `[YOUR-PASSWORD]` replaced by the database password (Project Settings › Database; if nobody has it, *Reset database password* there: the website itself never uses it) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase › Project Settings › API › `service_role` (the same as in Netlify) |
+| `BACKUP_S3_ENDPOINT` | `https://` and the bucket's Endpoint: `https://s3.eu-central-003.backblazeb2.com` |
+| `BACKUP_S3_REGION` | the region: `eu-central-003` |
+| `BACKUP_S3_BUCKET` | the bucket's name |
+| `BACKUP_S3_KEY_ID` | the keyID |
+| `BACKUP_S3_SECRET` | the applicationKey |
+
+On the **Variables** tab, *New repository variable*:
+
+| Name | Its value |
+|---|---|
+| `BACKUP_PUBLIC_KEY` | the public half from step 1 (from `-----BEGIN PUBLIC KEY-----` to the end) |
+| `WEB_SUPABASE_URL` | the website's Supabase address, `https://….supabase.co` |
+| `BACKUP_EVERY_HOURS` | `2`. If the repository is **public**, `1` (GitHub does not count a public repository's minutes). A private one on GitHub Free has 2,000 minutes a month for the copies and the tests together: every two hours uses about 720 |
+| `BACKUP_ON` | `yes`, last |
+
+**4. The first copy.** GitHub › Actions › **Backup** › *Run workflow* (leave
+*drill* unticked) › Run. In a few minutes it is green; open it to see its
+summary (tables, rows, logins, pictures). Admin › Settings › Backups then
+says *The last copy … checked out by restoring it*, with your key's name.
+From then on a copy is made every two hours (or every hour) by itself, and
+GitHub emails you if one fails. If Actions has no **Backup** in its list,
+the `.github` folder did not come along with the upload (a Mac hides it):
+make `.github/workflows/backup.yml` by hand, as HOW-TO-UPLOAD.txt (B, last
+step) does for `tests.yml`, with this folder's copy pasted in.
+
+**5. The drill, within three months** (RECOVERY.md, "The drill"): your
+private key added for the drill as the secret `BACKUP_PRIVATE_KEY`, *Run
+workflow* with *drill* ticked, then the secret deleted.
+
+Good to know:
+- **Nothing in the shop depends on the copies.** Switching them off
+  (`BACKUP_ON` to anything but `yes`) changes nothing for customers.
+- **A copy holds** the shop's tables with all their rules, the customers'
+  and the team's logins (passwords stay as Supabase keeps them, encrypted;
+  sign-in sessions are not copied), the pictures' records, and the pictures.
+  Analytics and chats are tables like any other, and are in it.
+- **A public repository** has its scheduled jobs paused by GitHub after 60
+  days without a change to it; GitHub emails first, and Actions › Backup ›
+  *Enable workflow* starts them again.
 
 ### Settings > Pricing & Tax
 
