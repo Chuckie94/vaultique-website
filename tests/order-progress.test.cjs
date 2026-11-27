@@ -15,6 +15,13 @@
      6. a refund: emailed once, in the shop's money; not when told not to;
      7. no email set up, no address, old news: nothing sent, nothing marked,
         and delivery still marked; no service key: nothing at all.
+     8. BUILD 87 · customers' requests (supabase-customer-requests.sql):
+        before that SQL, nothing; the shop told of each new one, once, at
+        its own address; one withdrawn first, or too old, not at all; the
+        customer told of each answer, once each, with the shop's word the
+        first time and with a refusal; a cancel paid online told how the
+        money comes back; no email set up, no address: nothing sent,
+        nothing marked.
    =========================================================================== */
 const http = require('http');
 const path = require('path');
@@ -104,6 +111,18 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'PATCH') {
       const patch = JSON.parse(body);
       const hit = DB.orders.filter(r => matches(r, fs));
+      hit.forEach(r => Object.assign(r, patch));
+      return /return=minimal/.test(req.headers.prefer || '') ? send(204) : send(200, hit);
+    }
+  }
+  if (p === '/web/rest/v1/order_requests') {
+    if (!service) return send(401, {});
+    if (!DB.order_requests) return send(404, { code: 'PGRST205', message: 'Could not find the table public.order_requests in the schema cache' });
+    const fs = filters(u.search.slice(1));
+    if (req.method === 'GET') return send(200, DB.order_requests.filter(r => matches(r, fs)).map(r => JSON.parse(JSON.stringify(r))));
+    if (req.method === 'PATCH') {
+      const patch = JSON.parse(body);
+      const hit = DB.order_requests.filter(r => matches(r, fs));
       hit.forEach(r => Object.assign(r, patch));
       return /return=minimal/.test(req.headers.prefer || '') ? send(204) : send(200, hit);
     }
@@ -263,6 +282,96 @@ const server = http.createServer(async (req, res) => {
     is(r.skipped === 'no service key' && order('VB-NOKEY').status === 'dispatched' && MAIL.length === 0,
        'no service key: nothing at all', J(r));
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-key';
+
+    console.log('\n8. Customers\' requests (website 87)');
+    reset();
+    DB.orders.push(base({ id: 'q-o1', ref: 'VB-RQM01', status: 'delivered', delivered_at: ago(2 * D), delivered_mailed_at: ago(2 * D) }));
+    r = await run();
+    is(r.requestsShop === 0 && r.requestsCustomer === 0 && MAIL.length === 0,
+       'before supabase-customer-requests.sql: nothing sent, and the rest of the check runs as before', J(r));
+    const rq = (o) => Object.assign({ ref: 'RQ-' + o.id.toUpperCase() + 'AB', kind: 'return', reason: 'wrong_size', detail: null, wants: null,
+      items: [{ sku: 'LD-9', name: 'Linen Dress', qty: 1 }], status: 'requested', answer: null, decided_at: null,
+      created_at: ago(10 * 60000), updated_at: ago(10 * 60000), shop_told_at: null, customer_told: null }, o);
+    SETTINGS.contact = { email: 'desk@example.com' };
+    DB.order_requests = [
+      rq({ id: 'q1', order_id: 'q-o1', order_ref: 'VB-RQM01', detail: 'Too small for me.' }),
+      rq({ id: 'q2', order_id: 'q-o1', order_ref: 'VB-RQM01', kind: 'problem', reason: 'damaged', status: 'withdrawn' }),
+      rq({ id: 'q3', order_id: 'q-o1', order_ref: 'VB-RQM01', kind: 'problem', reason: 'missing', created_at: ago(3 * D), updated_at: ago(3 * D) }),
+    ];
+    r = await run();
+    const desk = mails('desk@example.com');
+    is(r.requestsShop === 1 && desk.length === 1 && desk[0].subject === 'Customer request: a return from order VB-RQM01',
+       'a new request: the shop emailed, once, at the address in Settings > Contact', J([r, desk.map(m => m.subject)]));
+    is(desk[0] && /A customer has asked to return pieces from order VB-RQM01\./.test(desk[0].text) && /Customer: Test Buyer/.test(desk[0].text) &&
+       /Reason: The size or fit is wrong/.test(desk[0].text) && /Pieces: Linen Dress/.test(desk[0].text) &&
+       /In their words: Too small for me\./.test(desk[0].text) && /Request RQ-Q1AB, \w+ \d+ \w+, \d\d:\d\d\./.test(desk[0].text) &&
+       /Admin > Orders/.test(desk[0].text) && /Online Orders/.test(desk[0].text),
+       'what was asked, why, which pieces, their words, the request\'s number and when, and where to answer it', desk[0] && desk[0].text);
+    is(DB.order_requests[0].shop_told_at != null && DB.order_requests[1].shop_told_at == null && DB.order_requests[2].shop_told_at == null,
+       'marked told; one withdrawn before the shop was told, and one too old, not sent at all', J(DB.order_requests.map(x => x.shop_told_at)));
+    is(mails('buyer@example.com').length === 0, 'the customer is not emailed while the shop has not answered');
+    await run();
+    is(mails('desk@example.com').length === 1, 'once only');
+
+    Object.assign(DB.order_requests[0], { status: 'accepted', answer: 'Bring it to the shop any day this week.', decided_at: ago(60000), updated_at: ago(60000) });
+    r = await run();
+    let mine = mails('buyer@example.com');
+    is(r.requestsCustomer === 1 && mine.length === 1 && mine[0].subject === 'Your request for order VB-RQM01: accepted' &&
+       /^Hello Test,/.test(mine[0].text) && /We have accepted your request to return Linen Dress from your order VB-RQM01\./.test(mine[0].text) &&
+       /From the shop: Bring it to the shop any day this week\./.test(mine[0].text) &&
+       /https:\/\/vaultiqueboutique\.com\/account\/orders\/VB-RQM01/.test(mine[0].text),
+       'accepted: the customer emailed at the order\'s address, with the shop\'s word and the order\'s page', mine[0] && mine[0].text);
+    is(DB.order_requests[0].customer_told === 'accepted', 'marked as told: accepted');
+    await run();
+    is(mails('buyer@example.com').length === 1, 'once only');
+    Object.assign(DB.order_requests[0], { status: 'done', updated_at: ago(30000) });
+    await run();
+    mine = mails('buyer@example.com');
+    is(mine.length === 2 && mine[1].subject === 'Your request for order VB-RQM01: done' &&
+       /Your return from order VB-RQM01 is done\./.test(mine[1].text) && !/From the shop/.test(mine[1].text) &&
+       DB.order_requests[0].customer_told === 'done',
+       'done: told again, once, without repeating the word they already had', mine[1] && mine[1].text);
+
+    reset();
+    SETTINGS.contact = { email: 'desk@example.com' };
+    DB.orders.push(base({ id: 'q-o2', ref: 'VB-RQM02', status: 'cancelled' }));
+    DB.orders.push(base({ id: 'q-o3', ref: 'VB-RQM03', status: 'pending', email: 'paid@example.com', payment_method: 'online', payment_status: 'paid' }));
+    DB.orders.push(base({ id: 'q-o4', ref: 'VB-RQM04', status: 'delivered', email: 'swap@example.com' }));
+    DB.orders.push(base({ id: 'q-o5', ref: 'VB-RQM05', status: 'delivered', email: null }));
+    const told = () => ago(60000);
+    DB.order_requests = [
+      rq({ id: 'q4', order_id: 'q-o2', order_ref: 'VB-RQM02', kind: 'cancel', reason: 'changed_mind', items: [], status: 'done',
+           answer: 'Cancelled as you asked.', shop_told_at: told(), updated_at: told() }),
+      rq({ id: 'q5', order_id: 'q-o3', order_ref: 'VB-RQM03', kind: 'cancel', reason: 'too_slow', items: [], status: 'accepted',
+           shop_told_at: told(), updated_at: told() }),
+      rq({ id: 'q6', order_id: 'q-o4', order_ref: 'VB-RQM04', kind: 'exchange', reason: 'quality', wants: 'Another colour',
+           status: 'declined', answer: 'We have no other colour, sorry.', shop_told_at: told(), updated_at: told() }),
+      rq({ id: 'q7', order_id: 'q-o5', order_ref: 'VB-RQM05', status: 'accepted', shop_told_at: told(), updated_at: told() }),
+    ];
+    r = await run();
+    const c1 = mails('buyer@example.com'), c2 = mails('paid@example.com'), c3 = mails('swap@example.com');
+    is(c1.length === 1 && c1[0].subject === 'Your order VB-RQM02 is cancelled' && /Your order VB-RQM02 is cancelled, as you asked\./.test(c1[0].text) &&
+       /From the shop: Cancelled as you asked\./.test(c1[0].text), 'a cancel accepted and done at once: one email, "cancelled", with the shop\'s word', c1[0] && c1[0].text);
+    is(c2.length === 1 && /We have accepted your request to cancel your order VB-RQM03\./.test(c2[0].text) &&
+       /You paid online, so your money comes back the way you paid\. We will email you when the refund is made\./.test(c2[0].text),
+       'a cancel of an order paid online: how the money comes back, and that the refund is emailed', c2[0] && c2[0].text);
+    is(c3.length === 1 && c3[0].subject === 'Your request for order VB-RQM04: not accepted' &&
+       /We are sorry: we could not accept your request to exchange Linen Dress from your order VB-RQM04\./.test(c3[0].text) &&
+       /From the shop: We have no other colour, sorry\./.test(c3[0].text), 'declined: said so, with the shop\'s reason', c3[0] && c3[0].text);
+    is(r.requestsCustomer === 3 && DB.order_requests[3].customer_told == null, 'an order with no address: nobody emailed, nothing marked', J(r));
+    is(mails('desk@example.com').length === 0, 'requests the shop was already told of are not sent to it again');
+
+    reset();
+    SETTINGS.notifications.emailEnabled = false;
+    DB.orders.push(base({ id: 'q-o6', ref: 'VB-RQM06', status: 'delivered' }));
+    DB.order_requests = [
+      rq({ id: 'q8', order_id: 'q-o6', order_ref: 'VB-RQM06' }),
+      rq({ id: 'q9', order_id: 'q-o6', order_ref: 'VB-RQM06', kind: 'problem', reason: 'missing', status: 'accepted', shop_told_at: ago(60000), updated_at: ago(60000) }),
+    ];
+    r = await run();
+    is(MAIL.length === 0 && DB.order_requests[0].shop_told_at == null && DB.order_requests[1].customer_told == null,
+       'email not set up: nothing sent, and nothing marked as told', J(DB.order_requests));
+    delete DB.order_requests;
   } catch (e) {
     fail('the test ran to its end', e && e.stack);
   }

@@ -61,11 +61,11 @@ const ON_GITHUB = !!process.env.GITHUB_ACTIONS;
    file's base name, so a name covers both its node and its browser file. */
 const CRITICAL = [
   'account-delete', 'account-portal', 'account-signup', 'admin-escaping', 'admin-session', 'admin-two-factor',
-  'build-site', 'cart-stock', 'checkout-choice', 'csp', 'csp-report', 'deploy-gate', 'health', 'one-key',
+  'build-site', 'cart-stock', 'checkout-choice', 'csp', 'csp-report', 'customer-requests', 'deploy-gate', 'health', 'one-key',
   'online-refund', 'order-progress', 'password-reset', 'pay-readiness', 'payment-return',
   'payments', 'payments-74', 'payments-77', 'place-order', 'portal', 'pos-orders', 'product-door',
   'rewards-door', 'runner', 'safe-links', 'sql-hidden', 'test-orders-sync'
-];   // build 86: account-portal and portal, a customer's own records
+];   // build 86: account-portal and portal, a customer's own records; build 87: customer-requests, which can cancel an order
 const critical = (f) => CRITICAL.indexOf(base(f)) > -1;
 const started = Date.now();
 let failed = 0, checks = 0;

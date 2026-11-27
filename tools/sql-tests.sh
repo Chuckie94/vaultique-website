@@ -83,6 +83,9 @@ run pos-orders-80    $POS supabase-payment-history.sql supabase-order-progress.s
 # Build 85: a test payment is never rung up. supabase-test-orders.sql, run
 # twice over the till's file, and every check of the till still passes.
 run test-orders      $POS supabase-test-orders.sql supabase-test-orders.sql tests/pos-orders.sql
+# Build 87: customers' requests (supabase-customer-requests.sql), run twice
+# over the till's door and an order's progress, then its checks.
+run requests         $POS supabase-payment-history.sql tests/order-progress-fixture.sql supabase-order-progress.sql supabase-customer-requests.sql supabase-customer-requests.sql tests/customer-requests.sql
 as "dropdb --if-exists $DB" >/dev/null 2>&1
 
 # Build 80 · an order's progress (supabase-order-progress.sql). Its own

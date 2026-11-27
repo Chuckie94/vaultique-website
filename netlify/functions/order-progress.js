@@ -18,6 +18,11 @@
 //      website 81 the platform's Online Refund sends it sooner, while the
 //      refund is being followed (tellRefunds, below, called by
 //      _refund.js); this stays for any not sent that way.
+//   6. BUILD 87 · customers' requests (supabase-customer-requests.sql):
+//      emails the shop each new one (cancel, return, exchange, a problem),
+//      once, and the customer each answer the shop gives (accepted, not
+//      accepted, done), once each. Before that SQL there is no table, and
+//      this step says nothing and changes nothing.
 //
 // Without the service key, or before supabase-order-progress.sql has been
 // run, it stops at once and changes nothing. Without email set up in
@@ -169,7 +174,158 @@ async function run() {
       }
     }
   }
+
+  // 6) Customers' requests: the shop told of each new one, the customer of
+  //    each answer. Once each.
+  if (!late()) {
+    const told = await requestEmails(late, fresh);
+    out.requestsShop = told.shop;
+    out.requestsCustomer = told.customer;
+  }
   return out;
+}
+
+/* ---- BUILD 87 · customers' requests (supabase-customer-requests.sql) ----
+   A signed-in customer asks, from their order in their account; the shop
+   answers in the business platform's Online Orders (platform 512) or in
+   Admin > Orders. Here, every fifteen minutes: the shop is emailed each
+   new request, and the customer each answer. A request withdrawn before
+   the shop was told is not sent to it. Email not set up, or an address
+   missing: nothing sent, nothing marked, as above. */
+const REQ_COLS = 'id,ref,order_id,order_ref,kind,reason,detail,wants,items,status,answer,created_at,updated_at,' +
+  'shop_told_at,customer_told';
+const REASON_SAID = {
+  changed_mind: 'Changed their mind', ordered_by_mistake: 'Ordered it by mistake', too_slow: 'It is taking too long',
+  wrong_size: 'The size or fit is wrong', not_as_shown: 'Not as shown on the website', damaged: 'It arrived damaged',
+  quality: 'A problem with its quality', wrong_item: 'Not what they ordered', missing: 'Something is missing',
+  other: 'Something else (in their words, below)'
+};
+function pieces(rq) {
+  return (Array.isArray(rq.items) ? rq.items : [])
+    .map((i) => (Number(i.qty) > 1 ? i.qty + ' \u00d7 ' : '') + (i.name || i.sku || ''))
+    .filter(Boolean).join(', ');
+}
+function forTheShop(rq, o) {
+  const ref = rq.order_ref;
+  const what = {
+    cancel: 'A customer has asked to cancel order ' + ref + '.',
+    return: 'A customer has asked to return pieces from order ' + ref + '.',
+    exchange: 'A customer has asked to exchange pieces from order ' + ref + '.',
+    problem: 'A customer has reported a problem with order ' + ref + '.'
+  }[rq.kind] || 'A customer has asked about order ' + ref + '.';
+  const lines = [what];
+  const facts = [];
+  if (o && o.name) facts.push('Customer: ' + o.name);
+  facts.push('Reason: ' + (REASON_SAID[rq.reason] || rq.reason));
+  if (pieces(rq)) facts.push('Pieces: ' + pieces(rq));
+  if (rq.wants) facts.push('Would like instead: ' + rq.wants);
+  if (rq.detail) facts.push('In their words: ' + rq.detail);
+  facts.push('Request ' + rq.ref + ', ' + when(rq.created_at) + '.');
+  lines.push(facts.join('\n'));
+  lines.push('Accept or decline it in Admin > Orders on the website, or in the business platform\'s Online Orders. ' +
+             'The customer is emailed your answer.');
+  return lines;
+}
+function forTheCustomer(rq, o) {
+  const ref = rq.order_ref;
+  const pcs = pieces(rq);
+  const paidOnline = o && o.payment_method === 'online' && o.payment_status === 'paid';
+  const asked = {
+    cancel: 'to cancel your order ' + ref,
+    return: 'to return ' + (pcs || 'pieces') + ' from your order ' + ref,
+    exchange: 'to exchange ' + (pcs || 'pieces') + ' from your order ' + ref,
+    problem: 'about the problem with your order ' + ref
+  }[rq.kind] || 'about your order ' + ref;
+  const lines = [];
+  let subject;
+  if (rq.status === 'accepted') {
+    subject = 'Your request for order ' + ref + ': accepted';
+    lines.push(rq.kind === 'problem'
+      ? 'We have looked at the problem you reported with your order ' + ref + ', and we will put it right.'
+      : 'We have accepted your request ' + asked + '.');
+    if (rq.kind === 'cancel') {
+      lines.push(paidOnline
+        ? 'You paid online, so your money comes back the way you paid. We will email you when the refund is made.'
+        : 'We will email you again once it is cancelled.');
+    } else {
+      lines.push('We will be in touch to arrange it.');
+    }
+  } else if (rq.status === 'declined') {
+    subject = 'Your request for order ' + ref + ': not accepted';
+    lines.push('We are sorry: we could not accept your request ' + asked + '.');
+  } else {
+    subject = rq.kind === 'cancel' ? 'Your order ' + ref + ' is cancelled' : 'Your request for order ' + ref + ': done';
+    lines.push({
+      cancel: 'Your order ' + ref + ' is cancelled, as you asked.',
+      return: 'Your return from order ' + ref + ' is done.',
+      exchange: 'Your exchange from order ' + ref + ' is done.',
+      problem: 'The problem with your order ' + ref + ' has been put right.'
+    }[rq.kind] || 'Your request about order ' + ref + ' is done.');
+  }
+  // The shop's word, the first time the customer hears, and with a refusal.
+  if (rq.answer && (rq.customer_told == null || rq.status === 'declined')) lines.push('From the shop: ' + rq.answer);
+  lines.push('If you have a question, reply to this email.');
+  const base = P.siteOrigin();
+  if (base) lines.push('Your order: ' + base + '/account/orders/' + enc(ref));
+  return { subject, lines };
+}
+
+async function requestEmails(late, fresh) {
+  const told = { shop: 0, customer: 0 };
+  let fresh1, answered;
+  try {
+    fresh1 = await P.svc('GET', 'order_requests?select=' + REQ_COLS + '&status=eq.requested&shop_told_at=is.null' +
+                         '&created_at=gt.' + enc(fresh) + '&order=created_at.asc&limit=' + MAX_PER_STEP);
+    answered = await P.svc('GET', 'order_requests?select=' + REQ_COLS + '&status=in.(accepted,declined,done)' +
+                           '&updated_at=gt.' + enc(fresh) + '&order=updated_at.asc&limit=200');
+  } catch (e) {
+    return told;    // supabase-customer-requests.sql not run yet
+  }
+  const due = (answered || []).filter((r) => r.customer_told !== r.status).slice(0, MAX_PER_STEP);
+  if (!(fresh1 || []).length && !due.length) return told;
+
+  const ids = Array.from(new Set((fresh1 || []).concat(due).map((r) => r.order_id).filter(Boolean)));
+  let orders = [];
+  if (ids.length) {
+    const q = 'orders?id=in.(' + ids.map(enc).join(',') + ')&select=';
+    orders = await P.svc('GET', q + 'id,ref,name,email,payment_method,payment_status')
+      .catch(() => P.svc('GET', q + 'id,ref,name,email').catch(() => []));
+  }
+  const byId = {};
+  for (const o of (orders || [])) byId[String(o.id)] = o;
+
+  if ((fresh1 || []).length) {
+    let shopTo = '';
+    try {
+      const [s, a] = await Promise.all([P.shopSettings(), M.mailAccount()]);
+      shopTo = String((s.contact && s.contact.email) || a.pub.replyTo || a.pub.senderEmail || '').trim();
+    } catch (e) { shopTo = ''; }
+    for (const rq of fresh1) {
+      if (late() || !shopTo) break;
+      const o = byId[String(rq.order_id)] || null;
+      const subject = {
+        cancel: 'Customer request: cancel order ', return: 'Customer request: a return from order ',
+        exchange: 'Customer request: an exchange from order ', problem: 'Customer request: a problem with order '
+      }[rq.kind] || 'Customer request: order ';
+      if (await M.shopMail(shopTo, subject + rq.order_ref, forTheShop(rq, o))) {
+        await P.svc('PATCH', 'order_requests?id=eq.' + enc(rq.id) + '&shop_told_at=is.null',
+                    { shop_told_at: iso(Date.now()) }, 'return=minimal');
+        told.shop++;
+      }
+    }
+  }
+
+  for (const rq of due) {
+    if (late()) break;
+    const o = byId[String(rq.order_id)];
+    if (!o || !o.email) continue;
+    const m = forTheCustomer(rq, o);
+    if (await M.shopMail(o.email, m.subject, ['Hello ' + first(o.name) + ','].concat(m.lines))) {
+      await P.svc('PATCH', 'order_requests?id=eq.' + enc(rq.id), { customer_told: rq.status }, 'return=minimal');
+      told.customer++;
+    }
+  }
+  return told;
 }
 
 exports.handler = async function () {
@@ -220,4 +376,4 @@ async function tellRefunds(ids, budget) {
   return n;
 }
 
-exports._internals = { run, when, link, tellRefunds, FRESH_HOURS, MAX_PER_STEP };
+exports._internals = { run, when, link, tellRefunds, requestEmails, forTheShop, forTheCustomer, FRESH_HOURS, MAX_PER_STEP };

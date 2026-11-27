@@ -69,17 +69,20 @@ echo "$out" | grep -q "Telling a customer you have replied.*NOT RUN YET (optiona
 # Before supabase-test-orders.sql (build 85), and the till, the report says so.
 echo "$out" | grep -q "A test payment is never rung up.*NOT RUN YET" \
   || { echo "   the report does not say a test payment's rule is not run yet"; fail=1; }
+# Before supabase-customer-requests.sql (build 87), the report says so.
+echo "$out" | grep -q "Customer requests.*NOT RUN YET (optional)" \
+  || { echo "   the report does not say customers' requests are not run yet"; fail=1; }
 
-echo "3. The files made after the hardening (builds 80, 81, 83 and 85), twice each, then the hardening once more"
+echo "3. The files made after the hardening (builds 80, 81, 83, 85 and 87), twice each, then the hardening once more"
 AFTER="supabase-pos-orders.sql supabase-payment-history.sql supabase-order-progress.sql supabase-online-refund.sql
-supabase-chat-reply-push.sql supabase-test-orders.sql"
+supabase-chat-reply-push.sql supabase-test-orders.sql supabase-customer-requests.sql"
 for f in $AFTER; do
   for n in 1 2; do
     out=$(run "$here/$f") || { echo "   FAILED  $f (run $n)"; echo "$out" | grep -E 'ERROR|LINE' | head -3 | sed 's/^/           /'; fail=1; }
   done
 done
 out=$(run "$here/supabase-hardening.sql") || { echo "   FAILED: the hardening after them"; echo "$out" | grep -E 'ERROR|LINE|CONTEXT' | head -4 | sed 's/^/           /'; fail=1; }
-[ $fail -eq 0 ] && echo "   all 6 ran, twice, and the hardening ran after them"
+[ $fail -eq 0 ] && echo "   all 7 ran, twice, and the hardening ran after them"
 # supabase-test-orders.sql's own check row (build 85) says OK.
 out85=$(run "$here/supabase-test-orders.sql") || fail=1
 echo "$out85" | grep -q "OK · a test payment is never rung up" \
@@ -93,6 +96,15 @@ echo "$out" | grep -q "Telling a customer you have replied.*OK · the chat windo
 echo "$out" | grep -q "A test payment is never rung up.*OK · a test payment is never rung up" \
   && echo "   the report: a test payment is never rung up, OK" \
   || { echo "   the report does not say a test payment is never rung up"; echo "$out" | grep "A test payment" | sed 's/^/           /'; fail=1; }
+# supabase-customer-requests.sql's own check row (build 87) says OK, and the
+# report says the platform can reach the requests with its key.
+out87=$(run "$here/supabase-customer-requests.sql") || fail=1
+echo "$out87" | grep -q "OK · customers can ask, the shop decides" \
+  && echo "   supabase-customer-requests.sql says: OK · customers can ask, the shop decides" \
+  || { echo "   supabase-customer-requests.sql does not say OK"; echo "$out87" | tail -4 | sed 's/^/           /'; fail=1; }
+echo "$out" | grep -q "Customer requests.*OK · the platform's till can reach it with its own key" \
+  && echo "   the report: customer requests, OK · the platform's till can reach it" \
+  || { echo "   the report does not say customer requests are OK"; echo "$out" | grep "Customer requests" | sed 's/^/           /'; fail=1; }
 
 echo "4. Each older file again: each must refuse"
 refused=0

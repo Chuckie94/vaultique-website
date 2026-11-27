@@ -1622,7 +1622,9 @@
         return;
       }
       if (!more) host.innerHTML = '';
-      batch.forEach(function (o) { host.appendChild(orderRow(o)); });
+      var cards = {};
+      batch.forEach(function (o) { var c = orderRow(o); cards[o.id] = c; host.appendChild(c); });
+      requestsFor(batch, cards);     // build 87
       $('ordMoreRow').classList[ordEnd ? 'add' : 'remove']('hide');
     }, function (e) {
       ordBusy = false;
@@ -1836,6 +1838,168 @@
     }
     return '';
   }
+  /* BUILD 87 · customers' requests on their orders (supabase-customer-
+     requests.sql): cancel, return, exchange, a problem, asked from the
+     customer's own account. The business platform answers them in its
+     Online Orders (platform 512); until then, and whenever it suits, an
+     administrator with the orders permission answers here. The customer is
+     emailed each answer by the 15-minute check. Before that SQL, or for
+     someone who may not read them, nothing shows. */
+  var RQ_KIND = { cancel: 'Cancel the order', 'return': 'Return', exchange: 'Exchange', problem: 'A problem' };
+  var RQ_REASON = {
+    changed_mind: 'Changed their mind', ordered_by_mistake: 'Ordered it by mistake', too_slow: 'It is taking too long',
+    wrong_size: 'The size or fit is wrong', not_as_shown: 'Not as shown on the website', damaged: 'It arrived damaged',
+    quality: 'A problem with its quality', wrong_item: 'Not what they ordered', missing: 'Something is missing',
+    other: 'Something else'
+  };
+  var RQ_STATE = {
+    requested: 'Waiting for your answer', accepted: 'Accepted, not done yet', declined: 'Declined',
+    done: 'Done', withdrawn: 'Withdrawn by the customer'
+  };
+  function rqPieces(rq) {
+    return (Array.isArray(rq.items) ? rq.items : []).map(function (i) {
+      return (Number(i.qty) > 1 ? i.qty + ' × ' : '') + (i.name || i.sku || '');
+    }).filter(Boolean).join(', ');
+  }
+  function rqAcceptNote(rq, o) {
+    if (rq.kind === 'cancel') {
+      if (o.payment_method === 'online' && o.payment_status === 'paid') {
+        return 'This order was paid online. Once you accept, refund it in the business platform ' +
+               '(Sales › Online Refund): the refund cancels the order. Then mark this request done.';
+      }
+      if (o.pos_sale_id || o.pos_receipt_no) {
+        return 'The till has rung this order up. Once you accept, undo the sale at the till, then mark this request done.';
+      }
+      return 'The order is cancelled at once, as if you set it to Cancelled, and the customer is emailed.';
+    }
+    if (rq.kind === 'problem') return 'Put it right with the customer, then mark this request done.';
+    return 'Arrange it with the customer: the return at the till, and any refund through the business platform, ' +
+           'as now. Then mark this request done.';
+  }
+  function requestBox(rq, o, card) {
+    var box = document.createElement('div');
+    box.className = 'ord-rq';
+    box.setAttribute('data-rq', rq.ref || '');
+    function line(text, cls) {
+      var e = document.createElement('div');
+      e.className = 'hint' + (cls ? ' ' + cls : '');
+      e.textContent = text;
+      box.appendChild(e);
+    }
+    function paint() {
+      box.innerHTML = '';
+      box.setAttribute('data-state', rq.status || '');
+      var head = document.createElement('div');
+      head.className = 'ord-rq-head';
+      head.innerHTML = '<b>' + escapeHtml('Request ' + (rq.ref || '') + ' · ' + (RQ_KIND[rq.kind] || rq.kind)) + '</b>' +
+        ' <span class="ord-rq-state">' + escapeHtml(RQ_STATE[rq.status] || rq.status) + '</span>';
+      box.appendChild(head);
+      line('Reason: ' + (RQ_REASON[rq.reason] || rq.reason));
+      if (rqPieces(rq)) line('Pieces: ' + rqPieces(rq));
+      if (rq.wants) line('Would like instead: ' + rq.wants);
+      if (rq.detail) line('In their words: ' + rq.detail);
+      line('Asked ' + payAt(rq.created_at));
+      if (rq.answer) line('The answer: ' + rq.answer);
+      if (rq.decided_at) {
+        line('Answered ' + payAt(rq.decided_at) + (rq.decided_by ? ' by ' + rq.decided_by : '') +
+             (rq.decided_from === 'platform' ? ', in the business platform' : rq.decided_from === 'admin' ? ', here' : ''));
+      }
+      if (rq.done_at) line('Done ' + payAt(rq.done_at));
+      if (rq.status !== 'requested' && rq.status !== 'accepted') return;
+      var row = document.createElement('div');
+      row.className = 'row';
+      row.style.marginTop = '8px';
+      var stat = document.createElement('span');
+      stat.className = 'stat';
+      [['accept', 'Accept'], ['done', 'Mark done'], ['decline', 'Decline']].forEach(function (b) {
+        if (b[0] === 'accept' && rq.status !== 'requested') return;
+        if (b[0] === 'done' && rq.status !== 'accepted') return;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-out btn-sm ord-rq-' + b[0];
+        btn.textContent = b[1];
+        btn.addEventListener('click', function () { decide(b[0], stat); });
+        row.appendChild(btn);
+      });
+      row.appendChild(stat);
+      box.appendChild(row);
+    }
+    function decide(decision, stat) {
+      var title = decision === 'accept' ? 'Accept request ' + rq.ref + '?'
+        : decision === 'done' ? 'Mark request ' + rq.ref + ' done?' : 'Decline request ' + rq.ref + '?';
+      var note = decision === 'accept' ? rqAcceptNote(rq, o)
+        : decision === 'done' ? 'The customer is emailed that it is done.'
+        : 'The customer is emailed your answer.';
+      ask(title, {
+        title: decision === 'decline' ? 'Decline' : decision === 'done' ? 'Done' : 'Accept',
+        note: note,
+        okText: decision === 'accept' ? 'Accept' : decision === 'done' ? 'Mark done' : 'Decline',
+        input: { label: decision === 'decline' ? 'Your answer to the customer' : 'A word for the customer (if you like)',
+                 maxLength: 1000 }
+      }).then(function (answer) {
+        if (answer === null || answer === false) return;
+        answer = String(answer || '').trim();
+        if (decision === 'decline' && !answer) {
+          tell('Say why, in a few words: the customer is emailed it.', { title: 'Not declined' });
+          return;
+        }
+        stat.textContent = 'Saving…'; stat.className = 'stat busy';
+        Promise.resolve(sb.rpc('request_decide_admin', { p_id: rq.id, p_decision: decision, p_answer: answer || null }))
+          .then(function (r) {
+            var d = r && !r.error ? r.data : null;
+            if (!d || !d.ok) {
+              stat.textContent = 'Not saved'; stat.className = 'stat err';
+              var why = d && d.why;
+              tell(why === 'not_allowed' ? 'Your role may not answer requests: it needs the Orders permission.'
+                 : why === 'not_now' ? 'This request has changed meanwhile (it is ' + (RQ_STATE[d.status] || d.status) + '). Reload the orders.'
+                 : why === 'answer_needed' ? 'Say why, in a few words: the customer is emailed it.'
+                 : (r && r.error && r.error.message) || 'That could not be saved just now.', { title: 'Not saved' });
+              return;
+            }
+            var was = rq.status;
+            var n = d.request || {};
+            rq.status = n.status || rq.status;
+            rq.answer = n.answer === undefined ? rq.answer : n.answer;
+            rq.decided_at = n.decidedAt || rq.decided_at;
+            rq.decided_by = n.decidedBy || rq.decided_by;
+            rq.decided_from = n.decidedFrom || rq.decided_from;
+            rq.done_at = n.doneAt || rq.done_at;
+            var a = AUDIT();
+            if (a) a.record({ action: 'changed', module: 'Orders', record: o.ref || 'an order',
+                              changes: [{ field: 'request ' + rq.ref, from: was, to: rq.status }] });
+            if (d.orderCancelled) {
+              o.status = 'cancelled';
+              var sel = card && card.querySelector('select');
+              if (sel) sel.value = 'cancelled';
+            }
+            paint();
+            if (d.orderCancelled) tell('The order is cancelled, and the customer will be emailed.', { title: 'Accepted' });
+            else if (d.refundFirst) tell('Now refund it in the business platform (Sales › Online Refund). The refund cancels the order. Then mark this request done.', { title: 'Accepted' });
+          }, function (e) {
+            stat.textContent = 'Not saved'; stat.className = 'stat err';
+            tell((e && e.message) || 'That could not be saved just now.', { title: 'Not saved' });
+          });
+      });
+    }
+    paint();
+    return box;
+  }
+  function requestsFor(batch, cards) {
+    var ids = batch.map(function (o) { return o.id; }).filter(Boolean);
+    if (!ids.length) return;
+    var byId = {};
+    batch.forEach(function (o) { byId[o.id] = o; });
+    Promise.resolve(sb.from('order_requests').select('*').in('order_id', ids).order('created_at', { ascending: true }))
+      .then(function (r) {
+        if (!r || r.error) return;
+        (r.data || []).forEach(function (rq) {
+          var card = cards[rq.order_id], o = byId[rq.order_id];
+          var host = card && card.querySelector('.ord-requests');
+          if (host && o) host.appendChild(requestBox(rq, o, card));
+        });
+      }, function () {});
+  }
+
   function orderRow(o) {
     var d = document.createElement('div');
     d.className = 'card';
@@ -1873,6 +2037,10 @@
       line.textContent = pair[1];
       d.appendChild(line);
     });
+    /* BUILD 87 · the customer's requests on it, filled in by requestsFor. */
+    var reqHost = document.createElement('div');
+    reqHost.className = 'ord-requests';
+    d.appendChild(reqHost);
 
     /* An order paid online: how the total breaks down. */
     if (o.payment_method === 'online' && (Number(o.delivery_fee) || Number(o.tax_total))) {

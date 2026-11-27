@@ -46,8 +46,19 @@ You will do five short steps. It takes about 10 minutes.
 > 33 supabase-chat-reply-push.sql  telling a customer you have replied
 >  and one more (build 85):
 > 34 supabase-test-orders.sql      a test payment is never rung up at the till
+>  and one more (build 87):
+> 35 supabase-customer-requests.sql  customers' requests: cancel, return,
+>                                  exchange, a problem
 >                                  then supabase-hardening.sql once more
 > ```
+>
+> **Build 87, on a shop already running:** upload, then run
+> `supabase-customer-requests.sql` once (35 in the list above). The hardening
+> is not run again for it: the file opens its own two doors to the platform.
+> Whenever the hardening is run from now on, this build's copy (or a later
+> one) keeps them open, and its report has the line *Customer requests*,
+> which should say OK. Requests stay off until Settings > Customer Accounts
+> switches them on ("Customers' requests", below).
 >
 > **Build 85, on a shop already running:** upload, then run
 > `supabase-test-orders.sql` once (34 in the list above): from then on a
@@ -1429,11 +1440,57 @@ goes back to the dashboard.
   Address book, without closing no Close my account; Rewards & membership
   shows when Vaultique Rewards is on in Settings > Shopping.
 - **Not yet:** gift cards and a wallet (switched off in the platform; decision
-  D9 of the portal plan), product alerts (build 89), asking to return,
-  exchange or cancel (build 87), the courier and tracking number (build 88).
+  D9 of the portal plan), product alerts (build 89), the courier and tracking
+  number (build 88).
 - The records only the shop may read (the newsletter list, refunds on their
   way, the payments) are asked of the website's own function,
   `account-portal`, for the signed-in customer only. No setting, no SQL.
+
+#### Customers' requests (build 87)
+
+With **Let customers ask to cancel, return or exchange, or report a problem**
+switched on (it is off until you switch it on, and needs Order history), a
+signed-in customer's order offers, at the bottom of its own page:
+
+- **Cancel this order**, until you have started on it: not rung up at the
+  till, and still Requested or Confirmed.
+- **Return or exchange**, once it has arrived, for **Days after delivery to
+  ask for a return or exchange** (7 unless you change it; 1 to 90).
+- **Report a problem** (missing, damaged, not what they ordered, quality),
+  once it is on its way, and up to 30 days after it arrived.
+
+Each asks for a reason, which pieces and how many, what they would like
+instead (an exchange), and their own words; photos go in the chat with the
+request's number. One open request of each kind per order; the customer can
+withdraw one you have not answered.
+
+**You decide.** From platform build 512, in the platform's Online Orders;
+until then, and whenever it suits, in the website's **Admin > Orders**: each
+request shows under its order with **Accept**, **Decline** (a word for the
+customer is needed, since they are emailed it) and, once accepted,
+**Mark done**. What accepting does:
+
+- **A cancel of an order not paid online and not rung up**: the order is
+  cancelled at once, as if you had set it to Cancelled, and the request is
+  done.
+- **A cancel of an order paid online**: nothing is cancelled by the accept.
+  Refund it in the platform, Sales > Online Refund: the refund cancels the
+  order and sends the money back through Flutterwave, as every refund does.
+  Then mark the request done.
+- **A cancel of an order already rung up**: undo the sale at the till, then
+  mark the request done.
+- **A return, an exchange, a problem**: arrange it with the customer as now,
+  the return at the till and any refund through the platform's Online
+  Refund, then mark it done.
+
+**Emails**, from the 15-minute check: you, for each new request, at the
+address in Settings > Contact (or the reply-to address in Settings >
+Notifications); the customer, for each answer, once each. With email not set
+up, nothing is sent and nothing is marked as sent.
+
+A customer's requests and your answers are in their *Download my personal
+data*; who in the team answered never is. The SQL is
+`supabase-customer-requests.sql` (35 in the list at the top).
 
 #### Closing an account
 

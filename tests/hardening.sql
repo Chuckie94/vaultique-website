@@ -410,7 +410,9 @@ create temp table visitor_list as select unnest(array[
   -- build 81: the online refunds, through the same door and key
   'vbp_pos_refund_find', 'vbp_pos_refund_request', 'vbp_pos_refunds',
   -- build 83: "tell me when the shop replies", each with its conversation's own token
-  'chat_reply_push_key', 'chat_reply_push_save', 'chat_reply_push_has', 'chat_reply_push_drop']::text[]) as name;
+  'chat_reply_push_key', 'chat_reply_push_save', 'chat_reply_push_has', 'chat_reply_push_drop',
+  -- build 87: customers' requests, answered by the platform through the same door and key
+  'vbp_pos_requests', 'vbp_pos_request_decide']::text[]) as name;
 select hchk(count(*) = 0, 'visitors: every function they can call is on the list' ||
             coalesce(' — not on it: ' || string_agg(distinct p.proname, ', '), ''))
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace

@@ -157,11 +157,13 @@ const ORDER_KEYS = ['ref', 'created_at', 'status', 'fulfilment', 'name', 'phone'
   'delivered_at', 'delivered_by', 'refund_state', 'refund_amount', 'refund_ref', 'refund_at'];
 const ITEM_KEYS = ['sku', 'name', 'price', 'qty'];
 const PAYMENT_KEYS = ['tx_ref', 'mode', 'status', 'amount', 'currency', 'channel', 'created_at', 'updated_at'];
+const REQUEST_KEYS = ['ref', 'order_ref', 'kind', 'reason', 'detail', 'wants', 'items', 'status', 'answer',
+  'created_at', 'decided_at', 'done_at'];
 
 async function data(who) {
   const id = enc(who.id);
   const s = (await settings('general').catch(() => null)) || {};
-  const [profile, addresses, orders, newsletterRow, convs, links, asks, holds] = await Promise.all([
+  const [profile, addresses, orders, newsletterRow, convs, links, asks, holds, requests] = await Promise.all([
     rows('customers?id=eq.' + id + '&select=name,phone,wishlist,created_at,updated_at'),
     rows('customer_addresses?customer_id=eq.' + id + '&select=label,recipient,phone,address,city,is_default,created_at&order=created_at.asc'),
     myOrders(who, '*,order_items(*)'),
@@ -170,6 +172,9 @@ async function data(who) {
     rows('rewards_links?user_id=eq.' + id + '&select=cust_no,how,linked_at'),
     rows('rewards_requests?user_id=eq.' + id + '&select=kind,cust_no,name,phone,status,created_at,decided_at&order=created_at.asc'),
     rows('rewards_holds?user_id=eq.' + id + '&select=order_ref,points,value,status,created_at,decided_at&order=created_at.asc'),
+    /* BUILD 87 · what they asked of the shop, and its answers; not who in
+       the team answered (supabase-customer-requests.sql). */
+    rows('order_requests?customer_id=eq.' + id + '&select=' + REQUEST_KEYS.join(',') + '&order=created_at.asc'),
   ]);
   const orderIds = orders.map((o) => String(o.id));
   const refByOrder = {};
@@ -194,6 +199,7 @@ async function data(who) {
     })),
     payments: payments.map((p) => Object.assign({ order_ref: refByOrder[String(p.order_id)] || null }, pick(p, PAYMENT_KEYS))),
     refunds: refundList,
+    requests: requests.map((r) => pick(r, REQUEST_KEYS)),
     newsletter: newsletterRow
       ? { email: newsletterRow.email, joined_at: newsletterRow.created_at, left_at: newsletterRow.unsubscribed_at || null }
       : null,

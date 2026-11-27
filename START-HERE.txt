@@ -1,24 +1,25 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 86
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 87
 ====================================================
 The whole site, cumulative: everything in build 83 (and so 82, 81 and
 80, with the other website line's builds 74 to 78 carried onto it),
 build 84 (a deploy never publishes a build whose own checks fail),
-build 85 (checkout: the website or WhatsApp) and build 86 (the customer
-portal). Upload this and you are up to date. Builds 84, 85 and 86 have
-not been uploaded before: this block is everything to do for all three.
-Upload 86, not 85: builds 84 and 85 as sent would now be stopped by
-Netlify's checks (a check with a date in it, mended in 86).
+build 85 (checkout: the website or WhatsApp), build 86 (the customer
+portal) and build 87 (customers' requests). Upload this and you are up
+to date. Builds 84 to 87 have not been uploaded before: this block is
+everything to do for all four. Upload 87 only: 87 holds 86, 85 and 84,
+and 84 and 85 as sent would now be stopped by Netlify's checks (a check
+with a date in it, mended in 86).
 
-NEW IN 84, 85 AND 86 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
-AND THE CUSTOMER PORTAL.
-  ONE SQL FILE: supabase-test-orders.sql (build 85), new, run once.
-  Build 86 adds none. About fifteen minutes. Do these in order. Each one
-  says how you know it is done.
+NEW IN 84 TO 87 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
+THE CUSTOMER PORTAL, AND CUSTOMERS' REQUESTS.
+  TWO SQL FILES, each new, each run once: supabase-test-orders.sql
+  (build 85) and supabase-customer-requests.sql (build 87). About twenty
+  minutes. Do these in order. Each one says how you know it is done.
 
   A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete.
      Done when: Netlify > Deploys shows it as Published.
      Its log (open the deploy) now has a line near the top:
-       Checks: node: 39 of 40 files passed, 1 skipped, 1088 checks, ...
+       Checks: node: 39 of 40 files passed, 1 skipped, 1105 checks, ...
        before publishing.
      (the one skipped needs a database; it runs on GitHub's database job.)
      If it says BUILD STOPPED instead: nothing was published, the site
@@ -36,10 +37,18 @@ AND THE CUSTOMER PORTAL.
      platform's till like a real one: do not try online payment in Test
      mode before this step.
 
-  C. OPEN https://vaultiqueboutique.com/api/health on your phone.
-     Done when: it says "status":"working" and "build":86.
+  C. RUN supabase-customer-requests.sql the same way, in the WEBSITE's
+     Supabase. The SQL is also in the chat. It changes no order,
+     payment, setting or key, and is safe to run again.
+     Done when: its result line says
+       OK · customers can ask, the shop decides | OK
+     Nothing changes for your customers yet: requests stay switched off
+     until step G.
 
-  D. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
+  D. OPEN https://vaultiqueboutique.com/api/health on your phone.
+     Done when: it says "status":"working" and "build":87.
+
+  E. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
      gold; the cart says Checkout, in gold. Press Buy, fill in the
      details: at the bottom, WhatsApp checkout, green. Until Flutterwave
      is set up that is the only one, whatever Settings > Payments says.
@@ -51,16 +60,48 @@ AND THE CUSTOMER PORTAL.
      Done when: you have seen the gold Buy and the green WhatsApp
      checkout.
 
-  E. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
+  F. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
      person at the top of the shop; not the admin): the navy top saying
      Welcome back, with your orders, wishlist and points, then My
      shopping, My Vault and Security and privacy. Tap My orders,
      then View order on one of them.
      Done when: you have seen the dashboard and an order's own page.
 
-  F. WATCH THE CHECKS ON GITHUB (Actions > Tests).
+  G. CUSTOMERS' REQUESTS, WHEN YOU WANT THEM (you may leave this until
+     the platform has build 512). Admin > Settings > Customer Accounts:
+     switch on "Let customers ask to cancel, return or exchange, or
+     report a problem", check "Days after delivery to ask for a return
+     or exchange" (7 unless you change it), Save. Until the platform has
+     build 512, you answer each request in the website's Admin > Orders,
+     under its order: Accept, Decline (with a word for the customer) and
+     Mark done. You are emailed each new one, at the email address in
+     Settings > Contact.
+     Done when: signed in as a customer, one of your own orders that is
+     not yet prepared shows Cancel this order (a minute after saving).
+
+  H. WATCH THE CHECKS ON GITHUB (Actions > Tests).
      Done when: the newest Tests run has a green tick. A minute later
-     GitHub > Code > Tags shows website-86 (Actions > Release tag).
+     GitHub > Code > Tags shows website-87 (Actions > Release tag).
+
+  WHAT CHANGED IN 87
+    * CUSTOMERS ASK, FROM THEIR OWN ORDER: cancel it, before you have
+      started on it; return or exchange pieces, within the days you set
+      after it arrived; report a problem, once it is on its way and up
+      to 30 days after it arrived. Each with a reason, the pieces and how
+      many, what they would like instead, and their own words. Photos go
+      in the chat, with the request's number.
+    * YOU DECIDE: accept or decline, with a word for the customer, then
+      mark it done. In the platform's Online Orders from platform build
+      512; until then, and whenever it suits, in Admin > Orders.
+    * A CANCEL YOU ACCEPT cancels the order when it is not paid online and
+      not rung up. One paid online is cancelled by its refund, in the
+      platform (Sales > Online Refund), never by the accept itself. One
+      already rung up: undo the sale at the till, then mark it done.
+    * THE CUSTOMER SEES EACH STEP, on the order and in Returns & refunds,
+      and can withdraw a request you have not answered.
+    * EMAILS: you, for each new request; the customer, for each answer.
+    * DOWNLOAD MY PERSONAL DATA now includes their requests and your
+      answers, never who in the team answered.
 
   WHAT CHANGED IN 86
     * THE CUSTOMER'S ACCOUNT IS A PORTAL, as in your screenshots, with
@@ -74,8 +115,7 @@ AND THE CUSTOMER PORTAL.
       way, Ready for collection, Delivered or Collected, Completed,
       Cancelled; five steps on its own page.
     * RETURNS & REFUNDS: every refund, the one Flutterwave is still
-      sending included. To return or exchange: Message us (forms come
-      with build 87).
+      sending included (and, from 87, every request).
     * THE PASSWORD IN USE IS ASKED FIRST. SIGN OUT IS THIS DEVICE ONLY:
       until now it signed the customer out of every device. Sign out of
       my other devices, and Sign out everywhere, are on their own page.

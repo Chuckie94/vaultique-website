@@ -75,6 +75,10 @@
     historyScope: 'all',
     historyMonths: 12,
 
+    // BUILD 87 · customers' requests (supabase-customer-requests.sql)
+    customerRequests: false,
+    returnDays: 7,
+
     savedAddresses: true,
     maxAddresses: 5,
 
@@ -200,6 +204,12 @@
                 showIf: function (v) {
                   return on(v) && !!v.orderHistory && v.historyScope === 'recent';
                 } },
+              { type: 'toggle', name: 'customerRequests',
+                label: 'Let customers ask to cancel, return or exchange, or report a problem',
+                showIf: function (v) { return on(v) && !!v.orderHistory; } },
+              { type: 'number', name: 'returnDays', label: 'Days after delivery to ask for a return or exchange',
+                half: true, suffix: 'days', min: 1, max: 90,
+                showIf: function (v) { return on(v) && !!v.orderHistory && !!v.customerRequests; } },
               { type: 'toggle', name: 'savedAddresses', label: 'Saved addresses', showIf: on,
                 hint: 'Without an account the checkout already remembers one address on ' +
                       'one device. An account makes it several, on any device.' },

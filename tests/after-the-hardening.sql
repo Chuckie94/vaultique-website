@@ -358,6 +358,63 @@ delete from public.chat_conversations where id = 'cccccccc-8383-0000-0000-000000
 select achk((select count(*) from public.chat_reply_push where conversation_id = 'cccccccc-8383-0000-0000-000000000001') = 0,
   'reply notifications: a deleted conversation leaves nothing on the list');
 
+-- ================================================ build 87: customers' requests
+-- The platform's two doors open to its own key; the customer's for a
+-- signed-in customer on their own order; an administrator with the orders
+-- permission answers by hand (the hardening's may('orders')); the parts
+-- that decide closed to everybody.
+reset role;
+select achk(count(*) = 2, 'requests: the platform''s two doors are open to its public key (' || count(*) || ' of 2)')
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.proname in ('vbp_pos_requests', 'vbp_pos_request_decide')
+   and has_function_privilege('anon', p.oid, 'execute');
+select achk(count(*) = 0, 'requests: the customer''s and the admin''s are closed to visitors'
+            || coalesce(' — open: ' || string_agg(p.proname, ', '), ''))
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public'
+   and p.proname in ('request_open', 'requests_mine', 'request_choices', 'request_withdraw', 'request_decide_admin', 'request_reasons')
+   and has_function_privilege('anon', p.oid, 'execute');
+select achk(count(*) = 0, 'requests: the parts that decide are closed to everybody'
+            || coalesce(' — open: ' || string_agg(p.proname, ', '), ''))
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+ where n.nspname = 'public' and p.proname in ('request_decide', 'request_out', 'request_out_full', 'request_window')
+   and (has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('authenticated', p.oid, 'execute'));
+insert into public.orders (id, ref, customer_id, name, phone, total, currency, status, fulfilment, created_at)
+values ('aaaaaaaa-8787-0000-0000-000000000001', 'VB-AH871', '00000000-0000-0000-0000-0000000000c3', 'Real Customer',
+        '0970000871', 300, 'ZMW', 'pending', 'delivery', now())
+on conflict (id) do nothing;
+insert into public.site_settings (key, data) values ('customer-accounts', '{"accountsEnabled": true, "customerRequests": true}')
+on conflict (key) do update set data = public.site_settings.data || '{"customerRequests": true}'::jsonb;
+set role anon;
+select pg_temp.as_anon();
+select achk(pg_temp.err($q$select public.request_open('aaaaaaaa-8787-0000-0000-000000000001', 'cancel', 'changed_mind')$q$) like '%permission denied%',
+  'requests: nobody signed in cannot ask');
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000c9', 'aal1');
+select achk(public.request_open('aaaaaaaa-8787-0000-0000-000000000001', 'cancel', 'changed_mind') ->> 'why' = 'not_found',
+  'requests: another customer cannot ask about this order');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000c3', 'aal1');
+select achk((public.request_open('aaaaaaaa-8787-0000-0000-000000000001', 'cancel', 'changed_mind') ->> 'ok')::boolean,
+  'requests: the customer asks to cancel their own order, the hardening''s counter in place');
+select achk((select count(*) from public.order_requests) = 0 and jsonb_array_length(public.requests_mine()) = 1,
+  'requests: the table shows the customer nothing; their own list shows theirs');
+select achk(public.request_decide_admin((public.requests_mine() -> 0 ->> 'id')::uuid, 'accept') ->> 'why' = 'not_allowed',
+  'requests: a customer cannot answer one');
+set role anon;
+select pg_temp.as_anon();
+select achk((public.vbp_pos_requests(ak()) ->> 'ok')::boolean
+            and exists (select 1 from jsonb_array_elements(public.vbp_pos_requests(ak()) -> 'requests') x
+                         where x ->> 'orderRef' = 'VB-AH871'),
+  'requests: the platform lists it with its own key');
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a1', 'aal2');
+select achk((public.request_decide_admin((select id from public.order_requests where order_ref = 'VB-AH871'), 'accept') ->> 'orderCancelled')::boolean,
+  'requests: the owner answers by hand; an order not paid and not rung up is cancelled');
+reset role;
+select achk((select status from public.orders where ref = 'VB-AH871') = 'cancelled'
+            and (select status || '|' || decided_from from public.order_requests where order_ref = 'VB-AH871') = 'done|admin',
+  'requests: the order cancelled, the request done, decided in the admin');
+
 reset role;
 select case when ok then '  ✓ ' else '  ✗ ' end || what from after_checks order by n;
 select case when count(*) filter (where not ok) = 0

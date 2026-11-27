@@ -101,6 +101,15 @@ function reset() {
     rewards_links: [{ user_id: 'u-chanda', cust_no: 'VB0123', how: 'code', linked_at: '2026-10-10T08:00:00Z' }],
     rewards_requests: [{ id: 'q1', user_id: 'u-mwila', kind: 'join', name: 'Mwila', status: 'waiting', note: 'team only', created_at: '2026-10-06T08:00:00Z' }],
     rewards_holds: [{ id: 'h1', user_id: 'u-chanda', cust_no: 'VB0123', order_ref: 'VB-CHA1', points: 100, value: 10, status: 'rung_up', created_at: '2026-11-02T09:00:00Z' }],
+    /* Website 87: requests to the shop. Who in the team answered is the team's. */
+    order_requests: [
+      { id: 'rq1', ref: 'RQ-CHA1AB', order_id: 'o1', order_ref: 'VB-CHA1', customer_id: 'u-chanda', kind: 'return', reason: 'wrong_size',
+        detail: 'Too small.', wants: null, items: [{ sku: 'WF-1', name: 'Stand-in dress', qty: 1 }], status: 'accepted',
+        answer: 'Bring it in any day.', decided_at: '2026-11-06T10:00:00Z', decided_by: 'staff.member@shop.test', decided_from: 'platform',
+        platform_ref: 'ONL-77', done_at: null, shop_told_at: '2026-11-06T09:15:00Z', customer_told: 'accepted', created_at: '2026-11-06T09:00:00Z' },
+      { id: 'rq2', ref: 'RQ-MWI1AB', order_id: 'o3', order_ref: 'VB-MWI1', customer_id: 'u-mwila', kind: 'cancel', reason: 'too_slow',
+        detail: 'Mwila\'s request', items: [], status: 'requested', created_at: '2026-11-05T09:00:00Z' },
+    ],
   };
   CALLS = []; MAILS = []; THROTTLE = {}; MAIL_ON = true;
 }
@@ -299,12 +308,16 @@ const server = http.createServer(async (req, res) => {
        'their chat with the shop, both sides of it', J(d.chats));
     is(d.rewards && d.rewards.link && d.rewards.link.cust_no === 'VB0123' && d.rewards.points_promised_on_orders.length === 1,
        'their rewards link, and the points promised on an order', J(d.rewards));
+    is(Array.isArray(d.requests) && d.requests.length === 1 && d.requests[0].ref === 'RQ-CHA1AB' && d.requests[0].kind === 'return' &&
+       d.requests[0].answer === 'Bring it in any day.' && d.requests[0].items[0].name === 'Stand-in dress' &&
+       J(Object.keys(d.requests[0])) === J(['ref', 'order_ref', 'kind', 'reason', 'detail', 'wants', 'items', 'status', 'answer', 'created_at', 'decided_at', 'done_at']),
+       'website 87: their requests to the shop and its answers, and nothing of who in the team answered', J(d.requests));
     is(!/Mwila|VB-MWI1|u-mwila|Other customer|Ndola/.test(text), 'nothing of the other customer\'s, anywhere in the file');
-    is(!/private-link-token|chat-ownership-token|secret-a|rejoin|progress_token|"token"|553188|2950|Team note|A team member|provider_tx_id|dispatch_mailed_at/.test(text),
+    is(!/private-link-token|chat-ownership-token|secret-a|rejoin|progress_token|"token"|553188|2950|Team note|A team member|provider_tx_id|dispatch_mailed_at|staff\.member|ONL-77|shop_told_at|customer_told/.test(text),
        'and nothing that proves ownership, no card digits, no team notes, no bookkeeping', text.slice(0, 300));
     is(dbCalls().length > 0 && dbCalls().every((c) => c.service), 'every record read with the website\'s own key, never the customer\'s', J(dbCalls().filter((c) => !c.service)));
-    const ownOnly = dbCalls().filter((c) => c.method === 'GET' && /\/(orders|customers|customer_addresses|chat_conversations|rewards_links|rewards_requests|rewards_holds)\?/.test(c.path));
-    is(ownOnly.length >= 7 && ownOnly.every((c) => /(customer_id|user_id|id)=eq\.u-chanda/.test(c.path)),
+    const ownOnly = dbCalls().filter((c) => c.method === 'GET' && /\/(orders|customers|customer_addresses|chat_conversations|rewards_links|rewards_requests|rewards_holds|order_requests)\?/.test(c.path));
+    is(ownOnly.length >= 8 && ownOnly.every((c) => /(customer_id|user_id|id)=eq\.u-chanda/.test(c.path)),
        'each table asked for this customer\'s rows by their own id, never all of them', J(ownOnly.map((c) => c.path)));
 
     console.log('\nNo more than ten files an hour');

@@ -60,9 +60,9 @@ secret. The files starting `_` are shared by the others.
 | `place-order` | A WhatsApp order, priced here from the catalogue and recorded |
 | `pay-quote`, `pay-start`, `pay-status`, `pay-webhook` | Online payment with Flutterwave: the price, the start, the page after paying, and Flutterwave's own word on it |
 | `pay-reconcile` | Every fifteen minutes (build 80): asks Flutterwave about any payment the site has not heard back about |
-| `order-progress` | Every fifteen minutes (build 80): an order's emails (on its way, the reminder, delivered, refunded), and marking delivered when the days run out |
+| `order-progress` | Every fifteen minutes (build 80): an order's emails (on its way, the reminder, delivered, refunded), and marking delivered when the days run out; from build 87, customers' requests: the shop told of each new one, the customer of each answer |
 | `account-delete` | Closing a customer's account, the login included; never a login on the admin list (build 80) |
-| `account-portal` | The customer portal's records that only the shop may read, for the signed-in customer alone: the newsletter yes or no, refunds on their way, "Download my personal data" (build 86) |
+| `account-portal` | The customer portal's records that only the shop may read, for the signed-in customer alone: the newsletter yes or no, refunds on their way, "Download my personal data" (build 86; their requests in it from 87) |
 | `pay-refund` | The platform's online refunds (build 81): sends a refund the platform's door wrote down to Flutterwave, once, and records the answer; only with the door's key |
 | `account-signup` | Creating a customer account; the confirm link goes through the shop's own email |
 | `send-email` | The admin's "Send a test email" and "Send welcome" |
@@ -276,19 +276,25 @@ node tests/account-portal.test.cjs       the customer portal's own records: each
                                          for itself (build 86)
 node tests/portal.browser.cjs            the customer portal on a phone: the navy dashboard, every page, an
                                          order's five steps, refunds, the password, signing out (build 86)
+node tests/customer-requests.browser.cjs customers' requests: off until switched on; what each order may ask;
+                                         the form, every missing piece said; withdraw; Admin > Orders (decline
+                                         needs a word, accept cancels or sends to Online Refund); the
+                                         Settings switch and days (build 87)
 bash tools/db-check.sh                   supabase-hardening.sql on a stand-in Supabase: the 28 files, the
                                          hardening twice, the files made after it (build 80) twice each and the
                                          hardening again, the older files refusing, then tests/hardening.sql,
                                          which also holds visitors to the functions on the hardening's list,
                                          and tests/after-the-hardening.sql: the till's door, an order's steps,
                                          the customer's buttons, the payment history, closing an account and
-                                         the online refunds (builds 76 to 81), and telling a customer the
-                                         shop has replied (build 83; one-time setup in
-                                         tests/supabase-standin/README.txt)
+                                         the online refunds (builds 76 to 81), telling a customer the
+                                         shop has replied (build 83) and customers' requests (build 87;
+                                         one-time setup in tests/supabase-standin/README.txt)
 bash tools/sql-tests.sh                  every psql chain above, each on a fresh database (build 79), and the
                                          till's door, the payment history and an order's progress
-                                         (tests/order-progress-db.sh) (build 80), and the online refunds
-                                         (tests/online-refund-db.sh) (build 81)
+                                         (tests/order-progress-db.sh) (build 80), the online refunds
+                                         (tests/online-refund-db.sh) (build 81), a test payment kept off the
+                                         till (build 85) and customers' requests (tests/customer-requests.sql,
+                                         build 87)
 ```
 
 The browser ones need Playwright (`npm ci` in `tests/`), the SQL ones any

@@ -1241,6 +1241,31 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .acd-kv dt{color:var(--muted)}
 .acd-kv dd{margin:0;color:var(--ink);overflow-wrap:anywhere}
 .acd-refunds{display:grid;gap:10px}
+/* BUILD 87 · requests: cancel, return, exchange, a problem. */
+.acd-requests{display:grid;gap:10px}
+.acd-requests:empty{display:none}
+.rq-list{display:grid;gap:10px;margin-bottom:14px}
+.rq-row .ac-actions{margin-top:10px;gap:12px}
+.rq-row .ac-msg:empty{display:none}
+.rq-said{font-style:italic;overflow-wrap:anywhere}
+.rq-answer{margin-top:8px;padding:8px 12px;border-left:3px solid var(--navy);background:var(--paper);
+  font-size:13.5px;line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
+.rq-form{margin:6px 0 0}
+.rq-form .rq-lead{margin:0 0 4px}
+.rq-kinds{display:flex;gap:6px 18px;flex-wrap:wrap}
+.rq-kinds .ac-check,.rq-piece .ac-check{margin:6px 0}
+.rq-pieces{display:grid;gap:2px}
+.rq-piece{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.rq-piece .ac-check{flex:1 1 0;min-width:0;overflow-wrap:anywhere}
+.rq-form input[type=text],.rq-form select,.rq-form textarea{width:100%;box-sizing:border-box;padding:11px 13px;
+  border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);
+  font-family:var(--font-body);font-size:16px;line-height:1.4;color:var(--ink);outline:none}
+.rq-form input[type=text]:focus,.rq-form select:focus,.rq-form textarea:focus{border-color:var(--gold)}
+.rq-form textarea{resize:vertical;min-height:88px}
+.account-view .rq-piece select.rq-qty{flex:none;width:auto;min-width:92px;padding:8px 10px}
+.rq-oref{white-space:nowrap}
+.rq-photos{margin:10px 0 0}
+.rq-late{margin:0}
 /* The five steps: Requested, Confirmed, Paid, Delivered, Completed. */
 .oj{list-style:none;margin:14px 0 6px;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px}
 .oj li{position:relative;padding-top:22px;text-align:center;font-size:11.5px;line-height:1.35;color:var(--muted)}

@@ -1704,8 +1704,13 @@
         var ask = askLink('Hello, I have a question about my order ' + o.ref + '.', 'Ask about this order');
         if (ask) acts.appendChild(ask);
         c.appendChild(acts);
+
+        /* BUILD 87 · its requests, and the buttons to ask the shop. */
+        requestsBlock(c, o, function (words) { reqSaid = words || ''; draw(''); }, reqSaid);
+        reqSaid = '';
       });
     }
+    var reqSaid = '';
     draw('');
   }
 
@@ -1797,14 +1802,400 @@
       }
     });
 
-    var r = card('Returns and exchanges');
-    r.appendChild(el('p', 'ac-lead', 'Would you like to return or exchange a piece, or is something wrong with an order? ' +
-      'Message us with your order number and we will arrange it with you.'));
+    requestsCard(host);
+  }
+
+  /* ---- BUILD 87 · asking the shop: cancel, return, exchange, a problem ----
+     The owner, 21 November 2026: "Every new customer-account feature must
+     connect to the Business Platform where appropriate. For example, an
+     approved refund must reflect in the website, Flutterwave and the
+     Business Platform."
+
+     So here a customer only ASKS. The request is kept by the website's
+     database (supabase-customer-requests.sql); the shop accepts or
+     declines it in the business platform's Online Orders (platform 512),
+     or by hand in Admin > Orders; a refund that follows is the platform's
+     Online Refund, as every refund is; and the customer is emailed each
+     answer (netlify/functions/order-progress.js). These pages show what
+     the shop decided, read back each time: nothing here keeps a state of
+     its own.
+
+     Switched off until Settings > Customer Accounts says so. Off, the
+     database refuses a request whatever a browser sends, and the pages
+     keep "Message us", as before. Photos go in the chat, which already
+     takes them, with the request's number. */
+  function requestsOn() { return historyOn() && api.settings.customerRequests === true; }
+
+  var REASON_WORDS = {
+    changed_mind: 'I changed my mind',
+    ordered_by_mistake: 'I ordered it by mistake',
+    too_slow: 'It is taking too long',
+    wrong_size: 'The size or fit is wrong',
+    not_as_shown: 'It is not as shown on the website',
+    damaged: 'It arrived damaged',
+    quality: 'A problem with its quality',
+    wrong_item: 'It is not what I ordered',
+    missing: 'Something is missing',
+    other: 'Something else'
+  };
+  var KIND_WORDS = { cancel: 'Cancel the order', 'return': 'Return', exchange: 'Exchange', problem: 'A problem' };
+  var REQUEST_STATES = {
+    requested: { key: 'awaiting', word: 'With the shop' },
+    accepted: { key: 'confirmed', word: 'Accepted' },
+    declined: { key: 'unpaid', word: 'Not accepted' },
+    done: { key: 'delivered', word: 'Done' },
+    withdrawn: { key: 'requested', word: 'Withdrawn' }
+  };
+  /* Why a request cannot be sent, in the customer's words. */
+  function requestWhy(kind, why) {
+    switch (why) {
+      case 'off': return 'Requests are not open just now. Please message us instead.';
+      case 'signin': return 'Please sign in again.';
+      case 'not_found': return 'This order is not on your account.';
+      case 'cancelled': return 'This order is cancelled.';
+      case 'say_more': return 'Please tell us a little more, in the box.';
+      case 'say_instead': return 'Please say what you would like instead.';
+      case 'which_pieces': return 'Please tick the pieces.';
+      case 'unreadable': return 'Please choose a reason.';
+      case 'answered': return 'The shop has already answered this request.';
+      case 'too_late':
+        if (kind === 'cancel') return 'This order is already being prepared or on its way, so it can no longer be cancelled here. Please message us.';
+        if (kind === 'problem') return 'It is more than 30 days since this order arrived. Please message us.';
+        return 'The days for a return or an exchange have passed. Please message us if something is wrong.';
+      case 'not_yet':
+        return kind === 'problem' ? 'You can report a problem once the order is on its way.'
+                                  : 'You can ask once the order has arrived.';
+    }
+    return 'That could not be sent just now. Please try again shortly.';
+  }
+  function rpcAnswer(r) {
+    if (r && r.error) throw r.error;
+    return (r && r.data) || null;
+  }
+  /* Every request of the signed-in customer, newest first; none before the
+     SQL has been run, or when they cannot be read just now. */
+  function myRequests() {
+    if (!sb || !signedIn()) return Promise.resolve([]);
+    return Promise.resolve(sb.rpc('requests_mine')).then(function (r) {
+      var d = r && !r.error ? r.data : null;
+      return Array.isArray(d) ? d : [];
+    }, function () { return []; });
+  }
+  /* What may be asked of one order now, as the database says. */
+  function requestChoices(orderId) {
+    if (!sb || !signedIn() || !requestsOn() || !orderId) return Promise.resolve(null);
+    return Promise.resolve(sb.rpc('request_choices', { p_order: orderId })).then(function (r) {
+      var d = r && !r.error ? r.data : null;
+      return d && d.ok && d.choices ? d.choices : null;
+    }, function () { return null; });
+  }
+  function requestOpen(rq) { return rq.status === 'requested' || rq.status === 'accepted'; }
+  function piecesOf(rq) {
+    return (Array.isArray(rq.items) ? rq.items : []).map(function (i) {
+      return (Number(i.qty) > 1 ? i.qty + ' × ' : '') + (i.name || i.sku || '');
+    }).filter(Boolean).join(', ');
+  }
+
+  /* One request: what was asked, and where it stands. */
+  function requestRow(rq, opts) {
+    opts = opts || {};
+    var row = el('div', 'ac-refund rq-row');
+    row.setAttribute('data-rq', rq.ref || '');
+    row.setAttribute('data-state', rq.status || '');
+    var st = REQUEST_STATES[rq.status] || REQUEST_STATES.requested;
+    var top = el('div', 'ac-order-top');
+    var title = el('span', 'ac-ref', KIND_WORDS[rq.kind] || 'Request');
+    if (opts.withOrder && rq.orderRef) {
+      title.appendChild(document.createTextNode(' · '));
+      title.appendChild(el('span', 'rq-oref', rq.orderRef));   // the number kept on one line
+    }
+    top.appendChild(title);
+    top.appendChild(el('span', 'ac-status is-' + st.key, st.word));
+    row.appendChild(top);
+    row.appendChild(el('div', 'ac-item', REASON_WORDS[rq.reason] || ''));
+    if (piecesOf(rq)) row.appendChild(el('div', 'ac-quiet', piecesOf(rq)));
+    if (rq.wants) row.appendChild(el('div', 'ac-quiet', 'Instead: ' + rq.wants));
+    if (rq.detail) row.appendChild(el('div', 'ac-quiet rq-said', '“' + rq.detail + '”'));
+    if (rq.answer) row.appendChild(el('div', 'rq-answer', 'From the shop: ' + rq.answer));
+    var when = rq.status === 'done' && rq.doneAt ? 'Done on ' + day(rq.doneAt)
+      : rq.decidedAt && rq.status !== 'withdrawn' ? 'Answered on ' + day(rq.decidedAt)
+      : 'Asked on ' + day(rq.createdAt);
+    row.appendChild(el('div', 'ac-quiet', when + ' · ' + (rq.ref || '')));
+
     var acts = el('div', 'ac-actions');
+    var msg = el('p', 'ac-msg');
+    if (rq.status === 'requested' && sb) {
+      var wd = el('button', 'ac-link rq-withdraw', 'Withdraw');
+      wd.type = 'button';
+      var armed = false, timer = null;
+      var disarm = function () { armed = false; wd.disabled = false; wd.textContent = 'Withdraw'; };
+      wd.addEventListener('click', function () {
+        if (!armed) {
+          armed = true;
+          wd.textContent = 'Withdraw it? Tap again';
+          timer = setTimeout(disarm, 5000);
+          return;
+        }
+        clearTimeout(timer);
+        wd.disabled = true;
+        say(msg, 'Withdrawing…', 'busy');
+        Promise.resolve(sb.rpc('request_withdraw', { p_id: rq.id })).then(rpcAnswer).then(function (d) {
+          if (!d || !d.ok) {
+            disarm();
+            say(msg, requestWhy(rq.kind, d && d.why), 'err');
+            if (d && d.why === 'answered' && opts.after) opts.after(requestWhy(rq.kind, 'answered'));
+            return;
+          }
+          if (opts.after) opts.after('Withdrawn. You can ask again while the order allows it.');
+        }, function (e) { disarm(); say(msg, friendly(e), 'err'); });
+      });
+      acts.appendChild(wd);
+    }
+    if (requestOpen(rq) && rq.kind !== 'cancel') {
+      var ph = askLink('Hello, here are photos for my request ' + rq.ref + ' (order ' + (rq.orderRef || '') + ').', 'Send photos');
+      if (ph) { ph.classList.add('rq-photos-btn'); acts.appendChild(ph); }
+    }
+    if (opts.withOrder && rq.orderRef) {
+      var open = pageLink('ac-link', 'orders', rq.orderRef);
+      open.textContent = 'Open the order';
+      acts.appendChild(open);
+    }
+    if (acts.children.length) { row.appendChild(acts); row.appendChild(msg); }
+    return row;
+  }
+
+  /* The form for one kind of request, or for a return or an exchange. */
+  function requestForm(host, o, kinds, ch, done, close) {
+    var f = el('div', 'ac-inline rq-form');
+    f.setAttribute('data-kinds', kinds.join(' '));
+    var kind = kinds[0];
+    var id = 'rq_' + String(o.ref || 'o').replace(/[^A-Za-z0-9]/g, '');
+    f.appendChild(el('p', 'ac-lead rq-lead', kind === 'cancel'
+      ? 'We will email you our answer. If we accept and you paid online, your money comes back the way you paid.'
+      : kind === 'problem' ? 'Tell us what is wrong. We will email you our answer.'
+      : 'Tell us which pieces and why. We will email you our answer, and arrange it with you.'));
+
+    if (kinds.length > 1) {
+      f.appendChild(el('span', 'rv-lbl', 'What would you like?'));
+      var choice = el('div', 'rq-kinds');
+      kinds.forEach(function (k, i) {
+        var l = el('label', 'ac-check');
+        var r = document.createElement('input');
+        r.type = 'radio'; r.name = id + '_kind'; r.value = k; r.checked = i === 0;
+        r.addEventListener('change', function () { if (r.checked) { kind = k; paint(); } });
+        l.appendChild(r);
+        l.appendChild(document.createTextNode(' ' + (k === 'return' ? 'Return it' : 'Exchange it for something else')));
+        choice.appendChild(l);
+      });
+      f.appendChild(choice);
+    }
+
+    var pcsLbl = el('span', 'rv-lbl', 'Which pieces?');
+    var pcsWrap = el('div', 'rq-pieces');
+    f.appendChild(pcsLbl);
+    f.appendChild(pcsWrap);
+    var lines = o.order_items || [];
+    var picks = lines.map(function (it) {
+      var line = el('div', 'rq-piece');
+      var l = el('label', 'ac-check');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = lines.length === 1;
+      l.appendChild(cb);
+      l.appendChild(document.createTextNode(' ' + (it.name || it.sku || '')));
+      line.appendChild(l);
+      var n = Math.max(1, Math.floor(Number(it.qty) || 1)), qty = null;
+      if (n > 1) {
+        qty = document.createElement('select');
+        qty.className = 'rq-qty';
+        qty.setAttribute('aria-label', 'How many of ' + (it.name || it.sku || 'this piece'));
+        for (var q = 1; q <= n; q++) {
+          var op = document.createElement('option');
+          op.value = String(q); op.textContent = q + ' of ' + n;
+          qty.appendChild(op);
+        }
+        qty.value = String(n);
+        line.appendChild(qty);
+      }
+      pcsWrap.appendChild(line);
+      return { sku: it.sku, cb: cb, qty: qty };
+    });
+
+    var rl = el('label', 'rv-lbl', 'Why?');
+    rl.setAttribute('for', id + '_reason');
+    var reason = document.createElement('select');
+    reason.id = id + '_reason';
+    f.appendChild(rl);
+    f.appendChild(reason);
+
+    var wl = el('label', 'rv-lbl', 'What would you like instead?');
+    wl.setAttribute('for', id + '_wants');
+    var wants = document.createElement('input');
+    wants.type = 'text'; wants.id = id + '_wants'; wants.maxLength = 300;
+    wants.placeholder = 'The same in another size, or another piece';
+    f.appendChild(wl);
+    f.appendChild(wants);
+
+    var dl = el('label', 'rv-lbl', 'Tell us more');
+    dl.setAttribute('for', id + '_detail');
+    var detail = el('textarea');
+    detail.id = id + '_detail'; detail.rows = 3; detail.maxLength = 1000;
+    f.appendChild(dl);
+    f.appendChild(detail);
+
+    var photos = el('p', 'ac-quiet rq-photos', 'Photos help. Once this is sent, press Send photos beside it.');
+    f.appendChild(photos);
+
+    var acts = el('div', 'ac-actions');
+    var send = el('button', 'btn btn-gold btn-sm rq-send', 'Send to the shop');
+    send.type = 'button';
+    var back = el('button', 'ac-link', 'Not now');
+    back.type = 'button';
+    back.addEventListener('click', close);
+    acts.appendChild(send);
+    acts.appendChild(back);
+    f.appendChild(acts);
+    var msg = el('p', 'ac-msg');
+    f.appendChild(msg);
+    /* What was missing is no longer said once they change something. */
+    var unsay = function () { if (/\berr\b/.test(msg.className)) say(msg, ''); };
+    f.addEventListener('input', unsay);
+    f.addEventListener('change', unsay);
+
+    function paint() {
+      var reasons = (ch[kind] && ch[kind].reasons) || [];
+      var was = reason.value;
+      reason.innerHTML = '';
+      var none = document.createElement('option');
+      none.value = ''; none.textContent = 'Choose…';
+      reason.appendChild(none);
+      reasons.forEach(function (k) {
+        var op = document.createElement('option');
+        op.value = k; op.textContent = REASON_WORDS[k] || k;
+        reason.appendChild(op);
+      });
+      if (reasons.indexOf(was) > -1) reason.value = was;
+      var pieces = kind !== 'cancel' && picks.length > 0;
+      pcsLbl.textContent = kind === 'problem' ? 'Which pieces, if any?' : 'Which pieces?';
+      pcsLbl.style.display = pcsWrap.style.display = pieces ? '' : 'none';
+      wl.style.display = wants.style.display = kind === 'exchange' ? '' : 'none';
+      photos.style.display = kind === 'cancel' ? 'none' : '';
+      dl.textContent = reason.value === 'other' ? 'Tell us more' : 'Tell us more (if you like)';
+      send.textContent = kind === 'cancel' ? 'Ask to cancel' : 'Send to the shop';
+    }
+    reason.addEventListener('change', paint);
+    paint();
+
+    send.addEventListener('click', function () {
+      var items = [];
+      picks.forEach(function (p) {
+        if (p.cb.checked && p.sku) items.push({ sku: p.sku, qty: p.qty ? Number(p.qty.value) : 1 });
+      });
+      if (!reason.value) { say(msg, requestWhy(kind, 'unreadable'), 'err'); reason.focus(); return; }
+      if ((kind === 'return' || kind === 'exchange') && !items.length) { say(msg, requestWhy(kind, 'which_pieces'), 'err'); return; }
+      if (kind === 'exchange' && !wants.value.trim()) { say(msg, requestWhy(kind, 'say_instead'), 'err'); wants.focus(); return; }
+      if (reason.value === 'other' && !detail.value.trim()) { say(msg, requestWhy(kind, 'say_more'), 'err'); detail.focus(); return; }
+      send.disabled = true;
+      say(msg, 'Sending…', 'busy');
+      Promise.resolve(sb.rpc('request_open', {
+        p_order: o.id, p_kind: kind, p_reason: reason.value,
+        p_detail: detail.value.trim() || null,
+        p_items: kind === 'cancel' ? [] : items,
+        p_wants: kind === 'exchange' ? wants.value.trim() : null
+      })).then(rpcAnswer).then(function (d) {
+        send.disabled = false;
+        if (!d || !d.ok) { say(msg, requestWhy(kind, d && d.why), 'err'); return; }
+        var ref = (d.request && d.request.ref) || '';
+        done(d.again ? 'You had asked already: your request ' + ref + ' stands, below.'
+                     : 'Sent: request ' + ref + '. The shop will email you its answer, and it shows here.');
+      }, function (e) { send.disabled = false; say(msg, friendly(e), 'err'); });
+    });
+
+    host.appendChild(f);
+    return f;
+  }
+
+  /* On an order's own page: its requests, and the buttons to ask. */
+  function requestsBlock(c, o, after, said) {
+    if (!sb || !signedIn() || !o || !o.id) return;
+    var box = el('div', 'acd-requests');
+    c.appendChild(box);
+    Promise.all([myRequests(), requestChoices(o.id)]).then(function (got) {
+      box.setAttribute('data-ready', 'yes');
+      var mine = got[0].filter(function (rq) { return rq.orderRef === o.ref; });
+      var ch = got[1];
+      var openKind = {};
+      mine.forEach(function (rq) { if (requestOpen(rq)) openKind[rq.kind] = true; });
+      var can = function (k) { return !!(ch && ch[k] && ch[k].can && !openKind[k]); };
+      var offers = [];
+      if (can('cancel')) offers.push({ label: 'Cancel this order', kinds: ['cancel'] });
+      var re = ['return', 'exchange'].filter(can);
+      if (re.length) offers.push({ label: re.length === 2 ? 'Return or exchange' : re[0] === 'return' ? 'Return a piece' : 'Exchange a piece', kinds: re });
+      if (can('problem')) offers.push({ label: 'Report a problem', kinds: ['problem'] });
+      var late = !!(ch && ch['return'] && ch['return'].why === 'too_late' && !openKind['return'] && !openKind.exchange);
+      if (!mine.length && !offers.length && !late && !said) return;
+
+      box.appendChild(el('h3', 'acd-h', 'Requests'));
+      if (said) box.appendChild(el('p', 'ac-msg ok rq-said-now', said));
+      mine.forEach(function (rq) { box.appendChild(requestRow(rq, { after: after })); });
+      if (late) box.appendChild(el('p', 'ac-quiet rq-late', requestWhy('return', 'too_late')));
+      if (!offers.length) return;
+      var row = el('div', 'ac-actions rq-offers');
+      var formHost = el('div', 'rq-form-host');
+      offers.forEach(function (of) {
+        var b = el('button', 'btn btn-outline btn-sm rq-ask', of.label);
+        b.type = 'button';
+        b.setAttribute('data-kinds', of.kinds.join(' '));
+        b.addEventListener('click', function () {
+          row.style.display = 'none';
+          formHost.innerHTML = '';
+          var f = requestForm(formHost, o, of.kinds, ch, after, function () {
+            formHost.innerHTML = '';
+            row.style.display = '';
+          });
+          var first = f.querySelector('select, input');
+          if (first && first.focus) {
+            try { first.focus(); } catch (e) { /* nothing to do */ }
+          }
+        });
+        row.appendChild(b);
+      });
+      box.appendChild(row);
+      box.appendChild(formHost);
+    });
+  }
+
+  /* Returns & refunds: every request, newest first, and how to ask. */
+  function requestsCard(host) {
+    var on = requestsOn();
+    var r = card('Returns and exchanges');
+    var list = el('div', 'ac-list rq-list');
+    r.appendChild(list);
+    r.appendChild(el('p', 'ac-lead', on
+      ? 'To cancel an order, return or exchange a piece, or tell us about a problem, open the order in My orders.'
+      : 'Would you like to return or exchange a piece, or is something wrong with an order? ' +
+        'Message us with your order number and we will arrange it with you.'));
+    var acts = el('div', 'ac-actions');
+    if (on) {
+      var mo = pageLink('btn btn-gold btn-sm rq-orders', 'orders');
+      mo.textContent = 'My orders';
+      acts.appendChild(mo);
+    }
     var ask = askLink('Hello, I would like to return or exchange a piece from my order ', 'Message us');
     if (ask) acts.appendChild(ask);
     r.appendChild(acts);
     host.appendChild(r);
+    function fill(said) {
+      myRequests().then(function (rows) {
+        list.innerHTML = '';
+        if (said) list.appendChild(el('p', 'ac-msg ok', said));
+        rows.forEach(function (rq) { list.appendChild(requestRow(rq, { withOrder: true, after: fill })); });
+        list.style.display = list.children.length ? '' : 'none';
+        list.setAttribute('data-ready', 'yes');
+      });
+    }
+    list.style.display = 'none';
+    fill('');
   }
 
   /* ---- Recently viewed ---------------------------------------------------- */

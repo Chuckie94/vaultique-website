@@ -8,6 +8,38 @@ and GitHub tags every build that passes its checks (`website-84`, …).
 Builds before 84 are described in their own notes and in the `notes` line of
 `assets/version.js` as each was released.
 
+## Build 87 · 1.57.0 · customers' requests
+
+- **A customer asks, from their own order** (`assets/account.js`):
+  **Cancel this order**, before the shop has started on it; **Return or
+  exchange**, within the days after it arrived that Settings allows (7
+  unless set); **Report a problem**, once it is on its way and up to 30 days
+  after it arrived. Each with a reason, the pieces and how many, what they
+  would like instead (an exchange), and their own words. Photos go in the
+  chat, with the request's number.
+- **Each is a request, and the shop decides**: accept or decline, with a word
+  for the customer, then mark it done. The business platform does that in
+  its Online Orders (platform 512, through a door behind the till's own
+  key); until then, and whenever it suits, **Admin › Orders** shows each
+  request under its order with Accept, Decline and Mark done.
+- **Accepting a cancel** cancels an order that is not paid online and not
+  rung up at the till. One paid online is cancelled by its refund (the
+  platform's Online Refund, as every refund), never here; one already rung
+  up is undone at the till.
+- **The customer sees each step** on the order and in Returns & refunds, and
+  can withdraw a request the shop has not answered (two taps). One open
+  request of each kind per order.
+- **Emails** (the 15-minute check, `netlify/functions/order-progress.js`):
+  the shop, for each new request, at its Contact address; the customer, for
+  each answer, once each.
+- **Download my personal data** includes their requests and the shop's
+  answers, never who in the team answered.
+- **Settings › Customer Accounts**: *Let customers ask to cancel, return or
+  exchange, or report a problem* (off until switched on) and *Days after
+  delivery to ask for a return or exchange* (7).
+- One SQL file: `supabase-customer-requests.sql`. The hardening's report has
+  a line for it.
+
 ## Build 86 · 1.56.0 · the customer portal
 
 - **A signed-in customer's account is a portal** (`assets/account.js`), as in

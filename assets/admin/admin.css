@@ -936,6 +936,13 @@
 .pay-test{background:#ece6fb;color:#4a2c9e;margin-left:6px}
 /* Build 77: a payment that does not match its order, and the payment history */
 .pay-attn{color:#b3261e;margin-top:6px}
+/* BUILD 87 · a customer's request on an order. */
+.ord-requests:empty{display:none}
+.ord-requests{display:grid;gap:8px;margin-top:10px}
+.ord-rq{border:1px solid var(--line,#e4dccb);border-left:3px solid var(--gold,#c8a24a);border-radius:8px;padding:10px 12px}
+.ord-rq[data-state=declined],.ord-rq[data-state=done],.ord-rq[data-state=withdrawn]{border-left-color:var(--line,#e4dccb)}
+.ord-rq .hint{margin-top:2px;overflow-wrap:anywhere}
+.ord-rq-state{font-size:12px;color:var(--muted,#666)}
 .pay-hist-btn{background:none;border:0;padding:0;margin-top:8px;font:inherit;font-size:12px;
   color:var(--navy,#0b1f3a);text-decoration:underline;cursor:pointer}
 .pay-hist{margin-top:6px;font-size:12px;color:var(--muted,#666)}

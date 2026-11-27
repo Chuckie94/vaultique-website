@@ -115,6 +115,8 @@ const LATER = [
   /* A function only it makes, asked about an order nobody has: it reads nothing. */
   { file: 'supabase-test-orders.sql',      build: 85, what: 'a test payment is never rung up',
     probe: 'rpc/pos_test_payment?p_id=00000000-0000-0000-0000-000000000000' },
+  { file: 'supabase-customer-requests.sql', build: 87, what: 'customers\' requests (cancel, return, exchange, a problem)',
+    probe: 'order_requests?select=id&limit=0' },
 ];
 async function probe(q) {
   try { await P.svc('GET', q); return true; } catch (e) {

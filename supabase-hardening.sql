@@ -1366,7 +1366,10 @@ as $$
     'vbp_pos_refund_find', 'vbp_pos_refund_request', 'vbp_pos_refunds',
     -- build 83: "tell me when the shop replies", from the chat window, each
     -- with that conversation's own token (supabase-chat-reply-push.sql)
-    'chat_reply_push_key', 'chat_reply_push_save', 'chat_reply_push_has', 'chat_reply_push_drop']::text[];
+    'chat_reply_push_key', 'chat_reply_push_save', 'chat_reply_push_has', 'chat_reply_push_drop',
+    -- build 87: customers' requests, answered by the platform through the
+    -- till's door and key (supabase-customer-requests.sql)
+    'vbp_pos_requests', 'vbp_pos_request_decide']::text[];
 $$;
 
 do $$
@@ -1669,6 +1672,20 @@ begin
          when to_regprocedure('public.vbp_pos_orders(text,text,text)') is null
            then 'Run it after the platform''s till (supabase-pos-orders.sql).'
          else 'Run supabase-test-orders.sql once. Until then a payment made in Test mode is rung up at the till like a real one.' end));
+
+  -- Build 87: customers' requests (supabase-customer-requests.sql), made in
+  -- the account and answered by the platform through the till's door.
+  v_two := to_regprocedure('public.vbp_pos_requests(text,text)') is not null;
+  v_rows := v_rows || jsonb_build_array(jsonb_build_array(
+    'Platform', 'Customer requests: cancel, return, exchange, a problem (supabase-customer-requests.sql, website 87)',
+    case when not v_two then 'NOT RUN YET (optional)'
+         when not has_function_privilege('anon', to_regprocedure('public.vbp_pos_requests(text,text)'), 'execute')
+           then 'CLOSED to the platform'
+         else 'OK · the platform''s till can reach it with its own key' end,
+    case when not v_two then 'Only needed for customers to ask from their account: run supabase-customer-requests.sql once, then switch it on in Settings > Customer Accounts.'
+         when not has_function_privilege('anon', to_regprocedure('public.vbp_pos_requests(text,text)'), 'execute')
+           then 'Run this file again; if it still says so, send this line to whoever looks after the website.'
+         else '' end));
 
   select count(*) into v_n from public.schema_migrations;
   v_rows := v_rows || jsonb_build_array(jsonb_build_array(
