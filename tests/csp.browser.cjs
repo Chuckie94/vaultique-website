@@ -224,7 +224,9 @@ let base = '';
   copy(path.join(ROOT, 'tools', 'build-site.cjs'), path.join(SITE, 'tools', 'build-site.cjs'));
   fs.writeFileSync(path.join(SITE, 'config.js'),
     "window.VBP_CONFIG = {\n  SUPABASE_URL: '" + base + "',\n  SUPABASE_ANON_KEY: 'test-anon-key',\n  IMAGE_BUCKET: 'product-images'\n};\n");
-  const b = spawnSync(process.execPath, [path.join(SITE, 'tools', 'build-site.cjs')], { cwd: SITE, encoding: 'utf8', env: Object.assign({}, process.env, { CSP_REPORTS: '' }) });
+  /* VBP_IN_GATE: this copy carries no checks of its own to run first
+     (build 84's step, tested in tests/deploy-gate.test.cjs). */
+  const b = spawnSync(process.execPath, [path.join(SITE, 'tools', 'build-site.cjs')], { cwd: SITE, encoding: 'utf8', env: Object.assign({}, process.env, { CSP_REPORTS: '', VBP_IN_GATE: '1' }) });
   const browser = await chromium.launch();
 
   try {

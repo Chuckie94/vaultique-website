@@ -66,20 +66,33 @@ done
 echo "$out" | grep -q "Telling a customer you have replied.*NOT RUN YET (optional)" \
   || { echo "   the report does not say the customer reply notification is not run yet"; fail=1; }
 
-echo "3. The files made after the hardening (builds 80, 81 and 83), twice each, then the hardening once more"
+# Before supabase-test-orders.sql (build 85), and the till, the report says so.
+echo "$out" | grep -q "A test payment is never rung up.*NOT RUN YET" \
+  || { echo "   the report does not say a test payment's rule is not run yet"; fail=1; }
+
+echo "3. The files made after the hardening (builds 80, 81, 83 and 85), twice each, then the hardening once more"
 AFTER="supabase-pos-orders.sql supabase-payment-history.sql supabase-order-progress.sql supabase-online-refund.sql
-supabase-chat-reply-push.sql"
+supabase-chat-reply-push.sql supabase-test-orders.sql"
 for f in $AFTER; do
   for n in 1 2; do
     out=$(run "$here/$f") || { echo "   FAILED  $f (run $n)"; echo "$out" | grep -E 'ERROR|LINE' | head -3 | sed 's/^/           /'; fail=1; }
   done
 done
 out=$(run "$here/supabase-hardening.sql") || { echo "   FAILED: the hardening after them"; echo "$out" | grep -E 'ERROR|LINE|CONTEXT' | head -4 | sed 's/^/           /'; fail=1; }
-[ $fail -eq 0 ] && echo "   all 5 ran, twice, and the hardening ran after them"
+[ $fail -eq 0 ] && echo "   all 6 ran, twice, and the hardening ran after them"
+# supabase-test-orders.sql's own check row (build 85) says OK.
+out85=$(run "$here/supabase-test-orders.sql") || fail=1
+echo "$out85" | grep -q "OK · a test payment is never rung up" \
+  && echo "   supabase-test-orders.sql says: OK · a test payment is never rung up" \
+  || { echo "   supabase-test-orders.sql does not say OK"; echo "$out85" | tail -4 | sed 's/^/           /'; fail=1; }
 # And after it, that the hardening kept its four doors open (build 83).
 echo "$out" | grep -q "Telling a customer you have replied.*OK · the chat window can offer it" \
   && echo "   the report: telling a customer you have replied, OK · the chat window can offer it" \
   || { echo "   the report does not say the customer reply notification is OK"; echo "$out" | grep "Telling a customer" | sed 's/^/           /'; fail=1; }
+# And that a test payment is never rung up (build 85).
+echo "$out" | grep -q "A test payment is never rung up.*OK · a test payment is never rung up" \
+  && echo "   the report: a test payment is never rung up, OK" \
+  || { echo "   the report does not say a test payment is never rung up"; echo "$out" | grep "A test payment" | sed 's/^/           /'; fail=1; }
 
 echo "4. Each older file again: each must refuse"
 refused=0

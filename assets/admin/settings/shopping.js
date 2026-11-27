@@ -70,7 +70,7 @@
     requireEmail: false,
     requireAddress: false,
     orderNotes: true,
-    checkoutLabel: 'Buy on WhatsApp',
+    checkoutLabel: 'Buy',
     consentText: 'I confirm that the information provided is accurate and consent to Vaultique Boutique processing my personal information for the purposes of fulfilling and managing my order, including processing or storage by authorised service providers outside Zambia, in accordance with the Privacy Policy.'
   };
 

@@ -1,0 +1,56 @@
+# =====================================================================
+# Vaultique Boutique Point — a version tag for every build that passes
+# its checks (website build 84)
+# ---------------------------------------------------------------------
+# When the Tests workflow (tests.yml) finishes GREEN for an upload to the
+# repository's main branch, this puts a tag on that exact commit, named
+# from assets/version.js: website-84, website-85, ... So GitHub's "Tags"
+# list says which commit each build is, and only builds that passed every
+# check are ever tagged. A build already tagged is left as it is.
+#
+# It changes no file, publishes nothing and touches nothing outside the
+# repository: Netlify, both Supabase projects, Flutterwave and the email
+# account are never reached. It needs no secret: GitHub gives it a token
+# that can write tags to this repository only, for this one run.
+#
+# Red, cancelled or a pull request: nothing happens.
+# =====================================================================
+name: Release tag
+
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == github.event.repository.default_branch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Tag this build, from assets/version.js
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          build=$(sed -n "s/^[[:space:]]*build:[[:space:]]*\([0-9][0-9]*\).*/\1/p" assets/version.js | head -1)
+          version=$(sed -n "s/^[[:space:]]*version:[[:space:]]*'\([0-9][0-9.]*\)'.*/\1/p" assets/version.js | head -1)
+          if [ -z "$build" ]; then echo "assets/version.js has no build number: nothing tagged."; exit 0; fi
+          tag="website-$build"
+          git fetch --tags --quiet
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "$tag is already a tag ($(git rev-list -n 1 "$tag")): left as it is."
+            exit 0
+          fi
+          git tag "$tag" "$SHA"
+          git push origin "refs/tags/$tag"
+          echo "Tagged $SHA as $tag (version $version)."

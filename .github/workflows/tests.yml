@@ -14,10 +14,17 @@
 # It needs no keys and no secrets.
 #
 # A run with a failure shows as a red cross beside the commit on GitHub:
-# open the Actions tab to see which check failed and why. It does not stop
-# Netlify deploying; that is Netlify's own build step (tools/build-site.cjs).
+# open the Actions tab to see which check failed and why. Since build 84
+# Netlify's own build step (tools/build-site.cjs) runs the Node tests too,
+# before it publishes, and stops the deploy if one fails; the browser and
+# database checks run only here.
 # A browser check file that fails is tried once more (tests/run-tests.js):
 # one that passes only then is named as a warning, and the run stays green.
+# Not a critical one (payments, refunds, orders, sign-in, security): it
+# fails the run the first time (build 84). A file that skips its checks is
+# named as skipped, never counted as passed.
+# A green run for the main branch is tagged website-<build> by
+# release-tag.yml.
 #
 # The same checks by hand, from tests/:  npm ci, then npm run test:node,
 # npm run test:browser and npm run test:sql (README.md, "Tests").

@@ -112,7 +112,7 @@
           '</div>' +
         '</div>' +
         '<div class="pv-actions">' +
-          '<span class="pv-btn">Buy on WhatsApp</span>' +
+          '<span class="pv-btn">Buy</span>' +
           '<span class="pv-btn ghost">View piece</span>' +
         '</div>' +
         '<div class="pv-field">Search pieces…</div>' +

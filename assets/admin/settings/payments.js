@@ -249,9 +249,9 @@
         groups: [
           {
             title: 'Online payment',
-            note: 'Card and mobile money, paid on Flutterwave\u2019s secure page. A second button ' +
-                  'appears under "Continue on WhatsApp" at checkout; WhatsApp ordering stays ' +
-                  'exactly as it is.',
+            note: 'Card and mobile money, paid on Flutterwave\u2019s secure page. "Website checkout" ' +
+                  'appears beside "WhatsApp checkout" once Flutterwave\u2019s key is in Netlify; ' +
+                  'WhatsApp ordering stays exactly as it is.',
             fields: [
               { type: 'toggle', name: 'onlineEnabled', label: 'Take payments online',
                 hint: 'Off: the button disappears straight away, and the server refuses ' +
@@ -263,7 +263,7 @@
                   { value: 'live', label: 'Live \u2014 real payments' }
                 ] },
               { type: 'text', name: 'onlineLabel', label: 'Button wording', half: true,
-                maxLength: 50, placeholder: 'Pay now \u2014 card or mobile money',
+                maxLength: 50, placeholder: 'Website checkout',
                 showIf: function (v) { return !!v.onlineEnabled; } },
               { type: 'toggle', name: 'onlineCard', label: 'Accept cards', half: true,
                 showIf: function (v) { return !!v.onlineEnabled; } },

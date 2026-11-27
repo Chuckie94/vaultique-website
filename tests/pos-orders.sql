@@ -126,11 +126,23 @@ update public.orders set payment_method = 'online', payment_status = 'paid', pay
        paid_amount = 1530, paid_at = now() where ref = 'VB-PAID1';
 update public.orders set payment_method = 'online', payment_status = 'awaiting', pay_ref = 'VB-WAIT1-0a1b2c3d4e',
        goods_total = 700, delivery_fee = 0, tax_total = 0 where ref = 'VB-WAIT1';
--- the payment service's own records of the two payments
+-- the payment service's own records of the two payments. VB-PAID1 is paid in
+-- LIVE mode (build 85: only a Live payment is paid at the till; until then
+-- this was a Test-mode payment, and counted).
 insert into public.payments (order_id, tx_ref, mode, status, amount, currency, phone)
-select id, 'VB-PAID1-0a1b2c3d4e', 'test', 'paid', 1530, 'ZMW', '0955111222' from public.orders where ref = 'VB-PAID1';
+select id, 'VB-PAID1-0a1b2c3d4e', 'live', 'paid', 1530, 'ZMW', '0955111222' from public.orders where ref = 'VB-PAID1';
 insert into public.payments (order_id, tx_ref, mode, status, amount, currency, phone)
-select id, 'VB-WAIT1-0a1b2c3d4e', 'test', 'started', 700, 'ZMW', '0955333444' from public.orders where ref = 'VB-WAIT1';
+select id, 'VB-WAIT1-0a1b2c3d4e', 'live', 'started', 700, 'ZMW', '0955333444' from public.orders where ref = 'VB-WAIT1';
+reset role;
+-- BUILD 85 · the shop trying online payment in Test mode: paid, with
+-- Flutterwave's test card, and no money moved.
+insert into public.orders (ref, name, phone, total, currency, status) values ('VB-TEST1', 'Shop Trying', '0955000777', 500, 'ZMW', 'pending');
+set role service_role;
+update public.orders set payment_method = 'online', payment_status = 'paid', pay_ref = 'VB-TEST1-0a1b2c3d4e',
+       pay_channel = 'card', goods_total = 500, delivery_fee = 0, tax_total = 0, paid_amount = 500, paid_at = now()
+ where ref = 'VB-TEST1';
+insert into public.payments (order_id, tx_ref, mode, status, amount, currency, phone)
+select id, 'VB-TEST1-0a1b2c3d4e', 'test', 'paid', 500, 'ZMW', '0955000777' from public.orders where ref = 'VB-TEST1';
 reset role;
 -- An order that says paid with no payment behind it (as if typed in by hand).
 insert into public.orders (ref, name, phone, total, currency, status) values ('VB-FORG1', 'Says Paid', '0955000009', 900, 'ZMW', 'pending');
@@ -150,6 +162,8 @@ do $$ declare r jsonb; o jsonb; refs text; begin
   perform chk(refs like '%VB-DELV1%', 'a delivered order is still open for the till (delivered is a step of the delivery, not a sale)');
   perform chk(refs like '%VB-WAIT1%' and refs like '%VB-PAID1%',
               'an order waiting for its payment shows, and so does one paid');
+  perform chk(refs not like '%VB-TEST1%',
+              'build 85: an order paid in Test mode is not on the list of orders to ring up: ' || refs);
   perform chk(split_part(refs, ' ', jsonb_array_length(r->'orders')) = 'VB-OLD22',
               'newest first: the order from yesterday is last');
   o := (select x from jsonb_array_elements(r->'orders') x where x->>'ref' = 'VB-OLD22');
@@ -169,7 +183,7 @@ do $$ declare r jsonb; o jsonb; refs text; begin
   perform chk(refs like '%VB-CANC1%' and refs like '%VB-DONE1%' and refs not like '%VB-PAID1%',
               'done: the cancelled and the completed: ' || refs);
   r := public.vbp_pos_orders(k(), null, 'all');
-  perform chk(jsonb_array_length(r->'orders') = 10, 'all: every order (' || jsonb_array_length(r->'orders') || ')');
+  perform chk(jsonb_array_length(r->'orders') = 11, 'all: every order, the test one too (' || jsonb_array_length(r->'orders') || ')');
 
   -- search
   r := public.vbp_pos_orders(k(), 'paid1', 'open');
@@ -202,6 +216,13 @@ do $$ declare r jsonb; o jsonb; refs text; begin
   r := public.vbp_pos_order(k(), 'VB-PAID1');
   perform chk(r->'order'->'payment' @> '{"online":true,"status":"paid","channel":"mobilemoneyzambia","goods":1400,"delivery":130,"paid":1530,"verified":true}'::jsonb,
               'paid online: how much, how, the goods and the delivery, and the payment service''s record agrees: ' || (r->'order'->'payment')::text);
+  perform chk(r->'order'->'payment' @> '{"test":false}'::jsonb, 'and it is no test: ' || (r->'order'->'payment')::text);
+  r := public.vbp_pos_order(k(), 'VB-TEST1');
+  perform chk(r->'order'->'payment' @> '{"online":true,"status":"paid","verified":false,"test":true}'::jsonb,
+              'build 85: paid in Test mode: not taken as paid, and said to be a test: ' || (r->'order'->'payment')::text);
+  r := public.vbp_pos_orders(k(), 'VB-TEST1', 'open');
+  perform chk(jsonb_array_length(r->'orders') = 1 and r->'orders'->0->'payment' @> '{"test":true,"verified":false}'::jsonb,
+              'a search by its number still finds it, marked a test');
   r := public.vbp_pos_order(k(), 'VB-FORG1');
   perform chk(r->'order'->'payment' @> '{"online":true,"status":"paid","verified":false}'::jsonb,
               'an order that only says paid, with no payment behind it, is not taken as paid');
@@ -245,6 +266,9 @@ do $$ declare r jsonb; begin
               'an order still waiting for its online payment cannot be rung up, so nobody pays twice');
   r := public.vbp_pos_order_claim(k(), 'VB-PAID1', 'till-aaaa-0001', 'Mary');
   perform chk(r->>'ok' = 'true', 'once paid online, it can');
+  r := public.vbp_pos_order_claim(k(), 'VB-TEST1', 'till-aaaa-0001', 'Mary');
+  perform chk(r->>'why' = 'awaiting_payment' and r->>'test' = 'true',
+              'build 85: paid in Test mode, it cannot be rung up, and the till is told it is a test: ' || r::text);
   r := public.vbp_pos_order_claim(k(), 'VB-FORG1', 'till-aaaa-0001', 'Mary');
   perform chk(r->>'why' = 'awaiting_payment',
               'an order that only says paid, with no payment behind it, cannot be rung up as paid');

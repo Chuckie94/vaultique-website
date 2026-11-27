@@ -316,8 +316,8 @@ const server = http.createServer(async (req, res) => {
         return { btns, pay: (document.getElementById('odPay') || {}).textContent,
                  email: !!document.getElementById('od_email') };
       });
-      is(v.btns[0] === 'odGo' && v.btns[1] === 'odPay', 'Continue on WhatsApp stays first; Pay now sits under it', JSON.stringify(v.btns));
-      is(v.pay === 'Pay now — card or mobile money', 'worded for card and mobile money', v.pay);
+      is(v.btns[0] === 'odPay' && v.btns[1] === 'odGo', 'build 85: Website checkout first, WhatsApp checkout beside it', JSON.stringify(v.btns));
+      is(v.pay === 'Website checkout', 'worded "Website checkout" (build 85)', v.pay);
       is(v.email, 'and an email box is added, marked as needed only to pay online');
 
       console.log('\nWhatsApp checkout, with the switch on');

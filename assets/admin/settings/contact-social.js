@@ -151,7 +151,7 @@
         });
         var enquiry = C.fill(v.enquiryMessage, { business: name });
 
-        preview.appendChild(bubble('When someone taps Buy on WhatsApp',
+        preview.appendChild(bubble('When someone taps WhatsApp checkout',
           order, C.waUrl(v.orderNumber || v.whatsapp, order)));
         preview.appendChild(bubble('When someone taps Enquire',
           enquiry, C.waUrl(v.enquiryNumber || v.orderNumber || v.whatsapp, enquiry)));

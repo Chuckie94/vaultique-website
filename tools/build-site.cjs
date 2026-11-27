@@ -45,11 +45,35 @@
         deploy stops here, the site that was live stays live, and the
         log says what to check before deleting the key.
 
+     6. REFUSES TO PUBLISH A BUILD WHOSE OWN CHECKS FAIL (build 84). Until
+        now GitHub ran the checks and Netlify published whatever was
+        uploaded, pass or fail. The node checks (tests/run-tests.js node:
+        the server jobs and this step; under a minute; nothing to install)
+        now run here first, before anything is copied. One failure and the
+        deploy stops, and the site that was live stays live. The browser
+        and database checks need Chromium and PostgreSQL, which Netlify's
+        build machine does not have: they stay on GitHub.
+
+        The checks run with none of Netlify's settings. They never need a
+        real key, and a check that saw the shop's service key or
+        Flutterwave's could reach the real shop with it. Each check makes
+        its own stand-ins, as on GitHub.
+
+        Netlify environment variable, for a day when a check is wrong
+        rather than the website:
+          VBP_DEPLOY_GATE = paused   publish without running them. Never
+                                     quietly: the log says so first and
+                                     last, and the health check
+                                     (/.netlify/functions/health) says so
+                                     to anybody who asks, until the
+                                     setting is deleted.
+
    It changes nothing outside dist/, reads nothing from the internet, and
    needs nothing installed but Node itself.
 
    By hand, from the website folder:   node tools/build-site.cjs
    The tests point it elsewhere:       --root <folder> --out <folder>/dist
+   (and then the checks of step 6 run only when asked: --gate)
 
    Netlify environment variable, optional:
      CSP_REPORTS = off   stop the reports (the policy itself stays). For
@@ -61,6 +85,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const vm = require('vm');
+const { spawnSync } = require('child_process');
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(name);
@@ -69,6 +94,9 @@ function arg(name, fallback) {
 
 const ROOT = arg('--root', path.resolve(__dirname, '..'));
 const OUT = arg('--out', path.join(ROOT, 'dist'));
+/* Step 6 runs for the real website (no --root: Netlify, or by hand), and
+   for a copy only when a check asks for it with --gate. */
+const GATE = process.argv.indexOf('--root') < 0 || process.argv.indexOf('--gate') > -1;
 
 /* THE WEBSITE. Nothing else is published. A new page or a new top-level
    folder has to be added here, and the build says so (see "left out"
@@ -218,6 +246,75 @@ function checkPlatformKey() {
        'POS_SUPABASE_KEY > Delete, then Deploys > Trigger deploy.\n' +
        'Either says anything else: do not delete it, keep the old build, and send\n' +
        'what they say to whoever looks after the website.');
+}
+
+/* ------------------------------------------------- step 6: the checks first */
+
+/* What the checks are given of the machine they run on: enough to run
+   Node and write their scratch files, and none of Netlify's settings. */
+const GATE_KEEP = ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'TZ', 'SYSTEMROOT', 'COMSPEC', 'PATHEXT'];
+function gateEnv() {
+  const env = {};
+  for (const k of GATE_KEEP) if (process.env[k] !== undefined) env[k] = process.env[k];
+  env.VBP_IN_GATE = '1';          // a check that builds a copy of the site does not start them again
+  return env;
+}
+function gatePaused() {
+  return /^(paused|pause|off|no|false|0)$/i.test(String(process.env.VBP_DEPLOY_GATE || '').trim());
+}
+const PAUSED_WORDS = 'THE CHECKS WERE NOT RUN: VBP_DEPLOY_GATE is set to "' +
+  String(process.env.VBP_DEPLOY_GATE || '').trim() + '" in Netlify, so this deploy was published\n' +
+  '  without them. Delete that setting (Site configuration > Environment variables) and\n' +
+  '  Trigger deploy as soon as the reason has gone: until then the health check says so too.';
+
+function runChecks() {
+  if (!GATE) return 'not asked';
+  if (process.env.VBP_IN_GATE === '1') {
+    say('Checks: not started again (this is one of them, building a copy of the site).');
+    return 'inside';
+  }
+  if (gatePaused()) {
+    console.log('\n  !!! ' + PAUSED_WORDS + '\n');
+    warnings++;
+    return 'paused';
+  }
+  const runner = path.join(ROOT, 'tests', 'run-tests.js');
+  if (!fs.existsSync(runner)) {
+    stop('the website\'s own checks (tests/run-tests.js) are not in the repository.\n' +
+         'Every build carries them in its tests/ folder, and this step runs them before\n' +
+         'it publishes anything. Upload the whole build folder again, tests/ included.');
+  }
+  const t0 = Date.now();
+  const r = spawnSync(process.execPath, [runner, 'node'], {
+    cwd: ROOT, env: gateEnv(), encoding: 'utf8', timeout: 10 * 60 * 1000, maxBuffer: 64 * 1024 * 1024
+  });
+  const out = ((r.stdout || '') + (r.stderr || '')).replace(/\s+$/, '');
+  const lines = out.split('\n');
+  const summary = lines.filter((l) => /^\s*node: /.test(l)).pop() || '';
+  const secs = Math.round((Date.now() - t0) / 1000);
+  if (r.status !== 0 || r.error) {
+    console.log('\nThe website\'s own checks, before publishing:\n');
+    /* The files that failed and what they found, then the count: the
+       runner prints exactly that, beneath each file it names with a cross. */
+    const shown = [];
+    lines.forEach((l, i) => {
+      if (/^\s*✗ /.test(l)) {
+        shown.push(l);
+        for (let j = i + 1; j < lines.length && /^\s{8,}\S/.test(lines[j]); j++) shown.push(lines[j]);
+      }
+    });
+    (shown.length ? shown : lines.slice(-12))
+      .filter((l, i, all) => i === 0 || l !== all[i - 1])
+      .forEach((l) => console.log(l));
+    if (summary) console.log('\n' + summary);
+    stop((r.error && r.error.code === 'ETIMEDOUT'
+           ? 'the website\'s own checks did not finish within 10 minutes.'
+           : 'the website\'s own checks failed, above.') + '\n' +
+         'A build that fails its own checks is not published. The same checks run on\n' +
+         'GitHub (the Actions tab says which and why).');
+  }
+  say('Checks: ' + (summary.trim() || 'all passed') + ' (' + secs + ' s), before publishing.');
+  return 'passed';
 }
 
 /* ----------------------------------------------------------------- files */
@@ -372,6 +469,7 @@ function preparePage(page) {
   console.log('\nPutting the website together in ' + OUT);
   const supabase = readConfig();
   checkPlatformKey();
+  const checks = runChecks();
 
   removeTree(OUT);
   fs.mkdirSync(OUT, { recursive: true });
@@ -425,5 +523,6 @@ function preparePage(page) {
       (reports ? 'reports to ' + REPORT_TO : 'reports switched off (CSP_REPORTS)') + '.');
   say('Supabase: ' + supabase.origin);
   if (warnings) say(warnings + ' thing' + (warnings === 1 ? '' : 's') + ' worth knowing, above. None stops the deploy.');
+  if (checks === 'paused') console.log('\n  !!! ' + PAUSED_WORDS);
   console.log('');
 }());

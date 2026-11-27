@@ -1657,6 +1657,19 @@ begin
            else '' end));
   end loop;
 
+  -- Build 85: a payment made in Test mode is never rung up at the till
+  -- (supabase-test-orders.sql, or supabase-pos-orders.sql from build 85).
+  v_two := to_regprocedure('public.pos_test_payment(uuid)') is not null
+           and to_regprocedure('public.pos_paid_online(uuid)') is not null
+           and pg_get_functiondef(to_regprocedure('public.pos_paid_online(uuid)')) like '%p.mode = __live__%';
+  v_rows := v_rows || jsonb_build_array(jsonb_build_array(
+    'Platform', 'A test payment is never rung up (supabase-test-orders.sql, website 85)',
+    case when v_two then 'OK · a test payment is never rung up' else 'NOT RUN YET' end,
+    case when v_two then ''
+         when to_regprocedure('public.vbp_pos_orders(text,text,text)') is null
+           then 'Run it after the platform''s till (supabase-pos-orders.sql).'
+         else 'Run supabase-test-orders.sql once. Until then a payment made in Test mode is rung up at the till like a real one.' end));
+
   select count(*) into v_n from public.schema_migrations;
   v_rows := v_rows || jsonb_build_array(jsonb_build_array(
     'Database', 'This file', 'RECORDED (083-hardening)',

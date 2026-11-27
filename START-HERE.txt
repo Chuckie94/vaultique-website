@@ -1,12 +1,83 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 83
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 85
 ====================================================
-The whole site, cumulative: everything in build 82 (and so 81 and 80,
-with the other website line's builds 74 to 78 carried onto it), each
-Enquire button's message yours to write, and a notification for a
-customer when the shop replies in the live chat. Upload this and you
-are up to date.
+The whole site, cumulative: everything in build 83 (and so 82, 81 and
+80, with the other website line's builds 74 to 78 carried onto it),
+build 84 (a deploy never publishes a build whose own checks fail) and
+build 85 (checkout: the website or WhatsApp). Upload this and you are up
+to date. Builds 84 and 85 have not been uploaded before: this block is
+everything to do for both.
 
-NEW IN 83 — ENQUIRE MESSAGES, AND TELLING A CUSTOMER YOU HAVE REPLIED.
+NEW IN 84 AND 85 — SAFE RELEASES, AND CHECKOUT ON THE WEBSITE OR WHATSAPP.
+  ONE SQL FILE: supabase-test-orders.sql, new, run once. About ten
+  minutes. Do these in order. Each one says how you know it is done.
+
+  A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete.
+     Done when: Netlify > Deploys shows it as Published.
+     Its log (open the deploy) now has a line near the top:
+       Checks: node: 38 of 39 files passed, 1 skipped, 1052 checks, ...
+       before publishing.
+     (the one skipped needs a database; it runs on GitHub's database job.)
+     If it says BUILD STOPPED instead: nothing was published, the site
+     that was live is still live. Send the lines above BUILD STOPPED in
+     the chat. SETUP.md, section 6, says how to pause the checks for a
+     day if an urgent fix must go out, and why never to leave them paused.
+
+  B. RUN supabase-test-orders.sql in the WEBSITE's Supabase (not the
+     platform's): SQL Editor > New query > paste the whole file > Run.
+     The SQL is also in the chat. It changes no order, payment, setting
+     or key, and is safe to run again.
+     Done when: its result line says
+       OK · a test payment is never rung up | OK
+     Until it is run, a payment made in Test mode is rung up at the
+     platform's till like a real one: do not try online payment in Test
+     mode before this step.
+
+  C. OPEN https://vaultiqueboutique.com/api/health on your phone.
+     Done when: it says "status":"working" and "build":85.
+
+  D. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
+     gold; the cart says Checkout, in gold. Press Buy, fill in the
+     details: at the bottom, WhatsApp checkout, green. Until Flutterwave
+     is set up that is the only one, whatever Settings > Payments says.
+     Once Flutterwave's key is in Netlify (SETUP.md, "Online payment"),
+     Website checkout appears beside it, in gold, first.
+     If Settings > Shopping > "Checkout button text" still says Buy on
+     WhatsApp, the shop shows Buy anyway; type Buy there and Save if you
+     want the box to match.
+     Done when: you have seen the gold Buy and the green WhatsApp
+     checkout.
+
+  E. WATCH THE CHECKS ON GITHUB (Actions > Tests).
+     Done when: the newest Tests run has a green tick. A minute later
+     GitHub > Code > Tags shows website-85 (Actions > Release tag).
+
+  WHAT CHANGED IN 85
+    * BUY IS GOLD, on every piece, and Checkout is gold in the cart. The
+      choice comes after the details: Website checkout (gold) first,
+      WhatsApp checkout (green) beside it. Green is only ever WhatsApp.
+    * WEBSITE CHECKOUT ONLY WHEN FLUTTERWAVE IS REALLY THERE. The website
+      asks its server whether Flutterwave's key for the mode chosen is in
+      Netlify. Until now the button showed as soon as the switch was on,
+      and pressing it ended at "Online payment is not ready yet".
+    * A TEST PAYMENT IS NEVER RUNG UP. Until now a payment made in Test
+      mode reached the platform as a paid order, and the platform rings
+      a paid order up by itself within two minutes: a sale that never
+      happened, and the stock taken off. Now only a Live payment counts
+      as paid at the till; a test is kept off its list, refused if rung
+      up by hand, and marked test.
+
+  WHAT CHANGED IN 84
+    * NETLIFY RUNS THE WEBSITE'S OWN CHECKS BEFORE PUBLISHING. One failing
+      check stops the deploy, and the live site stays as it was. The
+      checks are given none of Netlify's settings.
+    * NO SECOND TRY FOR A CRITICAL CHECK, and a skipped check is never
+      counted as passed.
+    * A HEALTH CHECK: /api/health, "working" or "not working". Nothing
+      private in it.
+    * A TAG ON GITHUB FOR EVERY BUILD THAT PASSES, and CHANGELOG.md.
+
+NEW IN 83 (already done if build 83 is live: then skip to the end of
+this block) — ENQUIRE MESSAGES, AND TELLING A CUSTOMER YOU HAVE REPLIED.
   ONE SQL FILE: supabase-chat-reply-push.sql, new, run once. About ten
   minutes. Do these in order. Each one says how you know it is done.
 

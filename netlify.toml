@@ -21,6 +21,8 @@
 # The functions are not affected: Netlify bundles them from
 # netlify/functions as before, with config.js beside them.
 # ---------------------------------------------------------------------
+# Since build 84 that step runs the website's own node checks first, and
+# publishes nothing if one fails (tools/build-site.cjs, step 6).
 [build]
   command = "node tools/build-site.cjs"
   publish = "dist"
@@ -42,7 +44,10 @@
   # assets/formats.js is included for the payment functions (pay-*.js):
   # they work out what to charge with the very same price rules the page
   # uses to show a price, so the two can never disagree.
-  included_files = ["config.js", "assets/formats.js"]
+  #
+  # assets/version.js (build 84) is for the health check (health.js), so
+  # that it says which build is live from the same file the admin reads.
+  included_files = ["config.js", "assets/formats.js", "assets/version.js"]
 
 # ---------------------------------------------------------------------
 # The product pulse.
@@ -104,6 +109,13 @@
 [[redirects]]
   from = "/api/rewards-check"
   to = "/.netlify/functions/rewards-check"
+  status = 200
+
+# Is the website working (netlify/functions/health.js, build 84)? One word
+# and the build for anybody; the details for an administrator only.
+[[redirects]]
+  from = "/api/health"
+  to = "/.netlify/functions/health"
   status = 200
 
 # ---------------------------------------------------------------------
@@ -411,6 +423,13 @@
 # like the others.
 [[redirects]]
   from = "/supabase-chat-reply-push.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+# Build 85: a test payment is never rung up at the till. Hidden like the others.
+[[redirects]]
+  from = "/supabase-test-orders.sql"
   to = "/index.html"
   status = 404
   force = true

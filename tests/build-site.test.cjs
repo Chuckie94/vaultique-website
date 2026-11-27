@@ -64,9 +64,12 @@ function freshSite() {
   fs.writeFileSync(path.join(SITE, 'assets', '.DS_Store'), 'junk');
 }
 
+/* VBP_IN_GATE: the checks-first step (build 84) is not this file's to
+   test, and this copy of the site carries no checks to run. It has its
+   own file, tests/deploy-gate.test.cjs. */
 function build(extraEnv, args) {
   const r = spawnSync(process.execPath, [path.join(SITE, 'tools', 'build-site.cjs')].concat(args || []),
-    { cwd: SITE, encoding: 'utf8', env: Object.assign({}, process.env, { CSP_REPORTS: '', POS_SUPABASE_KEY: '' }, extraEnv || {}) });
+    { cwd: SITE, encoding: 'utf8', env: Object.assign({}, process.env, { CSP_REPORTS: '', POS_SUPABASE_KEY: '', VBP_IN_GATE: '1' }, extraEnv || {}) });
   return { code: r.status, out: (r.stdout || '') + (r.stderr || '') };
 }
 
@@ -294,7 +297,9 @@ try {
   const buildBlock = /\n\[build\]\n([\s\S]*?)\n\[/.exec(toml);
   is(buildBlock && /^\s*command\s*=\s*"node tools\/build-site\.cjs"\s*$/m.test(buildBlock[1]) &&
      /^\s*publish\s*=\s*"dist"\s*$/m.test(buildBlock[1]), 'Netlify runs the build and publishes dist/');
-  is(/included_files\s*=\s*\["config\.js", "assets\/formats\.js"\]/.test(toml), 'the functions still take config.js and formats.js with them');
+  const included = (/included_files\s*=\s*\[([^\]]*)\]/.exec(toml) || [])[1] || '';
+  is(/"config\.js"/.test(included) && /"assets\/formats\.js"/.test(included), 'the functions still take config.js and formats.js with them');
+  is(/"assets\/version\.js"/.test(included), 'and assets/version.js, for the health check (build 84)');
 
   /* Each [[headers]] block: the address it is for, and the headers it sets. */
   const rules = toml.split(/\n\[\[headers\]\]\n/).slice(1).map((b) => ({

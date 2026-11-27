@@ -65,7 +65,7 @@
     enquiries: true, wishlist: true, sharing: true, customerReviews: true,
     whatsappCheckout: true,
     requireName: true, requirePhone: true, requireEmail: false, requireAddress: false,
-    orderNotes: true, checkoutLabel: 'Buy on WhatsApp',
+    orderNotes: true, checkoutLabel: 'Buy',
     consentText: 'I confirm that the information provided is accurate and consent to Vaultique Boutique processing my personal information for the purposes of fulfilling and managing my order, including processing or storage by authorised service providers outside Zambia, in accordance with the Privacy Policy.'
   };
   // Settings > Pricing & Tax. Defaults match the admin's, and match the way
@@ -418,8 +418,14 @@
                p.name + " (SKU: " + p.sku + ")?";
     return text;
   }
+  /* BUILD 85 · "Buy", in the shop's gold: the choice between checking out
+     on the website and on WhatsApp comes after the details. A label that
+     names WhatsApp (the old built-in "Buy on WhatsApp", saved with the
+     settings) would promise what the button no longer does, so it reads
+     "Buy". Any other wording the shop typed stays as it is. */
   function checkoutLabel() {
-    return (SHOP && SHOP.checkoutLabel) || 'Buy on WhatsApp';
+    var t = String((SHOP && SHOP.checkoutLabel) || '').trim();
+    return (!t || /whats\s*app/i.test(t)) ? 'Buy' : t;
   }
   /* Whether a piece can be bought at all. With WhatsApp checkout off the
      shop is a catalogue: the pieces and prices stay, the buy buttons go.
@@ -1794,7 +1800,7 @@
        one, and whichever of name, phone, email and address the shop does
        not already ask for -- marked as needed only to pay online, and
        never required for WhatsApp. */
-    var payable = payOnline() && order.lines.length > 0 &&
+    var payable = payOnline() && payReady() && order.lines.length > 0 &&
       order.lines.every(function (l) { return !priceOf(l.product).onRequest; });
     if (payable) fields = fields.concat(payFields(fields));
 
@@ -1824,7 +1830,8 @@
       '<button class="qv-close" id="odClose" aria-label="Close">&times;</button>' +
       '<div class="c">' + esc(orderTitle(order)) + '</div>' +
       '<h3 class="serif">Your details</h3>' +
-      '<p class="od-lead">So your order arrives complete. We will carry on from here on WhatsApp.</p>' +
+      '<p class="od-lead">' + (payable ? 'So your order arrives complete.'
+        : 'So your order arrives complete. We will carry on from here on WhatsApp.') + '</p>' +
       /* Delivery or collection, asked before anything else, because the
          answer decides whether the address below is worth filling in. */
       (offersBoth()
@@ -1870,8 +1877,10 @@
       '<div id="odPoints"></div>' +
       consentHtml() +
       '<div class="rv-actions">' +
-        '<button class="btn btn-wa" id="odGo">' + waIcon() + 'Continue on WhatsApp</button>' +
+        /* BUILD 85 · the website first, in gold; WhatsApp beside it, in green:
+           the only green button there is opens WhatsApp. */
         (payable ? '<button class="btn btn-gold od-pay" id="odPay">' + esc(payLabel()) + '</button>' : '') +
+        '<button class="btn btn-wa" id="odGo">' + waIcon() + 'WhatsApp checkout</button>' +
         '<span class="rv-msg" id="odMsg"></span>' +
       '</div>';
 
@@ -2181,9 +2190,27 @@
   }
   function payLabel() {
     if (PAY && PAY.onlineLabel) return PAY.onlineLabel;
-    var card = PAY.onlineCard !== false, mobile = PAY.onlineMobile !== false;
-    return 'Pay now — ' + (card && mobile ? 'card or mobile money' : card ? 'card' : 'mobile money');
+    return 'Website checkout';
   }
+  /* BUILD 85 · IS FLUTTERWAVE REALLY THERE? The switch in Settings > Payments
+     can be on before Flutterwave's keys are in Netlify, and a button that
+     ends at "Online payment is not ready yet" is a dead end. So the server
+     is asked, once, while online payment is on: pay-status ?check=1 answers
+     yes or no for each key, never a key. Until it says the key for the mode
+     chosen is there, Website checkout is not offered, and WhatsApp checkout
+     stands alone, as before. */
+  var PAY_READY = null;
+  function askPayReady() {
+    if (PAY_READY !== null || !payOnline()) return;
+    PAY_READY = false;                            // not offered while asking
+    fetch(PAY_FN + 'pay-status?check=1', { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var mode = PAY.onlineMode === 'live' ? 'live' : 'test';
+        PAY_READY = !!(j && j.service === true && j[mode] === true);
+      }, function () { PAY_READY = false; });
+  }
+  function payReady() { return PAY_READY === true; }
   function payFields(have) {
     var got = {};
     have.forEach(function (f) { got[f.key] = true; });
@@ -3103,6 +3130,7 @@
       applyContent(CONTENT);          // contact details first, the gate uses them
       applyTheme();                   // the notice below is branded too
       if (applyGate()) return;        // closed or under maintenance: build nothing
+      askPayReady();                  // build 85: is Flutterwave really there?
       mergeMeta();
       applySettings();
       applyShopSettings();
@@ -3735,7 +3763,8 @@
       var wa = el('a', 'btn btn-wa');
       if (canBuy(p)) {
         wa.href = buyHref(p);
-        wa.innerHTML = waIcon() + esc(checkoutLabel());
+        wa.classList.add('btn-buy');            // build 85: gold, and no WhatsApp mark
+        wa.textContent = checkoutLabel();
         wa.addEventListener('click', function (e) { startOrder(e, p); });
       } else {
         enquireLink(wa, pieceEnquiry(p), askLabel(p, false));
@@ -4162,11 +4191,13 @@
            button is simply not there, and the line says what is missing. */
         (sendable
           ? '<div class="cart-actions">' +
-              '<button class="btn btn-wa" id="ctGo">' + waIcon() + 'Checkout via WhatsApp</button>' +
+              '<button class="btn btn-wa btn-buy" id="ctGo">Checkout</button>' +
               '<button class="btn btn-outline" id="ctShop">Continue shopping</button>' +
             '</div>' +
-            '<p class="cart-note">Your whole cart goes across in one message, ' +
-              'and we carry on from there. Nothing is paid on this site.</p>'
+            (payReady()
+              ? '<p class="cart-note">Your whole cart goes as one order: check it out on the website, or on WhatsApp.</p>'
+              : '<p class="cart-note">Your whole cart goes across in one message, ' +
+                'and we carry on from there. Nothing is paid on this site.</p>')
           : '<p class="cart-note">Nothing here can be ordered at the moment. ' +
               'Remove what has sold out, or add a piece that is in stock.</p>' +
             '<div class="cart-actions">' +
@@ -4552,8 +4583,8 @@
           : 'Sold out') + '</div></div>' +
       '<div class="detail-cta" style="max-width:none">' +
       ((canBuy(p) || canAsk(p))
-        ? '<a class="btn btn-wa' + (canBuy(p) ? '' : ' btn-chat') + '" id="qvBuy"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
-          (canBuy(p) ? waIcon() : chatIcon()) + esc(canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
+        ? '<a class="btn btn-wa' + (canBuy(p) ? ' btn-buy' : ' btn-chat') + '" id="qvBuy"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
+          (canBuy(p) ? '' : chatIcon()) + esc(canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       '<span id="qvCartSlot"></span>' +
       '<button class="btn btn-outline" id="qvFull">View full details</button></div>';
@@ -4660,8 +4691,8 @@
          as a form, not a boutique. */
       '<div class="cta-main">' +
       ((canBuy(p) || canAsk(p))
-        ? '<a class="btn btn-wa' + (canBuy(p) ? '' : ' btn-chat') + '" id="buyDetail"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
-          (canBuy(p) ? waIcon() : chatIcon()) + esc(canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
+        ? '<a class="btn btn-wa' + (canBuy(p) ? ' btn-buy' : ' btn-chat') + '" id="buyDetail"' + buyTarget(p) + ' href="' + esc(buyHref(p)) + '">' +
+          (canBuy(p) ? '' : chatIcon()) + esc(canBuy(p) ? checkoutLabel() : askLabel(p, true)) + '</a>'
         : '') +
       (canBuy(p) ? '<span id="cartSlot"></span>' : '') +
       '</div><div class="cta-sub">' +

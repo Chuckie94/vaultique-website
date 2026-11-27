@@ -211,6 +211,14 @@ $cnt$;
 -- (supabase-payments.sql gives nobody else a way in), so a "paid" typed onto
 -- an order by anybody else, or on a website where online payment was never
 -- set up, never lets goods leave the shop unpaid.
+--
+-- BUILD 85 · AND PAID IN LIVE MODE. A payment made in Test mode moved no
+-- money (Flutterwave's test cards and numbers), so it never counts as paid
+-- at the till: the till's automatic ring-up leaves it alone, ringing it up
+-- by hand is refused, and it is never prepared or sent. Until build 85 a
+-- Test-mode payment counted, and the platform (since its build 509) rang a
+-- paid order up by itself within two minutes: a sale that never happened.
+-- The same in supabase-test-orders.sql, for a shop already running.
 create or replace function public.pos_paid_online(p_id uuid)
 returns boolean
 language plpgsql
@@ -224,11 +232,35 @@ begin
   if to_regclass('public.payments') is null then
     return false;
   end if;
-  execute 'select exists (select 1 from public.payments p where p.order_id = $1 and p.status = ''paid'')'
+  execute 'select exists (select 1 from public.payments p where p.order_id = $1 and p.status = ''paid''
+                                                    and p.mode = ''live'')'
      into yes using p_id;
   return coalesce(yes, false);
 end
 $paid$;
+
+-- BUILD 85 · an order paid, or being paid, in Test mode: the shop trying
+-- the website's payment. It is shown to the till as a test, and kept off
+-- its list of orders to ring up; a search still finds it.
+create or replace function public.pos_test_payment(p_id uuid)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $tst$
+declare
+  yes boolean := false;
+begin
+  if to_regclass('public.payments') is null then
+    return false;
+  end if;
+  execute 'select exists (select 1 from public.payments p where p.order_id = $1 and p.mode = ''test'')
+           and not exists (select 1 from public.payments p where p.order_id = $1 and p.mode = ''live'')'
+     into yes using p_id;
+  return coalesce(yes, false);
+end
+$tst$;
 
 
 -- 7) ONE ORDER, AS THE DOOR HANDS IT OUT --------------------------------------
@@ -293,7 +325,8 @@ begin
         'online', true, 'status', o.payment_status, 'channel', o.pay_channel, 'ref', o.pay_ref,
         'goods', o.goods_total, 'delivery', o.delivery_fee, 'tax', o.tax_total,
         'paid', o.paid_amount, 'paidAt', o.paid_at,
-        'verified', o.payment_status = 'paid' and public.pos_paid_online(o.id))
+        'verified', o.payment_status = 'paid' and public.pos_paid_online(o.id),
+        'test', public.pos_test_payment(o.id))
       else jsonb_build_object('online', false) end,
     'account', jsonb_build_object('has', o.customer_id is not null, 'custNo', v_cust),
     'points', v_hold,
@@ -352,6 +385,7 @@ begin
                     o.pos_sale_id is null
                 and coalesce(o.status, 'pending') not in ('cancelled', 'completed')
                 and not (o.payment_method = 'online' and coalesce(o.payment_status, '') in ('failed', 'expired'))
+                and not (o.payment_method = 'online' and public.pos_test_payment(o.id))   -- build 85: a test is no order to ring up
                when p_scope = 'done' then
                     o.pos_sale_id is not null or coalesce(o.status, '') in ('cancelled', 'completed')
                else true
@@ -445,7 +479,8 @@ begin
   if o.payment_method = 'online'
      and not (coalesce(o.payment_status, '') = 'paid' and public.pos_paid_online(o.id)) then
     return jsonb_build_object('door', d, 'v', 1, 'ok', false, 'why', 'awaiting_payment',
-                              'payment', coalesce(o.payment_status, 'awaiting'));
+                              'payment', coalesce(o.payment_status, 'awaiting'),
+                              'test', public.pos_test_payment(o.id));    -- build 85: paid in Test mode, no money
   end if;
   if o.pos_claim_id is not null and o.pos_claim_id <> v_claim and not coalesce(p_take_over, false) then
     return jsonb_build_object('door', d, 'v', 1, 'ok', false, 'why', 'claimed',
@@ -699,6 +734,7 @@ revoke all on function public.pos_door_key_ok(text) from public, anon, authentic
 revoke all on function public.pos_door_count(text, integer) from public, anon, authenticated;
 revoke all on function public.pos_order_out(uuid, boolean) from public, anon, authenticated;
 revoke all on function public.pos_paid_online(uuid) from public, anon, authenticated;
+revoke all on function public.pos_test_payment(uuid) from public, anon, authenticated;
 revoke all on function public.pos_text(jsonb, integer) from public, anon, authenticated;
 revoke all on function public.pos_num(jsonb) from public, anon, authenticated;
 revoke all on function public.pos_receipt_clean(jsonb) from public, anon, authenticated;

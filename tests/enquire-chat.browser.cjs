@@ -8,7 +8,7 @@
    panels, delivery, the FAQ, the policies page, a sold-out piece and a piece
    whose price is on request -- says Enquire and opens the chat window with
    the words the WhatsApp message used to start with, ready to send. Ordering
-   is not an enquiry: Buy on WhatsApp is unchanged. With the live chat
+   is not an enquiry: its Buy button (gold since build 85) is not one. With the live chat
    switched off, Enquire still goes somewhere: WhatsApp, as before.
 
    BUILD 83. "Why did you stamp everything ... with 'I have a question about
@@ -193,7 +193,7 @@ const server = http.createServer(async (req, res) => {
           buy = cards.find(x => x.name === 'Woven Tote');
     is(sold && sold.btn === 'Enquire' && sold.chat, 'a sold-out piece: "Enquire"', J(sold));
     is(asked && asked.btn === 'Enquire' && asked.chat, 'a piece whose price is on request: "Enquire", even with "Ask about this piece" saved', J(asked));
-    is(buy && /WhatsApp/.test(buy.btn) && !buy.chat, 'a piece you can buy is unchanged: buying is not an enquiry', J(buy));
+    is(buy && buy.btn === 'Buy' && !buy.chat, 'a piece you can buy says "Buy" (build 85): buying is not an enquiry', J(buy));
     away = await press(page, '.card:has(.n:text-is("Leather Satchel")) .wa-line .btn-chat');
     c = await chat(page);
     is(c.open && /Leather Satchel \(SKU: BG-SATC\)/.test(c.text) && away.length === 0,

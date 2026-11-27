@@ -28,6 +28,9 @@
         assets/version.js says, beside what this folder's says. A live
         site older than this folder was not uploaded, or Netlify refused
         to publish it: Netlify > Deploys says why, at the end of its log.
+     9. THE HEALTH CHECK (build 84 on): /api/health says "working" or "not
+        working", and whether the checks before each deploy are on or
+        paused. It tells anybody nothing else, and this checks that too.
 
    READ ONLY. Ordinary GET requests to your own site; nothing is changed
    anywhere. The list of files comes from this folder, so it always checks
@@ -347,6 +350,26 @@ async function checkVersion() {
             'have, open Netlify > Deploys: a deploy that says Failed ends its log with "BUILD STOPPED:" and the reason');
 }
 
+/* 9. BUILD 84: the health check (netlify/functions/health.js). */
+async function checkHealth() {
+  console.log('\n9. The health check (build 84 on)');
+  const r = await json('/api/health');
+  if (r.status === 404 || (r.status === 200 && !r.body)) {
+    note('there is no health check yet: the live site is older than build 84');
+    return;
+  }
+  if (r.status !== 200 || !r.body) { fail('/api/health answered ' + (r.status || r.error)); return; }
+  if (r.body.status === 'working') ok('the health check says: working (build ' + r.body.build + ')');
+  else fail('the health check says: NOT WORKING. The database did not answer, or Netlify has no service key ' +
+            '(SETUP.md, "The health check")');
+  if (r.body.deployChecks === 'paused') {
+    fail('the checks before each deploy are PAUSED (VBP_DEPLOY_GATE in Netlify): delete that setting, then Trigger deploy');
+  } else if (r.body.deployChecks === 'on') ok('the checks before each deploy: on');
+  const extra = Object.keys(r.body).filter((k) => ['status', 'build', 'version', 'deployChecks', 'at'].indexOf(k) < 0);
+  if (extra.length) fail('the health check tells anybody more than it should: ' + extra.join(', '));
+  else ok('it tells anybody nothing more');
+}
+
 (async () => {
   console.log('\nChecking ' + BASE + ' (read only)');
   const home = await peek('/');
@@ -363,6 +386,7 @@ async function checkVersion() {
   await checkBuild();
   await check76();
   await checkVersion();
+  await checkHealth();
   console.log('\n  ' + (fails ? fails + ' to fix' : 'nothing to fix') + (notes ? ', ' + notes + ' worth knowing' : '') + '\n');
   process.exit(fails ? 1 : 0);
 })();

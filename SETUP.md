@@ -44,8 +44,20 @@ You will do five short steps. It takes about 10 minutes.
 > 32 supabase-online-refund.sql    the platform's online refunds
 >  and one more (build 83):
 > 33 supabase-chat-reply-push.sql  telling a customer you have replied
+>  and one more (build 85):
+> 34 supabase-test-orders.sql      a test payment is never rung up at the till
 >                                  then supabase-hardening.sql once more
 > ```
+>
+> **Build 85, on a shop already running:** upload, then run
+> `supabase-test-orders.sql` once (34 in the list above): from then on a
+> payment made in Test mode is never rung up at the platform's till. The
+> hardening is not run again for it; whenever it is, its report has the line
+> *A test payment is never rung up*, which should say OK.
+>
+> **Build 84, on a shop already running:** upload only. No SQL file and no new
+> setting. From now on Netlify runs the website's own node checks before it
+> publishes, and stops if one fails (section 6, "Safe releases").
 >
 > **Build 83, on a shop already running:** upload, then run
 > `supabase-chat-reply-push.sql` once. The hardening is not run again for it:
@@ -93,6 +105,7 @@ You will do five short steps. It takes about 10 minutes.
 > | `LOW_STOCK_AT` | no (3) | How few left counts as "only a few left" | `products.js` |
 > | `ANALYTICS_KEEP_DAYS` | no (400) | How many days of raw visit records the nightly clean-up keeps | `site-prune.js` |
 > | `CSP_REPORTS` | no | `off` stops the security policy's reports; the policy stays | the build step |
+> | `VBP_DEPLOY_GATE` | **no**: only for a day when a check is wrong, then deleted | `paused` publishes without running the checks first (build 84). The deploy log says so first and last, and the health check says so to anybody | the build step; `health.js` |
 > | `URL` | never: Netlify sets it | The site's main address | sign-up links, the page after paying |
 > | `FLW_API_BASE` | **never** | Where Flutterwave's API is; only the tests point it elsewhere | the payment functions |
 > | `POS_SUPABASE_KEY` | **must not be there** | The platform's **secret** key, unused since build 77. Netlify will not publish the website while it holds one. | the build step (to refuse it); `rewards-check.js` (to say so) |
@@ -474,6 +487,73 @@ Nothing to switch on and nothing to set. Two things worth knowing:
 ## 5. Redeploy the website
 Push the updated folder to your repo (or run `netlify deploy --build --prod`).
 
+## 6. Safe releases (build 84)
+
+### The checks before every deploy
+Netlify's build step (`tools/build-site.cjs`) runs the website's own node
+checks before it publishes anything: the server jobs and the build step
+itself, under a minute, nothing to install. They run with **none** of
+Netlify's settings, so no check can ever reach the real shop with a real key.
+
+- **They pass:** the deploy log says `Checks: node: … files passed, … checks`
+  and the website is published as always.
+- **One fails:** the log ends with `BUILD STOPPED: the website's own checks
+  failed`, names the check and what it found, and **nothing is published**:
+  the site that was live stays live. GitHub's Actions › Tests says the same.
+  Send that part of the log to whoever looks after the website.
+- **For a day when a check is wrong rather than the website** (an urgent fix
+  must go out): Netlify › Site configuration › Environment variables › Add
+  `VBP_DEPLOY_GATE` = `paused`, then Deploys › Trigger deploy. The log says
+  `THE CHECKS WERE NOT RUN` first and last, and the health check says
+  `"deployChecks": "paused"` to anybody, until the variable is deleted (then
+  Trigger deploy again). Never leave it there.
+
+The browser and database checks need Chromium and PostgreSQL, which Netlify's
+build machine does not have: they run on GitHub with every upload. A
+critical one (payments, refunds, orders, sign-in, security) gets no second
+try, and a check that skips is reported as skipped, never as passed.
+
+### The health check
+`https://YOUR-SITE/api/health` answers anybody with one word: `"working"`
+(this server answers, its service key is set, and the database answered just
+now) or `"not working"`, with the build and whether the deploy checks are on.
+Nothing else. Signed in as an administrator, the admin can be told more:
+which SQL files the database has had, every Netlify setting set or not (never
+its value), and whether online payment can really start. The admin shows
+these from build 89; `node tools/live-check.cjs https://YOUR-SITE` reads the
+one word after every deploy.
+
+### Release tags
+When GitHub's Tests run is **green** for an upload to the main branch, the
+Release tag workflow tags that commit `website-84`, `website-85`, … from
+`assets/version.js`. GitHub › Code › Tags lists them: each is a build that
+passed every check, and the commit it went up as. Nothing else is changed.
+CHANGELOG.md says what each build changed.
+
+### Who can change the website (for you to check)
+- **GitHub:** the repository › Settings › Collaborators: everyone listed can
+  upload a new build.
+- **Netlify:** Team settings › Members: everyone listed can change settings
+  and publish.
+Remove anybody who should not be there. Nothing in the website changes this.
+
+### A staging copy, when it can be made
+A second copy of the website to try a build on before the shop sees it. It
+needs a Supabase project of its own, and Supabase allows two free projects
+per account: the website's and the platform's most likely use both. When a
+project is free (or with Supabase Pro), the steps are:
+1. A new Supabase project, `vaultique-staging`; run every SQL file in it in
+   the order of section 2 (never the live project's data).
+2. In GitHub, a branch called `staging`, with a `config.js` holding the
+   staging project's address and public key.
+3. Netlify › Site configuration › Build & deploy › Branches and deploy
+   contexts › Branch deploys: `staging`. It gets its own address
+   (`staging--YOUR-SITE.netlify.app`).
+4. Netlify › Environment variables, each set for **Branch deploys** only: the
+   staging project's service key, and Flutterwave's **test** key. **Never** the
+   live service key, Flutterwave's live key, the platform's door keys or the
+   email password.
+
 ---
 
 ## Using the admin
@@ -755,9 +835,12 @@ and follow the link in the email.
 ### Online payment (card and mobile money)
 
 Customers can pay by card or mobile money through **Flutterwave**. It is **off**
-until you switch it on. **WhatsApp checkout does not change**: when this is on,
-a second button, **Pay now — card or mobile money**, appears under
-**Continue on WhatsApp** in the checkout form.
+until you switch it on. **WhatsApp checkout does not change**. Every piece
+says **Buy**, in gold (build 85), and the details end with **Website checkout**
+(gold, first: the way described here) and **WhatsApp checkout** (green, as
+always). Website checkout appears only once Flutterwave's key for the mode
+chosen is in Netlify: switched on before that, customers see WhatsApp checkout
+alone.
 
 **What the customer sees.** Their details (name, phone, email, and address if
 delivering), then a **quote**: each piece, any VAT, the delivery fee if you
@@ -801,18 +884,20 @@ confirmation goes to the customer and to you automatically.
 6. **Settings > Payments > Online payment**: switch it on, leave the mode on
    **Test**, and save. The line at the top should show ✓ against every item.
    **While the mode is Test, only you can pay online** (build 77): customers
-   see no **Pay now** at all and order on WhatsApp as usual. You see it by
+   see no **Website checkout** at all and order on WhatsApp as usual. You see it by
    opening the shop with your preview key, `https://YOUR-SITE/?preview=YOUR-KEY`
    (**Settings > General > Preview key**). The website itself refuses a test
    payment from anybody else, whatever their browser sends.
 7. **Try it** on your phone: open the shop with your preview key, add something
-   to the cart, press **Pay now**, and pay with one of Flutterwave's test cards
+   to the cart, press **Website checkout**, and pay with one of Flutterwave's test cards
    or test mobile money numbers (listed in their documentation under
    "Testing"). Check the order shows **Paid ✓**, and beside it **TEST · no money
    moved** (build 76, once `supabase-hardening.sql` has been run). Test payments
    are not counted in the Dashboard's or Analytics' sales, the page after paying
    says **Test payment received**, and both confirmation emails begin
-   **[TEST]** and say no money was taken (build 77).
+   **[TEST]** and say no money was taken (build 77). **And the platform never
+   rings it up** (build 85, once `supabase-test-orders.sql` has been run): it is
+   kept off the till's list of orders, and refused if rung up by hand.
 8. When you are ready, set the mode to **Live**, save, and make one small real
    purchase yourself.
 

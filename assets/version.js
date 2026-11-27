@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.53.0',
-  build: 83,
-  builtAt: '2026-11-19T14:00:33Z',
-  notes: 'Each Enquire button starts its own message again, and every message is written in Settings > Live Chat > Enquire buttons. A customer who writes in the live chat can ask to be notified when the shop replies, offered again if they close the chat while still waiting, with a note by the chat button and the count in the tab while the site is open: only within an hour of their message unless Settings > Live Chat says otherwise, and never with what was said. GitHub test logs now say what a failing check found. One SQL file: supabase-chat-reply-push.sql, run once.'
+  version: '1.55.0',
+  build: 85,
+  builtAt: '2026-11-21T06:36:54Z',
+  notes: 'Checkout: the website or WhatsApp. Buy is gold on every piece and Checkout gold in the cart; after the details, Website checkout (gold) first and WhatsApp checkout (green) beside it, each the way it always went. Website checkout appears only when Flutterwave\'s key for the mode chosen is in Netlify, so a switch turned on before Flutterwave is set up shows WhatsApp checkout alone. Green is only ever WhatsApp. A payment made in Test mode is never rung up at the platform\'s till (supabase-test-orders.sql, run once). Holds build 84 (safe releases).'
 };

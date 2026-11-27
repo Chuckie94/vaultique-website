@@ -162,6 +162,10 @@ button{font-family:inherit;cursor:pointer}
    .btn-wa beside it only for the sizes each place gives that class. */
 .btn-wa.btn-chat,.btn.btn-chat{background:var(--navy);color:#fff}
 .btn-wa.btn-chat:hover,.btn.btn-chat:hover{background:var(--navy-2)}
+/* Build 85 · Buy and Checkout in the shop's gold, sized as before: green is
+   for the one button that opens WhatsApp. */
+.btn-wa.btn-buy,.btn.btn-buy{background:var(--btn);color:var(--btn-on)}
+.btn-wa.btn-buy:hover,.btn.btn-buy:hover{background:var(--btn-hover);box-shadow:0 16px 30px -16px rgba(var(--btn-rgb),.8)}
 .btn-chat svg{fill:none !important;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .link-more{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--navy);font-weight:500;display:inline-flex;align-items:center;gap:8px;border-bottom:1px solid var(--gold);padding-bottom:4px;transition:gap .3s}
 .link-more:hover{gap:14px;color:var(--gold-deep)}
@@ -1182,7 +1186,7 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
 .od-lead.err{color:#b3261e}
 #orderModal .modal-card{max-width:460px}
 #orderBody textarea{resize:vertical;min-height:44px}
-#orderModal .btn-wa{flex:1 1 auto;justify-content:center}
+#orderModal .btn-wa,#orderModal .od-pay{flex:1 1 auto;justify-content:center}
 #orderModal .rv-actions{flex-wrap:wrap}
 
 /* How to pay */
@@ -1627,6 +1631,7 @@ html.vbp-gated, html.vbp-gated body { background: var(--navy); overflow: hidden;
      green, keeps the two exactly the same width. */
   .card-info .wa-line .btn-wa{border:1px solid var(--wa)}
   .card-info .wa-line .btn-wa.btn-chat{border-color:var(--navy)}
+  .card-info .wa-line .btn-wa.btn-buy{border-color:var(--btn)}
   .card-info .wa-line .btn-wa svg,.card-info .wa-line .btn-cart svg{display:none}
   .cards-bordered .card,.cards-shadow .card{padding:8px}
   .cards-framed .card{padding:9px}

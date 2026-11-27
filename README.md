@@ -145,6 +145,14 @@ npm run test:sql                the SQL chains, then the stand-in Supabase      
 npm test                        Node, then browser
 ```
 
+**Netlify runs the same node checks (`node tests/run-tests.js node`) before every deploy** (build 84,
+`tools/build-site.cjs` step 6), with none of its settings, and publishes
+nothing if one fails. A **critical** file (payments, refunds, orders, sign-in,
+security: `CRITICAL` in `tests/run-tests.js`) is never given a second try, and
+a file that skips some or all of its checks (it needs a database, or a copy of
+the platform beside the website) is shown with a dash and named at the end,
+never counted as passed; a critical one that skips fails the run.
+
 `node tests/run-tests.js node send-email product-door` runs only the files
 named. A browser file that fails is run once more: if it passes then, the
 summary names it as passed only on the second try (on GitHub, as a warning)
@@ -288,9 +296,12 @@ cd vaultique-website
 netlify deploy --build --prod
 ```
 
-`--build` matters: without it there is no `dist/` to publish. After a deploy,
+`--build` matters: without it there is no `dist/` to publish, and since build
+84 it is also what runs the node checks first. After a deploy,
 `node tools/live-check.cjs https://YOUR-SITE` checks the live site from
-outside, read only.
+outside, read only, the health check (`/api/health`) included. SETUP.md
+section 6 says what a stopped deploy looks like, how to pause the checks for
+a day, the release tags, and the staging copy.
 
 The website's own Supabase is set up once, as SETUP.md says; the business
 platform's is never touched.
