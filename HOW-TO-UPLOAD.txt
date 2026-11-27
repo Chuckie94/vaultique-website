@@ -32,20 +32,20 @@ B. THE BROWSER  (four drags, because GitHub takes 100 files at a time)
   now 103 files, over GitHub's 100 at a time.)
 
   Drag 1 — at the top of your repository, three FOLDERS together:
-           assets   images   tools                          (75 files)
+           assets   images   tools                          (78 files)
   Drag 2 — at the top of your repository: the netlify FOLDER, the
            .github FOLDER if you can see it, and every loose file at
-           the top level (the 50 files beside the folders)    (93 files)
-  Drag 3 and 4 — the tests folder, in two parts (137 files in all):
+           the top level (the 51 files beside the folders)    (95 files)
+  Drag 3 and 4 — the tests folder, in two parts (143 files in all):
            First open your repository on GitHub and click the tests
            folder, so the page shows tests at the top. Then:
      Drag 3 — Add file > Upload files, and drag in, from inside your
            unzipped tests folder, every file whose name ends in
-           .browser.cjs (49 files). Typing browser.cjs into the
+           .browser.cjs (52 files). Typing browser.cjs into the
            folder's search box shows just those. Commit changes.
      Drag 4 — still inside tests on GitHub: Add file > Upload files,
            and drag in everything else inside your tests folder, the
-           supabase-standin folder among it (88 files). Commit changes.
+           supabase-standin folder among it (91 files). Commit changes.
 
   (Until build 79 the tests folder went in one drag. Build 80 brought
   twenty more checks and it went over GitHub's 100 at a time. Drags 3
@@ -102,6 +102,14 @@ Netlify rebuilds on its own, usually within a minute or two. Then follow
 the steps at the top of START-HERE.txt: uploading runs no SQL, and it never
 deletes a file. When a build takes a file away, START-HERE names it, and it
 has to be deleted from your repository by hand.
+
+BUILD 90: UPLOAD FIRST, SQL SECOND. Wait until Netlify > Deploys shows
+this upload as Published, then run the SQL files START-HERE.txt names, in
+its order (supabase-shopping.sql is this build's own, step F). The
+hardening is not run again. Keep to that order: run first, the older
+website still live would offer anyone "Write a review" on a piece, and the
+database would refuse it (from this build only buyers review a piece)
+until the upload is in.
 
 BUILD 89: UPLOAD FIRST, SQL SECOND. Wait until Netlify > Deploys shows
 this upload as Published, then run the SQL files START-HERE.txt names, in

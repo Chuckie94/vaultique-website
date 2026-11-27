@@ -1,33 +1,35 @@
-VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 89
+VAULTIQUE BOUTIQUE POINT — COMPLETE WEBSITE BUILD 90
 ====================================================
 The whole site, cumulative: everything in build 83 (and so 82, 81 and
 80, with the other website line's builds 74 to 78 carried onto it),
 build 84 (a deploy never publishes a build whose own checks fail),
 build 85 (checkout: the website or WhatsApp), build 86 (the customer
 portal), build 87 (customers' requests), build 88 (Lenco, and one
-checkout for every way of paying) and build 89 (delivery: instructions,
-the courier and tracking number, the invoice). Upload this and you are
-up to date. Upload 89 only: it holds 88, 87, 86, 85 and 84.
+checkout for every way of paying), build 89 (delivery: instructions,
+the courier and tracking number, the invoice) and build 90 (shopping,
+and the policies entered in a window). Upload this and you are up to
+date. Upload 90 only: it holds 89, 88, 87, 86, 85 and 84.
 
-IF BUILD 88 IS ALREADY LIVE (https://vaultiqueboutique.com/api/health
-says "build":88) and you ran its three SQL files, steps B, C and D are
-done: do A, then E to L.
+IF BUILD 89 IS ALREADY LIVE (https://vaultiqueboutique.com/api/health
+says "build":89) and you ran its four SQL files, steps B to E are done:
+do A, then F to N. If build 88 is live and you ran its three, B to D
+are done: do A, then E to N.
 
-NEW IN 84 TO 89 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
-THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, AND DELIVERY.
-  FOUR SQL FILES, each new, each run once, in this order:
+NEW IN 84 TO 90 — SAFE RELEASES, CHECKOUT ON THE WEBSITE OR WHATSAPP,
+THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, DELIVERY, AND SHOPPING.
+  FIVE SQL FILES, each new, each run once, in this order:
   supabase-test-orders.sql (build 85), supabase-customer-requests.sql
-  (build 87), supabase-lenco.sql (build 88) and supabase-delivery.sql
-  (build 89). About forty minutes, then Lenco's own setup when its keys
-  are in hand (step I). Do these in order. Each one says how you know it
-  is done.
+  (build 87), supabase-lenco.sql (build 88), supabase-delivery.sql
+  (build 89) and supabase-shopping.sql (build 90). About fifty minutes,
+  then Lenco's own setup when its keys are in hand (step J). Do these in
+  order. Each one says how you know it is done.
 
   A. UPLOAD THIS FOLDER (HOW-TO-UPLOAD.txt). Nothing to delete. In the
      browser it is four drags, grouped differently from before (the
      assets and netlify folders are now over GitHub's 100 files together).
      Done when: Netlify > Deploys shows it as Published.
      Its log (open the deploy) has, near the top:
-       Checks: node: 42 of 43 files passed, 1 skipped, ... before publishing.
+       Checks: node: 44 of 45 files passed, 1 skipped, ... before publishing.
      (the one skipped needs a database; it runs on GitHub's database job)
      and further down:
        Scripts: enforced. Only this site, its own inline scripts and
@@ -73,13 +75,22 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, AND DELIVERY.
      WhatsApp message, but they are not kept on the order, and a courier
      and tracking number cannot be recorded.
 
-  F. OPEN https://vaultiqueboutique.com/api/health on your phone.
-     Done when: it says "status":"working" and "build":89.
+  F. RUN supabase-shopping.sql the same way, in the WEBSITE's Supabase.
+     The SQL is also in the chat. It changes no order, payment, review,
+     policy, setting or key, and is safe to run again.
+     Done when: its result line says
+       OK · shopping can be recorded | OK
+     Until it is run: email alerts, gift lists and shopping preferences
+     are not offered, a piece's reviews are written as before, and the
+     policies' new numbers are saved one row at a time.
 
-  G. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
+  G. OPEN https://vaultiqueboutique.com/api/health on your phone.
+     Done when: it says "status":"working" and "build":90.
+
+  H. LOOK AT THE SHOP on your phone: every piece's button says Buy, in
      gold; the cart says Checkout, in gold. Press Buy, fill in the
      details: at the bottom, WhatsApp checkout, green. Until a payment
-     gateway is switched on and ready (step I) that is the only one.
+     gateway is switched on and ready (step J) that is the only one.
      If Settings > Shopping > "Checkout button text" still says Buy on
      WhatsApp, the shop shows Buy anyway; type Buy there and Save if you
      want the box to match.
@@ -88,14 +99,14 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, AND DELIVERY.
      Done when: you have seen the gold Buy, the green WhatsApp checkout
      and the delivery instructions box.
 
-  H. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
+  I. LOOK AT YOUR ACCOUNT on your phone, signed in as a customer (the
      person at the top of the shop; not the admin): the navy top saying
      Welcome back, with your orders, wishlist and points, then My
      shopping, My Vault and Security and privacy. Tap My orders, then
      View order on one of them.
      Done when: you have seen the dashboard and an order's own page.
 
-  I. LENCO, WHEN YOUR LENCO KEYS ARE IN HAND (SETUP.md, "Online payment
+  J. LENCO, WHEN YOUR LENCO KEYS ARE IN HAND (SETUP.md, "Online payment
      with Lenco", has every step and Lenco's sandbox numbers and cards).
      1. From Lenco (the dashboard's Lenco Pay section, or support):
         the sandbox API token, sandbox public key and the SANDBOX API
@@ -129,7 +140,7 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, AND DELIVERY.
         Trigger deploy, set the mode to Live, Save, and make one small
         real purchase yourself on each network you ticked, and by card.
 
-  J. CUSTOMERS' REQUESTS, WHEN YOU WANT THEM (you may leave this until
+  K. CUSTOMERS' REQUESTS, WHEN YOU WANT THEM (you may leave this until
      the platform has build 512). Admin > Settings > Customer Accounts:
      switch on "Let customers ask to cancel, return or exchange, or
      report a problem", check "Days after delivery to ask for a return
@@ -141,7 +152,7 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, AND DELIVERY.
      Done when: signed in as a customer, one of your own orders that is
      not yet prepared shows Cancel this order (a minute after saving).
 
-  K. DELIVERY, ONCE STEP E IS DONE.
+  L. DELIVERY, ONCE STEP E IS DONE.
      1. Admin > Orders: an order for delivery that you have confirmed
         shows "Add courier and tracking". Fill in the courier, the
         tracking number, the courier's tracking page if it has one (an
@@ -162,9 +173,56 @@ THE CUSTOMER PORTAL, CUSTOMERS' REQUESTS, LENCO, AND DELIVERY.
      Done when: an order you gave a courier and tracking number shows
      them on the customer's order page.
 
-  L. WATCH THE CHECKS ON GITHUB (Actions > Tests).
+  M. SHOPPING AND THE POLICIES, ONCE STEP F IS DONE.
+     1. Admin > Policies: each policy has its number, 1, 2, 3 ..., in the
+        order customers see them. Press Add policy: a window opens where
+        you are. Type the title, the section and the text, and the number
+        you want it to have (or leave the number: it goes at the end of
+        its section). The line under the number says which numbers move.
+        Press Add policy: the others renumber themselves.
+        Done when: a policy you added shows at the number you chose, and
+        the policies page shows it there.
+     2. Reviews of a piece now come from customers who bought it, marked
+        Verified buyer. To let anyone review a piece again: Settings >
+        Reviews > "Who can review a piece" > Anyone, Save.
+     3. Admin > Reviews > Questions & answers: when a customer asks
+        something in the chat that others would want to know, press Add
+        an answer, choose the piece, type the question and your answer.
+        It shows on the piece's page.
+     4. Settings > Customer Accounts > Shopping: Order again, Email
+        alerts, Gift lists and Shopping preferences are on; switch off any
+        you do not want. Settings > Shopping: Compare pieces side by side.
+     5. The alert emails go from your email (Settings > Notifications)
+        within half an hour of a piece coming back or its price dropping.
+
+  N. WATCH THE CHECKS ON GITHUB (Actions > Tests).
      Done when: the newest Tests run has a green tick. A minute later
-     GitHub > Code > Tags shows website-89 (Actions > Release tag).
+     GitHub > Code > Tags shows website-90 (Actions > Release tag).
+
+  WHAT CHANGED IN 90
+    * ADMIN > POLICIES, AS YOU ASKED: Add policy opens a window on the
+      screen instead of a form at the bottom of the page. Each policy is
+      numbered in the order customers see it; choose a number and the
+      others renumber themselves. Edit opens the same window. Arrows move
+      a policy, or a whole section, one place. The page stays where it
+      was, and the policy just saved is marked.
+    * COMPARE: two to four pieces side by side (price, availability, every
+      detail), from a Compare button on each piece.
+    * EMAIL ALERTS: "Email me when it's back" on a sold-out piece, "Email
+      me if the price drops" on one in stock. Sent once each, within half
+      an hour; the customer sees and stops them in their account.
+    * REVIEWS FROM BUYERS: a piece is reviewed by a customer who bought
+      it, marked Verified buyer (Settings > Reviews can open it to anyone
+      again). A review of the whole shop is as before.
+    * QUESTIONS & ANSWERS: Ask a question on each piece opens the chat;
+      you publish the answers worth keeping in Admin > Reviews.
+    * THE GIFT LIST: a customer shares their wishlist as a link; it shows
+      the pieces and their first name only, until they stop sharing.
+    * SHOPPING PREFERENCES: their sizes and categories; "My sizes" in the
+      shop, their size marked on a piece, their categories first.
+    * RECENTLY PURCHASED AND ORDER AGAIN: a past order's pieces back in
+      the cart at today's prices, never more than you have.
+    * The admin's top bar fits a phone: "Log out" ran past the edge.
 
   WHAT CHANGED IN 89
     * DELIVERY INSTRUCTIONS AT CHECKOUT: "Delivery instructions

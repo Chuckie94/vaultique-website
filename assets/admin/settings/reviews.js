@@ -39,10 +39,16 @@
     anonymous: false,
     anonymousLabel: 'A customer',
     autoPublish: false,
-    minAutoRating: 4
+    minAutoRating: 4,
+    whoReviews: 'buyers'        // build 90: 'buyers' or 'anyone'
   };
 
   A.store.registerDefaults('reviews', DEFAULTS);
+
+  var WHO = [
+    { value: 'buyers', label: 'Customers who bought the piece (shown as Verified buyer)' },
+    { value: 'anyone', label: 'Anyone' }
+  ];
 
   var RATINGS = [
     { value: 1, label: '1 star and above — publish everything' },
@@ -78,6 +84,12 @@
             fields: [
               { type: 'toggle', name: 'customerReviews', label: 'Let customers write reviews',
                 hint: 'Reviews already left are unaffected. Use Show reviews above to hide those.' },
+              { type: 'select', name: 'whoReviews', label: 'Who can review a piece', options: WHO,
+                showIf: function (v) { return !!v.customerReviews; },
+                hint: 'Customers who bought it: signed in, with the piece on one of their orders that has ' +
+                      'been sent, delivered or rung up at the till, once each; their review says Verified ' +
+                      'buyer. This needs customer accounts, and supabase-shopping.sql, which holds the same ' +
+                      'rule in the database. A review of the whole shop stays open to anyone.' },
               { type: 'toggle', name: 'anonymous', label: 'Allow a review without a name',
                 showIf: function (v) { return !!v.customerReviews; },
                 hint: 'Some people will say more honestly what they think when they do not ' +

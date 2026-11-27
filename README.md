@@ -64,6 +64,7 @@ secret. The files starting `_` are shared by the others.
 | `_cardroute.js` | Which gateway takes a card (build 88, ready, routing nothing yet): by the customer's choice, **Pay with Zambian card** (Lenco) or **Pay with international card** (DPO, once a later build connects it; the two buttons from build 89); never a card detail typed on the website |
 | `pay-webhook` | Flutterwave's notices, as before (Flutterwave is off until switched on, build 88) |
 | `pay-reconcile` | Every fifteen minutes (build 80): asks the gateway about any payment the site has not heard back about (Lenco's too from build 88) |
+| `product-alerts` | Every thirty minutes (build 90): emails a customer once when a piece they asked about is back in stock or cheaper than when they asked, at the shop's own price |
 | `order-progress` | Every fifteen minutes (build 80): an order's emails (on its way, the reminder, delivered, refunded), and marking delivered when the days run out; from build 87, customers' requests: the shop told of each new one, the customer of each answer; from build 89, the courier and tracking number in the on-its-way email (or one of their own when given later), and the shop told when a customer changes their delivery instructions |
 | `account-delete` | Closing a customer's account, the login included; never a login on the admin list (build 80) |
 | `account-portal` | The customer portal's records that only the shop may read, for the signed-in customer alone: the newsletter yes or no, refunds on their way, "Download my personal data" (build 86; their requests in it from 87) |
@@ -310,6 +311,15 @@ node tests/delivery.browser.cjs          delivery: the instructions box at check
 node tests/invoice-pdf.test.cjs          the invoice PDF: a good A4 file in the two fonts every reader has,
                                          the figures in their columns, more pages for a long order, names
                                          that look like PDF kept as text (build 89)
+node tests/shopping.browser.cjs          shopping: compare, alerts, questions and answers, reviews from
+                                         buyers, the gift list, sizes and categories, Recently purchased,
+                                         Order again, each switched off (build 90)
+node tests/product-alerts.test.cjs       the alert emails: back in stock, a price drop at the shop's own
+                                         price, once, one email each, nothing without email (build 90)
+node tests/policies.browser.cjs          Admin > Policies: the window, the numbers renumbering themselves,
+                                         the arrows, delete, a phone, the policies page in the same order (90)
+node tests/policies-order.test.cjs       the policies' numbers worked out without a page (build 90)
+node tests/questions.browser.cjs         Admin > Reviews > Questions & answers (build 90)
 bash tools/db-check.sh                   supabase-hardening.sql on a stand-in Supabase: the 28 files, the
                                          hardening twice, the files made after it (build 80) twice each and the
                                          hardening again, the older files refusing, then tests/hardening.sql,
@@ -325,8 +335,9 @@ bash tools/sql-tests.sh                  every psql chain above, each on a fresh
                                          (tests/order-progress-db.sh) (build 80), the online refunds
                                          (tests/online-refund-db.sh) (build 81), a test payment kept off the
                                          till (build 85), customers' requests (tests/customer-requests.sql,
-                                         build 87), Lenco payments (tests/lenco.sql, build 88) and delivery
-                                         (tests/delivery.sql, tests/delivery-kept.sql, build 89)
+                                         build 87), Lenco payments (tests/lenco.sql, build 88), delivery
+                                         (tests/delivery.sql, tests/delivery-kept.sql, build 89) and
+                                         shopping (tests/shopping.sql, build 90)
 ```
 
 The browser ones need Playwright (`npm ci` in `tests/`), the SQL ones any

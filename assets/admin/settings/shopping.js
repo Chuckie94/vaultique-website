@@ -62,6 +62,7 @@
     enquiries: true,
     wishlist: true,
     sharing: true,
+    compare: true,          // build 90
     customerReviews: true,
 
     whatsappCheckout: true,
@@ -154,6 +155,10 @@
               { type: 'toggle', name: 'sharing', label: 'Product sharing',
                 hint: 'A share button on each piece. Opens the phone’s own share ' +
                       'sheet, and copies the link on a computer.' },
+              { type: 'toggle', name: 'compare', label: 'Compare pieces side by side',
+                hint: 'A Compare button on each piece. Two to four chosen pieces are shown ' +
+                      'together, their price, availability and details in rows. Kept on the ' +
+                      'customer’s own device.' },
               { type: 'note', label: 'Reviews',
                 text: 'Whether reviews appear, who may write them, and what happens to a new ' +
                       'one are all in Settings > Reviews now, together rather than split ' +

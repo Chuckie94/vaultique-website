@@ -8,6 +8,83 @@ and GitHub tags every build that passes its checks (`website-84`, …).
 Builds before 84 are described in their own notes and in the `notes` line of
 `assets/version.js` as each was released.
 
+## Build 90 · 1.60.0 · shopping, and the policies entered in a window
+
+- **Admin › Policies** (`assets/admin/policies.js`), as the owner asked: "Adding
+  a new policy shouldn't take the windows to the bottom, instead, a policy
+  window should just appear on the screen. Also, the numbers in order should
+  auto correct when a new policy is added, instead of editing all the
+  numbers." The list is now compact, under the same section headings as the
+  policies page, each policy numbered 1, 2, 3 ... in the order customers see
+  it. **Add policy** and **Edit** open one window over the list: title,
+  section, number and text; choosing a number puts the policy there, and the
+  window says which numbers move before anything is saved. Saved: the others
+  renumber themselves, the page stays where it was, and the policy is marked
+  (with *Show it* when it is out of sight). Arrows move a policy, or a whole
+  section, one place; Delete closes the gap. Each section stays together, as
+  on the policies page; a number among another section's policies is brought
+  to the nearest place in the policy's own section, and the window says so.
+  One row is written when there is room between two numbers; otherwise every
+  number is written again as 10, 20, 30 ... in one step
+  (`policies_set_order`), or row by row before `supabase-shopping.sql`.
+  *Load starter policies* now adds them after the ones already there.
+- **Compare** (`assets/shopping.js`): a Compare button on each piece, a small
+  bar while some are chosen, and `/compare`: two to four pieces side by side,
+  price, availability and every detail, with Add to cart. Kept on the
+  customer's device. Settings › Shopping, *Compare pieces side by side*.
+- **Product alerts**: *Email me when it's back* on a sold-out piece, *Email me
+  if the price drops* on one in stock, for a signed-in customer, to their
+  account's own address. The new half-hourly job
+  (`netlify/functions/product-alerts.js`) emails each once, at the price the
+  shop shows (its own prices and hidden pieces, as the checkout prices), one
+  email for all of a customer's pieces; a piece priced on request never; an
+  alert left waiting 180 days is let go. The customer sees and stops them in
+  *Product alerts* in their account.
+- **Reviews from buyers**: a piece is reviewed by a signed-in customer who
+  bought it (sent, delivered or rung up at the till, not cancelled or
+  refunded in full), once, marked *Verified buyer* (`review_by_buyer`, which
+  checks the purchase in the database). Signed out: *Bought this piece? Sign
+  in to review it.* Settings › Reviews, *Who can review a piece*: customers
+  who bought it (the default) or anyone. A review of the whole shop is as
+  before. The database holds the same rule.
+- **Questions & answers**: *Ask a question* on each piece opens the live chat
+  with the piece named; the shop publishes the answers worth keeping in
+  **Admin › Reviews › Questions & answers** (`assets/admin/questions.js`),
+  shown on the piece's page under its reviews.
+- **The gift list**: a customer shares their wishlist as a link
+  (`/gift/<key>`, a 64-character key made by the database); whoever has it
+  sees the pieces and the customer's first name, nothing else, until they
+  stop sharing. Not indexed by search engines.
+- **Shopping preferences**: sizes and categories on the account. Their
+  categories come first in the shop; *My sizes* shows pieces in their sizes
+  (and one-size pieces); their size is marked on a piece's size picker.
+- **Recently purchased** and **Order again**: every piece they bought, as the
+  shop's own cards; on a past order, *Order again* puts its pieces back in
+  the cart at today's prices, never more than the shop has, and says what
+  is not on sale.
+- **Settings › Customer Accounts › Shopping**: *Order again*, *Email alerts*,
+  *Share the wishlist as a gift list*, *Shopping preferences*, each on unless
+  switched off.
+- **Download my personal data** includes their alerts, their gift list
+  (whether it is shared, never its key), their preferences and the reviews
+  they wrote as buyers.
+- **The admin's top bar fits a phone**: at 390 pixels *Log out* ran a few
+  pixels past the edge.
+- One SQL file: `supabase-shopping.sql` (product_alerts, product_questions,
+  gift_lists, review_owners, customers.preferences, the review rule, and the
+  functions). The hardening's list keeps the gift list's link and the review
+  rule open to visitors when it is run again.
+- Tests: `tests/shopping.browser.cjs` (40) and `tests/product-alerts.test.cjs`
+  (14), both critical; `tests/policies.browser.cjs` (33),
+  `tests/policies-order.test.cjs` (25), `tests/questions.browser.cjs` (10),
+  `tests/shopping.sql` (45), and new checks in `tests/after-the-hardening.sql`
+  (3). Changed, each said why: `build-site.test.cjs`, 63 script and
+  stylesheet addresses fingerprinted (was 60: the three new scripts);
+  `portal.browser.cjs`, the dashboard's three new cards and Shopping
+  preferences (its own wording had said alerts come with build 90); the
+  hardening's lists and `tools/db-check.sh`, the gift list's link, the
+  review rule and the tenth file.
+
 ## Build 89 · 1.59.0 · delivery: instructions, the courier and tracking number, the invoice
 
 - **Delivery instructions at checkout** (`assets/app.js`): under the address,

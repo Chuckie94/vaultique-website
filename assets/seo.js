@@ -163,6 +163,12 @@
       out.robots = 'noindex, follow';
       out.title = (acct ? 'Your account' : 'Your wishlist') + ' · ' + siteTitle(ctx);
     }
+    /* Build 90: a gift list belongs to the person who shared it, and a
+       comparison to whoever made it: neither is a page for search. */
+    if (r === 'compare' || /^gift\//.test(r)) {
+      out.robots = 'noindex, nofollow';
+      out.title = (r === 'compare' ? 'Compare' : 'A gift list') + ' · ' + siteTitle(ctx);
+    }
     return out;
   }
 

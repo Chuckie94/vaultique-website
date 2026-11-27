@@ -1372,7 +1372,10 @@ as $$
     'vbp_pos_requests', 'vbp_pos_request_decide',
     -- build 89: the courier and tracking number, recorded by the platform
     -- through the same door and key (supabase-delivery.sql)
-    'vbp_pos_order_shipping']::text[];
+    'vbp_pos_order_shipping',
+    -- build 90 (supabase-shopping.sql): a gift list, opened with its own
+    -- long key; and the rule a visitor's review is checked against
+    'gift_list_get', 'reviews_open_to_all']::text[];
 $$;
 
 do $$

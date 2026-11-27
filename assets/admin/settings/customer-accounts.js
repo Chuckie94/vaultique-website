@@ -84,6 +84,12 @@
 
     wishlistFollowsAccount: true,
 
+    // BUILD 90 · the portal's shopping (supabase-shopping.sql)
+    orderAgain: true,
+    productAlerts: true,
+    giftLists: true,
+    shoppingPrefs: true,
+
     signupConsentText: 'I confirm that the information provided is accurate and consent to Vaultique Boutique processing my personal information for the purposes of creating and managing my account, including processing or storage by authorised service providers outside Zambia, in accordance with the Privacy Policy.'
   };
 
@@ -226,6 +232,30 @@
                 text: 'Whether the shop has a wishlist at all is in Products & Shopping. ' +
                       'What is here is only whether one follows the person who made it.',
                 showIf: on }
+            ]
+          },
+          {
+            title: 'Shopping',
+            note: 'Build 90. Alerts, gift lists and preferences need supabase-shopping.sql to have been run once; ' +
+                  'until then they are not offered.',
+            fields: [
+              { type: 'toggle', name: 'orderAgain', label: 'Order again',
+                showIf: function (v) { return on(v) && !!v.orderHistory; },
+                hint: 'On a past order: its pieces back in the cart, at today’s prices, and never more ' +
+                      'than you have. Recently purchased lists the pieces of every order.' },
+              { type: 'toggle', name: 'productAlerts', label: 'Email alerts: back in stock, and price drops',
+                showIf: on,
+                hint: '"Email me when it’s back" on a sold-out piece, and "Email me if the price drops" on ' +
+                      'one in stock. Sent once each, from your email (Settings > Notifications), within half ' +
+                      'an hour of the change.' },
+              { type: 'toggle', name: 'giftLists', label: 'Share the wishlist as a gift list',
+                showIf: function (v) { return on(v) && !!v.wishlistFollowsAccount; },
+                hint: 'A link to their wishlist, showing the pieces and their first name only. They can ' +
+                      'stop sharing at any time. Needs the wishlist to follow the account.' },
+              { type: 'toggle', name: 'shoppingPrefs', label: 'Shopping preferences: sizes and categories',
+                showIf: on,
+                hint: 'Their sizes are marked on a piece’s sizes, with "My sizes" in the shop; their ' +
+                      'categories come first in the shop.' }
             ]
           },
           {

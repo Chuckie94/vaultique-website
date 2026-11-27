@@ -173,8 +173,23 @@
 
     <!-- REVIEWS -->
     <div id="tab-reviews" class="hide">
-      <div class="toolbar"><span class="count" id="revCount"></span></div>
+      <div class="toolbar">
+        <span class="rev-seg" role="group" aria-label="Reviews, or questions and answers">
+          <button class="btn btn-out btn-sm on" id="revShowReviews" type="button" aria-pressed="true">Reviews</button>
+          <button class="btn btn-out btn-sm" id="revShowQa" type="button" aria-pressed="false">Questions &amp; answers</button>
+        </span>
+        <span class="count" id="revCount"></span>
+      </div>
       <div id="revList"><p class="count">Loading…</p></div>
+      <div id="qaPane" class="hide">
+        <div class="toolbar">
+          <span class="count" id="qaCount"></span>
+          <button class="btn btn-gold btn-sm" id="qaAdd" type="button">Add an answer</button>
+          <span class="stat" id="qaStat" aria-live="polite"></span>
+        </div>
+        <div class="hint" style="margin-bottom:12px">Customers ask in the live chat, with Ask a question on each piece. Publish the answers worth keeping: they show on the piece's page, under its reviews.</div>
+        <div id="qaList"></div>
+      </div>
     </div>
 
     <!-- SUBSCRIBERS -->
@@ -193,10 +208,11 @@
     <div id="tab-policies" class="hide">
       <div class="toolbar">
         <span class="count" id="polCount"></span>
-        <button class="btn btn-out btn-sm" id="polAdd">Add policy</button>
+        <button class="btn btn-gold btn-sm" id="polAdd">Add policy</button>
         <button class="btn btn-out btn-sm" id="polImport">Load starter policies</button>
+        <span class="stat" id="polStat" aria-live="polite"></span>
       </div>
-      <div class="hint" style="margin-bottom:12px">Edit any policy below, change its order with the number, or add your own. In the text, start a line with a dash to make a bullet point. Leave a blank line between paragraphs.</div>
+      <div class="hint" style="margin-bottom:12px">Each policy is numbered in the order customers see it on the policies page, section by section. Add policy opens a window: choose the number and the others move up or down to make room. Edit opens the same window. The arrows move a policy, or a whole section, one place.</div>
       <div id="polList"><p class="count">Loading…</p></div>
     </div>
 
@@ -264,6 +280,8 @@
 <script src="assets/admin/settings/system-maintenance.js"></script>
 
 <script src="assets/vendor/supabase-js-2.118.0.js"></script>
+<script src="assets/admin/policies.js"></script>
+<script src="assets/admin/questions.js"></script>
 <script src="assets/admin/shell.js"></script>
 </body>
 </html>

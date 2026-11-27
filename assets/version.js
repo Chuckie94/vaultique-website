@@ -27,8 +27,8 @@
      notes     one line on what changed, shown in the deployment history
    ===================================================================== */
 window.VBP_VERSION = {
-  version: '1.59.0',
-  build: 89,
-  builtAt: '2026-11-26T09:11:00Z',
-  notes: 'Delivery. At checkout, delivery instructions for the courier (a landmark, the gate, the best time), sent with the order and in the WhatsApp message; changed by the customer on their order until it is on its way, and the shop emailed each change. The courier, the tracking number, the courier\'s tracking page and updates for the customer, recorded in Admin > Orders or by the platform when it sends the order (its door is ready for platform 512); shown on the customer\'s order and private progress link, and emailed. Download invoice: an A4 PDF of the till\'s invoice, on the order. Cards: Pay with Zambian card and Pay with international card in place of the question, once DPO is connected. Mended: an order with no refund no longer shows an empty Refunded line. One SQL file: supabase-delivery.sql. Holds builds 88 to 84.'
+  version: '1.60.0',
+  build: 90,
+  builtAt: '2026-11-26T11:13:03Z',
+  notes: 'Shopping, and the policies entered in a window. Admin > Policies: a compact list numbered in the order customers see it; Add policy and Edit open a window on the screen; choosing a number renumbers the rest by themselves, and the page stays where it was. For customers: Compare two to four pieces; Email me when it\'s back and Email me if the price drops (sent once by a half-hourly job); reviews from customers who bought the piece, marked Verified buyer; questions and answers on a piece, published from Admin > Reviews; the wishlist shared as a gift list; sizes and categories in Shopping preferences, with My sizes in the shop; Recently purchased and Order again. One SQL file: supabase-shopping.sql. Holds builds 89 to 84.'
 };

@@ -2336,7 +2336,26 @@
   }
 
   // ---------- reviews ----------
+  /* BUILD 90 · the Reviews tab has two halves: the reviews, and the
+     answers published on pieces' pages (assets/admin/questions.js). */
+  var revSegBound = false;
+  function reviewsHalf(qa) {
+    $('revShowReviews').classList.toggle('on', !qa);
+    $('revShowReviews').setAttribute('aria-pressed', qa ? 'false' : 'true');
+    $('revShowQa').classList.toggle('on', !!qa);
+    $('revShowQa').setAttribute('aria-pressed', qa ? 'true' : 'false');
+    $('revList').classList.toggle('hide', !!qa);
+    $('revCount').classList.toggle('hide', !!qa);
+    $('qaPane').classList.toggle('hide', !qa);
+    if (qa && window.VBP_QUESTIONS) { window.VBP_QUESTIONS.mount({ sb: sb }); window.VBP_QUESTIONS.load(); }
+  }
   function loadReviews() {
+    if (!revSegBound && $('revShowQa')) {
+      revSegBound = true;
+      $('revShowReviews').addEventListener('click', function () { reviewsHalf(false); });
+      $('revShowQa').addEventListener('click', function () { reviewsHalf(true); });
+    }
+    if ($('qaPane') && !$('qaPane').classList.contains('hide')) { reviewsHalf(true); return; }
     var host = $('revList'); host.innerHTML = '<p class="count">Loading…</p>';
     sb.from('reviews').select('*').order('created_at', { ascending: false }).then(function (r) {
       if (r.error) { host.innerHTML = '<p class="count">Error: ' + escapeHtml(r.error.message) + '</p>'; return; }
@@ -2633,80 +2652,15 @@
   });
 
   // ---------- policies ----------
+  /* BUILD 90 · the list, its window and its numbers are assets/admin/policies.js:
+     "a policy window should just appear on the screen", and "the numbers in
+     order should auto correct when a new policy is added". */
   function loadPolicies() {
-    var host = $('polList'); host.innerHTML = '<p class="count">Loading…</p>';
-    sb.from('policies').select('*').order('sort', { ascending: true }).then(function (r) {
-      if (r.error) { host.innerHTML = '<p class="count">Error: ' + escapeHtml(r.error.message) + '</p>'; return; }
-      var rows = r.data || [];
-      $('polCount').textContent = rows.length + ' policies';
-      host.innerHTML = '';
-      if (!rows.length) { host.innerHTML = '<p class="count">No policies yet. Click "Load starter policies" to add the ones from your manual, or "Add policy" to write your own.</p>'; return; }
-      rows.forEach(function (p) { host.appendChild(policyRow(p)); });
-    });
+    var P = window.VBP_POLICIES;
+    if (!P) { $('polList').innerHTML = '<p class="count">The policies page could not load. Reload the admin.</p>'; return; }
+    P.mount({ sb: sb });
+    P.load();
   }
-  function policyRow(p) {
-    var d = document.createElement('div'); d.className = 'card'; d.style.padding = '16px';
-    d.innerHTML =
-      '<div class="grid2">' +
-        '<div class="field"><label>Section</label><input type="text" class="pl-section" value="' + escapeHtml(p.section || '') + '"></div>' +
-        '<div class="field"><label>Order</label><input type="text" class="pl-sort" value="' + (p.sort || 100) + '"></div>' +
-      '</div>' +
-      '<div class="field"><label>Title</label><input type="text" class="pl-title" value="' + escapeHtml(p.title || '') + '"></div>' +
-      '<div class="field"><label>Text</label><textarea class="pl-body" rows="7">' + escapeHtml(p.body || '') + '</textarea></div>';
-    var row = document.createElement('div'); row.className = 'row';
-    var save = document.createElement('button'); save.className = 'btn btn-gold btn-sm'; save.textContent = 'Save';
-    var stat = document.createElement('span'); stat.className = 'stat';
-    save.addEventListener('click', function () {
-      var upd = {
-        section: d.querySelector('.pl-section').value.trim(),
-        title: d.querySelector('.pl-title').value.trim(),
-        body: d.querySelector('.pl-body').value,
-        sort: parseInt(d.querySelector('.pl-sort').value, 10) || 100,
-        updated_at: new Date().toISOString()
-      };
-      if (!upd.title) { stat.textContent = 'Title required'; stat.className = 'stat err'; return; }
-      stat.textContent = 'Saving…'; stat.className = 'stat busy';
-      var was = { section: p.section, title: p.title, body: p.body, sort: p.sort };
-      sb.from('policies').update(upd).eq('id', p.id).select('id').then(function (r) {
-        if (r.error) { stat.textContent = 'Error'; stat.className = 'stat err'; return; }
-        if (notChanged(r)) {
-          stat.textContent = 'Not saved'; stat.className = 'stat err';
-          tell(NOT_CHANGED('policies'), { title: 'Not saved' });
-          return;
-        }
-        stat.textContent = 'Saved ✓'; stat.className = 'stat ok';
-        p.section = upd.section; p.title = upd.title; p.body = upd.body; p.sort = upd.sort;
-        var a = AUDIT();
-        if (a) a.record({ action: 'changed', module: 'Policies', record: upd.title,
-                          changes: a.diff(was, { section: upd.section, title: upd.title,
-                                                 body: upd.body, sort: upd.sort }, 'policies') });
-      });
-    });
-    var del = document.createElement('button'); del.className = 'btn btn-out btn-sm'; del.textContent = 'Delete';
-    del.addEventListener('click', function () {
-      ask('Delete "' + (p.title || 'this policy') + '"?',
-          { danger: true, note: 'This cannot be undone. Customers will no longer see it on the policies page.' })
-        .then(function (yes) {
-          if (!yes) return;
-          sb.from('policies').delete().eq('id', p.id).then(function () {
-            var a = AUDIT();
-            if (a) a.record({ action: 'deleted', module: 'Policies', record: p.title || 'a policy' });
-            d.remove();
-          });
-        });
-    });
-    row.appendChild(save); row.appendChild(del); row.appendChild(stat);
-    d.appendChild(row);
-    return d;
-  }
-  $('polAdd').addEventListener('click', function () {
-    sb.from('policies').insert({ section: 'General', title: 'New policy', body: '', sort: 999 }).then(function (r) {
-      if (r.error) { tell(r.error.message, { title: 'That did not save' }); return; }
-      var a = AUDIT();
-      if (a) a.record({ action: 'added', module: 'Policies', record: 'New policy' });
-      loadPolicies();
-    });
-  });
   $('polImport').addEventListener('click', function () {
     var defs = window.VBP_DEFAULT_POLICIES || [];
     if (!defs.length) { tell('No starter policies found.'); return; }
@@ -2723,9 +2677,17 @@
         if (!yes) return;
         var rows = defs.map(function (p) { return { section: p.section, title: p.title, body: p.body, sort: p.sort }; });
         $('polCount').textContent = 'Importing…';
-        sb.from('policies').insert(rows).then(function (r2) {
-          if (r2.error) { tell('Error: ' + r2.error.message, { title: 'That did not save' }); return; }
-          loadPolicies();
+        /* After whatever is there already: their numbers follow on from
+           the last one, so the order you have is kept (build 90). */
+        sb.from('policies').select('sort').order('sort', { ascending: false }).limit(1).then(function (top) {
+          var from = (top && top.data && top.data[0] && Number(top.data[0].sort)) || 0;
+          rows.forEach(function (x, k) { x.sort = from + (k + 1) * 10; });
+          sb.from('policies').insert(rows).then(function (r2) {
+            if (r2.error) { tell('Error: ' + r2.error.message, { title: 'That did not save' }); return; }
+            var a = AUDIT();
+            if (a) a.record({ action: 'added', module: 'Policies', record: rows.length + ' starter policies' });
+            loadPolicies();
+          });
         });
       });
     });

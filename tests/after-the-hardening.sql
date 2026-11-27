@@ -377,6 +377,30 @@ select achk(to_regprocedure('public.order_ship_set(uuid, text, text, text, text)
                 and not has_function_privilege('authenticated', 'public.order_ship_set(uuid, text, text, text, text)', 'execute')),
   'delivery: the part that writes the courier is closed to everybody');
 
+-- ================================================ build 90: shopping
+-- After the hardening runs again: a gift list's link and the review rule
+-- still answer visitors; the buyer's review, the alerts, sharing a list and
+-- the policies' order need somebody signed in; whether somebody bought a
+-- piece is the database's own question. Only when supabase-shopping.sql is
+-- there.
+reset role;
+select achk(to_regprocedure('public.gift_list_get(text)') is null
+            or (has_function_privilege('anon', 'public.gift_list_get(text)', 'execute')
+                and has_function_privilege('anon', 'public.reviews_open_to_all()', 'execute')),
+  'shopping: a gift list''s link and the review rule answer visitors');
+select achk(to_regprocedure('public.review_by_buyer(text, integer, text, text)') is null
+            or (not has_function_privilege('anon', 'public.review_by_buyer(text, integer, text, text)', 'execute')
+                and not has_function_privilege('anon', 'public.alert_set(text, text, text, numeric)', 'execute')
+                and not has_function_privilege('anon', 'public.gift_list_share(text, text)', 'execute')
+                and not has_function_privilege('anon', 'public.policies_set_order(uuid[])', 'execute')
+                and has_function_privilege('authenticated', 'public.review_by_buyer(text, integer, text, text)', 'execute')
+                and has_function_privilege('authenticated', 'public.alert_set(text, text, text, numeric)', 'execute')),
+  'shopping: a buyer''s review, alerts, sharing a list and the policies'' order need somebody signed in');
+select achk(to_regprocedure('public.shop_bought(uuid, text)') is null
+            or (not has_function_privilege('anon', 'public.shop_bought(uuid, text)', 'execute')
+                and not has_function_privilege('authenticated', 'public.shop_bought(uuid, text)', 'execute')),
+  'shopping: whether somebody bought a piece is asked by the database alone');
+
 -- ================================================ build 87: customers' requests
 -- The platform's two doors open to its own key; the customer's for a
 -- signed-in customer on their own order; an administrator with the orders

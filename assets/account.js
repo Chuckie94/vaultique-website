@@ -1420,7 +1420,11 @@
     award: '<circle cx="12" cy="9" r="6"/><path d="M8.5 14.2L7 22l5-3 5 3-1.5-7.8"/>',
     chat: '<path d="M21 11.5a8.5 8.5 0 0 1-12.5 7.5L3 20.5l1.6-4.9A8.5 8.5 0 1 1 21 11.5z"/>',
     bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
-    back: '<path d="M15 5l-7 7 7 7"/>'
+    back: '<path d="M15 5l-7 7 7 7"/>',
+    // build 90
+    bag: '<path d="M6 7h12l1 14H5L6 7z"/><path d="M9 7a3 3 0 0 1 6 0"/>',
+    gift: '<rect x="3" y="8" width="18" height="4"/><path d="M5 12v9h14v-9"/><path d="M12 8v13"/><path d="M12 8S10.5 3 8 4.5 9.5 8 12 8z"/><path d="M12 8s1.5-5 4-3.5S14.5 8 12 8z"/>',
+    sliders: '<path d="M4 6h10"/><path d="M18 6h2"/><circle cx="16" cy="6" r="2"/><path d="M4 12h4"/><path d="M12 12h8"/><circle cx="10" cy="12" r="2"/><path d="M4 18h12"/><path d="M20 18h0"/><circle cx="18" cy="18" r="2"/>'
   };
   function icon(name, cls) {
     var s = el('span', cls || 'pt-ic');
@@ -1440,19 +1444,24 @@
 
   /* The dashboard's three groups, as the owner's screenshots have them.
      Gift cards and My wallet are left out (decision D9): the platform has
-     both switched off. Product alerts come with website build 90 (89 before build 88 was put first). */
+     both switched off. Build 90: Recently purchased, Product alerts and
+     the Gift list (supabase-shopping.sql). */
   var SHOPPING = [
     { sec: 'orders', ic: 'box', t: 'My orders', s: 'Order history and tracking', on: historyOn },
     { sec: 'refunds', ic: 'turn', t: 'Returns & refunds', s: 'Manage order issues', on: historyOn },
     { shop: 'wishlist', ic: 'heart', t: 'My wishlist', s: 'Saved products', on: wishlistOn },
-    { sec: 'recent', ic: 'eye', t: 'Recently viewed', s: 'Continue shopping', on: always }
+    { sec: 'recent', ic: 'eye', t: 'Recently viewed', s: 'Continue shopping', on: always },
+    { sec: 'purchased', ic: 'bag', t: 'Recently purchased', s: 'Buy again', on: historyOn },
+    { sec: 'alerts', ic: 'bell', t: 'Product alerts', s: 'Back in stock, price drops', on: alertsPageOn },
+    { sec: 'giftlist', ic: 'gift', t: 'Gift list', s: 'Share your wishlist', on: giftOn }
   ];
   var MINE = [
     { sec: 'details', ic: 'user', t: 'Personal details', on: always },
     { sec: 'addresses', ic: 'pin', t: 'Address book', on: addressesAllowed },
     { sec: 'rewards', ic: 'award', t: 'Rewards & membership', on: rewardsOn },
     { sec: 'support', ic: 'chat', t: 'Customer support', on: always },
-    { sec: 'notifications', ic: 'bell', t: 'Notifications', on: always }
+    { sec: 'notifications', ic: 'bell', t: 'Notifications', on: always },
+    { sec: 'preferences', ic: 'sliders', t: 'Shopping preferences', on: prefsOn }
   ];
   var SAFE = [
     { sec: 'password', t: 'Password and authentication', on: passwordOn },
@@ -1632,6 +1641,10 @@
     orders: { title: 'My orders', on: historyOn, draw: drawOrdersPage },
     refunds: { title: 'Returns & refunds', on: historyOn, draw: drawRefunds },
     recent: { title: 'Recently viewed', on: always, draw: drawRecent },
+    purchased: { title: 'Recently purchased', on: historyOn, draw: drawPurchased },     // build 90
+    alerts: { title: 'Product alerts', on: alertsPageOn, draw: drawAlerts },
+    giftlist: { title: 'Gift list', on: giftOn, draw: drawGiftList },
+    preferences: { title: 'Shopping preferences', on: prefsOn, draw: drawPreferences },
     details: { title: 'Personal details', on: always, draw: function (host) { host.appendChild(detailsCard(host)); } },
     addresses: { title: 'Address book', on: addressesAllowed, draw: function (host) { host.appendChild(addressCard()); } },
     rewards: { title: 'Rewards & membership', on: rewardsOn, draw: drawRewards },
@@ -1979,6 +1992,7 @@
         }
         var ask = askLink('Hello, I have a question about my order ' + o.ref + '.', 'Ask about this order');
         if (ask) acts.appendChild(ask);
+        orderAgainButton(o, acts, c);            // build 90
         c.appendChild(acts);
 
         /* BUILD 87 · its requests, and the buttons to ask the shop. */
@@ -2594,6 +2608,326 @@
     host.appendChild(grid);
   }
 
+  /* ---- BUILD 90 · shopping (supabase-shopping.sql; the portal's plan,
+     website 90): Recently purchased, Order again, Product alerts, the Gift
+     list and Shopping preferences. Each on unless Settings > Customer
+     Accounts switches it off. ------------------------------------------- */
+  function orderAgainOn() {
+    return historyOn() && (!api.settings || api.settings.orderAgain !== false) && typeof renderHooks.reorder === 'function';
+  }
+  function alertsPageOn() { return !api.settings || api.settings.productAlerts !== false; }
+  function giftOn() { return wishlistOn() && wishlistFollows() && (!api.settings || api.settings.giftLists !== false); }
+  function prefsOn() { return !api.settings || api.settings.shoppingPrefs !== false; }
+  function notReady(err) {
+    return /PGRST202|PGRST205|Could not find the (function|table)|does not exist/i.test(String((err && (err.message || err.code)) || ''));
+  }
+  function shopLink(label, route) {
+    var a = el('a', 'btn btn-gold btn-sm', label);
+    a.href = BASE_PATH() + (route || 'shop');
+    a.addEventListener('click', function (e) {
+      if (typeof renderHooks.go !== 'function') return;
+      e.preventDefault(); renderHooks.go(route || 'shop');
+    });
+    return a;
+  }
+
+  /* Order again: each piece back in the cart, as many as before, at today's
+     prices, never more than the shop has (app.js, reorderPieces). */
+  function orderAgainButton(o, acts, host) {
+    if (!orderAgainOn() || !o || !Array.isArray(o.order_items) || !o.order_items.length) return;
+    var b = el('button', 'btn btn-gold btn-sm ac-again', 'Order again');
+    b.type = 'button';
+    b.addEventListener('click', function () {
+      var r = renderHooks.reorder(o.order_items.map(function (i) { return { sku: i.sku, name: i.name, qty: i.qty }; })) ||
+              { added: [], gone: [], fewer: [] };
+      var msg = host.querySelector('.ac-again-msg');
+      if (!msg) { msg = el('div', 'ac-again-msg'); msg.setAttribute('role', 'status'); host.appendChild(msg); }
+      msg.innerHTML = '';
+      if (r.added.length) msg.appendChild(el('p', '', 'In your cart, at today’s prices: ' + r.added.join(', ') + '.'));
+      if (r.fewer.length) msg.appendChild(el('p', '', 'Fewer than last time, as that is all the shop has: ' + r.fewer.join(', ') + '.'));
+      if (r.gone.length) msg.appendChild(el('p', '', 'Not on sale just now: ' + r.gone.join(', ') + '.'));
+      if (!r.added.length && !r.gone.length && !r.fewer.length) msg.appendChild(el('p', '', 'There is nothing to add.'));
+      if (r.added.length && typeof renderHooks.openCart === 'function') {
+        var v = el('button', 'btn btn-outline btn-sm', 'View cart');
+        v.type = 'button';
+        v.addEventListener('click', function () { renderHooks.openCart(); });
+        msg.appendChild(v);
+      }
+    });
+    acts.insertBefore(b, acts.firstChild);
+  }
+
+  /* Recently purchased: the pieces of their own orders, the latest first,
+     each once; those still in the shop as the shop's own cards. */
+  function drawPurchased(host) {
+    var box = el('div', 'ac-purchased');
+    box.appendChild(el('p', 'ac-quiet', 'Loading…'));
+    host.appendChild(box);
+    myOrders().then(function (orders) {
+      box.innerHTML = '';
+      var seen = {}, items = [];
+      (orders || []).forEach(function (o) {
+        if (o.status === 'cancelled') return;
+        (o.order_items || []).forEach(function (i) {
+          if (!i || !i.sku || seen[i.sku]) return;
+          seen[i.sku] = 1;
+          items.push({ sku: i.sku, name: i.name, ref: o.ref, at: o.created_at });
+        });
+      });
+      if (!items.length) {
+        var c = card('Nothing yet');
+        c.appendChild(el('p', 'ac-quiet', 'Pieces you buy show here, the latest first, so you can find them and buy them again.'));
+        c.appendChild(shopLink('Go to the shop'));
+        box.appendChild(c);
+        return;
+      }
+      var still = items.filter(function (it) {
+        var p = typeof renderHooks.product === 'function' ? renderHooks.product(it.sku) : null;
+        return p && p.onShelf;
+      });
+      var gone = items.filter(function (it) { return still.indexOf(it) < 0; });
+      box.appendChild(el('p', 'ac-quiet pt-lead', 'Pieces you have bought, the latest first. Buy one again from here, at today’s price.'));
+      var cards = typeof renderHooks.cards === 'function' ? renderHooks.cards(still.map(function (it) { return it.sku; })) : [];
+      if (cards && cards.length) {
+        var grid = el('div', 'grid pt-recent');
+        cards.forEach(function (n) { grid.appendChild(n); });
+        box.appendChild(grid);
+      }
+      if (gone.length) {
+        var g = card('No longer in the shop');
+        var ul = el('ul', 'ac-gone');
+        gone.forEach(function (it) { ul.appendChild(el('li', '', (it.name || it.sku) + ' · order ' + it.ref)); });
+        g.appendChild(ul);
+        box.appendChild(g);
+      }
+    });
+  }
+
+  /* Product alerts: theirs, waiting or sent, each with Stop. */
+  var KIND_SAID = { back: 'When it is back in stock', price: 'If the price drops' };
+  function drawAlerts(host) {
+    var box = el('div', 'ac-alerts');
+    box.appendChild(el('p', 'ac-quiet', 'Loading…'));
+    host.appendChild(box);
+    if (!sb) { box.innerHTML = ''; box.appendChild(el('p', 'ac-quiet', 'Please sign in again.')); return; }
+    Promise.resolve(sb.from('product_alerts').select('id,sku,kind,name,price_at,created_at,sent_at,sent_price')
+                      .order('created_at', { ascending: false })).then(function (r) {
+      box.innerHTML = '';
+      box.appendChild(el('p', 'ac-quiet pt-lead', 'We email you once when a piece is back in stock, or when it costs less than when ' +
+        'you asked. On a piece’s page: Email me when it’s back, or Email me if the price drops.'));
+      if (r && r.error) {
+        box.appendChild(el('p', 'ac-quiet', notReady(r.error) ? 'Product alerts are not ready yet.' : 'Your alerts could not be read just now.'));
+        return;
+      }
+      var rows = (r && r.data) || [];
+      if (!rows.length) {
+        var c = card('No alerts');
+        c.appendChild(el('p', 'ac-quiet', 'You have not asked to be told about any piece yet.'));
+        c.appendChild(shopLink('Go to the shop'));
+        box.appendChild(c);
+        return;
+      }
+      var list = el('div', 'ac-list');
+      rows.forEach(function (a) {
+        var p = typeof renderHooks.product === 'function' ? renderHooks.product(a.sku) : null;
+        var row = el('div', 'ac-alert');
+        var main = el('div', 'ac-alert-main');
+        var name = el('a', 'ac-alert-name', (p && p.name) || a.name || a.sku);
+        name.href = BASE_PATH() + 'product/' + encodeURIComponent(a.sku);
+        name.addEventListener('click', function (e) {
+          if (typeof renderHooks.go !== 'function') return;
+          e.preventDefault(); renderHooks.go('product/' + encodeURIComponent(a.sku));
+        });
+        main.appendChild(name);
+        main.appendChild(el('span', 'ac-alert-what', (KIND_SAID[a.kind] || '') +
+          (a.kind === 'price' && a.price_at ? ' below ' + money(a.price_at) : '')));
+        main.appendChild(el('span', 'ac-alert-state' + (a.sent_at ? ' is-sent' : ''),
+          a.sent_at ? 'Emailed ' + day(a.sent_at) + (a.sent_price ? ', at ' + money(a.sent_price) : '') : 'Waiting'));
+        row.appendChild(main);
+        var stop = el('button', 'btn btn-outline btn-sm', a.sent_at ? 'Remove' : 'Stop');
+        stop.type = 'button';
+        stop.addEventListener('click', function () {
+          stop.disabled = true;
+          Promise.resolve(sb.from('product_alerts').delete().eq('id', a.id)).then(function (x) {
+            if (x && x.error) { stop.disabled = false; stop.textContent = 'Try again'; return; }
+            row.parentNode.removeChild(row);
+            if (window.VBP_SHOPPING) window.VBP_SHOPPING.forgetAlerts();
+            if (!list.children.length) {
+              list.parentNode.removeChild(list);
+              var none = card('No alerts');
+              none.appendChild(el('p', 'ac-quiet', 'You have not asked to be told about any piece yet.'));
+              none.appendChild(shopLink('Go to the shop'));
+              box.appendChild(none);
+            }
+          }, function () { stop.disabled = false; stop.textContent = 'Try again'; });
+        });
+        row.appendChild(stop);
+        list.appendChild(row);
+      });
+      box.appendChild(list);
+    }, function () { box.innerHTML = ''; box.appendChild(el('p', 'ac-quiet', 'Your alerts could not be read just now.')); });
+  }
+
+  /* The Gift list: their wishlist behind a link of its own. */
+  function giftUrl(token) {
+    var origin = (window.location && window.location.origin) || '';
+    return origin + BASE_PATH() + 'gift/' + encodeURIComponent(token);
+  }
+  function drawGiftList(host) {
+    var box = el('div', 'ac-gift');
+    host.appendChild(box);
+    var c = card('Share your wishlist');
+    c.appendChild(el('p', 'ac-lead', 'Share your wishlist as a gift list: whoever has the link sees the pieces and your first ' +
+      'name, nothing else. Stop sharing at any time, and the link stops working.'));
+    var n = wishlistNow().length;
+    c.appendChild(el('p', 'ac-quiet', n ? 'On your wishlist now: ' + n + (n === 1 ? ' piece.' : ' pieces.')
+                                        : 'Your wishlist is empty: add pieces with the heart first, and they appear on the list.'));
+    var body = el('div', 'ac-gift-body');
+    body.appendChild(el('p', 'ac-quiet', 'Loading…'));
+    c.appendChild(body);
+    box.appendChild(c);
+    if (!sb) { body.innerHTML = ''; body.appendChild(el('p', 'ac-quiet', 'Please sign in again.')); return; }
+    Promise.resolve(sb.from('gift_lists').select('token,title,note').eq('customer_id', api.user.id).maybeSingle())
+      .then(function (r) {
+        if (r && r.error) {
+          body.innerHTML = '';
+          body.appendChild(el('p', 'ac-quiet', notReady(r.error) ? 'Gift lists are not ready yet.' : 'This could not be read just now.'));
+          return;
+        }
+        paint((r && r.data) || null, '');
+      }, function () { body.innerHTML = ''; body.appendChild(el('p', 'ac-quiet', 'This could not be read just now.')); });
+
+    function paint(g, said) {
+      body.innerHTML = '';
+      var tl = el('label', 'rv-lbl', 'A title for the list');
+      tl.setAttribute('for', 'gl_title');
+      var t = el('input', 'ac-in');
+      t.type = 'text'; t.id = 'gl_title'; t.maxLength = 80;
+      t.placeholder = (firstName() ? firstName() + '’s' : 'My') + ' gift list';
+      t.value = (g && g.title) || '';
+      var nl = el('label', 'rv-lbl', 'A note (optional)');
+      nl.setAttribute('for', 'gl_note');
+      var nt = el('textarea', 'ac-in');
+      nt.id = 'gl_note'; nt.maxLength = 300; nt.rows = 2;
+      nt.placeholder = 'For my birthday in March';
+      nt.value = (g && g.note) || '';
+      body.appendChild(tl); body.appendChild(t); body.appendChild(nl); body.appendChild(nt);
+      var acts = el('div', 'ac-actions');
+      var msg = el('p', 'ac-msg');
+      msg.setAttribute('role', 'status');
+      if (said) msg.textContent = said;
+      var share = el('button', 'btn btn-gold btn-sm', g ? 'Save' : 'Share my wishlist');
+      share.type = 'button';
+      share.addEventListener('click', function () {
+        share.disabled = true;
+        Promise.resolve(sb.rpc('gift_list_share', { p_title: t.value, p_note: nt.value })).then(function (r) {
+          var d = r && !r.error ? r.data : null;
+          share.disabled = false;
+          if (!d || !d.ok) { msg.textContent = (r && r.error && notReady(r.error)) ? 'Gift lists are not ready yet.' : 'That could not be saved just now.'; return; }
+          paint({ token: d.token, title: d.title, note: d.note }, g ? 'Saved ✓' : 'Shared ✓ Send the link to whoever you like.');
+        }, function () { share.disabled = false; msg.textContent = 'That could not be saved just now.'; });
+      });
+      acts.appendChild(share);
+      if (g && g.token) {
+        var link = el('input', 'ac-in ac-gift-link');
+        link.type = 'text'; link.readOnly = true; link.value = giftUrl(g.token);
+        link.setAttribute('aria-label', 'The link to your gift list');
+        body.insertBefore(link, tl);
+        body.insertBefore(el('p', 'ac-quiet', 'Your gift list’s link:'), link);
+        var copy = el('button', 'btn btn-outline btn-sm', 'Copy the link');
+        copy.type = 'button';
+        copy.addEventListener('click', function () {
+          var done = function () { msg.textContent = 'Copied ✓'; };
+          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link.value).then(done, function () { link.select(); });
+          else { link.select(); try { document.execCommand('copy'); done(); } catch (e) { /* selected for them */ } }
+        });
+        acts.appendChild(copy);
+        if (navigator.share) {
+          var sh = el('button', 'btn btn-outline btn-sm', 'Share');
+          sh.type = 'button';
+          sh.addEventListener('click', function () {
+            navigator.share({ title: t.value || t.placeholder, url: link.value }).catch(function () {});
+          });
+          acts.appendChild(sh);
+        }
+        var stop = el('button', 'btn btn-outline btn-sm ac-gift-stop', 'Stop sharing');
+        stop.type = 'button';
+        stop.addEventListener('click', function () {
+          if (!stop._sure) { stop._sure = true; stop.textContent = 'Stop: the link will stop working'; return; }
+          stop.disabled = true;
+          Promise.resolve(sb.rpc('gift_list_stop')).then(function (r) {
+            stop.disabled = false;
+            if (r && r.error) { msg.textContent = 'That could not be stopped just now.'; return; }
+            paint(null, 'Stopped. The link no longer works.');
+          }, function () { stop.disabled = false; msg.textContent = 'That could not be stopped just now.'; });
+        });
+        acts.appendChild(stop);
+      }
+      body.appendChild(acts);
+      body.appendChild(msg);
+    }
+  }
+  function firstName() {
+    var n = String((api.profile && api.profile.name) || '').trim();
+    return n ? n.split(/\s+/)[0] : '';
+  }
+
+  /* Shopping preferences: sizes and categories, kept on the account. */
+  function drawPreferences(host) {
+    var pr = (api.profile && api.profile.preferences && typeof api.profile.preferences === 'object') ? api.profile.preferences : {};
+    var sizes = Array.isArray(pr.sizes) ? pr.sizes.slice() : [];
+    var cats = Array.isArray(pr.categories) ? pr.categories.slice() : [];
+    var allSizes = typeof renderHooks.sizes === 'function' ? renderHooks.sizes() : [];
+    var allCats = typeof renderHooks.categories === 'function' ? renderHooks.categories() : [];
+    sizes.forEach(function (s) { if (allSizes.indexOf(s) < 0) allSizes.push(s); });
+    cats.forEach(function (s) { if (allCats.indexOf(s) < 0) allCats.push(s); });
+
+    function chooser(title, lead, all, chosen, empty) {
+      var c = card(title);
+      c.appendChild(el('p', 'ac-lead', lead));
+      if (!all.length) { c.appendChild(el('p', 'ac-quiet', empty)); host.appendChild(c); return; }
+      var row = el('div', 'ac-chips');
+      all.forEach(function (v) {
+        var b = el('button', 'ac-chip' + (chosen.indexOf(v) > -1 ? ' on' : ''), v);
+        b.type = 'button';
+        b.setAttribute('aria-pressed', chosen.indexOf(v) > -1 ? 'true' : 'false');
+        b.addEventListener('click', function () {
+          var i = chosen.indexOf(v);
+          if (i > -1) chosen.splice(i, 1); else if (chosen.length < 20) chosen.push(v);
+          b.classList.toggle('on', chosen.indexOf(v) > -1);
+          b.setAttribute('aria-pressed', chosen.indexOf(v) > -1 ? 'true' : 'false');
+          msg.textContent = '';
+        });
+        row.appendChild(b);
+      });
+      c.appendChild(row);
+      host.appendChild(c);
+    }
+    chooser('Your sizes', 'Marked on a piece’s sizes, and in the shop "My sizes" shows the pieces in them.',
+            allSizes, sizes, 'The shop has no sized pieces just now.');
+    chooser('Your categories', 'Shown first in the shop.', allCats, cats, 'The shop’s categories are not loaded yet.');
+    var acts = el('div', 'ac-actions');
+    var save = el('button', 'btn btn-gold btn-sm', 'Save');
+    save.type = 'button';
+    var msg = el('p', 'ac-msg');
+    msg.setAttribute('role', 'status');
+    save.addEventListener('click', function () {
+      save.disabled = true;
+      msg.textContent = 'Saving…';
+      saveProfile({ preferences: { sizes: sizes, categories: cats } }).then(function () {
+        save.disabled = false;
+        msg.textContent = 'Saved ✓';
+      }, function (e) {
+        save.disabled = false;
+        msg.textContent = /preferences|column/i.test(String((e && e.message) || '')) ? 'Shopping preferences are not ready yet.'
+                                                                                   : 'That could not be saved just now.';
+      });
+    });
+    acts.appendChild(save);
+    host.appendChild(acts);
+    host.appendChild(msg);
+  }
+
   /* ---- Rewards & membership: the platform's, asked each time ------------- */
   function drawRewards(host) {
     host.appendChild(window.VBP_REWARDS.card());
@@ -2635,6 +2969,16 @@
     e.appendChild(el('p', 'ac-lead', 'We email the address given with each order: when you pay online, when it is on its ' +
       'way, before it is marked delivered, once it is delivered or collected, and when a refund is made.'));
     host.appendChild(e);
+
+    /* Build 90: the emails a customer asked for on a piece's page. */
+    if (alertsPageOn()) {
+      var pa = card('Product alerts');
+      pa.appendChild(el('p', 'ac-lead', 'Once each, when a piece you asked about is back in stock or costs less than when you asked.'));
+      var see = pageLink('ac-link', 'alerts');
+      see.textContent = 'See or stop your alerts';
+      pa.appendChild(see);
+      host.appendChild(pa);
+    }
 
     var ch = card('Chat replies');
     ch.appendChild(el('p', 'ac-lead', 'In the chat window, the bell lets this device tell you when we reply.'));

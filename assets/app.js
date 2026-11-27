@@ -66,6 +66,7 @@
     whatsappCheckout: true,
     requireName: true, requirePhone: true, requireEmail: false, requireAddress: false,
     orderNotes: true, deliveryInstructions: true, checkoutLabel: 'Buy',
+    compare: true,                              // build 90: two to four pieces side by side
     consentText: 'I confirm that the information provided is accurate and consent to Vaultique Boutique processing my personal information for the purposes of fulfilling and managing my order, including processing or storage by authorised service providers outside Zambia, in accordance with the Privacy Policy.'
   };
   // Settings > Pricing & Tax. Defaults match the admin's, and match the way
@@ -108,7 +109,11 @@
     anonymous: false,
     anonymousLabel: 'A customer',
     autoPublish: false,
-    minAutoRating: 4
+    minAutoRating: 4,
+    /* Build 90: who may review a piece. 'buyers' (signed in, and bought
+       it; marked Verified buyer) or 'anyone'. The database asks the same
+       setting (supabase-shopping.sql, reviews_open_to_all). */
+    whoReviews: 'buyers'
   };
 
   var REVIEW_ROW = false;   // whether Settings > Reviews has ever been saved
@@ -171,7 +176,10 @@
     orderHistory: true, historyScope: 'all', historyMonths: 12,
     savedAddresses: true, maxAddresses: 5,
     wishlistFollowsAccount: true,
-    signupConsentText: ''
+    signupConsentText: '',
+    /* Build 90: the portal's shopping (supabase-shopping.sql), each on
+       unless switched off in Settings > Customer Accounts. */
+    productAlerts: true, giftLists: true, shoppingPrefs: true, orderAgain: true
   };
   // Settings > Delivery & Collection. Defaults match the admin's, and the
   // wording matches the paragraph that used to be printed into the product
@@ -1145,6 +1153,23 @@
       return recent.map(bySku).filter(Boolean).map(function (p, i) { return productCard(p, i, false); });
     };
     ACCT.hooks.shopName = function () { return (SETTINGS && SETTINGS.businessName) || 'Vaultique Boutique Point'; };
+    /* BUILD 90 · the portal's shopping pages: Order again, Recently
+       purchased, Shopping preferences. Pieces go to the cart the shop's
+       own way, at today's prices, never more than it has. */
+    ACCT.hooks.reorder = reorderPieces;
+    ACCT.hooks.openCart = openCart;
+    ACCT.hooks.cards = function (skus) {
+      return (skus || []).map(bySku).filter(function (p) { return p && onShelf(p); })
+        .map(function (p, i) { return productCard(p, i, false); });
+    };
+    ACCT.hooks.product = function (sku) {
+      var p = bySku(sku);
+      if (!p) return null;
+      return { sku: p.sku, name: p.name, onShelf: onShelf(p), available: !!p.available && onShelf(p),
+               buyable: canBuy(p) && onShelf(p), price: priceOf(p).nowText };
+    };
+    ACCT.hooks.sizes = catalogueSizes;
+    ACCT.hooks.categories = function () { return ALLCATS.slice(); };
     /* Told what the shop has decided straight away, so the router knows
        whether #/account is a page here before the client has downloaded. */
     ACCT.configure(ACCOUNTS);
@@ -1181,6 +1206,11 @@
       /* Build 86: drawn again only if who is signed in changed, not for a
          new sign-in token or a saved address (assets/account.js, render). */
       if (accountRoute()) renderAccount(true);
+      /* Build 90: a piece's page or the shop drawn before the sign-in came
+         back: who may review it, the alert's state, the customer's sizes
+         and categories, asked again now. */
+      if (viewShown === 'detail') refreshPieceForAccount();
+      else if (viewShown === 'shop') renderChips();
     });
     }
   }
@@ -4712,6 +4742,44 @@
     return t;
   }
 
+  /* BUILD 90 · Order again (assets/account.js): each piece of a past order
+     back in the cart, as many as it had, never more than the shop has.
+     Says what went in, what is not on sale now, and what went in short. */
+  function reorderPieces(items) {
+    var added = [], gone = [], fewer = [];
+    (items || []).forEach(function (it) {
+      var p = it && bySku(it.sku);
+      var label = (p && p.name) || (it && (it.name || it.sku)) || 'A piece';
+      if (!p || !onShelf(p) || !canBuy(p)) { gone.push(label); return; }
+      var want = Math.max(1, Math.floor(Number(it.qty) || 1));
+      var line = cartLine(p.sku), have = line ? line.qty : 0;
+      var room = Math.max(0, cartLimit(p) - have);
+      var n = Math.min(want, room);
+      if (n <= 0) { fewer.push(label); return; }
+      if (line) { line.qty = clampQty(have + n); line.name = p.name; }
+      else cart.push({ sku: p.sku, qty: n, name: p.name });
+      added.push(label);
+      if (n < want) fewer.push(label);
+    });
+    if (added.length) { saveCart(); afterCartChange(); bumpCartIcon(); }
+    return { added: added, gone: gone, fewer: fewer };
+  }
+  /* The sizes the shop has on its shelves, in the order sizes are worn. */
+  function catalogueSizes() {
+    var ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '2XL', '3XL', '4XL'];
+    var seen = {}, out = [];
+    PRODUCTS.forEach(function (p) {
+      var s = String((p && p.size) || '').trim();
+      if (s && onShelf(p) && !seen[s]) { seen[s] = 1; out.push(s); }
+    });
+    return out.sort(function (a, b) {
+      var ia = ORDER.indexOf(a.toUpperCase()), ib = ORDER.indexOf(b.toUpperCase());
+      if (ia > -1 || ib > -1) return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+      var na = parseFloat(a), nb = parseFloat(b);
+      if (isFinite(na) && isFinite(nb) && na !== nb) return na - nb;
+      return a.localeCompare(b);
+    });
+  }
   function addToCart(p, btn) {
     /* The same rule the buy button follows. A piece that cannot be bought
        cannot be gathered either, so nothing reaches the cart that the shop
@@ -5266,6 +5334,7 @@
       var catOk = filterCat === 'All' || p.category === filterCat;
       if (filterColor !== 'All' && (p.color || '') !== filterColor) return false;
       if (filterSize !== 'All' && (p.size || '') !== filterSize) return false;
+      if (mySizes && SHOPPING && !SHOPPING.fitsMe(p)) return false;     // build 90
       if (inStockOnly && !p.available) return false;
       if (!SHOP.showOutOfStock && !p.available) return false;
       if (!onShelf(p)) return false;
@@ -5296,9 +5365,15 @@
        the piece and opens it on the black one. */
     return collapseVariants(list, mode !== 'wishlist' && filterColor === 'All' && filterSize === 'All');
   }
+  /* BUILD 90 · a signed-in customer's own categories first, and "My sizes"
+     (their account's Shopping preferences, assets/shopping.js). */
+  var mySizes = false;
   function renderChips() {
     var host = $('#chips'); if (!host) return;
-    var cats = ['All'].concat(ALLCATS);
+    var pref = SHOPPING ? SHOPPING.prefs() : { sizes: [], categories: [] };
+    var favs = pref.categories.filter(function (c) { return ALLCATS.indexOf(c) > -1; });
+    var cats = ['All'].concat(favs, ALLCATS.filter(function (c) { return favs.indexOf(c) < 0; }));
+    if (!pref.sizes.length) mySizes = false;
     host.innerHTML = '';
     cats.forEach(function (c) {
       var isSoon = c !== 'All' && !catHasProducts(c);
@@ -5307,6 +5382,15 @@
       b.addEventListener('click', function () { mode = 'shop'; filterCat = c; updateShopTitle(); renderChips(); renderGrid(); });
       host.appendChild(b);
     });
+    if (pref.sizes.length && mode !== 'wishlist') {
+      var mine = el('button', 'chip chip-mine' + (mySizes ? ' active' : ''));
+      mine.type = 'button';
+      mine.textContent = 'My sizes';
+      mine.setAttribute('aria-pressed', mySizes ? 'true' : 'false');
+      mine.title = 'Pieces in your sizes (' + pref.sizes.join(', ') + ') and pieces in one size';
+      mine.addEventListener('click', function () { mySizes = !mySizes; renderChips(); renderGrid(); });
+      host.appendChild(mine);
+    }
   }
   function updateShopTitle() {
     var t = $('#shopTitle'); if (!t) return;
@@ -5422,8 +5506,21 @@
      page show a sold-out colour; arriving from a card, a search or a shared
      link, it opens on a colour that is in stock. */
   var chosenSku = null;
+  var detailSku = null;        // build 90: the piece on show, for refreshPieceForAccount
+  function refreshPieceForAccount() {
+    var p = detailSku && bySku(detailSku), host = $('#view-detail');
+    if (!p || !host) return;
+    if (reviewsShown() && $('#prodReviews')) renderProductReviews(p.sku);
+    if (SHOPPING) {
+      SHOPPING.forgetAlerts();
+      var old = host.querySelector('.alert-line'), fresh = SHOPPING.alertLine(p);
+      if (old && fresh) old.parentNode.replaceChild(fresh, old);
+      SHOPPING.markSizes(host);
+    }
+  }
   function renderDetail(sku) {
     var p = bySku(sku); var host = $('#view-detail');
+    detailSku = p ? p.sku : null;
     if (!p) { goShop('All'); return; }
     if (!p.available && chosenSku !== sku) {
       var alt = inStockSibling(p);
@@ -5499,11 +5596,14 @@
       (SHOP.sharing
         ? '<button class="btn btn-outline" id="shareDetail">' + shareIcon() + 'Share</button>'
         : '') +
+      ((SHOPPING && SHOPPING.compareOn()) ? '<span id="cmpSlot"></span>' : '') +
       '</div></div>' +
+      (SHOPPING ? '<div id="alertSlot"></div>' : '') +
       '</div></div>' +
       moreDetails(specs) +
       ((p.videos && p.videos.length) ? '<div class="prod-videos"><div class="eyebrow">Watch</div><div class="pv-grid">' + p.videos.slice(0, 2).map(function (u) { return '<video controls preload="metadata" playsinline src="' + esc(u) + '"></video>'; }).join('') + '</div></div>' : '') +
       (reviewsShown() ? '<div id="prodReviews" class="prod-reviews"></div>' : '') +
+      (SHOPPING ? '<div id="qaSlot"></div>' : '') +
       (related.length ? relatedBlock('You may also like', 'More in ' + p.category, 'relGrid') : '') +
       (recentItems.length ? relatedBlock('Recently viewed', 'Pieces you looked at', 'recGrid') : '') +
       '</div>';
@@ -5548,6 +5648,17 @@
     else if (bd) enquireLink(bd, pieceEnquiry(p), askLabel(p, true));
     var cs = $('#cartSlot', host);
     if (cs) cs.parentNode.replaceChild(cartButton(p), cs);
+    /* BUILD 90 · Compare, the alert line, questions and answers, and the
+       customer's own sizes marked on the picker (assets/shopping.js). */
+    if (SHOPPING) {
+      var cms = $('#cmpSlot', host), cmb = cms ? SHOPPING.compareButton(p) : null;
+      if (cms) { if (cmb) cms.parentNode.replaceChild(cmb, cms); else cms.parentNode.removeChild(cms); }
+      var als = $('#alertSlot', host), alb = als ? SHOPPING.alertLine(p) : null;
+      if (als) { if (alb) als.parentNode.replaceChild(alb, als); else als.parentNode.removeChild(als); }
+      var qas = $('#qaSlot', host), qab = qas ? SHOPPING.questionsBlock(p) : null;
+      if (qas) { if (qab) qas.parentNode.replaceChild(qab, qas); else qas.parentNode.removeChild(qas); }
+      SHOPPING.markSizes(host);
+    }
     if (related.length) { var rg = $('#relGrid'); related.forEach(function (rp, i) { rg.appendChild(productCard(rp, i, false)); }); }
     if (recentItems.length) { var cg = $('#recGrid'); recentItems.forEach(function (rp, i) { cg.appendChild(productCard(rp, i, false)); }); }
     if (reviewsShown()) renderProductReviews(p.sku);
@@ -5752,6 +5863,10 @@
     $('#view-detail').style.display = which === 'detail' ? 'block' : 'none';
     var vp = $('#view-policies'); if (vp) vp.style.display = which === 'policies' ? 'block' : 'none';
     var va = $('#view-account'); if (va) va.style.display = which === 'account' ? 'block' : 'none';
+    /* Build 90: comparing pieces, and a gift list behind its link. */
+    var vc = $('#view-compare'); if (vc) vc.style.display = which === 'compare' ? 'block' : 'none';
+    var vg = $('#view-gift'); if (vg) vg.style.display = which === 'gift' ? 'block' : 'none';
+    if (which !== 'compare' && SHOPPING) SHOPPING.leaveCompare();
     document.body.classList.toggle('on-home', which === 'home');
     updateHeader();
   }
@@ -5912,6 +6027,15 @@
     if (polm) { renderPolicies(polm[1] ? decodeURIComponent(polm[1]) : null); showView('policies'); window.scrollTo(0, 0); return; }
 
     if (h === 'payment-return') { showView('home'); showPaymentReturn(); return; }
+
+    /* BUILD 90 · comparing pieces, and a gift list behind its link. */
+    if (h === 'compare' && SHOPPING && $('#view-compare')) {
+      SHOPPING.renderCompare($('#view-compare')); showView('compare'); window.scrollTo(0, 0); return;
+    }
+    var gfm = h.match(/^gift\/([A-Za-z0-9_-]{1,80})$/);
+    if (gfm && SHOPPING && $('#view-gift')) {
+      SHOPPING.renderGift($('#view-gift'), gfm[1]); showView('gift'); window.scrollTo(0, 0); return;
+    }
 
     /* BUILD 78 · an order behind its private link. */
     var olm = h.match(/^order\/(VB-[0-9A-Za-z]{3,10})$/i);
@@ -6624,18 +6748,70 @@
     var list = reviewsFor(sku), avg = avgRating(list);
     host.innerHTML =
       '<div class="pr-head"><div><div class="eyebrow">Reviews</div><h2 class="serif" style="font-size:clamp(24px,3.4vw,34px)">Customer reviews</h2></div>' +
-      (reviewsOpen() ? '<button class="btn btn-outline btn-sm" id="prWrite">Write a review</button>' : '') + '</div>' +
+      (reviewsOpen()
+        ? (buyersReview() ? '<span class="pr-who" id="prWho"></span>'
+                          : '<button class="btn btn-outline btn-sm" id="prWrite">Write a review</button>')
+        : '') + '</div>' +
       (list.length
         ? (ratingsShown()
             ? '<div class="pr-avg">' + starsHtml(avg, 'stars lg') + ' <span class="avg-n">' + avg.toFixed(1) + ' / 5 · ' + list.length + ' review' + (list.length > 1 ? 's' : '') + '</span></div>'
             : '')
-        : '<p class="pr-none">No reviews yet for this piece. Be the first to review it.</p>') +
+        : '<p class="pr-none">No reviews yet for this piece.' + (buyersReview() ? '' : ' Be the first to review it.') + '</p>') +
       '<div class="pr-list">' + list.map(function (r) {
-        return '<div class="pr-item">' + (ratingsShown() ? starsHtml(r.rating) : '') + '<p>' + esc(r.comment || '') + '</p><div class="who"><b>' + esc(r.name) + '</b>' + (r.verified ? ' · <span class="verified">Verified</span>' : '') + '</div></div>';
+        return '<div class="pr-item">' + (ratingsShown() ? starsHtml(r.rating) : '') + '<p>' + esc(r.comment || '') + '</p><div class="who"><b>' + esc(r.name) + '</b>' + (r.verified ? ' · <span class="verified">Verified buyer</span>' : '') + '</div></div>';
       }).join('') + '</div>';
     var w = $('#prWrite'); if (w) w.addEventListener('click', function () { openReviewForm(sku); });
+    if (reviewsOpen() && buyersReview()) whoMayReview(sku, $('#prWho'));
   }
-  function openReviewForm(sku) {
+  /* BUILD 90 · "reviews only from customers who bought the piece, marked
+     so" (the customer portal's plan). Settings > Reviews can open it to
+     anyone again; the database holds the same rule either way
+     (supabase-shopping.sql). */
+  function buyersReview() { return REVIEWSET.whoReviews !== 'anyone'; }
+  function whoMayReview(sku, slot) {
+    if (!slot) return;
+    function write(asBuyer) {
+      slot.innerHTML = '';
+      var b = el('button', 'btn btn-outline btn-sm');
+      b.id = 'prWrite';
+      b.type = 'button';
+      b.textContent = 'Write a review';
+      b.addEventListener('click', function () { openReviewForm(sku, asBuyer); });
+      slot.appendChild(b);
+    }
+    function say(text, signIn) {
+      slot.innerHTML = '';
+      if (signIn) {
+        slot.appendChild(document.createTextNode('Bought this piece? '));
+        var a = el('a', 'pr-signin');
+        a.href = pathFor('account');
+        a.textContent = 'Sign in';
+        a.addEventListener('click', function (e) { e.preventDefault(); go('account'); });
+        slot.appendChild(a);
+        slot.appendChild(document.createTextNode(' to review it.'));
+        return;
+      }
+      slot.textContent = text;
+    }
+    if (!ACCT || !ACCT.enabled()) { say('Reviews are written by customers who bought the piece.'); return; }
+    var c = webClient();
+    if (!ACCT.signedIn() || !c) { say('', true); return; }
+    say('');
+    Promise.resolve(c.rpc('review_can', { p_sku: sku })).then(function (r) {
+      if (r && r.error) {
+        /* Before supabase-shopping.sql the database has no such question,
+           and the review is written as it always was. */
+        if (/PGRST202|Could not find the function/i.test(String(r.error.message || r.error.code || ''))) write(false);
+        return;
+      }
+      var d = (r && r.data) || {};
+      if (d.can) write(true);
+      else if (d.why === 'already') say('You have reviewed this piece. Thank you.');
+      else if (d.why === 'signin') say('', true);
+      else say('Reviews are written by customers who bought this piece.');
+    }, function () { say(''); });
+  }
+  function openReviewForm(sku, asBuyer) {
     var modal = $('#reviewModal'), body = $('#reviewBody'); if (!modal) return;
     body.innerHTML =
       '<button class="qv-close" id="rvClose" aria-label="Close">&times;</button>' +
@@ -6643,8 +6819,10 @@
       '<h3 class="serif">' + (sku ? 'Write a review' : 'Review ' + shopName()) + '</h3>' +
       '<div class="rv-stars" id="rvStars">' + [1, 2, 3, 4, 5].map(function (i) { return '<span data-v="' + i + '">\u2605</span>'; }).join('') + '</div>' +
       '<label class="rv-lbl">Your name' +
-        (REVIEWSET.anonymous ? '<span class="od-opt">optional</span>' : '') +
-        '</label><input type="text" id="rvName" maxlength="60" autocomplete="name">' +
+        ((REVIEWSET.anonymous || asBuyer) ? '<span class="od-opt">optional</span>' : '') +
+        '</label><input type="text" id="rvName" maxlength="60" autocomplete="name"' +
+        (asBuyer ? ' placeholder="Your first name, if you leave this empty"' : '') + '>' +
+      (asBuyer ? '<p class="rv-wait">Shown as a verified buyer: you bought this piece.</p>' : '') +
       '<label class="rv-lbl">Your review</label><textarea id="rvComment" maxlength="1000" rows="4"></textarea>' +
       /* Said before they write, not after they submit. Somebody who
          would rather not be read straight away should know that. */
@@ -6661,6 +6839,7 @@
       var name = $('#rvName').value.trim(), comment = $('#rvComment').value.trim(), msg = $('#rvMsg');
       /* The table needs a name, so an unsigned review carries the word
          the shop chose rather than an empty one. */
+      if (asBuyer) { submitAsBuyer(sku, rating, name, comment, msg); return; }
       if (!name && REVIEWSET.anonymous) name = REVIEWSET.anonymousLabel || 'A customer';
       if (!name) { msg.textContent = 'Please enter your name.'; msg.className = 'rv-msg err'; return; }
       if (!WEB) { msg.textContent = 'Reviews are not enabled yet.'; msg.className = 'rv-msg err'; return; }
@@ -6699,6 +6878,38 @@
     modal.classList.add('open'); document.body.style.overflow = 'hidden';
   }
   function closeReviewModal() { var m = $('#reviewModal'); if (m) m.classList.remove('open'); document.body.style.overflow = ''; }
+  /* A buyer's review: the database checks the purchase and marks it
+     (review_by_buyer, supabase-shopping.sql). */
+  function submitAsBuyer(sku, rating, name, comment, msg) {
+    var c = webClient();
+    if (!c) { msg.textContent = 'Please sign in again.'; msg.className = 'rv-msg err'; return; }
+    msg.textContent = 'Submitting\u2026'; msg.className = 'rv-msg';
+    Promise.resolve(c.rpc('review_by_buyer', { p_sku: sku, p_rating: rating, p_comment: comment, p_name: name }))
+      .then(function (r) {
+        var d = r && !r.error ? r.data : null;
+        if (!d || !d.ok) {
+          var why = d && d.why;
+          msg.textContent = why === 'already' ? 'You have already reviewed this piece.'
+            : why === 'not_bought' ? 'This piece is not on one of your orders that has arrived, so it cannot be reviewed yet.'
+            : why === 'too_long' ? 'That is a little long: up to 1,000 letters, please.'
+            : why === 'signin' ? 'Please sign in again.'
+            : /Too many/i.test(String((r && r.error && r.error.message) || '')) ? 'Thank you, but that is a lot of reviews from here in a short time. Please try again later.'
+            : 'Could not submit. Please try again.';
+          msg.className = 'rv-msg err';
+          return;
+        }
+        if (d.published) {
+          REVIEWS.unshift({ sku: sku, name: d.name || name, rating: rating, comment: comment,
+                            verified: true, created_at: new Date().toISOString() });
+          msg.textContent = 'Thank you! Your review is posted.';
+        } else {
+          msg.textContent = 'Thank you. We read every review before it appears, so yours will show shortly.';
+        }
+        msg.className = 'rv-msg ok';
+        renderProductReviews(sku);
+        setTimeout(closeReviewModal, d.published ? 1100 : 2200);
+      }, function () { msg.textContent = 'Could not submit. Please try again.'; msg.className = 'rv-msg err'; });
+  }
 
   // ---------------- shop filters ----------------
   function uniqueVals(field) {
@@ -6875,7 +7086,32 @@
     }
   }
 
+  /* BUILD 90 · shopping (assets/shopping.js): compare, alerts, questions and
+     answers, a gift list, sizes. Handed the shop's own ways of doing things,
+     so it never prices or sells anything itself. */
+  var SHOPPING = window.VBP_SHOPPING || null;
+  function startShopping() {
+    if (!SHOPPING) return;
+    SHOPPING.init({
+      settings: function () { return { shop: SHOP, accounts: ACCOUNTS, reviews: REVIEWSET }; },
+      bySku: bySku,
+      productCard: productCard,
+      cartButton: cartButton,
+      canBuy: canBuy,
+      priceOf: priceOf,
+      detailRows: detailRows,
+      imgChain: attachImgChain,
+      go: go,
+      enquire: function (a, text, label) { return enquireLink(a, { text: text }, label); },
+      client: webClient,
+      rpc: webRpc,
+      restUrl: function (q) { return WEB ? { href: webBase() + q, headers: webHeaders({}) } : null; }
+    });
+    SHOPPING.paintCompareBar();
+  }
+
   function init() {
+    startShopping();
     preHideIfLastGated();   // only hides when this browser was gated last time
     preApplyCachedTheme();  // the colours from last time, until the real ones land
     startBranding();        // and the real ones now, rather than behind the catalogue

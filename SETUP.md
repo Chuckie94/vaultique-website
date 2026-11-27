@@ -54,8 +54,18 @@ You will do five short steps. It takes about 10 minutes.
 >  and one more (build 89):
 > 37 supabase-delivery.sql         delivery instructions, the courier and
 >                                  tracking number
+>  and one more (build 90):
+> 38 supabase-shopping.sql         alerts, gift lists, reviews from buyers,
+>                                  answers, preferences, the policies' order
 >                                  then supabase-hardening.sql once more
 > ```
+>
+> **Build 90, on a shop already running:** upload, then run
+> `supabase-shopping.sql` once (38 in the list above). The hardening is not
+> run again for it; whenever it is, this build's copy (or a later one) keeps a
+> gift list's link and the review rule open to visitors. ("Shopping: compare,
+> alerts, reviews from buyers, answers, gift lists, preferences", below, and
+> "Policies" under Using the admin.)
 >
 > **Build 89, on a shop already running:** upload, then run
 > `supabase-delivery.sql` once (37 in the list above). The hardening is not
@@ -1886,6 +1896,63 @@ and amount; the subtotal before VAT, VAT, delivery, the total, points, what
 was paid and any balance; how it was paid. A long order runs onto more pages,
 each numbered. It is named `Invoice-<number>.pdf`.
 
+### Shopping: compare, alerts, reviews from buyers, answers, gift lists, preferences (build 90)
+
+Needs `supabase-shopping.sql` (38 in the list at the top) for everything but
+Compare and Order again. Until it is run, those are simply not offered, and a
+piece's reviews are written as before.
+
+- **Compare** (Settings > Shopping, *Compare pieces side by side*). A Compare
+  button on each piece; while some are chosen, a small bar at the bottom left
+  of the page; `/compare` shows two to four side by side: the price,
+  availability, category, brand, size, colour, material and every detail the
+  platform sends, with Add to cart. Kept on the customer's own device; not a
+  page for search engines.
+- **Email alerts** (Settings > Customer Accounts > Shopping). *Email me when
+  it's back* on a sold-out piece, *Email me if the price drops* on one in
+  stock, for a signed-in customer, always to their account's own address.
+  The product-alerts job (every thirty minutes) emails each once, from your
+  email (Settings > Notifications): one email for all of a customer's pieces
+  that are back, or cheaper than when they asked, at the price the shop shows
+  (your own prices count; a piece hidden or priced on request never). An
+  alert waiting 180 days is let go. A customer has at most sixty waiting,
+  and sees and stops them in *Product alerts* in their account. With email
+  not set up, nothing is sent and nothing is marked as sent.
+- **Reviews from buyers** (Settings > Reviews, *Who can review a piece*). With
+  *Customers who bought the piece* (the default), Write a review on a piece
+  shows only for a signed-in customer with that piece on one of their orders
+  that has been sent, delivered or rung up at the till, and not cancelled or
+  refunded in full; once each; the review says *Verified buyer*. Everyone
+  else is told reviews come from buyers, with a Sign in link. The database
+  holds the same rule (a review of a piece sent any other way is refused
+  while only buyers may review). *Anyone* puts it back as it was. A review
+  of the whole shop is unchanged.
+- **Questions & answers** (Admin > Reviews > Questions & answers). Each piece
+  has *Ask a question*, which opens the live chat with the piece named. When
+  an answer is worth keeping, press **Add an answer**: the piece (its code;
+  its name appears), the question, the answer, and whether it shows. It
+  appears on the piece's page under the reviews. Edit, hide or delete it at
+  any time. Who may: the Reviews permission.
+- **The gift list** (Settings > Customer Accounts > Shopping; needs the
+  wishlist to follow the account). In *Gift list* in their account, a
+  customer gives it a title and a note and presses **Share my wishlist**: a
+  link of its own (`/gift/` and a 64-character key made by the database).
+  Whoever has it sees the pieces on their wishlist, the title, the note and
+  their first name; never their surname, email or phone. **Stop sharing**
+  (two taps) deletes the key, and the link shows nothing.
+- **Shopping preferences**. Their sizes and categories, chosen from the
+  shop's own. Their categories come first in the shop; *My sizes* there
+  shows only pieces in their sizes and pieces that come in one size; their
+  size is marked with a gold dot on a piece's size picker.
+- **Recently purchased** and **Order again** (*Order again*, needs Order
+  history). Recently purchased lists every piece they bought, each once, as
+  the shop's own cards. On a past order, Order again puts its pieces back in
+  the cart at today's prices, never more than you have, and says what went
+  in short and what is not on sale.
+
+Their alerts, gift list (whether it is shared, never the key), preferences
+and the reviews they wrote as buyers are in their *Download my personal data*.
+
 ### Settings > Pricing & Tax
 
 How a price is written and what it says about tax. **Prices themselves are not
@@ -2890,12 +2957,24 @@ including you.
 
 Change it whenever you like; the old one stops working the moment you save.
 - **Reviews:** every review left on the site appears here. Mark a review as
-  Verified, hide it, or delete it.
+  Verified, hide it, or delete it. Beside it, **Questions & answers** (build
+  90): the answers you publish on pieces' pages ("Shopping", below).
 - **Subscribers:** see everyone who signed up to the newsletter, copy all
   emails, or use "Email all (BCC)" to send them an update from your own mail app.
-- **Policies:** your policies live here. Click **Load starter policies** once to
-  import the full set from your manual, then edit any of them, change their order
-  with the number, add your own, or delete. They show on the site's Policies page.
+- **Policies:** your policies live here, numbered 1, 2, 3 ... in the order
+  customers see them on the Policies page, under the same section headings
+  (build 90). **Add policy** opens a window over the list: the title, the
+  section, the number and the text. Choose the number you want (or leave it,
+  and it goes at the end of its section); the line under it says which numbers
+  move, and the others renumber themselves when you press Add policy. **Edit**
+  opens the same window. The arrows move a policy one place within its
+  section, and those on a section's heading move the whole section. Delete
+  asks first, and the numbers after it move up. A section's policies always
+  stay together, as on the Policies page: a number among another section's
+  policies goes to the nearest place in its own section, and the window says
+  so. The page stays where it was after saving; the policy just saved is
+  marked, with *Show it* if it is out of sight. **Load starter policies**
+  imports the full set from your manual, after any you already have.
 
 ## Good to know
 - Products, prices and stock still come from the POS and cannot be edited here

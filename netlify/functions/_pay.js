@@ -1297,4 +1297,6 @@ module.exports = {
   METHODS, METHOD_LABEL, routes, publicMethods, legacyRoute, flwOptions, lencoNetworks, shopCurrency,
   lencoDbReady, noteHealth, noteError, settleLenco, failAttempt, lencoAttention, touchLenco,
   _resetLencoDb: () => { LENCO_DB = null; LENCO_DB_AT = 0; },
+  // build 90: the catalogue as the shop prices it, for the product alerts
+  catalogue, productMeta, withMeta,
 };

@@ -178,6 +178,16 @@ async function data(who) {
        the team answered (supabase-customer-requests.sql). */
     rows('order_requests?customer_id=eq.' + id + '&select=' + REQUEST_KEYS.join(',') + '&order=created_at.asc'),
   ]);
+  /* BUILD 90 · shopping (supabase-shopping.sql): their alerts, their gift
+     list (whether it is shared, never its key), their sizes and categories,
+     and the reviews they wrote as buyers. Nothing, before that file. */
+  const [prefs, alerts, gifts, buyerReviews] = await Promise.all([
+    rows('customers?id=eq.' + id + '&select=preferences').catch(() => []),
+    rows('product_alerts?customer_id=eq.' + id + '&select=sku,kind,name,price_at,created_at,sent_at,sent_price&order=created_at.asc'),
+    rows('gift_lists?customer_id=eq.' + id + '&select=title,note,created_at,updated_at'),
+    rows('review_owners?customer_id=eq.' + id + '&select=sku,created_at,reviews(name,rating,comment,approved,created_at)&order=created_at.asc')
+      .catch(() => []),
+  ]);
   const orderIds = orders.map((o) => String(o.id));
   const refByOrder = {};
   for (const o of orders) refByOrder[String(o.id)] = o.ref;
@@ -202,6 +212,12 @@ async function data(who) {
     payments: payments.map((p) => Object.assign({ order_ref: refByOrder[String(p.order_id)] || null }, pick(p, PAYMENT_KEYS))),
     refunds: refundList,
     requests: requests.map((r) => pick(r, REQUEST_KEYS)),
+    shopping: {
+      preferences: (prefs[0] && prefs[0].preferences) || null,
+      alerts,
+      gift_list: gifts[0] ? Object.assign({ shared: true }, gifts[0]) : null,
+      reviews_as_a_buyer: buyerReviews.map((r) => Object.assign({ sku: r.sku }, r.reviews || {})),
+    },
     newsletter: newsletterRow
       ? { email: newsletterRow.email, joined_at: newsletterRow.created_at, left_at: newsletterRow.unsubscribed_at || null }
       : null,
@@ -210,7 +226,7 @@ async function data(who) {
     })),
     rewards: { link: links[0] || null, requests: asks, points_promised_on_orders: holds },
     not_kept_against_your_account: [
-      'Reviews carry only the name given with them, not the account.',
+      'A review of the whole shop, or one written without signing in, carries only the name given with it, not the account.',
       'Visits to the website are counted with a random number for the browser, never a name or an account.',
     ],
   });

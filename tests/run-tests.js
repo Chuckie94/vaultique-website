@@ -66,10 +66,12 @@ const CRITICAL = [
   'payments', 'payments-74', 'payments-77', 'place-order', 'portal', 'pos-orders', 'product-door',
   'rewards-door', 'runner', 'safe-links', 'sql-hidden', 'test-orders-sync',
   'lenco', 'lenco-checkout', 'lenco-admin', 'secure-publish',
-  'delivery', 'invoice-pdf'
+  'delivery', 'invoice-pdf',
+  'shopping', 'product-alerts'
 ];   // build 86: account-portal and portal, a customer's own records; build 87: customer-requests, which can cancel an order;
      // build 88: Lenco, the checkout and its settings, and what may never be published;
-     // build 89: delivery (a customer's instructions, the courier and tracking number, the platform's door) and the invoice
+     // build 89: delivery (a customer's instructions, the courier and tracking number, the platform's door) and the invoice;
+     // build 90: shopping (the cart, a customer's gift list and alerts) and the alert emails
 const critical = (f) => CRITICAL.indexOf(base(f)) > -1;
 const started = Date.now();
 let failed = 0, checks = 0;

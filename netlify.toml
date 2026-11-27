@@ -92,6 +92,13 @@
 [functions."order-progress"]
   schedule = "*/15 * * * *"
 
+# Product alerts (netlify/functions/product-alerts.js, build 90). Emails a
+# customer once when a piece they asked about is back in stock, or cheaper
+# than when they asked. About 1,450 invocations a month; before
+# supabase-shopping.sql has been run, or with nobody waiting, one quick read.
+[functions."product-alerts"]
+  schedule = "*/30 * * * *"
+
 # Pretty path so the storefront calls /api/products
 [[redirects]]
   from = "/api/products"
@@ -451,6 +458,13 @@
 # Build 89: delivery (instructions, the courier and tracking number). Hidden like the others.
 [[redirects]]
   from = "/supabase-delivery.sql"
+  to = "/index.html"
+  status = 404
+  force = true
+
+# Build 90: shopping (alerts, gift lists, buyers' reviews, the policies' order). Hidden like the others.
+[[redirects]]
+  from = "/supabase-shopping.sql"
   to = "/index.html"
   status = 404
   force = true

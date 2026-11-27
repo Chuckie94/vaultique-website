@@ -285,12 +285,17 @@ const until = async (page, fn, arg) => page.waitForFunction(fn, arg, { timeout: 
     is(REWARDS_ASKED.some(x => x.action === 'status' && x.as === 'buyer@example.com'),
        'the points were asked of the rewards function, as the signed-in customer (it asks the platform; nothing is kept here)', J(REWARDS_ASKED));
     is(J(d.heads) === J(['My shopping', 'My Vault', 'Security and privacy']), 'the three groups, in the screenshots\' order, the second called My Vault (the owner\'s word)', J(d.heads));
-    is(J(d.cards) === J(['My orders Order history and tracking', 'Returns & refunds Manage order issues', 'My wishlist Saved products', 'Recently viewed Continue shopping']),
-       'My shopping: orders, returns & refunds, wishlist, recently viewed, each with its line', J(d.cards));
-    is(!d.cards.some(c => /Gift cards|Product alerts/.test(c)) && !d.rows.some(r => /My wallet/.test(r)),
-       'no Gift cards, My wallet or Product alerts: switched off in the platform (D9), alerts come with build 90', J([d.cards, d.rows]));
-    is(J(d.rows) === J(['Personal details', 'Address book', 'Rewards & membership', 'Customer support', 'Notifications']),
-       'My Vault: details, address book, rewards, support, notifications', J(d.rows));
+    /* Build 90 (the plan's shopping build): Recently purchased, Product
+       alerts and the Gift list in My shopping, Shopping preferences in My
+       Vault, each on unless Settings switches it off. */
+    is(J(d.cards) === J(['My orders Order history and tracking', 'Returns & refunds Manage order issues', 'My wishlist Saved products',
+                         'Recently viewed Continue shopping', 'Recently purchased Buy again', 'Product alerts Back in stock, price drops',
+                         'Gift list Share your wishlist']),
+       'My shopping: orders, returns & refunds, wishlist, recently viewed, and from build 90 recently purchased, product alerts and the gift list, each with its line', J(d.cards));
+    is(!d.cards.some(c => /Gift cards/.test(c)) && !d.rows.some(r => /My wallet/.test(r)),
+       'no Gift cards or My wallet: switched off in the platform (D9)', J([d.cards, d.rows]));
+    is(J(d.rows) === J(['Personal details', 'Address book', 'Rewards & membership', 'Customer support', 'Notifications', 'Shopping preferences']),
+       'My Vault: details, address book, rewards, support, notifications, and from build 90 shopping preferences', J(d.rows));
     is(J(d.safe) === J(['Password and authentication', 'Active devices and sessions', 'Privacy and marketing preferences', 'Download my personal data', 'Close my account']),
        'Security and privacy: the five, as in the screenshots', J(d.safe));
     is(d.oneRow && d.fits && d.inside, 'the three figures side by side, and everything fits a phone with nothing off the side', J({ oneRow: d.oneRow, fits: d.fits, inside: d.inside }));
